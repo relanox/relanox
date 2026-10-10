@@ -75,18 +75,6 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     db
       .prepare("UPDATE outbound SET status=?, version=?, record=? WHERE id=?")
       .run(r.status, r.version, encode(r), r.deliveryId);
-  const allIn = (): InboundRecord[] =>
-    (
-      db
-        .prepare("SELECT record FROM inbound ORDER BY accepted_at,id")
-        .all() as { record: string }[]
-    ).map((x) => decode(x.record));
-  const allOut = (): OutboundRecord[] =>
-    (
-      db.prepare("SELECT record FROM outbound ORDER BY id").all() as {
-        record: string;
-      }[]
-    ).map((x) => decode(x.record));
   const first = (r: InboundRecord): boolean =>
     !db
       .prepare(
@@ -165,10 +153,15 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       });
     },
     async listPending(input) {
-      return allIn()
-        .filter((r) => r.status === "pending" && scoped(r, input.endpointIds))
-        .slice(0, input.limit)
-        .map((r) => r.snapshot);
+      if (input.endpointIds.length === 0) return [];
+      const placeholders = input.endpointIds.map(() => "?").join(",");
+      return (
+        db
+          .prepare(
+            `SELECT record FROM inbound WHERE status='pending' AND endpoint IN (${placeholders}) ORDER BY accepted_at,id LIMIT ?`,
+          )
+          .all(...input.endpointIds, input.limit) as { record: string }[]
+      ).map((x) => decode<InboundRecord>(x.record).snapshot);
     },
     async claimRequest(input) {
       return transaction(() => {
@@ -493,22 +486,23 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       return row ? decode<StateEntry>(row.record) : undefined;
     },
     async listState(ns, input) {
+      const where = ["plugin=?", "owner=?"];
+      const params: (string | number)[] = [ns.pluginId, ns.ownerId];
+      if (input.prefix !== undefined) {
+        where.push("substr(key,1,?)=?");
+        params.push(input.prefix.length, input.prefix);
+      }
+      if (input.expiresBefore !== undefined) {
+        where.push("expires_at<=?");
+        params.push(input.expiresBefore);
+      }
       return (
         db
           .prepare(
-            "SELECT record FROM plugin_state WHERE plugin=? AND owner=? ORDER BY key",
+            `SELECT record FROM plugin_state WHERE ${where.join(" AND ")} ORDER BY key LIMIT ?`,
           )
-          .all(ns.pluginId, ns.ownerId) as { record: string }[]
-      )
-        .map((x) => decode<StateEntry>(x.record))
-        .filter(
-          (x) =>
-            (input.prefix === undefined || x.key.startsWith(input.prefix)) &&
-            (input.expiresBefore === undefined ||
-              (x.expiresAt !== undefined &&
-                x.expiresAt <= input.expiresBefore)),
-        )
-        .slice(0, input.limit);
+          .all(...params, input.limit) as { record: string }[]
+      ).map((x) => decode<StateEntry>(x.record));
     },
     async compareAndSetState(ns, input) {
       return transaction(() => {
@@ -569,28 +563,50 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       return outbound(id);
     },
     async listInbound(f) {
-      return allIn()
-        .filter(
-          (r) =>
-            (!f.requestStatus || r.status === f.requestStatus) &&
-            (!f.endpointId || r.snapshot.endpoint.id === f.endpointId) &&
-            (!f.afterId || r.snapshot.requestId > f.afterId),
-        )
-        .sort((a, b) =>
-          a.snapshot.requestId.localeCompare(b.snapshot.requestId),
-        )
-        .slice(0, f.limit);
+      const where = ["1=1"];
+      const params: (string | number)[] = [];
+      if (f.requestStatus) {
+        where.push("status=?");
+        params.push(f.requestStatus);
+      }
+      if (f.endpointId) {
+        where.push("endpoint=?");
+        params.push(f.endpointId);
+      }
+      if (f.afterId) {
+        where.push("id>?");
+        params.push(f.afterId);
+      }
+      return (
+        db
+          .prepare(
+            `SELECT record FROM inbound WHERE ${where.join(" AND ")} ORDER BY id LIMIT ?`,
+          )
+          .all(...params, f.limit) as { record: string }[]
+      ).map((x) => decode<InboundRecord>(x.record));
     },
     async listOutbound(f) {
-      return allOut()
-        .filter(
-          (r) =>
-            (!f.deliveryStatus || r.status === f.deliveryStatus) &&
-            (!f.endpointId ||
-              inbound(r.requestId)?.snapshot.endpoint.id === f.endpointId) &&
-            (!f.afterId || r.deliveryId > f.afterId),
-        )
-        .slice(0, f.limit);
+      const where = ["1=1"];
+      const params: (string | number)[] = [];
+      if (f.deliveryStatus) {
+        where.push("o.status=?");
+        params.push(f.deliveryStatus);
+      }
+      if (f.endpointId) {
+        where.push("i.endpoint=?");
+        params.push(f.endpointId);
+      }
+      if (f.afterId) {
+        where.push("o.id>?");
+        params.push(f.afterId);
+      }
+      return (
+        db
+          .prepare(
+            `SELECT o.record FROM outbound o JOIN inbound i ON i.id=o.request_id WHERE ${where.join(" AND ")} ORDER BY o.id LIMIT ?`,
+          )
+          .all(...params, f.limit) as { record: string }[]
+      ).map((x) => decode<OutboundRecord>(x.record));
     },
     async getStats() {
       const a = db
@@ -623,19 +639,19 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async cleanup(input) {
       return transaction(() => {
         let redacted = 0;
-        for (const r of allIn()) {
-          if (redacted >= input.limit) break;
-          if (
-            r.redactedAt !== undefined ||
-            r.snapshot.acceptedAt >= input.before
+        const rows = db
+          .prepare(
+            "SELECT i.record AS inbound_record,o.record AS outbound_record FROM inbound i LEFT JOIN outbound o ON o.request_id=i.id WHERE i.accepted_at<? AND json_extract(i.record,'$.redactedAt') IS NULL AND (i.status='failed' OR (i.status='completed' AND o.status='sent')) ORDER BY i.accepted_at,i.id LIMIT ?",
           )
-            continue;
-          const o = allOut().find((x) => x.requestId === r.snapshot.requestId);
-          if (
-            r.status !== "failed" &&
-            !(r.status === "completed" && o?.status === "sent")
-          )
-            continue;
+          .all(input.before, input.limit) as {
+          inbound_record: string;
+          outbound_record: string | null;
+        }[];
+        for (const row of rows) {
+          const r = decode<InboundRecord>(row.inbound_record);
+          const o = row.outbound_record
+            ? decode<OutboundRecord>(row.outbound_record)
+            : undefined;
           saveIn({
             ...r,
             snapshot: { ...r.snapshot, text: "", context: null },
