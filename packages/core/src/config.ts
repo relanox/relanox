@@ -19,9 +19,9 @@ export const channels = [
   "irc",
 ] as const;
 export const secretRefSchema = z.strictObject({
-  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
 });
-const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/);
+const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u);
 const opaque = z.string().min(1).max(1024);
 const json = z.json();
 export const configSchema = z
@@ -64,12 +64,13 @@ export const configSchema = z
     for (const key of ["accounts", "endpoints"] as const) {
       const seen = new Set<string>();
       for (const item of value[key]) {
-        if (seen.has(item.id))
+        if (seen.has(item.id)) {
           ctx.addIssue({
             code: "custom",
             message: `Duplicate ${key} id`,
             path: [key],
           });
+        }
         seen.add(item.id);
       }
     }
@@ -78,31 +79,25 @@ export const configSchema = z
       if (
         !value.accounts.some((a) => a.id === binding.accountId) ||
         !value.endpoints.some((e) => e.id === binding.endpointId)
-      )
+      ) {
         ctx.addIssue({
           code: "custom",
           message: "Unknown binding account or endpoint",
           path: ["bindings"],
         });
-      const key = bindingKey(
-        binding.accountId,
-        binding.chatId,
-        binding.threadId,
-      );
-      if (bindings.has(key))
+      }
+      const key = bindingKey(binding.accountId, binding.chatId, binding.threadId);
+      if (bindings.has(key)) {
         ctx.addIssue({
           code: "custom",
           message: "Duplicate conversation binding",
           path: ["bindings"],
         });
+      }
       bindings.add(key);
     }
   });
-export function bindingKey(
-  accountId: string,
-  chatId: string,
-  threadId?: string,
-): string {
+export function bindingKey(accountId: string, chatId: string, threadId?: string): string {
   return JSON.stringify([accountId, chatId, threadId ?? null]);
 }
 export function validateConfig(input: unknown): RelanoxConfig {
@@ -115,12 +110,14 @@ export function resolveSecretRef(
 ): string {
   const { env } = secretRefSchema.parse(ref);
   const value = environment[env];
-  if (!value) throw new Error(`Missing environment secret: ${env}`);
+  if (!value) {
+    throw new Error(`Missing environment secret: ${env}`);
+  }
   return value;
 }
 export function jsonSnapshot<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 export function validateJson(value: unknown): Json {
-  return json.parse(value) as Json;
+  return json.parse(value);
 }

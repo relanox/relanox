@@ -1,0 +1,42 @@
+# Code quality gates
+
+Oxfmt owns formatting; Oxlint owns linting. The former Biome dependency/configuration is removed so two formatters cannot rewrite each other's output. Versions are pinned in package.json and pnpm-lock.yaml: Oxlint 1.87.0, Oxfmt 0.72.0 and oxlint-tsgolint 7.0.2004. These are development tools, not runtime dependencies.
+
+## Commands and enforcement
+
+- `pnpm format`: format supported source, config, documentation and workflow files.
+- `pnpm format:check`: check without changing files.
+- `pnpm lint`: all enabled Oxlint rules, including type-aware rules; any warning or unused suppression fails.
+- `pnpm lint:fix`: safe automatic lint fixes; review the diff and run typecheck/tests afterwards.
+- `pnpm check`: format, lint, full source/test typecheck, and Vitest.
+- `pnpm prepare`: install the tracked `.githooks` path. Normal pnpm installation runs this automatically; a source archive without Git skips hook installation.
+
+Pre-commit runs format and lint checks across the checkout. It never rewrites or stages files. Partially staged files are rejected explicitly because checking only the working copy could hide a bad staged revision. Finish staging the reviewed content, or restore the unstaged portion, then retry. Build workspace packages before type-aware checking a fresh checkout (`pnpm build`). CI builds first and runs the same gates plus real PostgreSQL tests. CI remains authoritative even if a local hook is bypassed.
+
+The hook is verified by an actual disposable Git repository: malformed formatting is rejected, an unhandled Promise is rejected by type-aware linting, partial staging is rejected without changing the index, and a clean commit succeeds. This works with Node 24's native TypeScript stripping; no additional hook manager or shell interpolation of filenames is needed.
+
+## Rule policy
+
+All available rules in correctness, suspicious, pedantic, performance and style categories are errors for the TypeScript, Unicorn, Oxc, Import, Promise, Node, Vitest and JSDoc plugins plus ESLint core. Explicit restrictions include no `any`, non-null assertion, unsafe assignment/call/member/argument/return, floating/misused Promise, eval/new Function, console, var, parameter reassignment or loose equality. Exhaustive switches, explicit braces, one declaration per statement, complexity at most 20 and nesting depth at most 4 are enforced. Nursery rules and frontend-only plugins are not appropriate to this Node service.
+
+The explicit exceptions in `.oxlintrc.json` are reviewed policy, not a baseline of ignored findings:
+
+| Rule family                                                                | Reason for the exception                                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Named/default/grouped/last exports, Node imports                           | The SDK and plugins deliberately expose named APIs and use Node builtins.                                                                                                                                                                        |
+| Alphabetical keys/imports, function style, literal casing                  | Oxfmt owns presentation. Protocol keys retain meaningful grouping. Numeric casing must not conflict with Oxfmt.                                                                                                                                  |
+| Blanket ternary/continue/negated-condition/destructuring bans              | Simple expressions and guards are allowed; nested ternaries remain forbidden.                                                                                                                                                                    |
+| Magic numbers, identifier length, function/file/statement/parameter counts | Protocol constants, SQL and plugin factory objects make these arbitrary size counts poor correctness gates. Per-function complexity and nesting are enforced instead.                                                                            |
+| Require-await and readonly parameter types                                 | Async SDK contracts may complete synchronously, and drivers/socket interfaces require mutable types. Floating promises and unsafe types remain prohibited.                                                                                       |
+| Generic single-use parameter/type-assertion restrictions                   | Typed durable codecs deserialize known versioned records; SDK config validation bridges schema output and exact optional properties. Unchecked `any` propagation remains an error.                                                               |
+| Null/structuredClone restrictions                                          | JSON persistence and protocols require null and JSON serialization semantics, which differ from structuredClone.                                                                                                                                 |
+| Promise constructor/callback/then bans and no-await-in-loop                | Socket callbacks need bridging and cancellation handlers; FIFO transactions and sends intentionally await sequentially.                                                                                                                          |
+| JSDoc parameter/return boilerplate                                         | TypeScript signatures supply these types; meaningful API semantics live in SDK documentation.                                                                                                                                                    |
+| Test title/import/hook/placement/expect-count/style preferences            | Explicit Vitest imports and real resource lifecycle hooks are required. Parameterized shared contracts, rejection branches and several related assertions are valid. Avoid mechanically adding assertion counts or rewriting exact expectations. |
+| Boolean matcher alternatives                                               | Exact boolean matchers win over contradictory truthy/falsy preferences.                                                                                                                                                                          |
+| Conditional test expectations                                              | Shared backend contracts branch on explicit outcomes; missing records still throw and fail. Test admission rules independently prohibit assertion-free or self-comparing tests.                                                                  |
+| Test unbound methods; tooling sync subprocesses                            | Vitest inspects recorded method references without calling them. Short Git hook scripts intentionally wait for subprocess exit. These exceptions apply only to those file scopes.                                                                |
+
+Nullable primitive guards are allowed; truthiness of `any` is still an error. Separate type-only imports are accepted. Do not add a file-wide disable or lower a category just to pass. Fix the implementation or document a narrow, justified rule exception. All worktrees and future plugins use the same root configuration.
+
+Source references: [Oxlint configuration](https://oxc.rs/docs/guide/usage/linter/config), [type-aware linting](https://oxc.rs/docs/guide/usage/linter/type-aware), [Oxfmt configuration](https://oxc.rs/docs/guide/usage/formatter/config).

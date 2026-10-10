@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+
 export default defineConfig({
   test: {
     include: [
@@ -8,8 +9,8 @@ export default defineConfig({
       "apps/**/*.test.ts",
     ],
     exclude: ["**/node_modules/**", "**/dist/**", ".worktree/**", "**/.ref/**"],
-    testTimeout: 15000,
-    hookTimeout: 30000,
+    testTimeout: 15_000,
+    hookTimeout: 30_000,
     restoreMocks: true,
   },
 });

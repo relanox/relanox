@@ -321,10 +321,7 @@ export interface Storage {
   }): Promise<MutationResult>;
   takeDue(input: TakeDueInput): Promise<readonly DueWork[]>;
   settleAttempt(input: Settlement): Promise<MutationResult>;
-  getState(
-    namespace: StateNamespace,
-    key: string,
-  ): Promise<StateEntry | undefined>;
+  getState(namespace: StateNamespace, key: string): Promise<StateEntry | undefined>;
   listState(
     namespace: StateNamespace,
     input: {
@@ -361,12 +358,7 @@ export interface Storage {
   close(): Promise<void>;
 }
 export type MetricLabels = Readonly<
-  Partial<
-    Record<
-      "channel" | "agent" | "plugin" | "operation" | "outcome" | "error_class",
-      string
-    >
-  >
+  Partial<Record<"channel" | "agent" | "plugin" | "operation" | "outcome" | "error_class", string>>
 >;
 export interface LogFields {
   readonly plugin?: string;
@@ -382,11 +374,7 @@ export interface Span {
   end(outcome?: "ok" | "error"): void;
 }
 export interface Observability {
-  log(
-    level: "debug" | "info" | "warn" | "error",
-    event: string,
-    fields?: LogFields,
-  ): void;
+  log(level: "debug" | "info" | "warn" | "error", event: string, fields?: LogFields): void;
   count(name: string, labels?: MetricLabels, value?: number): void;
   record(name: string, value: number, labels?: MetricLabels): void;
   span(name: string, fields?: LogFields, parent?: TraceContext): Span;
@@ -404,10 +392,7 @@ export interface CommonHost {
   readonly observe: Observability;
   readonly state: StateStore;
   mountHttp(path: string, handler: HttpHandler): void;
-  connection(
-    status: "connected" | "disconnected" | "degraded",
-    errorCode?: string,
-  ): void;
+  connection(status: "connected" | "disconnected" | "degraded", errorCode?: string): void;
 }
 /** Core binds this host to a single validated account; plugins cannot choose the account scope. */
 export interface ChannelHost extends CommonHost {
@@ -463,11 +448,7 @@ export interface AgentPlugin<C = Json> extends PluginMetadata, Lifecycle {
   readonly kind: "agent";
   readonly agent: AgentId;
   validateConfig(config: unknown): C;
-  setup(
-    host: AgentHost,
-    endpoints: readonly EndpointConfig[],
-    config: C,
-  ): Promise<void>;
+  setup(host: AgentHost, endpoints: readonly EndpointConfig[], config: C): Promise<void>;
   dispatch(input: DispatchInput): Promise<DispatchResult>;
 }
 export interface StoragePlugin<C = Json> extends PluginMetadata {

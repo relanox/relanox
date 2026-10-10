@@ -1,27 +1,16 @@
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { PassThrough, Writable } from "node:stream";
-import {
-  type LogFields,
-  type MetricLabels,
-  noopObservability,
-  type ObservabilityRuntime,
-} from "@relanox/sdk";
+import { noopObservability } from "@relanox/sdk";
+import type { LogFields, MetricLabels, ObservabilityRuntime } from "@relanox/sdk";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  createStandardObservability,
-  validateStandardConfig,
-} from "../src/index.js";
+import { createStandardObservability, validateStandardConfig } from "../src/index.js";
 
 const runtimes: ObservabilityRuntime[] = [];
 const servers: Server[] = [];
 const signal = () => AbortSignal.timeout(3000);
-async function runtime(
-  config: Record<string, unknown> = {},
-  destination?: Writable,
-) {
-  const plugin = createStandardObservability(
-    destination ? { logDestination: destination } : {},
-  );
+async function runtime(config: Record<string, unknown> = {}, destination?: Writable) {
+  const plugin = createStandardObservability(destination ? { logDestination: destination } : {});
   const result = await plugin.setup(
     plugin.validateConfig({ logs: false, processMetrics: false, ...config }),
   );
@@ -29,31 +18,37 @@ async function runtime(
   return result;
 }
 async function metrics(value: ObservabilityRuntime): Promise<string> {
-  if (!value.metrics) throw new Error("missing metrics handler");
+  if (!value.metrics) {
+    throw new Error("missing metrics handler");
+  }
   const response = await value.metrics(new Request("http://localhost/metrics"));
   expect(response.status).toBe(200);
   return response.text();
 }
 afterEach(async () => {
-  await Promise.all(
-    runtimes.splice(0).map((value) => value.shutdown(signal())),
-  );
+  await Promise.all(runtimes.splice(0).map((value) => value.shutdown(signal())));
   await Promise.all(
     servers.splice(0).map(
       (server) =>
         new Promise<void>((resolve, reject) => {
           server.closeAllConnections();
-          server.close((error) => (error ? reject(error) : resolve()));
+          server.close((error) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
         }),
     ),
   );
 });
 
-describe("JSON log boundary", () => {
+describe("jSON log boundary", () => {
   it("keeps safe correlation fields and excludes arbitrary payloads and error strings", async () => {
     const output = new PassThrough();
     let text = "";
-    output.on("data", (chunk) => {
+    output.on("data", (chunk: Buffer) => {
       text += chunk.toString();
     });
     const value = await runtime({ logs: true }, output);
@@ -76,7 +71,7 @@ describe("JSON log boundary", () => {
     const lines = text
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line));
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatchObject({
       level: 30,
@@ -85,7 +80,7 @@ describe("JSON log boundary", () => {
       plugin: "core",
       outcome: "accepted",
     });
-    expect(Object.keys(lines[0]).sort()).toEqual([
+    expect(Object.keys(lines[0] ?? {}).toSorted()).toEqual([
       "event",
       "level",
       "outcome",
@@ -97,8 +92,9 @@ describe("JSON log boundary", () => {
       event: "operation.failed",
       errorCode: "call_timeout",
     });
-    expect(text).not.toMatch(/PRIVATE|TOKEN|SECRET|authorization|hostname/);
+    expect(text).not.toMatch(/PRIVATE|TOKEN|SECRET|authorization|hostname/u);
   });
+
   it("bounds backpressured logging and absorbs collector failure", async () => {
     let release: (() => void) | undefined;
     let writes = 0;
@@ -106,34 +102,35 @@ describe("JSON log boundary", () => {
       highWaterMark: 1,
       write(_chunk, _encoding, callback) {
         writes++;
-        release = () => callback();
+        release = () => {
+          callback();
+        };
       },
     });
     output.on("error", () => {});
     const value = await runtime({ logs: true, logBufferBytes: 1024 }, output);
-    for (let index = 0; index < 1000; index++)
+    for (let index = 0; index < 1000; index++) {
       value.observe.log("info", "inbound.accepted", { plugin: "core" });
+    }
     expect(writes).toBe(1);
-    expect(await metrics(value)).toMatch(
-      /relanox_telemetry_dropped_total\{signal="logs"\} 9\d\d/,
-    );
+    expect(await metrics(value)).toMatch(/relanox_telemetry_dropped_total\{signal="logs"\} 9\d\d/u);
     output.destroy(new Error("collector failed"));
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(() => value.observe.log("error", "operation.failed")).not.toThrow();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(() => {
+      value.observe.log("error", "operation.failed");
+    }).not.toThrow();
     await value.flush(signal());
     release?.();
   });
 });
 
-describe("Prometheus public facade", () => {
+describe("prometheus public facade", () => {
   it("counts observations, replaces gauges, records seconds and isolates registries", async () => {
     const first = await runtime();
     const second = await runtime();
-    first.observe.count(
-      "relanox_inbound_total",
-      { channel: "telegram", outcome: "accepted" },
-      2,
-    );
+    first.observe.count("relanox_inbound_total", { channel: "telegram", outcome: "accepted" }, 2);
     first.observe.count("relanox_inbound_total", {
       channel: "telegram",
       outcome: "accepted",
@@ -145,26 +142,23 @@ describe("Prometheus public facade", () => {
     });
     const body = await metrics(first);
     expect(body).toMatch(
-      /relanox_inbound_total\{[^\n]*channel="telegram"[^\n]*outcome="accepted"[^\n]*\} 3/,
+      /relanox_inbound_total\{[^\n]*channel="telegram"[^\n]*outcome="accepted"[^\n]*\} 3/u,
     );
-    expect(body).toMatch(/# TYPE relanox_pending gauge/);
-    expect(body).toMatch(/relanox_pending\{[^\n]*\} 2/);
-    expect(body).toMatch(/relanox_send_duration_seconds_sum\{[^\n]*\} 0.25/);
-    expect(body).toMatch(
-      /relanox_send_duration_seconds_bucket\{le="0.5"[^\n]*\} 1/,
-    );
-    expect(await metrics(second)).not.toMatch(/channel="telegram"/);
+    expect(body).toMatch(/# TYPE relanox_pending gauge/u);
+    expect(body).toMatch(/relanox_pending\{[^\n]*\} 2/u);
+    expect(body).toMatch(/relanox_send_duration_seconds_sum\{[^\n]*\} 0.25/u);
+    expect(body).toMatch(/relanox_send_duration_seconds_bucket\{le="0.5"[^\n]*\} 1/u);
+    expect(await metrics(second)).not.toMatch(/channel="telegram"/u);
     const response = await first.metrics?.(
       new Request("http://localhost/metrics", { method: "POST" }),
     );
     expect(response?.status).toBe(405);
     expect(response?.headers.get("allow")).toBe("GET, HEAD");
-    const head = await first.metrics?.(
-      new Request("http://localhost/metrics", { method: "HEAD" }),
-    );
+    const head = await first.metrics?.(new Request("http://localhost/metrics", { method: "HEAD" }));
     expect(head?.headers.get("content-type")).toContain("text/plain");
     expect(await head?.text()).toBe("");
   });
+
   it("rejects identity labels, unknown names, invalid numbers and caps finite combinations", async () => {
     const value = await runtime();
     value.observe.count("secret_metric", {}, 1);
@@ -193,33 +187,24 @@ describe("Prometheus public facade", () => {
       "signal",
       "irc",
     ]) {
-      for (const outcome of [
-        "accepted",
-        "duplicate",
-        "rejected",
-        "error",
-        "unknown",
-      ]) {
+      for (const outcome of ["accepted", "duplicate", "rejected", "error", "unknown"]) {
         value.observe.count("relanox_inbound_total", { channel, outcome });
         accepted++;
       }
     }
     expect(accepted).toBe(75);
     const body = await metrics(value);
-    expect(body).not.toMatch(/secret_metric|secret-user|requestId|private| 99/);
+    expect(body).not.toMatch(/secret_metric|secret-user|requestId|private| 99/u);
     expect(
-      body
-        .split("\n")
-        .filter((line) => line.startsWith("relanox_inbound_total{")),
+      body.split("\n").filter((line) => line.startsWith("relanox_inbound_total{")),
     ).toHaveLength(64);
-    expect(body).toContain(
-      'relanox_telemetry_dropped_total{signal="metrics"} 11',
-    );
+    expect(body).toContain('relanox_telemetry_dropped_total{signal="metrics"} 11');
   });
+
   it("disabled signals and SDK noop perform no external work", async () => {
     const output = new PassThrough();
     let bytes = 0;
-    output.on("data", (chunk) => {
+    output.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
     });
     const value = await runtime({ logs: false, metrics: false }, output);
@@ -237,8 +222,11 @@ describe("Prometheus public facade", () => {
       noopObservability.span("ingest").end();
     }).not.toThrow();
     await value.shutdown(signal());
-    expect(() => value.observe.log("info", "inbound.accepted")).not.toThrow();
+    expect(() => {
+      value.observe.log("info", "inbound.accepted");
+    }).not.toThrow();
   });
+
   it.each([
     { tracing: {} },
     { tracing: { endpoint: "file:///secret" } },
@@ -267,26 +255,33 @@ async function collector(status = 200) {
   }[] = [];
   const server = createServer((request, response) => {
     let body = "";
-    request.on("data", (chunk) => {
+    request.on("data", (chunk: Buffer) => {
       body += chunk.toString();
     });
     request.on("end", () => {
       requests.push({ headers: request.headers, body });
-      if (status === 0) return;
+      if (status === 0) {
+        return;
+      }
       response.writeHead(status, { "content-type": "application/json" });
       response.end("{}");
     });
   });
   servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
   const address = server.address();
-  if (!address || typeof address === "string")
+  if (address === null || typeof address === "string") {
     throw new Error("missing server port");
+  }
   return { endpoint: `http://127.0.0.1:${address.port}/v1/traces`, requests };
 }
 function wireSpans(requests: { body: string }[]): Record<string, unknown>[] {
   return requests.flatMap((request) => {
-    const body = JSON.parse(request.body);
+    const body = JSON.parse(request.body) as {
+      resourceSpans: { scopeSpans: { spans: Record<string, unknown>[] }[] }[];
+    };
     return body.resourceSpans.flatMap(
       (resource: { scopeSpans: { spans: Record<string, unknown>[] }[] }) =>
         resource.scopeSpans.flatMap((scope) => scope.spans),
@@ -307,13 +302,11 @@ describe("real OTLP HTTP transport", () => {
       requestId: "11223344-1122-4433-8899-112233445566",
       text: "PRIVATE",
     } as LogFields);
-    expect(root.context?.traceparent).toMatch(
-      /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/,
-    );
+    expect(root.context?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/u);
     const child = left.observe.span(
       "send",
       { errorCode: "SECRET" },
-      JSON.parse(JSON.stringify(root.context)),
+      JSON.parse(JSON.stringify(root.context)) as typeof root.context,
     );
     root.end();
     root.end("error");
@@ -330,13 +323,10 @@ describe("real OTLP HTTP transport", () => {
     expect(ingest?.status).toEqual({ code: 1 });
     expect(send?.status).toEqual({ code: 2 });
     expect(wireSpans(second.requests)).toMatchObject([{ name: "dispatch" }]);
-    expect(JSON.stringify(first.requests)).not.toMatch(
-      /PRIVATE|SECRET|hostname|tracestate/,
-    );
-    expect(first.requests[0]?.headers["content-type"]).toContain(
-      "application/json",
-    );
+    expect(JSON.stringify(first.requests)).not.toMatch(/PRIVATE|SECRET|hostname|tracestate/u);
+    expect(first.requests[0]?.headers["content-type"]).toContain("application/json");
   });
+
   it("collector errors do not reject business or lifecycle calls", async () => {
     const peer = await collector(400);
     const value = await runtime({
@@ -355,6 +345,7 @@ describe("real OTLP HTTP transport", () => {
     await expect(value.shutdown(signal())).resolves.toBeUndefined();
     expect(peer.requests.length).toBeGreaterThan(0);
   });
+
   it("bounds lifecycle when a collector accepts HTTP but never responds", async () => {
     const peer = await collector(0);
     const value = await runtime({
@@ -368,22 +359,25 @@ describe("real OTLP HTTP transport", () => {
     value.observe.span("send").end();
     const result = await Promise.race([
       value.flush(signal()).then(() => "finished"),
-      new Promise<string>((resolve) => setTimeout(() => resolve("hung"), 1000)),
+      new Promise<string>((resolve) => {
+        setTimeout(() => {
+          resolve("hung");
+        }, 1000);
+      }),
     ]);
     expect(result).toBe("finished");
     expect(peer.requests).toHaveLength(1);
     const alreadyAborted = AbortSignal.abort();
     await expect(value.shutdown(alreadyAborted)).resolves.toBeUndefined();
   });
+
   it("ratio-zero sampling preserves context without exporting message metadata", async () => {
     const peer = await collector();
     const value = await runtime({
       tracing: { endpoint: peer.endpoint, sampleRatio: 0 },
     });
     const span = value.observe.span("ingest");
-    expect(span.context?.traceparent).toMatch(
-      /^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/,
-    );
+    expect(span.context?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/u);
     span.end();
     await value.flush(signal());
     expect(peer.requests).toHaveLength(0);

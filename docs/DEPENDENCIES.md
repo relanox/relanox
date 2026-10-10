@@ -8,25 +8,25 @@
 
 以下 17 个包覆盖全部 v0.1 插件组合；仅使用 SQLite 时不需要 PostgreSQL 插件。插件依赖归各自包，sdk 保持纯契约，core 不 import 数据库驱动或观测库。所有 npm 链接指向具体提议版本。
 
-| 包 / 候选版本 | 许可证声明 | 引入位置与用途 | 审计重点 |
-|---|---|---|---|
-| [hono 4.13.13](https://www.npmjs.com/package/hono/v/4.13.13) | MIT | core：HTTP 路由与 Web Request/Response handler | 限制请求体、路由鉴权和代理信任；不引入额外 Web 框架 |
-| [@hono/node-server 2.1.4](https://www.npmjs.com/package/@hono/node-server/v/2.1.4) | MIT | CLI：Node listener 适配 | 与 Hono 组合及 HTTP 超时/关闭行为需验证；[官方 Node 接入](https://hono.dev/docs/getting-started/nodejs) |
-| [zod 4.6.5](https://www.npmjs.com/package/zod/v/4.6.5) | MIT | core/各插件：外部配置、事件与工具参数校验 | MCP v2 也依赖 Zod 4；SDK 接口不强制暴露 Zod 类型；仅直接使用的包声明依赖 |
-| [better-sqlite3 13.0.3](https://www.npmjs.com/package/better-sqlite3/v/13.0.3) | MIT | storage-sqlite：事务、预编译语句、WAL | 原生二进制/构建链与目标平台分发；同步查询会阻塞事件循环，控制事务时长并测量 |
-| [pg 8.23.1](https://www.npmjs.com/package/pg/v/8.23.1) | MIT | storage-postgres：连接池与显式 SQL 事务 | 使用普通 JS 驱动，不选 pg-native；TLS、池上限、事务连接释放 |
-| [@modelcontextprotocol/server 2.3.1](https://www.npmjs.com/package/@modelcontextprotocol/server/v/2.3.1) | Apache-2.0 | agent-dot/agent-grok：MCP 服务端及 HTTP handler | v2 与旧统一 SDK 名称/许可不同；dot Events、Grok 协商和 session 行为要真实验证 |
-| [standardwebhooks 1.1.1](https://www.npmjs.com/package/standardwebhooks/v/1.1.1) | MIT | agent-dot：事件通知签名 | key 编码、原始字节、时间戳和稳定事件 ID；不自行重写密码学协议 |
-| [ws 8.22.0](https://www.npmjs.com/package/ws/v/8.22.0) | MIT | 原生长连接渠道：WebSocket 连接与协议帧 | 强类型帧校验、心跳、认证、重连；不带入完整平台 runtime |
-| [jose 6.2.12](https://www.npmjs.com/package/jose/v/6.2.12) | MIT | Teams/Google Chat 等 JWT/JWKS 验证、服务凭据签名 | 固定 issuer/audience/JWKS 信任边界；不接受消息指定认证目标 |
-| [commander 15.0.0](https://www.npmjs.com/package/commander/v/15.0.0) | MIT | CLI：启动、校验、迁移、查看状态等命令 | 不增加交互式向导框架；Node 要求 >=22.12，Node 24 满足 |
-| [pino 10.4.0](https://www.npmjs.com/package/pino/v/10.4.0) | MIT | observability-standard：结构化 JSON 日志 | 脱敏、错误序列化、stdout 背压；不默认记录请求/响应或安装 transport 集合 |
-| [@prometheus-io/client 0.16.1](https://www.npmjs.com/package/@prometheus-io/client/v/0.16.1) | Apache-2.0 | observability-standard：Prometheus Registry、计数/直方图/状态及进程指标 | 标签基数、有界桶、独立 Registry，禁用重复全局注册；[上游文档](https://github.com/prometheus/client_js) |
-| [@opentelemetry/api 1.9.1](https://www.npmjs.com/package/@opentelemetry/api/v/1.9.1) | Apache-2.0 | observability-standard：trace/context API | 保持单个兼容 API 实例；SDK 的 peer 范围需匹配 |
-| [@opentelemetry/sdk-trace-node 2.12.0](https://www.npmjs.com/package/@opentelemetry/sdk-trace-node/v/2.12.0) | Apache-2.0 | observability-standard：Node tracer provider 和异步上下文 | provider 生命周期、并发上下文隔离；不加载全量自动插桩 |
-| [@opentelemetry/sdk-trace-base 2.12.0](https://www.npmjs.com/package/@opentelemetry/sdk-trace-base/v/2.12.0) | Apache-2.0 | observability-standard：批处理 span processor、采样配置 | 有界队列、导出超时；与 trace-node 属同一发行系列；显式导入则显式声明依赖 |
-| [@opentelemetry/resources 2.12.0](https://www.npmjs.com/package/@opentelemetry/resources/v/2.12.0) | Apache-2.0 | observability-standard：service.name/version 等资源属性 | 只配置必要属性，不扫描云环境或注入敏感主机信息 |
-| [@opentelemetry/exporter-trace-otlp-http 0.223.0](https://www.npmjs.com/package/@opentelemetry/exporter-trace-otlp-http/v/0.223.0) | Apache-2.0 | observability-standard：显式开启 OTLP/HTTP trace 导出 | 与 2.12.0 系列兼容性；出口凭据、超时和失败降级；不默认联网 |
+| 包 / 候选版本                                                                                                                      | 许可证声明 | 引入位置与用途                                                          | 审计重点                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [hono 4.13.13](https://www.npmjs.com/package/hono/v/4.13.13)                                                                       | MIT        | core：HTTP 路由与 Web Request/Response handler                          | 限制请求体、路由鉴权和代理信任；不引入额外 Web 框架                                                     |
+| [@hono/node-server 2.1.4](https://www.npmjs.com/package/@hono/node-server/v/2.1.4)                                                 | MIT        | CLI：Node listener 适配                                                 | 与 Hono 组合及 HTTP 超时/关闭行为需验证；[官方 Node 接入](https://hono.dev/docs/getting-started/nodejs) |
+| [zod 4.6.5](https://www.npmjs.com/package/zod/v/4.6.5)                                                                             | MIT        | core/各插件：外部配置、事件与工具参数校验                               | MCP v2 也依赖 Zod 4；SDK 接口不强制暴露 Zod 类型；仅直接使用的包声明依赖                                |
+| [better-sqlite3 13.0.3](https://www.npmjs.com/package/better-sqlite3/v/13.0.3)                                                     | MIT        | storage-sqlite：事务、预编译语句、WAL                                   | 原生二进制/构建链与目标平台分发；同步查询会阻塞事件循环，控制事务时长并测量                             |
+| [pg 8.23.1](https://www.npmjs.com/package/pg/v/8.23.1)                                                                             | MIT        | storage-postgres：连接池与显式 SQL 事务                                 | 使用普通 JS 驱动，不选 pg-native；TLS、池上限、事务连接释放                                             |
+| [@modelcontextprotocol/server 2.3.1](https://www.npmjs.com/package/@modelcontextprotocol/server/v/2.3.1)                           | Apache-2.0 | agent-dot/agent-grok：MCP 服务端及 HTTP handler                         | v2 与旧统一 SDK 名称/许可不同；dot Events、Grok 协商和 session 行为要真实验证                           |
+| [standardwebhooks 1.1.1](https://www.npmjs.com/package/standardwebhooks/v/1.1.1)                                                   | MIT        | agent-dot：事件通知签名                                                 | key 编码、原始字节、时间戳和稳定事件 ID；不自行重写密码学协议                                           |
+| [ws 8.22.0](https://www.npmjs.com/package/ws/v/8.22.0)                                                                             | MIT        | 原生长连接渠道：WebSocket 连接与协议帧                                  | 强类型帧校验、心跳、认证、重连；不带入完整平台 runtime                                                  |
+| [jose 6.2.12](https://www.npmjs.com/package/jose/v/6.2.12)                                                                         | MIT        | Teams/Google Chat 等 JWT/JWKS 验证、服务凭据签名                        | 固定 issuer/audience/JWKS 信任边界；不接受消息指定认证目标                                              |
+| [commander 15.0.0](https://www.npmjs.com/package/commander/v/15.0.0)                                                               | MIT        | CLI：启动、校验、迁移、查看状态等命令                                   | 不增加交互式向导框架；Node 要求 >=22.12，Node 24 满足                                                   |
+| [pino 10.4.0](https://www.npmjs.com/package/pino/v/10.4.0)                                                                         | MIT        | observability-standard：结构化 JSON 日志                                | 脱敏、错误序列化、stdout 背压；不默认记录请求/响应或安装 transport 集合                                 |
+| [@prometheus-io/client 0.16.1](https://www.npmjs.com/package/@prometheus-io/client/v/0.16.1)                                       | Apache-2.0 | observability-standard：Prometheus Registry、计数/直方图/状态及进程指标 | 标签基数、有界桶、独立 Registry，禁用重复全局注册；[上游文档](https://github.com/prometheus/client_js)  |
+| [@opentelemetry/api 1.9.1](https://www.npmjs.com/package/@opentelemetry/api/v/1.9.1)                                               | Apache-2.0 | observability-standard：trace/context API                               | 保持单个兼容 API 实例；SDK 的 peer 范围需匹配                                                           |
+| [@opentelemetry/sdk-trace-node 2.12.0](https://www.npmjs.com/package/@opentelemetry/sdk-trace-node/v/2.12.0)                       | Apache-2.0 | observability-standard：Node tracer provider 和异步上下文               | provider 生命周期、并发上下文隔离；不加载全量自动插桩                                                   |
+| [@opentelemetry/sdk-trace-base 2.12.0](https://www.npmjs.com/package/@opentelemetry/sdk-trace-base/v/2.12.0)                       | Apache-2.0 | observability-standard：批处理 span processor、采样配置                 | 有界队列、导出超时；与 trace-node 属同一发行系列；显式导入则显式声明依赖                                |
+| [@opentelemetry/resources 2.12.0](https://www.npmjs.com/package/@opentelemetry/resources/v/2.12.0)                                 | Apache-2.0 | observability-standard：service.name/version 等资源属性                 | 只配置必要属性，不扫描云环境或注入敏感主机信息                                                          |
+| [@opentelemetry/exporter-trace-otlp-http 0.223.0](https://www.npmjs.com/package/@opentelemetry/exporter-trace-otlp-http/v/0.223.0) | Apache-2.0 | observability-standard：显式开启 OTLP/HTTP trace 导出                   | 与 2.12.0 系列兼容性；出口凭据、超时和失败降级；不默认联网                                              |
 
 OTel 采用[官方 tracing/instrumentation](https://opentelemetry.io/docs/languages/js/instrumentation/)和[exporter](https://opentelemetry.io/docs/languages/js/exporters/)路线。API、稳定 SDK 和 exporter 使用不同版本系列，不能强行统一版本号。首版日志走 stdout、指标走 Prometheus、trace 走 OTLP，避免同一信号重复维护两条出口。
 
@@ -34,18 +34,19 @@ MCP 使用[官方 v2 包划分](https://github.com/modelcontextprotocol/typescri
 
 ## 2. 开发与构建依赖
 
-| 包 / 候选版本 | 许可证声明 | 用途及边界 |
-|---|---|---|
-| [typescript 7.0.2](https://www.npmjs.com/package/typescript/v/7.0.2) | Apache-2.0 | 类型检查、tsc 编译与声明输出；需确认本包在目标环境的实际编译器入口、与各工具的兼容，不仅看版本号 |
-| [tsx 4.23.15](https://www.npmjs.com/package/tsx/v/4.23.15) | MIT | 开发运行/watch；不作为生产启动依赖；审计 esbuild 传递依赖/平台二进制 |
-| [vite 8.3.4](https://www.npmjs.com/package/vite/v/8.3.4) | MIT | 显式固定 Vitest 必需 peer，避免自动补齐浮动 |
-| [@types/ws 8.18.1](https://www.npmjs.com/package/@types/ws/v/8.18.1) | MIT | WebSocket 类型边界 |
-| [vitest 5.0.3](https://www.npmjs.com/package/vitest/v/5.0.3) | MIT | core/Storage 共同契约及 HTTP/插件集成测试；不安装 UI/browser 扩展 |
-| [@biomejs/biome 2.5.15](https://www.npmjs.com/package/@biomejs/biome/v/2.5.15) | MIT OR Apache-2.0 | 格式与 lint；审计平台二进制，不再叠加 ESLint/Prettier |
-| [@types/node 24.19.2](https://www.npmjs.com/package/@types/node/v/24.19.2) | MIT | 与 Node 24 运行时对齐 |
-| [@types/better-sqlite3 9.6.0](https://www.npmjs.com/package/@types/better-sqlite3/v/9.6.0) | MIT | SQLite 插件类型；版本系列不等于驱动系列，需编译验收 |
-| [@types/pg 8.23.1](https://www.npmjs.com/package/@types/pg/v/8.23.1) | MIT | PostgreSQL 插件类型 |
-| [pnpm 10.33.4](https://www.npmjs.com/package/pnpm/v/10.33.4) | MIT | workspace/packageManager 固定工具版本，不是产品运行时依赖 |
+| 包 / 候选版本                                                                              | 许可证声明 | 用途及边界                                                                                       |
+| ------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------ |
+| [typescript 7.0.2](https://www.npmjs.com/package/typescript/v/7.0.2)                       | Apache-2.0 | 类型检查、tsc 编译与声明输出；需确认本包在目标环境的实际编译器入口、与各工具的兼容，不仅看版本号 |
+| [tsx 4.23.15](https://www.npmjs.com/package/tsx/v/4.23.15)                                 | MIT        | 开发运行/watch；不作为生产启动依赖；审计 esbuild 传递依赖/平台二进制                             |
+| [vite 8.3.4](https://www.npmjs.com/package/vite/v/8.3.4)                                   | MIT        | 显式固定 Vitest 必需 peer，避免自动补齐浮动                                                      |
+| [@types/ws 8.18.1](https://www.npmjs.com/package/@types/ws/v/8.18.1)                       | MIT        | WebSocket 类型边界                                                                               |
+| [vitest 5.0.3](https://www.npmjs.com/package/vitest/v/5.0.3)                               | MIT        | core/Storage 共同契约及 HTTP/插件集成测试；不安装 UI/browser 扩展                                |
+| [@types/node 24.19.2](https://www.npmjs.com/package/@types/node/v/24.19.2)                 | MIT        | 与 Node 24 运行时对齐                                                                            |
+| [@types/better-sqlite3 9.6.0](https://www.npmjs.com/package/@types/better-sqlite3/v/9.6.0) | MIT        | SQLite 插件类型；版本系列不等于驱动系列，需编译验收                                              |
+| [@types/pg 8.23.1](https://www.npmjs.com/package/@types/pg/v/8.23.1)                       | MIT        | PostgreSQL 插件类型                                                                              |
+| [pnpm 10.33.4](https://www.npmjs.com/package/pnpm/v/10.33.4)                               | MIT        | workspace/packageManager 固定工具版本，不是产品运行时依赖                                        |
+
+工具链更新：已按用户要求移除 Biome，使用 [Oxlint 1.87.0](https://www.npmjs.com/package/oxlint/v/1.87.0)、[Oxfmt 0.72.0](https://www.npmjs.com/package/oxfmt/v/0.72.0)、[oxlint-tsgolint 7.0.2004](https://www.npmjs.com/package/oxlint-tsgolint/v/7.0.2004)，均声明 MIT，已锁定 tarball integrity。前两者要求 Node ^20.19.0 或 >=22.12.0；当前 Node 24 满足。类型检查后端通过精确固定的可选平台包分发；三者无 install/postinstall hook。规则取舍、pre-commit 和 CI 验证见 [代码质量](CODE_QUALITY.md)。
 
 暂不增加 tsup、Turborepo、Nx、changesets 或独立 testkit。先用 pnpm workspace + tsc 构建；正式独立发布多个包时再按需求审议发布工具。
 

@@ -1058,57 +1058,6 @@
       }
     },
     {
-      "name": "@biomejs/biome",
-      "version": "2.5.15",
-      "license": "MIT OR Apache-2.0",
-      "source": "https://registry.npmjs.org/%40biomejs%2Fbiome/2.5.15",
-      "repository": {
-        "url": "git+https://github.com/biomejs/biome.git",
-        "type": "git",
-        "directory": "packages/@biomejs/biome"
-      },
-      "engines": {
-        "node": ">=14.21.3"
-      },
-      "dependencies": null,
-      "optionalDependencies": {
-        "@biomejs/cli-linux-x64": "2.5.15",
-        "@biomejs/cli-win32-x64": "2.5.15",
-        "@biomejs/cli-darwin-x64": "2.5.15",
-        "@biomejs/cli-linux-arm64": "2.5.15",
-        "@biomejs/cli-win32-arm64": "2.5.15",
-        "@biomejs/cli-darwin-arm64": "2.5.15",
-        "@biomejs/cli-linux-x64-musl": "2.5.15",
-        "@biomejs/cli-linux-arm64-musl": "2.5.15"
-      },
-      "peerDependencies": null,
-      "peerDependenciesMeta": null,
-      "scripts": null,
-      "dist": {
-        "shasum": "0a7d323f59b0d361e032ddcf7c4907d4f979eb22",
-        "tarball": "https://registry.npmjs.org/@biomejs/biome/-/biome-2.5.15.tgz",
-        "fileCount": 18,
-        "integrity": "sha512-WZTW4slm/pdkh92K6t/3aEN++44JD1PQ7squ7RCMLI1flHGl43DVOIGXvCjHiZgBMO1V4uYxoFNtqrIA4qGuIQ==",
-        "signatures": [
-          {
-            "sig": "MEUCIHoMSvyAIVR5NLZZrRjZQj9J81jClEQ35W0drl/EhWh/AiEAtoX2A9cnvOMyiy0i9bdibsnSQ7AQZNF1DaZu43qWD8k=",
-            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-          },
-          {
-            "sig": "MEUCIGIFTDiji4GcCCnASuvgLrDkGrOqFthTKklOxyjdZz+QAiEA7FscpyTMJfqdQZ52ThDassaf7xAx+jJaE/w8OUrmP28=",
-            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
-          }
-        ],
-        "attestations": {
-          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fbiome@2.5.15",
-          "provenance": {
-            "predicateType": "https://slsa.dev/provenance/v1"
-          }
-        },
-        "unpackedSize": 782006
-      }
-    },
-    {
       "name": "@types/node",
       "version": "24.19.2",
       "license": "MIT",
@@ -1490,6 +1439,198 @@
           }
         ],
         "unpackedSize": 42347
+      }
+    },
+    {
+      "name": "oxlint",
+      "version": "1.87.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/oxlint/1.87.0",
+      "repository": {
+        "url": "git+https://github.com/oxc-project/oxc",
+        "type": "git",
+        "directory": "npm/oxlint"
+      },
+      "engines": {
+        "node": "^20.19.0 || >=22.12.0"
+      },
+      "dependencies": null,
+      "optionalDependencies": {
+        "@oxlint/binding-darwin-x64": "1.87.0",
+        "@oxlint/binding-freebsd-x64": "1.87.0",
+        "@oxlint/binding-darwin-arm64": "1.87.0",
+        "@oxlint/binding-android-arm64": "1.87.0",
+        "@oxlint/binding-linux-x64-gnu": "1.87.0",
+        "@oxlint/binding-linux-x64-musl": "1.87.0",
+        "@oxlint/binding-win32-x64-msvc": "1.87.0",
+        "@oxlint/binding-linux-arm64-gnu": "1.87.0",
+        "@oxlint/binding-linux-ppc64-gnu": "1.87.0",
+        "@oxlint/binding-linux-s390x-gnu": "1.87.0",
+        "@oxlint/binding-win32-ia32-msvc": "1.87.0",
+        "@oxlint/binding-android-arm-eabi": "1.87.0",
+        "@oxlint/binding-linux-arm64-musl": "1.87.0",
+        "@oxlint/binding-win32-arm64-msvc": "1.87.0",
+        "@oxlint/binding-linux-riscv64-gnu": "1.87.0",
+        "@oxlint/binding-openharmony-arm64": "1.87.0",
+        "@oxlint/binding-linux-riscv64-musl": "1.87.0",
+        "@oxlint/binding-linux-arm-gnueabihf": "1.87.0",
+        "@oxlint/binding-linux-arm-musleabihf": "1.87.0"
+      },
+      "peerDependencies": {
+        "vite-plus": "*",
+        "oxlint-tsgolint": ">=7.0.2003"
+      },
+      "peerDependenciesMeta": {
+        "vite-plus": {
+          "optional": true
+        },
+        "oxlint-tsgolint": {
+          "optional": true
+        }
+      },
+      "scripts": null,
+      "dist": {
+        "shasum": "840dde7ec9e0b52945de83c103054a23b544323b",
+        "tarball": "https://registry.npmjs.org/oxlint/-/oxlint-1.87.0.tgz",
+        "fileCount": 18,
+        "integrity": "sha512-drxVlaW7Oqq7wSy1CN25znRu00aRq8n57Q2wniJRxCmtYVz07ufCm7EVDPQFZURrTgQIjzKrVEHAD/HcvJXObg==",
+        "signatures": [
+          {
+            "sig": "MEUCIHOoKEv/9Z/WPfO0sAXfAP/FrJLGKJMCbo2y+Nhes0+XAiEA2Awpqrb6SkgYMMAqrjiPWJeTebfTngD4rulhYlcI6d8=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEQCICbboYwfnYuEO/COWoS3hyuYtTX2u/hmg/NIBdpts7n2AiBeumCV4ssLJECwtCAYEJWdgDg7nd5C7I3rjw3s4aE9nw==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/oxlint@1.87.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 2414399
+      }
+    },
+    {
+      "name": "oxfmt",
+      "version": "0.72.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/oxfmt/0.72.0",
+      "repository": {
+        "url": "git+https://github.com/oxc-project/oxc",
+        "type": "git",
+        "directory": "npm/oxfmt"
+      },
+      "engines": {
+        "node": "^20.19.0 || >=22.12.0"
+      },
+      "dependencies": {
+        "tinypool": "2.2.0"
+      },
+      "optionalDependencies": {
+        "@oxfmt/binding-darwin-x64": "0.72.0",
+        "@oxfmt/binding-freebsd-x64": "0.72.0",
+        "@oxfmt/binding-darwin-arm64": "0.72.0",
+        "@oxfmt/binding-android-arm64": "0.72.0",
+        "@oxfmt/binding-linux-x64-gnu": "0.72.0",
+        "@oxfmt/binding-linux-x64-musl": "0.72.0",
+        "@oxfmt/binding-win32-x64-msvc": "0.72.0",
+        "@oxfmt/binding-linux-arm64-gnu": "0.72.0",
+        "@oxfmt/binding-linux-ppc64-gnu": "0.72.0",
+        "@oxfmt/binding-linux-s390x-gnu": "0.72.0",
+        "@oxfmt/binding-win32-ia32-msvc": "0.72.0",
+        "@oxfmt/binding-android-arm-eabi": "0.72.0",
+        "@oxfmt/binding-linux-arm64-musl": "0.72.0",
+        "@oxfmt/binding-win32-arm64-msvc": "0.72.0",
+        "@oxfmt/binding-linux-riscv64-gnu": "0.72.0",
+        "@oxfmt/binding-openharmony-arm64": "0.72.0",
+        "@oxfmt/binding-linux-riscv64-musl": "0.72.0",
+        "@oxfmt/binding-linux-arm-gnueabihf": "0.72.0",
+        "@oxfmt/binding-linux-arm-musleabihf": "0.72.0"
+      },
+      "peerDependencies": {
+        "svelte": "^5.0.0",
+        "vite-plus": "*"
+      },
+      "peerDependenciesMeta": {
+        "svelte": {
+          "optional": true
+        },
+        "vite-plus": {
+          "optional": true
+        }
+      },
+      "scripts": null,
+      "dist": {
+        "shasum": "ec3a06ec8732f5533ddba1616094658d099c0768",
+        "tarball": "https://registry.npmjs.org/oxfmt/-/oxfmt-0.72.0.tgz",
+        "fileCount": 41,
+        "integrity": "sha512-16OQeL0uhPZbfmT9S9WWM0Nv9+BmVi8Ra1uTYaSKj/qSCs6FB30KOhz9JoNYw6thT+K5bVxsk/tSEOu497i34g==",
+        "signatures": [
+          {
+            "sig": "MEUCIHT/Nkd9bT5jvTcli7KlwqloHRk7xC1bLnNUEWBgGgU0AiEAkQV0vIUBvKLRY6s8gW76kOGrMUq62So8jMdqanHiG5A=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEUCIQCzgvUPoZeuQH40mr4JKeXzjmHd6CQirs3EH1HhDTZEBgIgc1ZHE2HjToryMKN1Ci3QjRQ6SL8TCCpW2Nz7WFjgzvM=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/oxfmt@0.72.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 8905779
+      }
+    },
+    {
+      "name": "oxlint-tsgolint",
+      "version": "7.0.2004",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/oxlint-tsgolint/7.0.2004",
+      "repository": {
+        "url": "github:oxc-project/tsgolint",
+        "type": "git"
+      },
+      "engines": null,
+      "dependencies": null,
+      "optionalDependencies": {
+        "@oxlint-tsgolint/linux-x64": "7.0.2004",
+        "@oxlint-tsgolint/win32-x64": "7.0.2004",
+        "@oxlint-tsgolint/darwin-x64": "7.0.2004",
+        "@oxlint-tsgolint/linux-arm64": "7.0.2004",
+        "@oxlint-tsgolint/win32-arm64": "7.0.2004",
+        "@oxlint-tsgolint/darwin-arm64": "7.0.2004"
+      },
+      "peerDependencies": null,
+      "peerDependenciesMeta": null,
+      "scripts": null,
+      "dist": {
+        "shasum": "fb5fde1541d85ce72cbccf2c10fea055aae0b4fb",
+        "tarball": "https://registry.npmjs.org/oxlint-tsgolint/-/oxlint-tsgolint-7.0.2004.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-vQ9WDF3fiZJvRdSDosNOflerOCOpwol6vWzVDxW76RcU19cjTh7engvkHLvmv+tzedR8fAiJUVUGr6IVZdkzXQ==",
+        "signatures": [
+          {
+            "sig": "MEQCIDjVuPl1550QL7q9RQzdKpKJlOKlBLQiJydctYlfEX+vAiAhKPkaMTnMEqzqPj35UdLBbCF/Yv8dYlZw5rI5zJ7TMA==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEYCIQDXLepfMV7Vf3CLFG0ZePjw7vNM9zzjp3O3EhqnWjC55gIhAKajYIr+ahhWx/pv02DyD12DWBcmQESekxzZp1A4zeZ5",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/oxlint-tsgolint@7.0.2004",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 15912
       }
     }
   ]

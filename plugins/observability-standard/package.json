@@ -1,6 +1,10 @@
 {
   "name": "@relanox/observability-standard",
   "version": "0.1.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -8,25 +12,21 @@
       "import": "./dist/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=24 <25"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@relanox/sdk": "workspace:*",
-    "pino": "10.4.0",
-    "@prometheus-io/client": "0.16.1",
     "@opentelemetry/api": "1.9.1",
-    "@opentelemetry/sdk-trace-node": "2.12.0",
-    "@opentelemetry/sdk-trace-base": "2.12.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
     "@opentelemetry/resources": "2.12.0",
-    "@opentelemetry/exporter-trace-otlp-http": "0.223.0"
+    "@opentelemetry/sdk-trace-base": "2.12.0",
+    "@opentelemetry/sdk-trace-node": "2.12.0",
+    "@prometheus-io/client": "0.16.1",
+    "@relanox/sdk": "workspace:*",
+    "pino": "10.4.0"
+  },
+  "engines": {
+    "node": ">=24 <25"
   }
 }
