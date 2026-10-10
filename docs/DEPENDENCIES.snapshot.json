@@ -488,16 +488,16 @@
       }
     },
     {
-      "name": "prom-client",
-      "version": "15.1.3",
+      "name": "@prometheus-io/client",
+      "version": "0.16.1",
       "license": "Apache-2.0",
-      "source": "https://registry.npmjs.org/prom-client/15.1.3",
+      "source": "https://registry.npmjs.org/@prometheus-io%2fclient/0.16.1",
       "repository": {
-        "url": "git+ssh://git@github.com/siimon/prom-client.git",
+        "url": "git+ssh://git@github.com/prometheus/client_js.git",
         "type": "git"
       },
       "engines": {
-        "node": "^16 || ^18 || >=20"
+        "node": "^22 || ^24 || >=26"
       },
       "dependencies": {
         "tdigest": "^0.1.1",
@@ -508,26 +508,32 @@
       "peerDependenciesMeta": null,
       "scripts": {
         "lint": "eslint .",
-        "test": "npm run lint && npm run check-prettier && npm run compile-typescript && npm run test-unit",
+        "test": "npm run lint && npm run check-prettier && npm run compile-typescript && npm run test-unit -- --coverage",
         "prepare": "husky",
         "test-unit": "jest",
-        "benchmarks": "node ./benchmarks/index.js",
-        "run-prettier": "prettier . .eslintrc",
+        "benchmarks": "node --max-heap-size=5000 --allow-natives-syntax ./benchmarks/index.js",
+        "run-prettier": "prettier .",
         "check-prettier": "npm run run-prettier -- --check",
         "compile-typescript": "tsc --project ."
       },
       "dist": {
-        "shasum": "69fa8de93a88bc9783173db5f758dc1c69fa8fc2",
-        "tarball": "https://registry.npmjs.org/prom-client/-/prom-client-15.1.3.tgz",
-        "fileCount": 36,
-        "integrity": "sha512-6ZiOBfCywsD4k1BN9IX0uZhF+tJkV8q8llP64G5Hajs4JOeVLPCwpPVcpXy3BwYiUGgyJzsJJQeOIv7+hDSq8g==",
+        "shasum": "5fcfbb74075e84810f9201264099143c2e23c80a",
+        "tarball": "https://registry.npmjs.org/@prometheus-io/client/-/client-0.16.1.tgz",
+        "fileCount": 39,
+        "integrity": "sha512-XkFPsGFGoSs/UMg/vh0QLDpanl/tsrOV5PLHdpGe8Ho+ir/Llhytr15j6y8ZwLrpIGzK9gTVVpIalA6C4UjUZw==",
         "signatures": [
           {
-            "sig": "MEUCIQDlNedt/B27r8dFDTSsOt32P8YEmcFACLhVOy3JYwqHJAIgWkK0VyKT0WPfph5g/r4pm1cacr3RJmtfDdQwDbcw5oI=",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
+            "sig": "MEUCIQDPFN4N7dkN6IHqPtocA+WyxseR4Z0JkLnhFa6asxwlGAIgRVoPnw/e0OtO6shoLOAq8P/5rUC+8OCiB+7HrPlObrg=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
           }
         ],
-        "unpackedSize": 126441
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@prometheus-io%2fclient@0.16.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 185319
       }
     },
     {

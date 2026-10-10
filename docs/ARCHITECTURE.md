@@ -135,7 +135,7 @@ core 只调用固定业务操作，不暴露通用 ORM 或任意事务回调。S
 
 ### 5.1 ObservabilityPlugin：观测转发链路，不参与事务
 
-v0.1 交付 `@relanox/observability-standard`：Pino 输出 JSON 日志，prom-client 暴露 Prometheus 指标，OpenTelemetry 手工埋点并可选导出 OTLP/HTTP traces。每实例配置一个活动插件，插件内部组合三类信号；core 和业务插件不直接依赖这些库。替换实现遵循 sdk 门面，不改收发流程。具体包名与版本见[依赖清单](DEPENDENCIES.md)。
+v0.1 交付 `@relanox/observability-standard`：Pino 输出 JSON 日志，@prometheus-io/client 暴露 Prometheus 指标，OpenTelemetry 手工埋点并可选导出 OTLP/HTTP traces。每实例配置一个活动插件，插件内部组合三类信号；core 和业务插件不直接依赖这些库。替换实现遵循 sdk 门面，不改收发流程。具体包名与版本见[依赖清单](DEPENDENCIES.md)。
 
 | 信号 | 首版内容 | 边界 |
 |---|---|---|

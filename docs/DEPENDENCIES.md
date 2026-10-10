@@ -21,7 +21,7 @@
 | [jose 6.2.12](https://www.npmjs.com/package/jose/v/6.2.12) | MIT | Teams/Google Chat 等 JWT/JWKS 验证、服务凭据签名 | 固定 issuer/audience/JWKS 信任边界；不接受消息指定认证目标 |
 | [commander 15.0.0](https://www.npmjs.com/package/commander/v/15.0.0) | MIT | CLI：启动、校验、迁移、查看状态等命令 | 不增加交互式向导框架；Node 要求 >=22.12，Node 24 满足 |
 | [pino 10.4.0](https://www.npmjs.com/package/pino/v/10.4.0) | MIT | observability-standard：结构化 JSON 日志 | 脱敏、错误序列化、stdout 背压；不默认记录请求/响应或安装 transport 集合 |
-| [prom-client 15.1.3](https://www.npmjs.com/package/prom-client/v/15.1.3) | Apache-2.0 | observability-standard：Prometheus Registry、计数/直方图/状态及进程指标 | 标签基数、有界桶、独立 Registry，禁用重复全局注册；[上游文档](https://github.com/prometheus/client_js) |
+| [@prometheus-io/client 0.16.1](https://www.npmjs.com/package/@prometheus-io/client/v/0.16.1) | Apache-2.0 | observability-standard：Prometheus Registry、计数/直方图/状态及进程指标 | 标签基数、有界桶、独立 Registry，禁用重复全局注册；[上游文档](https://github.com/prometheus/client_js) |
 | [@opentelemetry/api 1.9.1](https://www.npmjs.com/package/@opentelemetry/api/v/1.9.1) | Apache-2.0 | observability-standard：trace/context API | 保持单个兼容 API 实例；SDK 的 peer 范围需匹配 |
 | [@opentelemetry/sdk-trace-node 2.12.0](https://www.npmjs.com/package/@opentelemetry/sdk-trace-node/v/2.12.0) | Apache-2.0 | observability-standard：Node tracer provider 和异步上下文 | provider 生命周期、并发上下文隔离；不加载全量自动插桩 |
 | [@opentelemetry/sdk-trace-base 2.12.0](https://www.npmjs.com/package/@opentelemetry/sdk-trace-base/v/2.12.0) | Apache-2.0 | observability-standard：批处理 span processor、采样配置 | 有界队列、导出超时；与 trace-node 属同一发行系列；显式导入则显式声明依赖 |
@@ -70,3 +70,5 @@ Signal 明确依赖用户自行部署的非官方 signal-cli 服务，不冒充 
 ## 5. 本轮核对的范围
 
 已核对直接依赖精确 npm 包版本的存在性及 registry 声明，阅读 MCP/Hono/OTel 等上游说明。本轮仅元数据核对；实现时另行安装、构建并运行依赖审计，未声称不存在漏洞；registry 的 license 字段不替代发布包 LICENSE/NOTICE 核查。实施时生成 lockfile 后再检查完整传递依赖、安装脚本/二进制来源、许可证和已知漏洞，并运行真实兼容测试。依赖增加或候选版本改变时更新本清单与快照。
+
+Prometheus 客户端在实现时按官方 [v0.16.0 迁移发布](https://github.com/prometheus/client_js/releases/tag/v0.16.0) 改用 @prometheus-io/client@0.16.1。旧 prom-client 15.1.3 已在 npm 标弃用；新包支持 Node 24，许可证仍为 Apache-2.0，无 install/postinstall hook，保留现有依赖类型。原有 18 项可观测性测试不改断言即通过，另完成构建、类型检查；当前已安装树的 pnpm audit 未报告已知漏洞（仅此时点/此已安装树）。
