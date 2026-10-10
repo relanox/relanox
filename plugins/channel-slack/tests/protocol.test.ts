@@ -1,0 +1,347 @@
+import { createHmac } from "node:crypto";
+import type { AddressInfo } from "node:net";
+import { afterEach, describe, expect, it } from "vitest";
+import { WebSocketServer } from "ws";
+import type { RawData } from "ws";
+import { createSlackChannel } from "../src/index.js";
+import { peer, recorder, sendInput } from "./peer.js";
+
+const environment = {
+  BOT: "xoxb-secret",
+  SIGN: "signing-secret",
+  APP: "xapp-secret",
+};
+const account = {
+  id: "sl",
+  channel: "slack" as const,
+  config: null,
+  allowedSenders: ["U42"],
+};
+const target = {
+  channel: "slack" as const,
+  accountId: "sl",
+  chatId: "C7",
+  threadId: "1700000000.001",
+  replyToId: "1700000000.002",
+  data: { teamId: "T1" },
+};
+const event = {
+  type: "event_callback",
+  team_id: "T1",
+  api_app_id: "A1",
+  event_id: "Ev1",
+  event: {
+    type: "message",
+    user: "U42",
+    channel: "C7",
+    ts: "1700000000.002",
+    thread_ts: "1700000000.001",
+    text: "hello",
+  },
+};
+const cleanup: (() => Promise<void>)[] = [];
+function readFrame(raw: RawData): unknown {
+  if (!Buffer.isBuffer(raw)) {
+    throw new TypeError("unexpected_socket_frame_bytes");
+  }
+  return JSON.parse(raw.toString("utf8"));
+}
+afterEach(async () => {
+  for (const close of cleanup.splice(0)) {
+    await close();
+  }
+});
+async function setup(
+  apiBaseUrl = "https://slack.com/api",
+  socket = false,
+  onIngest?: Parameters<typeof recorder>[0],
+) {
+  const plugin = createSlackChannel(environment);
+  const recorded = recorder(onIngest);
+  await plugin.setup(
+    recorded.host,
+    account,
+    plugin.validateConfig({
+      botToken: { env: "BOT" },
+      botUserId: "UBOT",
+      teamId: "T1",
+      appId: "A1",
+      apiBaseUrl,
+      allowInsecureLoopback: true,
+      reconnectDelayMs: 100,
+      ...(socket
+        ? { receiveMode: "socket", appToken: { env: "APP" } }
+        : { receiveMode: "http", signingSecret: { env: "SIGN" } }),
+    }),
+  );
+  return {
+    plugin,
+    ...recorded,
+    handler: recorded.handlers.get("/events") as NonNullable<
+      ReturnType<typeof recorded.handlers.get>
+    >,
+  };
+}
+function request(
+  value: unknown,
+  timestamp = String(Math.floor(Date.now() / 1000)),
+  forged = false,
+) {
+  const body = ` ${JSON.stringify(value)}\n`;
+  return new Request("https://relay.example/channels/sl/events", {
+    method: "POST",
+    body,
+    headers: {
+      "x-slack-request-timestamp": timestamp,
+      "x-slack-signature": forged
+        ? "v0=bad"
+        : `v0=${createHmac("sha256", "signing-secret").update(`v0:${timestamp}:${body}`).digest("hex")}`,
+    },
+  });
+}
+describe("slack native protocol", () => {
+  it("bounds event bodies and preserves canceled-send uncertainty", async () => {
+    const remote = await peer(() => ({ body: { ok: true, ts: "1700000002.004" } }));
+    cleanup.push(remote.close);
+    const test = await setup(remote.url);
+    const oversized = new Request("https://relay.example/channels/sl/events", {
+      method: "POST",
+      headers: { "x-slack-request-timestamp": String(Math.floor(Date.now() / 1000)) },
+      body: "x".repeat(1_048_577),
+    });
+    expect((await test.handler(oversized)).status).toBe(413);
+    expect(test.received).toEqual([]);
+    const controller = new AbortController();
+    controller.abort();
+    expect(await test.plugin.send(sendInput(target, controller.signal))).toEqual({
+      status: "unknown",
+      errorCode: "slack_transport_error",
+    });
+    expect(remote.requests).toEqual([]);
+  });
+
+  it("verifies raw bytes/freshness and echoes authenticated URL verification", async () => {
+    const test = await setup();
+    expect((await test.handler(request(event, undefined, true))).status).toBe(401);
+    expect((await test.handler(request(event, "1000000000"))).status).toBe(401);
+    expect(test.received).toEqual([]);
+    expect(
+      await (
+        await test.handler(request({ type: "url_verification", challenge: "challenge-42" }))
+      ).json(),
+    ).toEqual({ challenge: "challenge-42" });
+    expect((await test.handler(request(event))).status).toBe(204);
+    expect(test.received[0]).toMatchObject({
+      source: { channel: "slack", accountId: "sl", eventId: "Ev1" },
+      senderId: "U42",
+      target,
+      context: { teamId: "T1" },
+    });
+  });
+
+  it("rejects wrong workspace and suppresses bot/subtype loops", async () => {
+    const test = await setup();
+    expect((await test.handler(request({ ...event, team_id: "T2" }))).status).toBe(401);
+    expect(
+      (await test.handler(request({ ...event, event: { ...event.event, bot_id: "B1" } }))).status,
+    ).toBe(204);
+    expect(
+      (
+        await test.handler(
+          request({
+            ...event,
+            event: { ...event.event, subtype: "message_changed" },
+          }),
+        )
+      ).status,
+    ).toBe(204);
+    expect(test.received).toHaveLength(0);
+  });
+
+  it("does not acknowledge failed HTTP handoff", async () => {
+    const test = await setup(undefined, false, async () => {
+      throw new Error("storage down");
+    });
+    expect((await test.handler(request(event))).status).toBe(503);
+  });
+
+  it("uses bot-token independent plain-text thread send", async () => {
+    const remote = await peer(() => ({
+      body: { ok: true, ts: "1700000002.004" },
+    }));
+    cleanup.push(remote.close);
+    const test = await setup(remote.url);
+    expect(await test.plugin.send(sendInput(target))).toEqual({
+      status: "sent",
+      receipt: { platformMessageId: "1700000002.004" },
+    });
+    expect(remote.requests[0]).toMatchObject({
+      path: "/chat.postMessage",
+      headers: { authorization: "Bearer xoxb-secret" },
+      body: {
+        channel: "C7",
+        text: "hello @everyone &lt;@U123&gt;",
+        thread_ts: "1700000000.001",
+        mrkdwn: false,
+        parse: "none",
+        unfurl_links: false,
+        unfurl_media: false,
+      },
+    });
+  });
+
+  it.each([
+    {
+      status: 200,
+      body: { ok: false, error: "channel_not_found" },
+      headers: {},
+      expected: { status: "rejected", errorCode: "slack_api_error" },
+    },
+    {
+      status: 429,
+      body: { ok: false },
+      headers: { "retry-after": "3" },
+      expected: {
+        status: "retryable",
+        errorCode: "rate_limited",
+        retryAfterMs: 3000,
+      },
+    },
+    {
+      status: 200,
+      body: { ok: false, error: "internal_error" },
+      headers: {},
+      expected: { status: "unknown", errorCode: "slack_api_error" },
+    },
+  ])("maps Web API errors", async ({ status, body, headers, expected }) => {
+    const remote = await peer(() => ({ status, body, headers }));
+    cleanup.push(remote.close);
+    const test = await setup(remote.url);
+    expect(await test.plugin.send(sendInput(target))).toEqual(expected);
+  });
+
+  it("opens Socket Mode with app token, ACKs only after ingest and reconnects on disconnect", async () => {
+    const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await new Promise<void>((resolve) => {
+      wss.once("listening", resolve);
+    });
+    const wsUrl = `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`;
+    const frames: unknown[] = [];
+    let connected = 0;
+    const remote = await peer(() => ({ body: { ok: true, url: wsUrl } }));
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const test = await setup(remote.url, true, async () => gate);
+    cleanup.push(async () => {
+      await test.plugin.stop?.();
+      for (const ws of wss.clients) {
+        ws.terminate();
+      }
+      await new Promise<void>((resolve) => {
+        wss.close(() => {
+          resolve();
+        });
+      });
+      await remote.close();
+    });
+    wss.on("connection", (ws) => {
+      connected++;
+      ws.send(JSON.stringify({ type: "hello" }));
+      if (connected === 1) {
+        ws.send(
+          JSON.stringify({
+            type: "events_api",
+            envelope_id: "envelope-42",
+            payload: event,
+          }),
+        );
+      }
+      ws.on("message", (raw) => frames.push(readFrame(raw)));
+    });
+    await test.plugin.start?.(new AbortController().signal);
+    await expect.poll(() => remote.requests.length).toBe(1);
+    expect(remote.requests[0]?.headers.authorization).toBe("Bearer xapp-secret");
+    await expect.poll(() => test.connections.includes("connected")).toBe(true);
+    expect(frames).toHaveLength(0);
+    release?.();
+    await expect.poll(() => frames).toContainEqual({ envelope_id: "envelope-42" });
+    expect(test.received).toHaveLength(1);
+    for (const ws of wss.clients) {
+      ws.send(JSON.stringify({ type: "disconnect", reason: "refresh_requested" }));
+    }
+    await expect.poll(() => connected).toBe(2);
+    await test.plugin.stop?.();
+    const stopped = connected;
+    await new Promise((resolve) => {
+      setTimeout(resolve, 180);
+    });
+    expect(connected).toBe(stopped);
+  });
+
+  it("closes failed Socket Mode handoff without ACK", async () => {
+    const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await new Promise<void>((resolve) => {
+      wss.once("listening", resolve);
+    });
+    const remote = await peer(() => ({
+      body: {
+        ok: true,
+        url: `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`,
+      },
+    }));
+    const frames: unknown[] = [];
+    const test = await setup(remote.url, true, async () => {
+      throw new Error("failed commit");
+    });
+    cleanup.push(async () => {
+      await test.plugin.stop?.();
+      for (const ws of wss.clients) {
+        ws.terminate();
+      }
+      await new Promise<void>((resolve) => {
+        wss.close(() => {
+          resolve();
+        });
+      });
+      await remote.close();
+    });
+    wss.on("connection", (ws) => {
+      ws.send(
+        JSON.stringify({
+          type: "events_api",
+          envelope_id: "failed-envelope",
+          payload: event,
+        }),
+      );
+      ws.on("message", (raw) => frames.push(readFrame(raw)));
+    });
+    await test.plugin.start?.(new AbortController().signal);
+    await expect.poll(() => test.connections.includes("degraded")).toBe(true);
+    await test.plugin.stop?.();
+    expect(frames).toEqual([]);
+    expect(test.received).toEqual([]);
+  });
+
+  it("rejects literal credentials, remote cleartext URLs and foreign targets", async () => {
+    const plugin = createSlackChannel(environment);
+    expect(() => plugin.validateConfig({ receiveMode: "socket", botToken: "raw" })).toThrow();
+    expect(() =>
+      plugin.validateConfig({
+        receiveMode: "http",
+        signingSecret: { env: "SIGN" },
+        botToken: { env: "BOT" },
+        botUserId: "UBOT",
+        teamId: "T1",
+        appId: "A1",
+        apiBaseUrl: "http://remote.example",
+      }),
+    ).toThrow();
+    const test = await setup();
+    expect(await test.plugin.send(sendInput({ ...target, data: { teamId: "T2" } }))).toEqual({
+      status: "rejected",
+      errorCode: "invalid_target",
+    });
+  });
+});
