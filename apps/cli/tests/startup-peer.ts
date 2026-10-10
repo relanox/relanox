@@ -1,9 +1,73 @@
 import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import { z } from "zod";
 import { closeServer, listen } from "../src/listeners.js";
+import { deadline } from "../src/deadline.js";
+
+export async function sqliteWriteLock(filename: string) {
+  const child = spawn(
+    process.execPath,
+    [fileURLToPath(new URL("sqlite-lock-peer.mts", import.meta.url)), filename],
+    { windowsHide: true, stdio: ["ignore", "ignore", "pipe", "ipc"] },
+  );
+  let diagnostics = "";
+  child.stderr?.on("data", (part: Buffer) => {
+    diagnostics += part.toString("utf8");
+  });
+  let rejectAcquisition: (reason: Error) => void = () => {};
+  const acquired = new Promise<void>((resolve, reject) => {
+    rejectAcquisition = reject;
+    child.once("message", (message: unknown) => {
+      if (message === "locked") {
+        resolve();
+      } else {
+        reject(new Error("sqlite_lock_unexpected_message"));
+      }
+    });
+    child.once("error", reject);
+  });
+  const finished = new Promise<void>((resolve, reject) => {
+    child.once("close", (code) => {
+      rejectAcquisition(new Error(`sqlite_lock_peer_exited: ${code} ${diagnostics}`));
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`sqlite_lock_peer_failed: ${code} ${diagnostics}`));
+      }
+    });
+  });
+  void finished.catch(() => {});
+  async function close() {
+    if (child.connected) {
+      child.send("release", (error) => {
+        if (error) {
+          child.kill();
+        }
+      });
+    }
+    try {
+      await deadline(finished, 1000);
+    } catch (error) {
+      child.kill();
+      await deadline(
+        finished.catch(() => {}),
+        1000,
+      );
+      throw error;
+    }
+  }
+  try {
+    await deadline(acquired, 1000);
+  } catch (error) {
+    await close().catch(() => {});
+    throw error;
+  }
+  return { close };
+}
 
 export function gate() {
   let release = () => {};

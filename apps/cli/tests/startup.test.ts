@@ -1,4 +1,3 @@
-import { DatabaseSync } from "node:sqlite";
 import { rm } from "node:fs/promises";
 import type { EndpointConfig } from "@relanox/sdk";
 import { afterEach, expect, test, vi } from "vitest";
@@ -6,7 +5,7 @@ import { z } from "zod";
 import { startRuntime } from "../src/runtime.js";
 import { deadline } from "../src/deadline.js";
 import { fixture, storage } from "./fixture.js";
-import { freeManagementPort, nativePeers, routinePeer } from "./startup-peer.js";
+import { freeManagementPort, nativePeers, routinePeer, sqliteWriteLock } from "./startup-peer.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -207,11 +206,8 @@ test("shutdown waits for the asynchronously launched first batch to settle in re
 
 test("contains a real first-scan SQLite lock failure and recovers readiness after unlock", async () => {
   const value = await databaseFixture();
-  const locker = new DatabaseSync(value.filename);
-  cleanups.push(async () => {
-    locker.close();
-  });
-  locker.exec("BEGIN IMMEDIATE");
+  const locker = await sqliteWriteLock(value.filename);
+  cleanups.push(locker.close);
   const runtime = await startRuntime({
     ...value.config,
     relay: {
@@ -221,7 +217,7 @@ test("contains a real first-scan SQLite lock failure and recovers readiness afte
   });
   cleanups.push(runtime.stop);
   expect((await fetch(`${runtime.managementUrl}/health/ready`)).status).toBe(503);
-  locker.exec("ROLLBACK");
+  await locker.close();
   await expect
     .poll(async () => (await fetch(`${runtime.managementUrl}/health/ready`)).status)
     .toBe(200);
