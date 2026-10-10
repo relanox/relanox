@@ -59,9 +59,30 @@ importers:
       '@relanox/channel-feishu':
         specifier: workspace:*
         version: link:../../plugins/channel-feishu
+      '@relanox/channel-googlechat':
+        specifier: workspace:*
+        version: link:../../plugins/channel-googlechat
+      '@relanox/channel-irc':
+        specifier: workspace:*
+        version: link:../../plugins/channel-irc
+      '@relanox/channel-line':
+        specifier: workspace:*
+        version: link:../../plugins/channel-line
+      '@relanox/channel-matrix':
+        specifier: workspace:*
+        version: link:../../plugins/channel-matrix
+      '@relanox/channel-mattermost':
+        specifier: workspace:*
+        version: link:../../plugins/channel-mattermost
+      '@relanox/channel-msteams':
+        specifier: workspace:*
+        version: link:../../plugins/channel-msteams
       '@relanox/channel-qq':
         specifier: workspace:*
         version: link:../../plugins/channel-qq
+      '@relanox/channel-signal':
+        specifier: workspace:*
+        version: link:../../plugins/channel-signal
       '@relanox/channel-slack':
         specifier: workspace:*
         version: link:../../plugins/channel-slack
@@ -71,6 +92,9 @@ importers:
       '@relanox/channel-wecom':
         specifier: workspace:*
         version: link:../../plugins/channel-wecom
+      '@relanox/channel-whatsapp':
+        specifier: workspace:*
+        version: link:../../plugins/channel-whatsapp
       '@relanox/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -92,6 +116,13 @@ importers:
       zod:
         specifier: 4.6.5
         version: 4.6.5
+    devDependencies:
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
 
   packages/core:
     dependencies:
@@ -223,6 +254,22 @@ importers:
         specifier: workspace:*
         version: link:../storage-sqlite
 
+  plugins/channel-irc:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
+
   plugins/channel-line:
     dependencies:
       '@relanox/sdk':
@@ -238,6 +285,44 @@ importers:
       '@relanox/storage-sqlite':
         specifier: workspace:*
         version: link:../storage-sqlite
+
+  plugins/channel-matrix:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
+
+  plugins/channel-mattermost:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
 
   plugins/channel-msteams:
     dependencies:
@@ -279,6 +364,22 @@ importers:
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
+
+  plugins/channel-signal:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
 
   plugins/channel-slack:
     dependencies:

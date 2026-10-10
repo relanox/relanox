@@ -43,9 +43,9 @@ Each task uses a fresh `.worktree/<task>` after prerequisites land on master. In
 - [x] T07: Telegram, Discord, Slack, Feishu native text receive/send; authentication, targets, errors, connection lifecycle and Vitest protocol tests.
 - [x] T08: WeCom, DingTalk, QQ native text receive/send; protocol auth, window/sequence semantics, reconnect and Vitest tests.
 - [x] T09: Teams, WhatsApp, Google Chat, LINE native text receive/send; JWT/signatures, delayed targets/windows and Vitest tests.
-- [ ] T10: Matrix, Mattermost, Signal, IRC native text receive/send; lifecycle, identity and declared limitations; Vitest tests.
-- [ ] T11: CLI assembly of all plugins; validate/migrate/run/status/doctor/requeue; lifecycle, health/metrics, config examples and CLI tests.
-- [ ] T12: production core/storage HTTP/socket peer E2E: dispatch/claim/complete/outbound, endpoint isolation, restart and unknown-send recovery.
+- [x] T10: Matrix, Mattermost, Signal, IRC native text receive/send; lifecycle, identity and declared limitations; Vitest tests.
+- [x] T11: CLI assembly of all plugins; validate/migrate/run/status/doctor/requeue; lifecycle, health/metrics, config examples and CLI tests.
+- [x] T12: production core/storage HTTP/socket peer E2E: dispatch/claim/complete/outbound, endpoint isolation, restart and unknown-send recovery.
 - [ ] T13: Docker/Compose, CI with PostgreSQL, user/developer/operator docs, dependency/license audit; full build/typecheck/lint/Vitest/E2E/deployment checks; push final master and clean worktrees.
 
 ## Test admission and completion
@@ -73,3 +73,6 @@ Integration commits and check results will be recorded here as work completes.
 - T09 / T11 baseline: 5f93e5d / 17f9a31 integrated; 220 tests pass including real PostgreSQL and seven CLI command/lifecycle regressions. Eleven channels are implemented; CLI final assembly awaits T10. Format/lint/typecheck/build pass.
 
 - T12a: 0654997 integrates three real CLI/HTTP/MCP recovery E2E cases; these and seven CLI regressions pass together. T12 final gate still waits for all native channel assembly. Docker image migration/readiness/restart test is enabled in CI; no local Docker daemon is available.
+
+- T10/T11/T12 final integration: all 15 native channels plus dot/Grok are statically assembled. Build, formatting, strict lint, typecheck and 261 Vitest tests pass with real PostgreSQL/SQLite; one container test awaits Linux CI. Complete configuration validates 15 accounts and two agent endpoints without database creation.
+- T13 local audit: 56 production third-party packages have license/NOTICE coverage; pnpm audit --prod reports zero known vulnerabilities at this run. Compose configuration validates. Docker includes notices, non-root runtime and durable volume; CI runs migration/readiness/restart verification. Prometheus example alert rules use exported runtime metrics.

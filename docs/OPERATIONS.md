@@ -30,4 +30,6 @@ An endpoint snapshot freezes the configured SecretRef name, not its resolved val
 
 ## Verification boundary
 
+Prometheus rule examples are in [deploy/prometheus-alerts.yml](../deploy/prometheus-alerts.yml). Adjust thresholds to the expected duration of your hosted agents and configure notification routing in your monitoring stack. Connection status is aggregated per channel plugin across its configured accounts; it is separate from service readiness. Monitor scrape availability (`up`) separately so a stopped process is distinguishable from stale or missing metrics. These examples do not install a monitoring service.
+
 CI tests real SQLite and PostgreSQL, documented HTTP/socket peers, and the final Docker image. The image test checks explicit migration, non-root execution, health and restart against a persistent volume. These checks do not validate live account permissions, public DNS/TLS, platform review requirements or production availability guarantees.
