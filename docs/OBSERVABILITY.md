@@ -1,0 +1,17 @@
+# Observability contract for core and native plugins
+
+Use only SDK `host.observe` / the injected facade. Assembly uses `createStandardObservability()` from `@relanox/observability-standard`; validate its configuration, setup, pass observe to core, and mount the optional Web Request/Response metrics handler privately. Full configuration, metric names/units, stdout backpressure and lifecycle instructions: [plugin README](../plugins/observability-standard/README.md).
+
+Finite log events: inbound.accepted, inbound.duplicate, inbound.rejected, dispatch.completed, claim.completed, complete.completed, fail.completed, delivery.completed, retry.scheduled, delivery.unknown, connection.changed, worker.completed, storage.failed, recovery.completed, retention.completed, startup.completed, shutdown.completed, operation.failed. Unknown events become operation.failed; never put arbitrary error/message strings in event.
+
+Finite span names and operation labels: ingest, dispatch, claim, complete, fail, send, storage, http, worker, connection, recovery, retention, startup, shutdown.
+
+Finite outcomes: ok, error, accepted, duplicate, rejected, retryable, unknown, sent, busy, conflict, unauthorized, connected, disconnected, degraded, stale, not_found, not_pending, claimed, completed, updated.
+
+Plugin field/label accepts core, cli, storage-sqlite, storage-postgres, observability-standard, agent-dot, agent-grok and channel-<channel> for each of the 15 channel IDs. channel labels accept the 15 SDK ChannelIds; agent labels accept dot/grok. Arbitrary account, endpoint, user, chat or request identifiers are forbidden metric labels. Unknown label keys/values drop the observation, and each metric has at most 64 label tuples per runtime.
+
+Generic log errorCode and metric error_class values: timeout, network, authentication, authorization, rate_limit, invalid_input, conflict, storage, unsupported, unavailable, unknown, internal. Logs additionally retain these actionable core codes: call_timeout, retry_budget_exhausted, invalid_chunk_index, plugin_missing, plugin_exception, invalid_plugin_outcome, storage_unavailable, not_accepting, worker_failed. Map platform error codes into generic categories; store detailed protocol failure codes only in the existing bounded business outcome record where needed. Do not copy raw platform errors into logs. Logs whitelist plugin/requestId/deliveryId/traceId/errorCode/outcome/operation; correlation request/delivery IDs must be UUIDs, trace IDs 32 hex. Raw payloads, secrets, arbitrary object fields and free text are excluded.
+
+`count` accepts only the four *_total business counters. `record` sets snapshot gauges and observes seconds duration histograms, with names in plugin README. Core polls storage and publishes freshness; collection never polls business storage. Failed stats refresh sets storage_stats_stale=1 and retains prior gauges. Connection status connected=1, disconnected/degraded=0. Optional spans return serializable W3C context for later short stages; context conveys correlation only. End each short operation exactly once. The standard plugin does not register a global OTel provider or context manager; explicit durable parents carry stage relationships.
+
+Telemetry is best effort, never durable business state. The SDK noop facade remains a supported disabled option. Health/readiness belongs to core/CLI and must work with disabled or failed telemetry.
