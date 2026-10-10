@@ -76,16 +76,13 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       .prepare("UPDATE outbound SET status=?, version=?, record=? WHERE id=?")
       .run(r.status, r.version, encode(r), r.deliveryId);
   const first = (r: InboundRecord): boolean =>
-    !db
-      .prepare(
-        "SELECT id FROM inbound WHERE endpoint=? AND status IN ('pending','claimed') AND (accepted_at<? OR (accepted_at=? AND id<?)) LIMIT 1",
-      )
-      .get(
-        r.snapshot.endpoint.id,
-        r.snapshot.acceptedAt,
-        r.snapshot.acceptedAt,
-        r.snapshot.requestId,
-      );
+    (
+      db
+        .prepare(
+          "SELECT id FROM inbound WHERE endpoint=? AND status IN ('pending','claimed') ORDER BY CASE WHEN status='claimed' THEN 0 WHEN json_extract(record,'$.dispatch.lease') IS NOT NULL OR json_extract(record,'$.dispatch.attempts')>0 OR json_extract(record,'$.dispatch.status') IN ('unknown','rejected') THEN 1 ELSE 2 END,accepted_at,id LIMIT 1",
+        )
+        .get(r.snapshot.endpoint.id) as { id: string } | undefined
+    )?.id === r.snapshot.requestId;
   const scoped = (r: InboundRecord, ids: readonly string[]) =>
     ids.includes(r.snapshot.endpoint.id);
   const fence = (a: Lease | undefined, b: Lease, now: number) =>

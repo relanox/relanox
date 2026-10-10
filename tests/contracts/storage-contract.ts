@@ -86,6 +86,78 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         leaseOwner: "worker",
         safeRetryAccountIds,
       });
+    it.each([99, 100])(
+      "holds endpoint exclusivity when a later accepted request sorts before its active claim (%i)",
+      async (timestamp) => {
+        await s.acceptInbound(snapshot("z-active", 100));
+        expect(await claim("z-active")).toMatchObject({ status: "claimed" });
+        await s.acceptInbound(snapshot("a-later", timestamp));
+        expect(await claim("a-later")).toMatchObject({ status: "busy" });
+        expect(await due(110)).toEqual([]);
+        expect(
+          await s.fail({
+            requestId: "z-active",
+            endpointIds: ["ep"],
+            claimToken: "token",
+            errorCode: "remote_failed",
+            now: 111,
+          }),
+        ).toMatchObject({ status: "updated" });
+        expect(await claim("a-later")).toMatchObject({ status: "claimed" });
+      },
+    );
+    it.each(["rejected", "unknown"] as const)(
+      "preserves dispatch ownership and explicit %s recovery across later reordered acceptance",
+      async (status) => {
+        await s.acceptInbound(snapshot("z-active", 100));
+        const work = required((await due(100))[0]);
+        expect(work.kind).toBe("dispatch");
+        await s.acceptInbound(snapshot("a-later", 100));
+        expect(await due(101)).toEqual([]);
+        expect(await claim("a-later")).toMatchObject({ status: "busy" });
+        expect(
+          await s.settleAttempt({
+            kind: "dispatch",
+            id: "z-active",
+            lease: work.lease,
+            outcome: { status, errorCode: "remote_problem" },
+            now: 102,
+            nextDueAt: 102,
+          }),
+        ).toMatchObject({ status: "updated" });
+        expect(await due(103)).toEqual([]);
+        expect(await claim("a-later")).toMatchObject({ status: "busy" });
+        const stopped = required(await s.getInbound("z-active"));
+        expect(
+          await s.requeue({
+            kind: "request",
+            id: "z-active",
+            expectedVersion: stopped.version,
+            now: 104,
+            acknowledgeUnknown: true,
+          }),
+        ).toMatchObject({ status: "updated" });
+        expect(await claim("a-later")).toMatchObject({ status: "claimed" });
+      },
+    );
+    it("keeps the already notified request claimable after reordered acceptance", async () => {
+      await s.acceptInbound(snapshot("z-active", 100));
+      const work = required((await due(100))[0]);
+      expect(
+        await s.settleAttempt({
+          kind: "dispatch",
+          id: "z-active",
+          lease: work.lease,
+          outcome: { status: "accepted" },
+          now: 101,
+          nextDueAt: 200,
+        }),
+      ).toMatchObject({ status: "updated" });
+      await s.acceptInbound(snapshot("a-later", 100));
+      expect(await due(102)).toEqual([]);
+      expect(await claim("a-later")).toMatchObject({ status: "busy" });
+      expect(await claim("z-active")).toMatchObject({ status: "claimed" });
+    });
     it("serializes acceptance and retains source deduplication", async () => {
       const input = snapshot();
       await s.acceptInbound(input);
