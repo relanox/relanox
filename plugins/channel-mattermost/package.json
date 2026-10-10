@@ -1,0 +1,31 @@
+{
+  "name": "@relanox/channel-mattermost",
+  "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@relanox/sdk": "workspace:*",
+    "ws": "8.22.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@relanox/core": "workspace:*",
+    "@relanox/storage-sqlite": "workspace:*",
+    "@types/ws": "8.18.1"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}
