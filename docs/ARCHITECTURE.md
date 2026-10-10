@@ -1,8 +1,8 @@
 # Relanox 轻量消息转发架构
 
-日期：2026-10-11。状态：实现基线；按 TODO 开发，真实账户联调不在本次验收范围。本文件是唯一架构维护文档；[PRD](PRD.md)与本文共同定义当前交付，进度见 [TODO](../TODO.md)。
+日期：2026-10-11。状态：实现说明；完成状态与验证证据见 TODO，真实账户联调不在本次验收范围。本文件是唯一架构维护文档；[PRD](PRD.md)与本文共同定义当前交付，进度见 [TODO](../TODO.md)。
 
-导航：[首版](#relay-scope) · [边界](#core-architecture) · [接口](#interfaces) · [持久流程](#durability) · [存储](#storage) · [可观测性](#observability) · [部署](#deployment) · [dot](#agent-dot) · [Grok](#agent-grok) · [实现顺序](#validation) · [依赖审计](DEPENDENCIES.md) · [原生渠道计划](#channel-source-audit)
+导航：[首版](#relay-scope) · [边界](#core-architecture) · [接口](#interfaces) · [持久流程](#durability) · [存储](#storage) · [可观测性](#observability) · [部署](#deployment) · [dot](#agent-dot) · [Grok](#agent-grok) · [实现顺序](#validation) · [依赖审计](DEPENDENCIES.md) · [原生渠道实现](#channel-source-audit)
 
 <a id="relay-scope"></a>
 
@@ -39,7 +39,7 @@ flowchart LR
   CORE -. 观测事件 .-> OBS[Observability 插件]
 ```
 
-| 模块 / 计划 npm 包                                     | 负责                                                                                | 边界                                                                      |
+| 模块 / npm 包                                          | 负责                                                                                | 边界                                                                      |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `packages/sdk` / `@relanox/sdk`                        | 消息、目标地址、HostContext 和四类插件契约                                          | 无数据库驱动、平台 SDK 或运行时装配                                       |
 | `packages/core` / `@relanox/core`                      | 配置/allowlist/绑定、接收去重、领取、结果关联、重试决策、HTTP 路由、单批 processDue | 不 import 渠道实现、Agent 实现或 SQL 驱动；不承担 listener 和进程生命周期 |
@@ -174,19 +174,19 @@ dot/Grok 远程 MCP 与 Telegram Webhook 仍需要可访问的 HTTPS 地址，�
 
 agent-dot 实现远程 MCP 服务，用户已有 dot 安装/连接相应 ChatGPT 插件材料。npm 服务包与账户侧插件安装是两件事。官方 [MCP Events](https://developers.openai.com/plugins/build/mcp-events)包含 dots，要求 MCP 2.0 / `2026-07-28`；按[版本协商](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning)实现。
 
-| 环节      | 插件职责                                                                                                                                                        |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 发现/订阅 | server/discover、events/list、subscribe/unsubscribe；检查授权范围、callback challenge；持久保存 owner、endpoint、callback、签名 secret 引用、过滤范围和到期时间 |
-| dispatch  | 把 requestId/待办水位发到 ChatGPT callback，按 Standard Webhooks 签名，重试复用稳定事件 ID                                                                      |
-| 工具      | relanox_list_pending / claim / complete / fail 映射 Host 契约；事件可合并，dot 按顺序处理所有待办                                                               |
+| 环节      | 插件职责                                                                                                                                                                          |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 发现/订阅 | server/discover、events/list、subscribe/unsubscribe；检查授权范围、callback challenge；持久保存 owner、endpoint、callback、签名密钥、过滤范围和到期时间；订阅密钥属于敏感协议状态 |
+| dispatch  | 把 requestId/待办水位发到 ChatGPT callback，按 Standard Webhooks 签名，重试复用稳定事件 ID                                                                                        |
+| 工具      | relanox_list_pending / claim / complete / fail 映射 Host 契约；事件可合并，dot 按顺序处理所有待办                                                                                 |
 
-事件名拟为 `relanox.message_available`。通知是 Relanox → ChatGPT，结果是 dot → Relanox MCP；2xx 不等于任务完成。用户给 dot 的固定指令是列出待办、领取、处理、提交结果。订阅到期/停止时保留输入并显示不可唤醒，续订后恢复；不假定模型一定完成工具调用。本次通过 SDK 客户端和协议对端验证；真实身份、原有连接器和无人值守表现保留为后续账户验收，不能用本地测试代替。
+事件名为 `relanox.message_available`。通知是 Relanox → ChatGPT，结果是 dot → Relanox MCP；2xx 不等于任务完成。用户给 dot 的固定指令是列出待办、领取、处理、提交结果。订阅到期/停止时保留输入并显示不可唤醒，续订后恢复；不假定模型一定完成工具调用。本次通过 SDK 客户端和协议对端验证；真实身份、原有连接器和无人值守表现保留为后续账户验收，不能用本地测试代替。
 
 <a id="agent-grok"></a>
 
 ## 8. Grok Bot：Webhook 直接传消息，MCP 回传
 
-**默认直接传入消息。此前“Webhook 只能当门铃”的约束删除。**已有集成的一手实现说明能向 Grok Bot Routine POST JSON，把任务和上下文交给 Bot；但尚未找到覆盖字段、大小限制及所有版本的完整官方 body 契约。因此这是有实现证据的接入方案，尚不是 Relanox 实测通过的能力。
+**默认直接传入消息。此前“Webhook 只能当门铃”的约束删除。**已有集成的一手实现说明能向 Grok Bot Routine POST JSON，把任务和上下文交给 Bot；但尚未找到覆盖字段、大小限制及所有版本的完整官方 body 契约。因此实现采用强类型 content 文本封装并通过本地协议测试；这不代表真实 Bot 已读取或执行。
 
 | 证据                                                                                                                                                                           | 可得结论                                                                  | 不据此假定                                                                     |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -198,7 +198,7 @@ agent-dot 实现远程 MCP 服务，用户已有 dot 安装/连接相应 ChatGPT
 推荐流程：
 
 1. 在用户选定的已有 Bot 添加 Relanox Remote HTTPS MCP，完成授权，创建 Webhook Routine。触发 URL/完整 Authorization 取自桌面 UI 并存为 SecretRef，不拼猜内部 API。
-2. Relanox 保存 inbound 后，agent-grok 把正文、requestId 和最少来源上下文编码到 JSON body。初始采用实现示例中的 content 文本承载消息及关联信息；确切布局以账户 UI 和联调为准，避免依赖任意嵌套字段必然可见。
+2. Relanox 保存 inbound 后，agent-grok 把正文、requestId 和最少来源上下文编码到 JSON body。采用 content 字符串承载 JSON 编码的正文和关联信息，外层包含 source 与原始 acceptedAt 对应的 sentAt。布局已通过本地 HTTP 对端验证；真实 Bot 的读取行为仍需账户验证。
 3. Routine 的固定指令为“读取传入消息，先用本次独立 claimKey 领取 requestId，领取成功再处理，最后 complete”。正文已在 Webhook 中，不强制先 listPending 再读一遍。claim 返回当前权威记录供核对；请求 ID 与权限仍由服务端验证。
 4. Bot 使用自己的工具完成任务，调用 relanox_complete 带 requestId、claimToken、resultId 和文字；core 原子记录结果并安排渠道回包。HTTP 触发回执与最终结果分开。
 
@@ -244,7 +244,7 @@ agent-dot 实现远程 MCP 服务，用户已有 dot 安装/连接相应 ChatGPT
 
 ---
 
-以下附录保留原生渠道需要的协议结论与源码参考，均未实现。平台额度和源码版本为调研快照，实施时复核。
+以下附录保留协议结论与源码参考。实际配置、已实现 transport 和限制以 docs/channels 下的通道文档及代码为准；平台额度是核对当日快照，账号权限仍需独立验证。
 
 <a id="channel-source-audit"></a>
 
@@ -259,14 +259,14 @@ agent-dot 实现远程 MCP 服务，用户已有 dot 安装/连接相应 ChatGPT
 3. 有可控 ACK 的入口先持久化再确认；无补发保证的 WS 入口明确可靠性边界。平台内存去重或会话恢复状态不能替代 inbound。
 4. 先验证普通文字、群聊/线程/引用、延迟结果、限流和重连；媒体、交互按后续需求逐项开放。每项能力有自己的接收/发送与失败用例，不把源码目录存在当成支持完成。
 
-| 渠道        | 计划实现                                           | 可参考源码与必须保留的边界                                                                                                     |
+| 渠道        | 原生实现                                           | 可参考源码与必须保留的边界                                                                                                     |
 | ----------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Telegram    | v0.1 官方 Bot API + Webhook，原生 fetch            | `.ref/openclaw/extensions/telegram`；保存稳定事件键、chat/topic/replyTo，处理长文本与独立发送；不继承 Agent turn/adoption 流程 |
 | Discord     | Gateway 收消息，REST 回包                          | `.ref/openclaw/extensions/discord`；线程/权限、重连恢复和速率限制；首轮不开放 slash/interaction/voice                          |
 | Slack       | HTTP Events 或 Socket Mode；Web API 回包，分别验收 | `.ref/openclaw/extensions/slack`；重复 message/mention、thread、频道标识变化和 ACK 时限；不继承 session/assistant turn 路径    |
 | 飞书 / Lark | 官方事件协议/SDK；消息 API 回包                    | `.ref/openclaw/extensions/feishu`；域名/租户、事件去重、身份与线程；先普通消息，卡片/广播/聚合后置                             |
 
-本地固定版本与来源见 [REFERENCES](REFERENCES.md)。参考代码中的测试与错误案例可转成 Relanox 契约测试；直接复制或改写代码时，记录来源文件/commit 并按该文件及依赖的许可证保留版权/许可文本，不默认所有参考仓库许可相同。当前仅阅读与设计，没有复制实现代码。
+本地固定版本与来源见 [REFERENCES](REFERENCES.md)。参考代码中的测试与错误案例可转成 Relanox 契约测试；直接复制或改写代码时，记录来源文件/commit 并按该文件及依赖的许可证保留版权/许可文本，不默认所有参考仓库许可相同。参考仓库不作为运行时依赖；Relanox 实现与测试位于对应插件目录，第三方运行时许可见 LICENSES.md。
 
 本次必须实现十五个平台的文字闭环；参考上游减少调研成本，但各平台权限、窗口和协议仍需各自测试和维护。
 
@@ -302,7 +302,7 @@ agent-dot 实现远程 MCP 服务，用户已有 dot 安装/连接相应 ChatGPT
 
 当前被动回复窗口：单聊 60 分钟、每条 4 次；群聊 5 分钟、每条 5 次。主动发送另外受账号类型、Bot/关系维度频控及用户开关限制；线上表格当前给出单聊/群聊每日 1000 条/目标，并非无限推送。长任务完成时先检查原消息窗口与剩余额度，超期用主动发送；失败保留结果，不重跑 Agent，也不不断试发。互动召回 is_wakeup 是另一个有周期限制的能力，该渠道文字实现不依赖它。
 
-[事件协议](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html) 支持 WS 和带签名的 Webhook，HTTP `op:12` 只表示收到。原生配置默认 WS 减少公网配置，也可选择 HTTP Webhook；HTTP 模式验签后持久提交再 ACK。WS session/sequence 恢复不是持久业务 Inbox，不能用 session.json 代替消息保存。此次文档没有足以承诺无限断线回放的保证。
+[事件协议](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html) 支持 WS 和带签名的 Webhook，HTTP `op:12` 只表示收到。本次原生插件实现 WS 接收；平台虽提供 HTTP Webhook，此实现不开放该 transport。WS session/sequence 恢复不是持久业务 Inbox，不能用 session.json 代替消息保存。此次文档没有足以承诺无限断线回放的保证。
 
 入站按 App/账号+消息 ID 去重。被动出站 `msg_id + msg_seq` 防重复，**同一逻辑发送重试必须复用已保存的 seq**；只有新分片/新回复才分配新 seq。主动发送未查到同等通用幂等键，超时仍可能结果未知，不能盲目重发。
 
@@ -314,32 +314,32 @@ agent-dot 实现远程 MCP 服务，用户已有 dot 安装/连接相应 ChatGPT
 
 全部为本次必须交付的原生文字渠道；媒体和交互后置。完成状态以 TODO 和实际测试为准，不以列入表格代表已完成。
 
-| 平台            | 原生 npm 包（计划）           | 源码参考位置（非依赖）                          | 本次范围与边界                                      |
-| --------------- | ----------------------------- | ----------------------------------------------- | --------------------------------------------------- |
-| Telegram        | `@relanox/channel-telegram`   | `extensions/telegram`                           | 本次文字；媒体后置                                  |
-| Discord         | `@relanox/channel-discord`    | `extensions/discord`                            | 本次；文字消息入口、线程与权限                      |
-| Slack           | `@relanox/channel-slack`      | `extensions/slack`                              | 本次；Socket/HTTP 分别验证，thread、HTTP routes     |
-| 飞书 / Lark     | `@relanox/channel-feishu`     | `extensions/feishu`                             | 本次；域名/租户、去重、文字消息                     |
-| 企业微信        | `@relanox/channel-wecom`      | 官方外置 `@wecom/wecom-openclaw-plugin`         | 本次；智能机器人 WS + 主动发送，见附录 B 专项审计   |
-| 钉钉            | `@relanox/channel-dingtalk`   | 官方外置 `@dingtalk-real-ai/dingtalk-connector` | 本次；应用机器人 Stream + OpenAPI 独立发送          |
-| QQ              | `@relanox/channel-qq`         | 官方外置 `@tencent-connect/openclaw-qqbot`      | 本次；WS/可选 Webhook，回复窗口与主动发送按账号验收 |
-| Microsoft Teams | `@relanox/channel-msteams`    | `extensions/msteams`                            | 本次；租户、会话引用、主动回复                      |
-| WhatsApp        | `@relanox/channel-whatsapp`   | `extensions/whatsapp`                           | 本次；Business 官方接口；不计划 WhatsApp Web 路线   |
-| Matrix          | `@relanox/channel-matrix`     | `extensions/matrix`                             | 本次；非加密文字、同步恢复；显式拒绝加密输入        |
-| Google Chat     | `@relanox/channel-googlechat` | `extensions/googlechat`                         | 本次；Space/Thread、应用身份                        |
-| LINE            | `@relanox/channel-line`       | `extensions/line`                               | 本次；即时 reply 与延迟 push                        |
-| Mattermost      | `@relanox/channel-mattermost` | `extensions/mattermost`                         | 本次；团队/频道、线程                               |
-| Signal          | `@relanox/channel-signal`     | `extensions/signal`                             | 本次；桥接服务、账号状态与恢复                      |
-| IRC             | `@relanox/channel-irc`        | `extensions/irc`                                | 本次；重连、消息标识、能力降级                      |
+| 平台            | 原生 npm 包                   | 源码参考位置（非依赖）                          | 本次范围与边界                                    |
+| --------------- | ----------------------------- | ----------------------------------------------- | ------------------------------------------------- |
+| Telegram        | `@relanox/channel-telegram`   | `extensions/telegram`                           | 本次文字；媒体后置                                |
+| Discord         | `@relanox/channel-discord`    | `extensions/discord`                            | 本次；文字消息入口、线程与权限                    |
+| Slack           | `@relanox/channel-slack`      | `extensions/slack`                              | 本次；Socket/HTTP 分别验证，thread、HTTP routes   |
+| 飞书 / Lark     | `@relanox/channel-feishu`     | `extensions/feishu`                             | 本次；域名/租户、去重、文字消息                   |
+| 企业微信        | `@relanox/channel-wecom`      | 官方外置 `@wecom/wecom-openclaw-plugin`         | 本次；智能机器人 WS + 主动发送，见附录 B 专项审计 |
+| 钉钉            | `@relanox/channel-dingtalk`   | 官方外置 `@dingtalk-real-ai/dingtalk-connector` | 本次；应用机器人 Stream + OpenAPI 独立发送        |
+| QQ              | `@relanox/channel-qq`         | 官方外置 `@tencent-connect/openclaw-qqbot`      | 本次；WS 接收，回复窗口与显式主动发送开关         |
+| Microsoft Teams | `@relanox/channel-msteams`    | `extensions/msteams`                            | 本次；租户、会话引用、主动回复                    |
+| WhatsApp        | `@relanox/channel-whatsapp`   | `extensions/whatsapp`                           | 本次；Business 官方接口；不计划 WhatsApp Web 路线 |
+| Matrix          | `@relanox/channel-matrix`     | `extensions/matrix`                             | 本次；非加密文字、同步恢复；显式拒绝加密输入      |
+| Google Chat     | `@relanox/channel-googlechat` | `extensions/googlechat`                         | 本次；Space/Thread、应用身份                      |
+| LINE            | `@relanox/channel-line`       | `extensions/line`                               | 本次；独立 push，持久 retry key                   |
+| Mattermost      | `@relanox/channel-mattermost` | `extensions/mattermost`                         | 本次；团队/频道、线程                             |
+| Signal          | `@relanox/channel-signal`     | `extensions/signal`                             | 本次；桥接服务、账号状态与恢复                    |
+| IRC             | `@relanox/channel-irc`        | `extensions/irc`                                | 本次；重连、消息标识、能力降级                    |
 
 全部直接实现 Relanox Channel 契约，不提供 OpenClaw 兼容；本次不允许只创建空包或只发送不接收。所有渠道都需实现、装配、配置说明及本地协议测试。
 
 源码依据 [固定版本 extensions 树](https://github.com/openclaw/openclaw/tree/c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3/extensions)。已深入追踪 Telegram、Discord、Slack、飞书的主要入站与公共生命周期，其余渠道目录检查不代表完成逐路径审计。企业微信/钉钉/QQ 的外置官方插件已做专项源码审计，详见附录 C；它们不是该 OpenClaw SHA 的 bundled 插件。
 
-[OpenClaw WhatsApp package](https://github.com/openclaw/openclaw/blob/c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3/extensions/whatsapp/package.json) 明确为 WhatsApp Web，依赖 Baileys，不能当作 Business API。原生路线的发送窗口/模板/权限仍需专项确认。
+[OpenClaw WhatsApp package](https://github.com/openclaw/openclaw/blob/c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3/extensions/whatsapp/package.json) 明确为 WhatsApp Web，依赖 Baileys，不能当作 Business API。本次使用 Business Cloud API，按客户活动维护 24 小时文字窗口，不发送模板。
 
 [钉钉官方教程](https://open-dingtalk.github.io/developerpedia/docs/explore/tutorials/stream/overview/) 提供机器人收消息、回复和主动发送；其[协议说明](https://open-dingtalk.github.io/developerpedia/docs/learn/stream/protocol/) 指出机器人消息不因网络超时而重复推送。持久保证从本地可靠捕获开始，不能声称平台到 Host 无条件至少一次。
 
 企业微信、钉钉、QQ 的协议边界与源码参考统一见 [专项审计](#china-channels)；QQ 使用较新的线上官方页面，不能以旧 bot-docs 仓库覆盖线上规则。
 
-个人微信不与企业微信混称。个人微信、iMessage、Zalo 等为后续扩展；只有通知发送的 Webhook 声明 receive=false。Teams、WhatsApp、Matrix 等平台的权限、发送窗口和恢复语义还需专项确认，不把目录存在当作兼容验证。
+个人微信不与企业微信混称。个人微信、iMessage、Zalo 等为后续扩展；只有通知发送的 Webhook 声明 receive=false。全部十五个插件的协议与恢复边界见各自通道文档；本地测试不等于真实账号权限或可用性验证。
