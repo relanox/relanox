@@ -327,6 +327,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
           ...r,
           status: "pending" as const,
           version: r.version + 1,
+          attempts: 0,
           dueAt: input.now,
         };
         delete next.lease;
