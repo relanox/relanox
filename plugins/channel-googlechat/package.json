@@ -1,0 +1,30 @@
+{
+  "name": "@relanox/channel-googlechat",
+  "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@relanox/sdk": "workspace:*",
+    "jose": "6.2.12",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@relanox/core": "workspace:*",
+    "@relanox/storage-sqlite": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

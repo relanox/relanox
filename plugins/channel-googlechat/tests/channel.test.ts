@@ -1,0 +1,186 @@
+import type { Json } from "@relanox/sdk";
+import { exportJWK, exportPKCS8, generateKeyPair, jwtVerify, SignJWT } from "jose";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createGoogleChatChannel } from "../src/index.js";
+import { harness, peer } from "./harness.js";
+
+const cleanup: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const close of cleanup.splice(0).toReversed()) {
+    await close();
+  }
+  vi.unstubAllEnvs();
+});
+const issuer = "https://accounts.google.com";
+const audience = "https://relay.example/channels/business/webhook";
+const caller = "chat@system.gserviceaccount.com";
+const body = JSON.stringify({
+  type: "MESSAGE",
+  space: { name: "spaces/space" },
+  message: {
+    name: "spaces/space/messages/msg",
+    text: "@Relanox hello",
+    argumentText: "hello",
+    sender: { name: "users/alice", type: "HUMAN" },
+    thread: { name: "spaces/space/threads/thread" },
+  },
+});
+async function setup() {
+  const remote = await peer();
+  cleanup.push(remote.close);
+  const keys = await generateKeyPair("RS256", { extractable: true });
+  const publicKey = await exportJWK(keys.publicKey);
+  remote.keys({ keys: [{ ...publicKey, kid: "google-key" }] });
+  vi.stubEnv(
+    "CHAT_SERVICE",
+    JSON.stringify({
+      type: "service_account",
+      client_email: "relay@example.iam.gserviceaccount.com",
+      private_key: await exportPKCS8(keys.privateKey),
+    }),
+  );
+  remote.respond(200, { name: "spaces/space/messages/sent" });
+  const config: Json = {
+    audience,
+    serviceAccount: { env: "CHAT_SERVICE" },
+    apiBase: remote.base,
+    tokenUrl: `${remote.base}/token`,
+    jwksUrl: `${remote.base}/keys`,
+    allowLoopback: true,
+  };
+  const plugin = createGoogleChatChannel();
+  const local = await harness(
+    plugin,
+    config,
+    "spaces/space",
+    "users/alice",
+    "spaces/space/threads/thread",
+  );
+  cleanup.push(local.close);
+  async function token(
+    overrides: {
+      iss?: string;
+      aud?: string;
+      email?: string;
+      verified?: boolean;
+      exp?: string;
+    } = {},
+  ) {
+    return new SignJWT({
+      email: overrides.email ?? caller,
+      email_verified: overrides.verified ?? true,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "google-key" })
+      .setIssuer(overrides.iss ?? issuer)
+      .setAudience(overrides.aud ?? audience)
+      .setIssuedAt()
+      .setExpirationTime(overrides.exp ?? "5m")
+      .sign(keys.privateKey);
+  }
+  async function incoming(overrides?: Parameters<typeof token>[0], data = body) {
+    return new Request("http://local/channels/business/webhook", {
+      method: "POST",
+      headers: { authorization: `Bearer ${await token(overrides)}` },
+      body: data,
+    });
+  }
+  return { remote, keys, config, plugin, incoming, ...local };
+}
+
+describe("native Google Chat", () => {
+  it("verifies caller JWT then persists, deduplicates, obtains service-account OAuth and sends to the frozen thread", async () => {
+    const local = await setup();
+    expect((await local.core.fetch(await local.incoming(undefined, "{"))).status).toBe(400);
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200);
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200);
+    expect((await local.storage.getStats()).pending).toBe(1);
+    const completed = await local.complete();
+    expect(completed.delivery?.status).toBe("sent");
+    expect(local.dispatches).toEqual(["hello"]);
+    const oauth = local.remote.traffic.find((request) => request.path === "/token");
+    const form = new URLSearchParams(oauth?.body);
+    expect(form.get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:jwt-bearer");
+    const assertion = form.get("assertion");
+    if (!assertion) {
+      throw new Error("Missing OAuth assertion");
+    }
+    const verified = await jwtVerify(assertion, local.keys.publicKey, {
+      algorithms: ["RS256"],
+      issuer: "relay@example.iam.gserviceaccount.com",
+      audience: `${local.remote.base}/token`,
+    });
+    expect(verified.payload.scope).toBe("https://www.googleapis.com/auth/chat.bot");
+    const sent = local.remote.traffic.find((request) => request.path.startsWith("/v1/"));
+    expect(sent?.path).toBe("/v1/spaces/space/messages?messageReplyOption=REPLY_MESSAGE_OR_FAIL");
+    expect(sent?.headers.authorization).toBe("Bearer oauth-token");
+    expect(JSON.parse(sent?.body ?? "null") as unknown).toEqual({
+      text: "answer",
+      thread: { name: "spaces/space/threads/thread" },
+    });
+    expect(completed.request.target.threadId).toBe("spaces/space/threads/thread");
+  });
+
+  it.each([
+    { aud: "another-app" },
+    { iss: "https://attacker.example" },
+    { email: "attacker@example.com" },
+    { verified: false },
+    { exp: "-1s" },
+  ])("rejects a cryptographically signed token outside caller trust %j", async (overrides) => {
+    const local = await setup();
+    expect((await local.core.fetch(await local.incoming(overrides))).status).toBe(401);
+    expect((await local.storage.getStats()).pending).toBe(0);
+  });
+
+  it("rejects invalid signatures and ignores app-authored/non-text events", async () => {
+    const local = await setup();
+    const foreign = await generateKeyPair("RS256");
+    const token = await new SignJWT({ email: caller, email_verified: true })
+      .setProtectedHeader({ alg: "RS256", kid: "google-key" })
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(foreign.privateKey);
+    expect(
+      (
+        await local.core.fetch(
+          new Request("http://local/channels/business/webhook", {
+            method: "POST",
+            headers: { authorization: `Bearer ${token}` },
+            body,
+          }),
+        )
+      ).status,
+    ).toBe(401);
+    const botBody = body.replace('"HUMAN"', '"BOT"');
+    expect((await local.core.fetch(await local.incoming(undefined, botBody))).status).toBe(200);
+    expect((await local.storage.getStats()).pending).toBe(0);
+  });
+
+  it.each([
+    [429, "pending"],
+    [403, "rejected"],
+    [503, "unknown"],
+  ] as const)("classifies HTTP %s as %s", async (status, expected) => {
+    const local = await setup();
+    await local.core.fetch(await local.incoming());
+    local.remote.respond(status, {}, { "retry-after": "2" });
+    expect((await local.complete()).delivery?.status).toBe(expected);
+    expect(local.remote.traffic.filter((request) => request.path.startsWith("/v1/"))).toHaveLength(
+      1,
+    );
+  });
+
+  it("requires service-account SecretRefs and secure operator endpoints", () => {
+    const plugin = createGoogleChatChannel();
+    expect(() => plugin.validateConfig({ audience, serviceAccount: "credentials" })).toThrow();
+    expect(() =>
+      plugin.validateConfig({
+        audience,
+        serviceAccount: { env: "SERVICE" },
+        jwksUrl: "http://127.0.0.1/keys",
+      }),
+    ).toThrow("unsafe_endpoint");
+  });
+});
