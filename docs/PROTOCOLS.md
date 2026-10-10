@@ -1,0 +1,54 @@
+# Protocol implementation baseline
+
+Date: 2026-10-11. This is an implementation checklist, not evidence of live-account compatibility. All 15 text channels are required. Implementers must read the linked specification and encode the actual request/response shape in Zod/TypeScript (or use the SDK); do not infer a wire format from this summary. Record any version/transport choice in the channel documentation.
+
+## MCP and hosted agents
+
+Use `@modelcontextprotocol/server@2.3.1`, `McpServer`, and `createMcpHandler`. The handler creates a server per request; persistent state lives in Storage. `handler.fetch(request, {authInfo})` does not authenticate the HTTP request. Validate Bearer credentials, request size and Host/Origin rules before handing off. Do not accept endpoint scope supplied in a tool argument.
+
+The SDK's modern `server/discover` protocol and default stateless legacy client compatibility are distinct. Grok can use stateless legacy compatibility; dot requires MCP `2026-07-28`. Do not invent a bespoke initialize/session/header shim. Sources: [HTTP serving](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/serving/http.md), [versions](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/protocol-versions.md), [legacy clients](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/serving/legacy-clients.md).
+
+Tools are `relanox_list_pending`, `relanox_claim`, `relanox_complete`, `relanox_fail`, with strict input/output schemas. Only listing is read-only. Claim/complete/fail mutate state. Return SDK content/structuredContent envelopes and distinguish protocol/auth errors from business tool errors.
+
+### dot Events
+
+Follow the [OpenAI MCP Events documentation](https://developers.openai.com/plugins/build/mcp-events). The SDK lacks high-level event registration: implement typed custom methods with `server.setRequestHandler(method, {params, result}, handler)`, following [custom methods](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/advanced/custom-methods.md). Verify the wire discovery response advertises top-level `capabilities.events`, not an unrelated extension capability.
+
+- `events/list`: event descriptors include name, description, delivery `["webhook"]`, inputSchema and payloadSchema.
+- `events/subscribe`: name, arguments, delivery `{mode:"webhook",url,secret}`, optional cursor/ttlMs. Response includes id, refreshBefore, cursor and truncated. No replay support means cursor is null; do not invent cursor replay.
+- `events/unsubscribe`: match the authenticated subscription identity and delivery URL; caller does not need to re-submit a secret. Return `{}`.
+- Subscription identity includes authenticated owner, event name, canonical arguments and URL. Persist scope, secret, expiry and endpoint ownership. TTL and renewal are real state, not process-local Maps.
+- Challenge POST body is `{type:"verification",challenge:"fresh-single-use-value"}`. Apply Standard Webhooks signing and verify a successful echo response according to the specification. Failed verification is a protocol error, never a persisted active subscription.
+- Event body includes eventId, name, timestamp, data and cursor. Sign the serialized bytes once; stable webhook-id equals eventId. Headers include Content-Type, webhook-id, webhook-timestamp, webhook-signature and X-MCP-Subscription-Id.
+- Callback secret encoding, size limit, signature rotation, retryable status classification and challenge response must follow the official page. Webhook 2xx does not complete the business request.
+- Prevent callback SSRF: validate configured authorization scope and HTTPS, reject redirects/private destinations, and avoid DNS validation/connection TOCTOU. Never let an arbitrary event tool turn the server into an unrestricted proxy. A deployment-selected HTTP client/allowlist is acceptable only with explicit production security semantics.
+
+### Grok
+
+Use user-configured Routine URL and exact Authorization, not a guessed internal endpoint. Send the request ID, text and minimum source context in the documented Relanox JSON envelope, using content for the publicly demonstrated text path. Complete via the authenticated MCP tools. The full Grok Bot Webhook schema is not publicly specified; external implementation examples are evidence, not an official promise. Tests verify Relanox's submitted bytes and subsequent MCP behavior, not remote Bot comprehension. See architecture sources.
+
+## Native channel protocols
+
+| Channel | Specification / SDK source | Required checks |
+|---|---|---|
+| Telegram | [Bot API](https://core.telegram.org/bots/api) | secret-token header, update_id/message identity, topic/reply targets, 429 retry_after and API ok=false |
+| Discord | [Gateway](https://discord.com/developers/docs/events/gateway), [Messages](https://discord.com/developers/docs/resources/message) | identify/resume/heartbeat, intents, own/bot filtering, channel/thread IDs, REST rate limits |
+| Slack | [Events](https://docs.slack.dev/apis/events-api/), [request verification](https://docs.slack.dev/authentication/verifying-requests-from-slack/), [chat.postMessage](https://docs.slack.dev/reference/methods/chat.postMessage/) | raw-body signature/timestamp, URL challenge, event_id, bot loops, thread_ts; errors may be HTTP 200 with ok=false |
+| Feishu/Lark | [official SDK](https://github.com/larksuite/node-sdk) and [open platform](https://open.feishu.cn/document/home/index) | selected signed/encrypted event protocol, challenge, tenant access token expiry, domain, message content JSON and duplicate event identity |
+| WeCom | [intelligent bot long connection](https://developer.work.weixin.qq.com/document/path/101463), `.ref/wecom-sdk` | subscribe/auth, req_id correlation, message msgid, one active bot connection, independent aibot_send_msg |
+| DingTalk | [Stream protocol](https://open-dingtalk.github.io/developerpedia/docs/learn/stream/protocol/), `.ref/dingtalk-connector` | endpoint/ticket connection, robot CALLBACK ACK, msgId, robotCode, staffId/openConversationId, independent OpenAPI send |
+| QQ | [event protocol](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html), [message overview](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/overview.html), `.ref/qq-sdk` | selected official auth/transport, stable source ID and msg_seq, C2C/group windows and explicit proactive permission |
+| Teams | [Agents SDK](https://learn.microsoft.com/en-us/javascript/api/overview/agents-overview?view=agents-sdk-js-latest), [proactive messages](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages) | JWT signature/issuer/audience, trusted serviceUrl, tenant/conversation reference, bot OAuth credentials, installation prerequisites |
+| WhatsApp | [Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/), [send messages](https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages) | verify challenge, app-secret raw-body signature, phone identity, wa_id/message id, service window; no Baileys/Web transport |
+| Matrix | [Client-Server specification](https://spec.matrix.org/latest/client-server-api/) | sync since persistence after ingest, own-event filtering, room/thread relations, stable send txnId, explicit encrypted-room limitation |
+| Google Chat | [interactions](https://developers.google.com/workspace/chat/receive-respond-interactions), [app authentication](https://developers.google.com/workspace/chat/authenticate-authorize-chat-app), [create message](https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create) | platform JWT identity/audience, selected interaction schema, service-account credentials, spaces/threads, independent app-auth send |
+| LINE | [receive](https://developers.line.biz/en/docs/messaging-api/receiving-messages/), [send](https://developers.line.biz/en/docs/messaging-api/sending-messages) | exact raw-body HMAC, event/source identity, delayed push rather than expired replyToken, stable retry key |
+| Mattermost | [API](https://docs.mattermost.com/api/reference/mattermost-api), [posts](https://docs.mattermost.com/api/reference/create-post) | WS auth, JSON string inside posted.data.post, own-post filter, channel/root target, reconnect limitations |
+| Signal | [signal-cli JSON-RPC](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli-jsonrpc.5.adoc) | explicit external unofficial client, /api/v1/rpc + /api/v1/events, account/sender/group, SSE parsing/reconnect, upstream state retained outside Relanox |
+| IRC | [modern IRC protocol](https://modern.ircdocs.horse/), [IRCv3](https://ircv3.net/irc/) | TLS, CAP/auth/NICK/USER/JOIN, PING/PONG, PRIVMSG parsing, byte limit and CRLF rejection, no false delivery receipt from socket write |
+
+Each plugin must expose its chosen receive mode and unsupported events/features. Unsupported media or encrypted input is not a successful text task. Most IDs are opaque strings even when they look numeric. Token-bearing URLs and platform response bodies must not enter logs.
+
+## Test protocol peers
+
+Local HTTP/WebSocket/TCP/SSE peers exercise actual production transport code and capture sent bytes. They may respond as the remote service, but must not decide whether Relanox bindings, claims, retries or state transitions are correct. Use independently specified expected headers/bodies, real storage for transaction/restart behavior, and real SDK clients for MCP where possible. Record the four test-admission answers before writing each test group.
