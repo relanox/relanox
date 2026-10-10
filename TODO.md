@@ -39,9 +39,9 @@ Each task uses a fresh `.worktree/<task>` after prerequisites land on master. In
 - [x] T03: SQLite schema/migrations/atomic operations; shared storage contract suite; restart and conflict behavior.
 - [x] T04: observability-standard, safe no-op/error isolation, logs/metrics/optional bounded traces; redaction/public contract tests.
 - [x] T05: PostgreSQL same storage contract; real temporary PostgreSQL tests.
-- [ ] T06: dot Events subscription/challenge/signing/lifecycle and MCP tools; Grok text Webhook and MCP tools; typed SDK/protocol tests.
-- [ ] T07: Telegram, Discord, Slack, Feishu native text receive/send; authentication, targets, errors, connection lifecycle and Vitest protocol tests.
-- [ ] T08: WeCom, DingTalk, QQ native text receive/send; protocol auth, window/sequence semantics, reconnect and Vitest tests.
+- [x] T06: dot Events subscription/challenge/signing/lifecycle and MCP tools; Grok text Webhook and MCP tools; typed SDK/protocol tests.
+- [x] T07: Telegram, Discord, Slack, Feishu native text receive/send; authentication, targets, errors, connection lifecycle and Vitest protocol tests.
+- [x] T08: WeCom, DingTalk, QQ native text receive/send; protocol auth, window/sequence semantics, reconnect and Vitest tests.
 - [ ] T09: Teams, WhatsApp, Google Chat, LINE native text receive/send; JWT/signatures, delayed targets/windows and Vitest tests.
 - [ ] T10: Matrix, Mattermost, Signal, IRC native text receive/send; lifecycle, identity and declared limitations; Vitest tests.
 - [ ] T11: CLI assembly of all plugins; validate/migrate/run/status/doctor/requeue; lifecycle, health/metrics, config examples and CLI tests.
@@ -66,3 +66,6 @@ Integration commits and check results will be recorded here as work completes.
 - T02: f70d889 integrated; 8 core policy tests (37 combined), build/typecheck/lint pass. Native plugins now start from the integrated core contract; real end-to-end storage/transport integration remains T12.
 
 - T05: ffe77e2 / dde2688 integrated; combined 65 tests pass against real SQLite and PostgreSQL, plus build/typecheck/lint. Shared regression additions 87c13f9/fa1e66d preserve active endpoint ownership and reset delivery recovery budgets.
+
+- T06/T07/T08: 8557134 / cc44561 / 155b09b integrated; dot/Grok and seven native channels, 180 combined tests passing with real PostgreSQL and SQLite. Strict Oxc gates apply to all code. Core aborted-stream regression reproduced before repair and passes after repair.
+- Quality gate: 2119f5d pushed; Oxfmt, 533-rule type-aware Oxlint policy, complexity/depth limits and real pre-commit verification. GitHub Actions run 38078691064 passed on Linux/PostgreSQL.
