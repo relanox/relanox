@@ -1,0 +1,537 @@
+import type {
+  AgentHost,
+  AgentPlugin,
+  ChannelHost,
+  ChannelPlugin,
+  CompleteInput,
+  InboundSnapshot,
+  RelanoxConfig,
+  Settlement,
+  Storage,
+} from "@relanox/sdk";
+import { describe, expect, it, vi } from "vitest";
+import {
+  chunkText,
+  createCore,
+  resolveSecretRef,
+  validateConfig,
+} from "../src/index.js";
+
+const config: RelanoxConfig = {
+  accounts: [
+    {
+      id: "bot",
+      channel: "telegram",
+      config: { token: { env: "BOT_TOKEN" } },
+      allowedSenders: ["alice", "bob"],
+    },
+  ],
+  endpoints: [
+    {
+      id: "first",
+      agent: "grok",
+      config: {
+        authorization: { env: "AGENT_TOKEN" },
+        url: "https://example.test/old",
+      },
+      dispatchMode: "push",
+    },
+    { id: "other", agent: "dot", config: {}, dispatchMode: "pull" },
+  ],
+  bindings: [
+    {
+      accountId: "bot",
+      chatId: "chat",
+      endpointId: "first",
+      allowedSenders: ["alice"],
+    },
+  ],
+  storage: { plugin: "sqlite", config: {} },
+  observability: { plugin: "none", config: {} },
+};
+const incoming = {
+  source: { channel: "telegram" as const, accountId: "bot", eventId: "event" },
+  senderId: "alice",
+  text: "hello",
+  target: {
+    channel: "telegram" as const,
+    accountId: "bot",
+    chatId: "chat",
+    data: { durable: "address" },
+  },
+  receivedAt: 1,
+  context: null,
+};
+const snapshot: InboundSnapshot = {
+  ...incoming,
+  requestId: "req",
+  endpoint: {
+    id: "first",
+    agent: "grok",
+    config: {
+      authorization: { env: "AGENT_TOKEN" },
+      url: "https://example.test/old",
+    },
+    dispatchMode: "push",
+  },
+  acceptedAt: 1,
+};
+/** Records specified IO only. Any unplanned storage method throws; no storage state machine exists here. */
+function recordingStorage(methods: Partial<Storage>): Storage {
+  return new Proxy(methods as Storage, {
+    get(target, key) {
+      const method = target[key as keyof Storage];
+      if (method) return method;
+      return () => {
+        throw new Error(`Unexpected storage call ${String(key)}`);
+      };
+    },
+  });
+}
+function plugins(
+  dispatch = vi
+    .fn<AgentPlugin["dispatch"]>()
+    .mockResolvedValue({ status: "accepted" }),
+) {
+  let channelHost: ChannelHost | undefined;
+  let agentHost: AgentHost | undefined;
+  const channel: ChannelPlugin = {
+    id: "channel-telegram",
+    sdkMajor: 1,
+    runtime: "node",
+    kind: "channel",
+    channel: "telegram",
+    capabilities: {
+      receive: true,
+      transport: "http",
+      maxTextLength: 3,
+      lengthUnit: "codepoint",
+      idempotentSend: false,
+    },
+    validateConfig: (value) => value as never,
+    setup: async (host) => {
+      channelHost = host;
+      host.mountHttp("/webhook", async () => new Response("channel"));
+    },
+    send: vi.fn().mockResolvedValue({ status: "sent", receipt: {} }),
+  };
+  const grok: AgentPlugin = {
+    id: "agent-grok",
+    sdkMajor: 1,
+    runtime: "node",
+    kind: "agent",
+    agent: "grok",
+    validateConfig: (value) => value as never,
+    setup: async (host) => {
+      agentHost = host;
+      host.mountHttp("/mcp", async () => new Response("agent"));
+    },
+    dispatch,
+  };
+  const dot: AgentPlugin = {
+    ...grok,
+    id: "agent-dot",
+    agent: "dot",
+    setup: async () => {},
+  };
+  return {
+    channel,
+    grok,
+    dot,
+    channels: new Map([["bot", channel]]),
+    agents: new Map([
+      ["grok" as const, grok],
+      ["dot" as const, dot],
+    ]),
+    get channelHost() {
+      if (!channelHost) throw new Error("Not setup");
+      return channelHost;
+    },
+    get agentHost() {
+      if (!agentHost) throw new Error("Not setup");
+      return agentHost;
+    },
+  };
+}
+describe("configuration boundary", () => {
+  it("rejects ambiguous/missing references and empty sender authorization; resolves explicit secrets only", () => {
+    expect(() =>
+      validateConfig({
+        ...config,
+        accounts: [...config.accounts, config.accounts[0]],
+      }),
+    ).toThrow();
+    expect(() =>
+      validateConfig({
+        ...config,
+        bindings: [...config.bindings, config.bindings[0]],
+      }),
+    ).toThrow();
+    expect(() =>
+      validateConfig({
+        ...config,
+        bindings: [{ ...config.bindings[0], endpointId: "missing" }],
+      }),
+    ).toThrow();
+    expect(() =>
+      validateConfig({
+        ...config,
+        accounts: [{ ...config.accounts[0], allowedSenders: [] }],
+      }),
+    ).toThrow();
+    expect(validateConfig(config).endpoints[0]?.config).toEqual({
+      authorization: { env: "AGENT_TOKEN" },
+      url: "https://example.test/old",
+    });
+    expect(resolveSecretRef({ env: "TOKEN" }, { TOKEN: "credential" })).toBe(
+      "credential",
+    );
+    expect(() => resolveSecretRef({ env: "TOKEN" }, {})).toThrow(
+      "Missing environment secret",
+    );
+    for (const channel of [
+      "telegram",
+      "discord",
+      "slack",
+      "feishu",
+      "wecom",
+      "dingtalk",
+      "qq",
+      "msteams",
+      "whatsapp",
+      "matrix",
+      "googlechat",
+      "line",
+      "mattermost",
+      "signal",
+      "irc",
+    ])
+      expect(
+        validateConfig({
+          ...config,
+          accounts: [{ ...config.accounts[0], channel }],
+        }).accounts[0]?.channel,
+      ).toBe(channel);
+  });
+});
+it.each([
+  ["utf16", 3, ["a😀", "中b", "😀"]],
+  ["codepoint", 3, ["a😀中", "b😀"]],
+  ["utf8", 5, ["a😀", "中b", "😀"]],
+] as const)("preserves Unicode under %s limits", (unit, maximum, expected) => {
+  expect(chunkText("a😀中b😀", maximum, unit)).toEqual(expected);
+  expect(() => chunkText("\ud800", maximum, unit)).toThrow("Malformed Unicode");
+  expect(() => chunkText("😀", 1, "utf16")).toThrow("cannot fit");
+});
+it("binds accounts, intersects principals, preserves snapshots and isolates routes", async () => {
+  const accepted: InboundSnapshot[] = [];
+  const complete = vi
+    .fn<(input: CompleteInput) => ReturnType<Storage["completeAndEnqueue"]>>()
+    .mockResolvedValue({
+      status: "completed",
+      deliveryId: "recorded",
+      replay: false,
+    });
+  const listPending = vi.fn<Storage["listPending"]>().mockResolvedValue([]);
+  const p = plugins();
+  const runtime = await createCore({
+    config,
+    channels: p.channels,
+    agents: p.agents,
+    worker: { maxHttpBodyBytes: 8 },
+    observe: {
+      log() {},
+      count() {},
+      record() {},
+      span() {
+        return {
+          context: {
+            traceparent:
+              "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+          },
+          end() {},
+        };
+      },
+    },
+    storage: recordingStorage({
+      acceptInbound: async (value) => {
+        accepted.push(value);
+        return { requestId: value.requestId, duplicate: false };
+      },
+      listPending,
+      getInbound: async () => ({
+        snapshot,
+        status: "claimed",
+        version: 2,
+        dispatch: { status: "accepted", attempts: 1, dueAt: 1 },
+      }),
+      completeAndEnqueue: complete,
+    }),
+  });
+  await expect(
+    p.channelHost.ingest({
+      ...incoming,
+      source: { ...incoming.source, accountId: "foreign" },
+    }),
+  ).rejects.toThrow("account_scope_mismatch");
+  await expect(
+    p.channelHost.ingest({ ...incoming, senderId: "bob" }),
+  ).rejects.toThrow("sender_not_allowed");
+  await p.channelHost.ingest(incoming);
+  expect(accepted).toHaveLength(1);
+  expect(accepted[0]?.trace).toEqual({
+    traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+  });
+  expect(accepted[0]?.endpoint.config).toEqual({
+    authorization: { env: "AGENT_TOKEN" },
+    url: "https://example.test/old",
+  });
+  incoming.target.data.durable = "mutated";
+  expect(accepted[0]?.target.data).toEqual({ durable: "address" });
+  incoming.target.data.durable = "address";
+  const scope = p.agentHost.forPrincipal({
+    subject: "verified",
+    endpointIds: ["first", "other", "invented", "first"],
+  });
+  await scope.listPending(10);
+  expect(listPending).toHaveBeenCalledWith({
+    endpointIds: ["first"],
+    limit: 10,
+  });
+  expect(
+    await p.agentHost
+      .forPrincipal({ subject: "verified", endpointIds: ["other"] })
+      .complete({
+        requestId: "req",
+        claimToken: "token",
+        resultId: "final",
+        text: "no authority",
+      }),
+  ).toEqual({ status: "not_found" });
+  expect(complete).not.toHaveBeenCalled();
+  await scope.complete({
+    requestId: "req",
+    claimToken: "token",
+    resultId: "final",
+    text: "a😀中b😀",
+  });
+  const input = complete.mock.calls[0]?.[0];
+  expect(input?.endpointIds).toEqual(["first"]);
+  expect(input?.outbound.target).toEqual(incoming.target);
+  expect(input?.outbound.chunks.map((c) => c.text)).toEqual(["a😀中", "b😀"]);
+  expect(input?.outbound.chunks.map((c) => c.idempotencyKey)).toEqual([
+    `${input?.outbound.deliveryId}:0`,
+    `${input?.outbound.deliveryId}:1`,
+  ]);
+  p.channelHost.mountHttp(
+    "/bytes",
+    async (request) => new Response(await request.arrayBuffer()),
+  );
+  expect(
+    await (
+      await runtime.fetch(
+        new Request("https://relay.test/channels/bot/webhook"),
+      )
+    ).text(),
+  ).toBe("channel");
+  expect(
+    await (
+      await runtime.fetch(new Request("https://relay.test/agents/grok/mcp"))
+    ).text(),
+  ).toBe("agent");
+  expect(
+    (await runtime.fetch(new Request("https://relay.test/webhook"))).status,
+  ).toBe(404);
+  const bytesResponse = await runtime.fetch(
+    new Request("https://relay.test/channels/bot/bytes", {
+      method: "POST",
+      body: new Uint8Array([0, 255, 123]),
+    }),
+  );
+  expect([...new Uint8Array(await bytesResponse.arrayBuffer())]).toEqual([
+    0, 255, 123,
+  ]);
+  expect(
+    (
+      await runtime.fetch(
+        new Request("https://relay.test/channels/bot/bytes", {
+          method: "POST",
+          headers: { "content-length": "1" },
+          body: "123456789",
+        }),
+      )
+    ).status,
+  ).toBe(413);
+  runtime.setAccepting(false);
+  expect(
+    (
+      await runtime.fetch(
+        new Request("https://relay.test/channels/bot/webhook"),
+      )
+    ).status,
+  ).toBe(503);
+});
+it("validates every endpoint before registering any traffic and keeps setup config separate", async () => {
+  const p = plugins();
+  const setup = vi.spyOn(p.channel, "setup");
+  p.dot.validateConfig = () => {
+    throw new Error("invalid endpoint");
+  };
+  await expect(
+    createCore({
+      config,
+      channels: p.channels,
+      agents: p.agents,
+      storage: recordingStorage({}),
+    }),
+  ).rejects.toThrow("invalid endpoint");
+  expect(setup).not.toHaveBeenCalled();
+  p.dot.validateConfig = (value) => value as never;
+  const agentSetup = vi.spyOn(p.grok, "setup");
+  await createCore({
+    config,
+    channels: p.channels,
+    agents: p.agents,
+    storage: recordingStorage({}),
+  });
+  expect(agentSetup.mock.calls[0]?.[2]).toEqual({});
+  expect(agentSetup.mock.calls[0]?.[1]).toEqual([config.endpoints[0]]);
+});
+it("passes lease fences, clamps retry delay, enforces budgets and isolates observers", async () => {
+  const lease = { token: "lease", version: 7, expiresAt: Date.now() + 30000 };
+  const takeDue = vi
+    .fn<Storage["takeDue"]>()
+    .mockResolvedValueOnce([
+      {
+        kind: "dispatch",
+        record: {
+          snapshot,
+          version: 7,
+          status: "pending",
+          dispatch: { status: "due", attempts: 1, dueAt: 0 },
+        },
+        lease,
+      },
+    ])
+    .mockResolvedValue([]);
+  const settlements: Settlement[] = [];
+  const p = plugins(
+    vi.fn().mockResolvedValue({
+      status: "retryable",
+      errorCode: "rate_limit",
+      retryAfterMs: 999999,
+    }),
+  );
+  const runtime = await createCore({
+    config,
+    channels: p.channels,
+    agents: p.agents,
+    storage: recordingStorage({
+      takeDue,
+      settleAttempt: async (input) => {
+        settlements.push(input);
+        return { status: "updated", version: 8 };
+      },
+      getStats: async () => ({
+        pending: 1,
+        claimed: 0,
+        undelivered: 0,
+        unknown: 0,
+      }),
+    }),
+    worker: { retryMaxMs: 5000 },
+    observe: {
+      log() {
+        throw new Error();
+      },
+      count() {
+        throw new Error();
+      },
+      record() {
+        throw new Error();
+      },
+      span() {
+        throw new Error();
+      },
+    },
+  });
+  expect(await runtime.processDue()).toEqual({ processed: 1, conflicts: 0 });
+  expect(settlements[0]?.lease).toEqual(lease);
+  expect((settlements[0]?.nextDueAt ?? 0) - (settlements[0]?.now ?? 0)).toBe(
+    5000,
+  );
+  expect(takeDue.mock.calls[0]?.[0].limit).toBe(1);
+  takeDue.mockResolvedValueOnce([
+    {
+      kind: "dispatch",
+      record: {
+        snapshot,
+        version: 8,
+        status: "pending",
+        dispatch: { status: "due", attempts: 8, dueAt: 0 },
+      },
+      lease,
+    },
+  ]);
+  await runtime.processDue();
+  expect(settlements[1]?.outcome).toEqual({
+    status: "rejected",
+    errorCode: "retry_budget_exhausted",
+  });
+  expect(p.grok.dispatch).toHaveBeenCalledTimes(1);
+});
+it("aborts bounded transport calls and preserves unknown effects", async () => {
+  vi.useFakeTimers();
+  try {
+    const lease = { token: "lease", version: 7, expiresAt: Date.now() + 30000 };
+    const takeDue = vi
+      .fn<Storage["takeDue"]>()
+      .mockResolvedValueOnce([
+        {
+          kind: "dispatch",
+          record: {
+            snapshot,
+            version: 7,
+            status: "pending",
+            dispatch: { status: "due", attempts: 0, dueAt: 0 },
+          },
+          lease,
+        },
+      ])
+      .mockResolvedValue([]);
+    const settleAttempt = vi
+      .fn<Storage["settleAttempt"]>()
+      .mockResolvedValue({ status: "updated", version: 8 });
+    const dispatch = vi
+      .fn<AgentPlugin["dispatch"]>()
+      .mockImplementation(() => new Promise(() => {}));
+    const p = plugins(dispatch);
+    const runtime = await createCore({
+      config,
+      channels: p.channels,
+      agents: p.agents,
+      storage: recordingStorage({
+        takeDue,
+        settleAttempt,
+        getStats: async () => ({
+          pending: 1,
+          claimed: 0,
+          undelivered: 0,
+          unknown: 1,
+        }),
+      }),
+      worker: { callTimeoutMs: 20 },
+    });
+    const processing = runtime.processDue();
+    await vi.advanceTimersByTimeAsync(21);
+    await processing;
+    expect(dispatch.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    expect(settleAttempt.mock.calls[0]?.[0].outcome).toEqual({
+      status: "unknown",
+      errorCode: "call_timeout",
+    });
+    expect(settleAttempt.mock.calls[0]?.[0].lease).toEqual(lease);
+  } finally {
+    vi.useRealTimers();
+  }
+});
