@@ -7,6 +7,13 @@ import {
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
+import {
+  Counter,
+  collectDefaultMetrics,
+  Gauge,
+  Histogram,
+  Registry,
+} from "@prometheus-io/client";
 import type {
   LogFields,
   MetricLabels,
@@ -17,13 +24,6 @@ import type {
   TraceContext,
 } from "@relanox/sdk";
 import pino from "pino";
-import {
-  Counter,
-  collectDefaultMetrics,
-  Gauge,
-  Histogram,
-  Registry,
-} from "prom-client";
 
 const channels = [
   "telegram",

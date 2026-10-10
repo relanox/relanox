@@ -61,6 +61,6 @@ Integration commits and check results will be recorded here as work completes.
 
 - T03: f5f8ead / db9f552 integrated; 11 real SQLite tests, build and typecheck pass. Contract includes rejected dispatch recovery, per-chunk retry budget and redacted request recovery rejection.
 
-- T04: c11c0c0 integrated; 18 observability tests (29 combined), build/typecheck/lint pass. npm now deprecates prom-client in favor of @prometheus-io/client; assess supported replacement during T13 dependency audit.
+- T04: c11c0c0 integrated; 18 observability tests (29 combined), build/typecheck/lint pass. Prometheus client replacement verified separately against the existing 18 behavior tests.
 
 - T02: f70d889 integrated; 8 core policy tests (37 combined), build/typecheck/lint pass. Native plugins now start from the integrated core contract; real end-to-end storage/transport integration remains T12.
