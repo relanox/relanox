@@ -1,0 +1,53 @@
+{
+  "relay": {
+    "accounts": [
+      {
+        "id": "telegram-main",
+        "channel": "telegram",
+        "allowedSenders": ["12345678"],
+        "config": {
+          "botToken": { "env": "TELEGRAM_BOT_TOKEN" },
+          "webhookSecret": { "env": "TELEGRAM_WEBHOOK_SECRET" }
+        }
+      }
+    ],
+    "endpoints": [
+      {
+        "id": "grok-main",
+        "agent": "grok",
+        "dispatchMode": "push",
+        "config": {
+          "mcp": {
+            "token": { "env": "GROK_MCP_TOKEN" },
+            "allowedHosts": ["relay.example.com"],
+            "allowedOrigins": []
+          },
+          "routineUrl": { "env": "GROK_ROUTINE_URL" },
+          "routineAuthorization": { "env": "GROK_ROUTINE_AUTHORIZATION" }
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "accountId": "telegram-main",
+        "chatId": "12345678",
+        "endpointId": "grok-main"
+      }
+    ],
+    "storage": { "plugin": "sqlite", "config": { "filename": "relanox.sqlite" } },
+    "observability": {
+      "plugin": "standard",
+      "config": { "logs": true, "metrics": true, "processMetrics": true }
+    }
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8787,
+    "managementHost": "127.0.0.1",
+    "managementPort": 8788,
+    "workerIntervalMs": 1000,
+    "workerStaleMs": 60000,
+    "startupTimeoutMs": 30000,
+    "shutdownTimeoutMs": 15000
+  }
+}
