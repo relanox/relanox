@@ -5,6 +5,7 @@ import type { Observability } from "@relanox/sdk";
 export function createWorker(core: CoreRuntime, intervalMs: number, observe: Observability) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let working = Promise.resolve();
+  let started = false;
   let stopping = false;
   let failed = false;
   let lastSuccess = 0;
@@ -30,9 +31,12 @@ export function createWorker(core: CoreRuntime, intervalMs: number, observe: Obs
     }
   };
   return {
-    async start() {
+    start() {
+      if (started || stopping) {
+        return;
+      }
+      started = true;
       working = tick();
-      await working;
     },
     healthy(staleMs: number) {
       return !stopping && !failed && lastSuccess > 0 && Date.now() - lastSuccess <= staleMs;
