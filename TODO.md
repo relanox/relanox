@@ -46,7 +46,7 @@ Each task uses a fresh `.worktree/<task>` after prerequisites land on master. In
 - [x] T10: Matrix, Mattermost, Signal, IRC native text receive/send; lifecycle, identity and declared limitations; Vitest tests.
 - [x] T11: CLI assembly of all plugins; validate/migrate/run/status/doctor/requeue; lifecycle, health/metrics, config examples and CLI tests.
 - [x] T12: production core/storage HTTP/socket peer E2E: dispatch/claim/complete/outbound, endpoint isolation, restart and unknown-send recovery.
-- [ ] T13: Docker/Compose, CI with PostgreSQL, user/developer/operator docs, dependency/license audit; full build/typecheck/lint/Vitest/E2E/deployment checks; push final master and clean worktrees.
+- [x] T13: Docker/Compose, CI with PostgreSQL, user/developer/operator docs, dependency/license audit; full build/typecheck/lint/Vitest/E2E/deployment checks; push final master and clean worktrees.
 
 ## Test admission and completion
 
@@ -76,3 +76,5 @@ Integration commits and check results will be recorded here as work completes.
 
 - T10/T11/T12 final integration: all 15 native channels plus dot/Grok are statically assembled. Build, formatting, strict lint, typecheck and 261 Vitest tests pass with real PostgreSQL/SQLite; one container test awaits Linux CI. Complete configuration validates 15 accounts and two agent endpoints without database creation.
 - T13 local audit: 56 production third-party packages have license/NOTICE coverage; pnpm audit --prod reports zero known vulnerabilities at this run. Compose configuration validates. Docker includes notices, non-root runtime and durable volume; CI runs migration/readiness/restart verification. Prometheus example alert rules use exported runtime metrics.
+
+- T13 complete: Linux CI [38081523870](https://github.com/relanox/relanox/actions/runs/38081523870) passed on b67104a: build, formatting, strict lint, typecheck, all 261 database/protocol/CLI tests, production image build, and the additional container migration/readiness/restart test. A Linux-only lock fixture issue was fixed with a real IPC-coordinated subprocess; runtime code was unchanged. All task worktrees/branches were removed and temporary PostgreSQL stopped. No live-account testing was performed.
