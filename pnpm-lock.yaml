@@ -33,6 +33,60 @@ importers:
         specifier: 5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(tsx@4.23.15))
 
+  apps/cli:
+    dependencies:
+      '@hono/node-server':
+        specifier: 2.1.4
+        version: 2.1.4(hono@4.13.13)
+      '@relanox/agent-dot':
+        specifier: workspace:*
+        version: link:../../plugins/agent-dot
+      '@relanox/agent-grok':
+        specifier: workspace:*
+        version: link:../../plugins/agent-grok
+      '@relanox/channel-dingtalk':
+        specifier: workspace:*
+        version: link:../../plugins/channel-dingtalk
+      '@relanox/channel-discord':
+        specifier: workspace:*
+        version: link:../../plugins/channel-discord
+      '@relanox/channel-feishu':
+        specifier: workspace:*
+        version: link:../../plugins/channel-feishu
+      '@relanox/channel-qq':
+        specifier: workspace:*
+        version: link:../../plugins/channel-qq
+      '@relanox/channel-slack':
+        specifier: workspace:*
+        version: link:../../plugins/channel-slack
+      '@relanox/channel-telegram':
+        specifier: workspace:*
+        version: link:../../plugins/channel-telegram
+      '@relanox/channel-wecom':
+        specifier: workspace:*
+        version: link:../../plugins/channel-wecom
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/observability-standard':
+        specifier: workspace:*
+        version: link:../../plugins/observability-standard
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@relanox/storage-postgres':
+        specifier: workspace:*
+        version: link:../../plugins/storage-postgres
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../../plugins/storage-sqlite
+      commander:
+        specifier: 15.0.0
+        version: 15.0.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
   packages/core:
     dependencies:
       '@relanox/sdk':
@@ -144,6 +198,60 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
 
+  plugins/channel-googlechat:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
+
+  plugins/channel-line:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
+
+  plugins/channel-msteams:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
+
   plugins/channel-qq:
     dependencies:
       '@relanox/sdk':
@@ -212,6 +320,22 @@ importers:
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
+
+  plugins/channel-whatsapp:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
 
   plugins/observability-standard:
     dependencies:
@@ -429,6 +553,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@hono/node-server@2.1.4':
+    resolution: {integrity: sha512-2g1qeHl4BduwDn6L8nkAvDrPUWPMlkQ//a5NhP/zIyaXKMjZNRV+cG9Csu+BiJFf6+68pqzjf4Hi5sJGKHuS1g==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      hono: ^4 || ^5.0.0-0
 
   '@jridgewell/resolve-uri@3.1.2':
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
@@ -1090,6 +1220,10 @@ packages:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
     engines: {node: '>=18'}
 
+  commander@15.0.0:
+    resolution: {integrity: sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg==}
+    engines: {node: '>=22.12.0'}
+
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
@@ -1623,6 +1757,10 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@hono/node-server@2.1.4(hono@4.13.13)':
+    dependencies:
+      hono: 4.13.13
+
   '@jridgewell/resolve-uri@3.1.2': {}
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
@@ -2032,6 +2170,8 @@ snapshots:
   bintrees@1.0.2: {}
 
   chai@6.3.0: {}
+
+  commander@15.0.0: {}
 
   cross-spawn@7.0.6:
     dependencies:
