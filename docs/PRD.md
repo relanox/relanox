@@ -8,23 +8,23 @@ Relanox connects messages to the user's existing hosted agents. It validates and
 
 The initial delivery includes **all 15 native text channels**. OpenClaw/Hermes source is reference material only: no plugin runtime, adapter, polyfill, or configuration compatibility. Deploy one resident Node service, with SQLite by default or PostgreSQL, and an independent observability plugin. No Serverless deployment.
 
-| Channel | Required baseline |
-|---|---|
-| Telegram | Bot API authenticated Webhook and independent text send; chat/topic/reply target |
-| Discord | Gateway message reception, REST send, channel/thread and bot identity |
-| Slack | Declared Events HTTP or Socket Mode reception, Web API send, channel/thread |
-| Feishu / Lark | Official event protocol/SDK reception and message API; tenant/domain/thread |
-| WeCom | Intelligent robot WS authentication/reception and independent chat send |
-| DingTalk | Application robot Stream reception and OpenAPI single/group send |
-| QQ | Declared official WS/Webhook reception and C2C/group send; durable sequence/window handling |
-| Microsoft Teams | Authenticated Bot activity endpoint and proactive conversation-reference send |
-| WhatsApp | Business Cloud API Webhook and messages; customer-service text window |
-| Matrix | Client-server sync/send, room/event identity; encrypted input must be explicitly unsupported if E2EE is absent |
-| Google Chat | Authenticated app events and app-authenticated spaces/threads messages |
-| LINE | Signed Messaging API Webhook and independent push to user/group/room |
-| Mattermost | Authenticated WebSocket events and REST posts, channel/thread |
-| Signal | Explicit signal-cli JSON-RPC/SSE service and identity/group send; this is an unofficial Signal client, not an official Bot API |
-| IRC | Configured TLS/server connection, channel/private text, auth, PING and reconnect |
+| Channel         | Required baseline                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Telegram        | Bot API authenticated Webhook and independent text send; chat/topic/reply target                                               |
+| Discord         | Gateway message reception, REST send, channel/thread and bot identity                                                          |
+| Slack           | Declared Events HTTP or Socket Mode reception, Web API send, channel/thread                                                    |
+| Feishu / Lark   | Official event protocol/SDK reception and message API; tenant/domain/thread                                                    |
+| WeCom           | Intelligent robot WS authentication/reception and independent chat send                                                        |
+| DingTalk        | Application robot Stream reception and OpenAPI single/group send                                                               |
+| QQ              | Declared official WS/Webhook reception and C2C/group send; durable sequence/window handling                                    |
+| Microsoft Teams | Authenticated Bot activity endpoint and proactive conversation-reference send                                                  |
+| WhatsApp        | Business Cloud API Webhook and messages; customer-service text window                                                          |
+| Matrix          | Client-server sync/send, room/event identity; encrypted input must be explicitly unsupported if E2EE is absent                 |
+| Google Chat     | Authenticated app events and app-authenticated spaces/threads messages                                                         |
+| LINE            | Signed Messaging API Webhook and independent push to user/group/room                                                           |
+| Mattermost      | Authenticated WebSocket events and REST posts, channel/thread                                                                  |
+| Signal          | Explicit signal-cli JSON-RPC/SSE service and identity/group send; this is an unofficial Signal client, not an official Bot API |
+| IRC             | Configured TLS/server connection, channel/private text, auth, PING and reconnect                                               |
 
 Each native plugin implements text receive, durable handoff, delayed independent send, typed configuration/protocol boundaries, and tests. Long connections implement start/stop/recovery. Message Content intents, account permissions, service windows, and external client prerequisites remain explicit platform constraints.
 

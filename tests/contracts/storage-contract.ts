@@ -1,18 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type {
-  CompleteInput,
-  InboundSnapshot,
-  Storage,
-} from "../../packages/sdk/src/index.js";
+import type { CompleteInput, InboundSnapshot, Storage } from "../../packages/sdk/src/index.js";
+
 export function required<T>(value: T | undefined): T {
-  if (value === undefined) throw new Error("Required durable record is absent");
+  if (value === undefined) {
+    throw new Error("Required durable record is absent");
+  }
   return value;
 }
-export const snapshot = (
-  id = "r1",
-  at = 100,
-  endpoint = "ep",
-): InboundSnapshot => ({
+export const snapshot = (id = "r1", at = 100, endpoint = "ep"): InboundSnapshot => ({
   requestId: id,
   source: { channel: "telegram", accountId: "a", eventId: id },
   senderId: "u",
@@ -33,11 +28,7 @@ export const snapshot = (
     config: { url: "https://agent.example", secret: { env: "TOKEN" } },
   },
 });
-export const completion = (
-  id = "r1",
-  token = "token",
-  resultId = "final",
-): CompleteInput => ({
+export const completion = (id = "r1", token = "token", resultId = "final"): CompleteInput => ({
   requestId: id,
   endpointIds: ["ep"],
   claimToken: token,
@@ -86,6 +77,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         leaseOwner: "worker",
         safeRetryAccountIds,
       });
+
     it.each([99, 100])(
       "holds endpoint exclusivity when a later accepted request sorts before its active claim (%i)",
       async (timestamp) => {
@@ -106,6 +98,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         expect(await claim("a-later")).toMatchObject({ status: "claimed" });
       },
     );
+
     it.each(["rejected", "unknown"] as const)(
       "preserves dispatch ownership and explicit %s recovery across later reordered acceptance",
       async (status) => {
@@ -140,6 +133,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         expect(await claim("a-later")).toMatchObject({ status: "claimed" });
       },
     );
+
     it("keeps the already notified request claimable after reordered acceptance", async () => {
       await s.acceptInbound(snapshot("z-active", 100));
       const work = required((await due(100))[0]);
@@ -158,6 +152,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       expect(await claim("a-later")).toMatchObject({ status: "busy" });
       expect(await claim("z-active")).toMatchObject({ status: "claimed" });
     });
+
     it("starts a fresh delivery retry budget on explicit recovery", async () => {
       await s.acceptInbound(snapshot());
       await claim();
@@ -200,6 +195,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       });
       expect(await due(114)).toHaveLength(1);
     });
+
     it("serializes acceptance and retains source deduplication", async () => {
       const input = snapshot();
       await s.acceptInbound(input);
@@ -214,20 +210,21 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         }),
       ).toEqual({ requestId: "r1", duplicate: true });
       const read = await s.getInbound("r1");
-      (read?.snapshot.endpoint.config as Record<string, unknown>).url =
-        "changed";
+      if (!read) {
+        throw new Error("Accepted request is missing");
+      }
+      (read.snapshot.endpoint.config as Record<string, unknown>).url = "changed";
       expect((await s.getInbound("r1"))?.snapshot.endpoint.config).toEqual({
         url: "https://agent.example",
         secret: { env: "TOKEN" },
       });
     });
+
     it("enforces scoped endpoint FIFO and idempotent claim keys", async () => {
       await s.acceptInbound(snapshot());
       await s.acceptInbound(snapshot("r2", 101));
       expect(await claim("r2")).toEqual({ status: "busy" });
-      expect(
-        await s.listPending({ endpointIds: ["other"], limit: 10 }),
-      ).toEqual([]);
+      expect(await s.listPending({ endpointIds: ["other"], limit: 10 })).toEqual([]);
       expect(
         await s.claimRequest({
           requestId: "r1",
@@ -249,6 +246,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       expect(await claim("r1", "other")).toEqual({ status: "busy" });
       expect(await claim("r2")).toEqual({ status: "busy" });
     });
+
     it("atomically validates frozen final/outbound and replay identity", async () => {
       await s.acceptInbound(snapshot());
       await claim();
@@ -265,9 +263,9 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       });
       expect(await s.getOutbound("d-r1")).toBeUndefined();
       expect((await s.getInbound("r1"))?.status).toBe("claimed");
-      expect(
-        await s.completeAndEnqueue({ ...bad, endpointIds: ["other"] }),
-      ).toEqual({ status: "unauthorized" });
+      expect(await s.completeAndEnqueue({ ...bad, endpointIds: ["other"] })).toEqual({
+        status: "unauthorized",
+      });
       expect(await s.completeAndEnqueue(bad)).toEqual({
         status: "completed",
         deliveryId: "d-r1",
@@ -292,6 +290,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       });
       expect(await s.getOutbound("d-r2")).toBeUndefined();
     });
+
     it("fences concurrent leases and persists partial chunk receipts and unknown recovery", async () => {
       await s.acceptInbound(snapshot());
       await claim();
@@ -359,12 +358,14 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       await due(123);
       const safe = await due(133, ["a"]);
       expect(safe).toHaveLength(1);
-      if (safe[0]?.kind === "send")
+      if (safe[0]?.kind === "send") {
         expect(safe[0].record).toMatchObject({
           currentChunk: 1,
           chunks: [{ idempotencyKey: "c1" }, { idempotencyKey: "c2" }],
         });
+      }
     });
+
     it("keeps processing claims durable and revokes tokens on explicit recovery", async () => {
       await s.acceptInbound(snapshot());
       const work = required((await due(100))[0]);
@@ -393,6 +394,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         status: "unauthorized",
       });
     });
+
     it("uses namespaced state CAS and database admin aggregates", async () => {
       const ns = { pluginId: "dot", ownerId: "a" };
       expect(
@@ -410,12 +412,8 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
           value: null,
         }),
       ).toEqual({ status: "conflict" });
-      expect(
-        await s.getState({ ...ns, ownerId: "b" }, "sub:1"),
-      ).toBeUndefined();
-      expect(
-        await s.listState(ns, { prefix: "sub:", expiresBefore: 120, limit: 1 }),
-      ).toEqual([
+      expect(await s.getState({ ...ns, ownerId: "b" }, "sub:1")).toBeUndefined();
+      expect(await s.listState(ns, { prefix: "sub:", expiresBefore: 120, limit: 1 })).toEqual([
         {
           key: "sub:1",
           value: { url: "original" },
@@ -448,11 +446,10 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         oldestPendingAt: 101,
       });
       expect(
-        (await s.listInbound({ limit: 1, afterId: "r1" })).map(
-          (x) => x.snapshot.requestId,
-        ),
+        (await s.listInbound({ limit: 1, afterId: "r1" })).map((x) => x.snapshot.requestId),
       ).toEqual(["r2"]);
     });
+
     it("redacts only terminal delivered work while preserving replay equality", async () => {
       await s.acceptInbound(snapshot());
       await claim();
@@ -495,6 +492,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         }),
       ).toEqual({ status: "conflict" });
     });
+
     it("recovers rejected dispatch explicitly and releases FIFO after finalization", async () => {
       await s.acceptInbound(snapshot());
       await s.acceptInbound(snapshot("r2", 101));
@@ -551,14 +549,16 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       });
       expect(await due(149)).toEqual([]);
       const retry = required((await due(150))[0]);
-      if (retry.kind === "send")
+      if (retry.kind === "send") {
         expect(retry.record).toMatchObject({
           currentChunk: 0,
           receipts: [],
           chunks: [{ idempotencyKey: "c1" }, { idempotencyKey: "c2" }],
           attempts: 1,
         });
+      }
     });
+
     it("rejects non-JSON durable data and rolls back outbound/final on serialization failure", async () => {
       await expect(
         s.acceptInbound({
@@ -585,6 +585,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         status: "completed",
       });
     });
+
     it("scopes idempotent failure and preserves failed recovery fences", async () => {
       await s.acceptInbound(snapshot());
       await claim();

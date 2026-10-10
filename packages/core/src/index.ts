@@ -24,12 +24,7 @@ import type {
 import { Hono } from "hono";
 import { z } from "zod";
 import { chunkText } from "./chunk.js";
-import {
-  bindingKey,
-  jsonSnapshot,
-  validateConfig,
-  validateJson,
-} from "./config.js";
+import { bindingKey, jsonSnapshot, validateConfig, validateJson } from "./config.js";
 import { safeObservability } from "./observe.js";
 
 export * from "./chunk.js";
@@ -66,24 +61,24 @@ export interface CoreOptions {
 const workerSchema = z
   .strictObject({
     batchSize: z.number().int().min(1).max(1000).default(32),
-    batchDurationMs: z.number().int().min(1).max(300000).default(30000),
-    callTimeoutMs: z.number().int().min(1).max(120000).default(10000),
-    leaseMs: z.number().int().min(1).max(300000).default(30000),
+    batchDurationMs: z.number().int().min(1).max(300_000).default(30_000),
+    callTimeoutMs: z.number().int().min(1).max(120_000).default(10_000),
+    leaseMs: z.number().int().min(1).max(300_000).default(30_000),
     maxAttempts: z.number().int().min(1).max(100).default(8),
-    retryBaseMs: z.number().int().min(1).max(300000).default(1000),
-    retryMaxMs: z.number().int().min(1).max(3600000).default(300000),
-    notificationIntervalMs: z.number().int().min(1).max(3600000).default(60000),
-    maxTextBytes: z.number().int().min(1).max(16777216).default(1048576),
-    maxContextBytes: z.number().int().min(1).max(1048576).default(65536),
-    maxHttpBodyBytes: z.number().int().min(1).max(16777216).default(2097152),
+    retryBaseMs: z.number().int().min(1).max(300_000).default(1000),
+    retryMaxMs: z.number().int().min(1).max(3_600_000).default(300_000),
+    notificationIntervalMs: z.number().int().min(1).max(3_600_000).default(60_000),
+    maxTextBytes: z.number().int().min(1).max(16_777_216).default(1_048_576),
+    maxContextBytes: z.number().int().min(1).max(1_048_576).default(65_536),
+    maxHttpBodyBytes: z.number().int().min(1).max(16_777_216).default(2_097_152),
   })
   .superRefine((v, ctx) => {
-    if (v.leaseMs <= v.callTimeoutMs || v.retryMaxMs < v.retryBaseMs)
+    if (v.leaseMs <= v.callTimeoutMs || v.retryMaxMs < v.retryBaseMs) {
       ctx.addIssue({
         code: "custom",
-        message:
-          "Lease must exceed call timeout; retry maximum must exceed base",
+        message: "Lease must exceed call timeout; retry maximum must exceed base",
       });
+    }
   });
 const textId = z.string().min(1).max(1024);
 const ingestSchema = z.strictObject({
@@ -102,13 +97,11 @@ const ingestSchema = z.strictObject({
     replyToId: textId.optional(),
     data: z.json(),
   }),
-  receivedAt: z.number().int().nonnegative().safe(),
+  receivedAt: z.number().int().nonnegative(),
   context: z.json(),
   trace: z
     .strictObject({
-      traceparent: z
-        .string()
-        .regex(/^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/),
+      traceparent: z.string().regex(/^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/u),
       tracestate: z.string().max(512).optional(),
     })
     .optional(),
@@ -149,18 +142,17 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   const app = new Hono();
   const endpoints = new Map(config.endpoints.map((e) => [e.id, e]));
   const bindings = new Map(
-    config.bindings.map((b) => [
-      bindingKey(b.accountId, b.chatId, b.threadId),
-      b,
-    ]),
+    config.bindings.map((b) => [bindingKey(b.accountId, b.chatId, b.threadId), b]),
   );
-  const connections = new Map<
-    string,
-    "connected" | "disconnected" | "degraded"
-  >();
+  const connections = new Map<string, "connected" | "disconnected" | "degraded">();
   const routes = new Set<string>();
   const componentPlugins = new Map<string, string>();
   let accepting = true;
+  function requireAccepting(): void {
+    if (!accepting) {
+      throw new CoreError("not_accepting");
+    }
+  }
   let busy = false;
   let workerError = false;
   const owner = crypto.randomUUID();
@@ -179,11 +171,9 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
       span.end("error");
       throw error;
     } finally {
-      observe.record(
-        "relanox_storage_duration_seconds",
-        (Date.now() - start) / 1000,
-        { operation },
-      );
+      observe.record("relanox_storage_duration_seconds", (Date.now() - start) / 1000, {
+        operation,
+      });
     }
   }
   async function refreshStats(): Promise<void> {
@@ -213,19 +203,14 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
       plugin.channel !== account.channel ||
       plugin.sdkMajor !== 1 ||
       plugin.runtime !== "node"
-    )
+    ) {
       throw new CoreError("channel_plugin_mismatch");
-    chunkText(
-      "",
-      plugin.capabilities.maxTextLength,
-      plugin.capabilities.lengthUnit,
-    );
-    accountValidated.set(
-      account.id,
-      plugin.validateConfig(jsonSnapshot(account.config)),
-    );
-    if (plugin.capabilities.transport !== "http")
+    }
+    chunkText("", plugin.capabilities.maxTextLength, plugin.capabilities.lengthUnit);
+    accountValidated.set(account.id, plugin.validateConfig(jsonSnapshot(account.config)));
+    if (plugin.capabilities.transport !== "http") {
       connections.set(`channels/${account.id}`, "disconnected");
+    }
   }
   for (const endpoint of config.endpoints) {
     const plugin = options.agents.get(endpoint.agent);
@@ -234,18 +219,20 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
       plugin.agent !== endpoint.agent ||
       plugin.sdkMajor !== 1 ||
       plugin.runtime !== "node"
-    )
+    ) {
       throw new CoreError("agent_plugin_mismatch");
+    }
     plugin.validateConfig(jsonSnapshot(endpoint.config));
   }
   function boundedText(text: string, nonempty = true): void {
     if (
       typeof text !== "string" ||
-      (nonempty && !text.length) ||
+      (nonempty && text.length === 0) ||
       !text.isWellFormed() ||
       new TextEncoder().encode(text).length > worker.maxTextBytes
-    )
+    ) {
       throw new CoreError("invalid_text");
+    }
   }
   function common(namespace: StateNamespace, prefix: string): CommonHost {
     componentPlugins.set(prefix.slice(1), namespace.pluginId);
@@ -253,8 +240,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
       observe,
       state: {
         get: (key) => storage.getState(namespace, textId.parse(key)),
-        list: (input) =>
-          storage.listState(namespace, { ...input, limit: limit(input.limit) }),
+        list: (input) => storage.listState(namespace, { ...input, limit: limit(input.limit) }),
         compareAndSet: (input) =>
           storage.compareAndSetState(namespace, {
             ...input,
@@ -271,25 +257,27 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
       mountHttp(path, handler) {
         if (
           !path.startsWith("/") ||
-          /[?#\\]|\.\.|\/\//.test(path) ||
-          !/^\/[A-Za-z0-9/_-]*\*?$/.test(path)
-        )
+          /[?#\\]|\.\.|\/\//u.test(path) ||
+          !/^\/[A-Za-z0-9/_-]*\*?$/u.test(path)
+        ) {
           throw new CoreError("invalid_route_path");
+        }
         const route = prefix + (path === "/" ? "" : path);
-        if (routes.has(route)) throw new CoreError("duplicate_route");
+        if (routes.has(route)) {
+          throw new CoreError("duplicate_route");
+        }
         routes.add(route);
         app.all(route, async (context) => {
-          if (!accepting) return context.json({ error: "not_accepting" }, 503);
+          if (!accepting) {
+            return context.json({ error: "not_accepting" }, 503);
+          }
           return handler(context.req.raw);
         });
       },
       connection(status) {
         connections.set(prefix.slice(1), status);
         const allConnected = [...connections]
-          .filter(
-            ([component]) =>
-              componentPlugins.get(component) === namespace.pluginId,
-          )
+          .filter(([component]) => componentPlugins.get(component) === namespace.pluginId)
           .every(([, componentStatus]) => componentStatus === "connected");
         observe.record("relanox_connection_status", allConnected ? 1 : 0, {
           plugin: namespace.pluginId,
@@ -299,14 +287,13 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   }
   for (const account of config.accounts) {
     const plugin = options.channels.get(account.id);
-    if (!plugin) throw new CoreError("channel_plugin_mismatch");
+    if (!plugin) {
+      throw new CoreError("channel_plugin_mismatch");
+    }
     const host: ChannelHost = {
-      ...common(
-        { pluginId: plugin.id, ownerId: account.id },
-        `/channels/${account.id}`,
-      ),
+      ...common({ pluginId: plugin.id, ownerId: account.id }, `/channels/${account.id}`),
       async ingest(input: IngestInput) {
-        if (!accepting) throw new CoreError("not_accepting");
+        requireAccepting();
         ingestSchema.parse(input);
         boundedText(input.text);
         if (
@@ -314,26 +301,31 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
           input.target.accountId !== account.id ||
           input.source.channel !== account.channel ||
           input.target.channel !== account.channel
-        )
+        ) {
           throw new CoreError("account_scope_mismatch");
+        }
         if (
-          new TextEncoder().encode(
-            JSON.stringify([input.context, input.target.data]),
-          ).length > worker.maxContextBytes
-        )
+          new TextEncoder().encode(JSON.stringify([input.context, input.target.data])).length >
+          worker.maxContextBytes
+        ) {
           throw new CoreError("context_too_large");
+        }
         const binding = bindings.get(
           bindingKey(account.id, input.target.chatId, input.target.threadId),
         );
-        if (!binding) throw new CoreError("unbound_conversation");
+        if (!binding) {
+          throw new CoreError("unbound_conversation");
+        }
         if (
           !account.allowedSenders.includes(input.senderId) ||
-          (binding.allowedSenders &&
-            !binding.allowedSenders.includes(input.senderId))
-        )
+          (binding.allowedSenders && !binding.allowedSenders.includes(input.senderId))
+        ) {
           throw new CoreError("sender_not_allowed");
+        }
         const endpoint = endpoints.get(binding.endpointId);
-        if (!endpoint) throw new CoreError("unbound_endpoint");
+        if (!endpoint) {
+          throw new CoreError("unbound_endpoint");
+        }
         const receipt = await traced(
           "ingest",
           (trace) =>
@@ -352,27 +344,21 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
           channel: account.channel,
           outcome: receipt.duplicate ? "duplicate" : "accepted",
         });
-        observe.log(
-          "info",
-          receipt.duplicate ? "inbound.duplicate" : "inbound.accepted",
-          {
-            plugin: "core",
-            requestId: receipt.requestId,
-            outcome: receipt.duplicate ? "duplicate" : "accepted",
-          },
-        );
+        observe.log("info", receipt.duplicate ? "inbound.duplicate" : "inbound.accepted", {
+          plugin: "core",
+          requestId: receipt.requestId,
+          outcome: receipt.duplicate ? "duplicate" : "accepted",
+        });
         return receipt;
       },
     };
-    await plugin.setup(
-      host,
-      jsonSnapshot(account),
-      accountValidated.get(account.id),
-    );
+    await plugin.setup(host, jsonSnapshot(account), accountValidated.get(account.id));
   }
   for (const agent of new Set(config.endpoints.map((e) => e.agent))) {
     const plugin = options.agents.get(agent);
-    if (!plugin) throw new CoreError("agent_plugin_mismatch");
+    if (!plugin) {
+      throw new CoreError("agent_plugin_mismatch");
+    }
     const agentEndpoints = config.endpoints.filter((e) => e.agent === agent);
     const host: AgentHost = {
       ...common({ pluginId: plugin.id, ownerId: agent }, `/agents/${agent}`),
@@ -382,8 +368,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
           agentEndpoints.some((e) => e.id === id),
         );
         return {
-          listPending: (count) =>
-            storage.listPending({ endpointIds: scope, limit: limit(count) }),
+          listPending: (count) => storage.listPending({ endpointIds: scope, limit: limit(count) }),
           claim: (requestId, claimKey) =>
             traced("claim", () =>
               storage.claimRequest({
@@ -400,18 +385,19 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
             textId.parse(input.resultId);
             boundedText(input.text);
             const request = await storage.getInbound(input.requestId);
-            if (!request || !scope.includes(request.snapshot.endpoint.id))
+            if (!request || !scope.includes(request.snapshot.endpoint.id)) {
               return { status: "not_found" };
-            const plugin = options.channels.get(
-              request.snapshot.target.accountId,
-            );
-            if (!plugin) throw new CoreError("channel_plugin_missing");
+            }
+            const channelPlugin = options.channels.get(request.snapshot.target.accountId);
+            if (!channelPlugin) {
+              throw new CoreError("channel_plugin_missing");
+            }
             const deliveryId = crypto.randomUUID();
             const now = Date.now();
             const chunks = chunkText(
               input.text,
-              plugin.capabilities.maxTextLength,
-              plugin.capabilities.lengthUnit,
+              channelPlugin.capabilities.maxTextLength,
+              channelPlugin.capabilities.lengthUnit,
             ).map((text, index) => ({
               text,
               idempotencyKey: `${deliveryId}:${index}`,
@@ -442,19 +428,18 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
                     attempts: 0,
                     dueAt: now,
                     createdAt: now,
-                    ...(request.snapshot.trace
-                      ? { trace: request.snapshot.trace }
-                      : {}),
+                    ...(request.snapshot.trace ? { trace: request.snapshot.trace } : {}),
                   },
                 }),
               request.snapshot.trace,
             );
-            if (result.status === "completed" && !result.replay)
+            if (result.status === "completed" && !result.replay) {
               observe.record(
                 "relanox_result_duration_seconds",
                 Math.max(0, (now - request.snapshot.acceptedAt) / 1000),
                 { agent },
               );
+            }
             observe.log("info", "complete.completed", {
               plugin: "core",
               requestId: input.requestId,
@@ -470,7 +455,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
                 claimToken: textId.parse(input.claimToken),
                 errorCode: z
                   .string()
-                  .regex(/^[a-zA-Z0-9_-]{1,128}$/)
+                  .regex(/^[a-zA-Z0-9_-]{1,128}$/u)
                   .parse(input.errorCode),
                 now: Date.now(),
               }),
@@ -480,13 +465,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
     };
     await plugin.setup(host, jsonSnapshot(agentEndpoints), {});
   }
-  app.onError(
-    () =>
-      new Response(JSON.stringify({ error: "internal_error" }), {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      }),
-  );
+  app.onError(() => Response.json({ error: "internal_error" }, { status: 500 }));
   const safeRetryAccountIds = config.accounts
     .filter((a) => options.channels.get(a.id)?.capabilities.idempotentSend)
     .map((a) => a.id);
@@ -508,30 +487,29 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
           resolve({ status: "unknown", errorCode: "call_timeout" });
         }, worker.callTimeoutMs);
       });
-      const chunk =
-        work.kind === "send"
-          ? work.record.chunks[work.record.currentChunk]
-          : undefined;
-      if (work.kind === "send" && !chunk)
+      const chunk = work.kind === "send" ? work.record.chunks[work.record.currentChunk] : undefined;
+      if (work.kind === "send" && !chunk) {
         return { status: "rejected", errorCode: "invalid_chunk_index" };
-      const operation =
-        work.kind === "dispatch"
-          ? options.agents.get(work.record.snapshot.endpoint.agent)?.dispatch({
-              request: jsonSnapshot(work.record.snapshot),
-              signal: controller.signal,
-            })
-          : chunk
-            ? options.channels.get(work.record.target.accountId)?.send({
-                deliveryId: work.record.deliveryId,
-                requestId: work.record.requestId,
-                target: jsonSnapshot(work.record.target),
-                chunk: jsonSnapshot(chunk),
-                chunkIndex: work.record.currentChunk,
-                signal: controller.signal,
-              })
-            : undefined;
-      if (!operation)
+      }
+      let operation: Promise<DispatchResult | SendResult> | undefined;
+      if (work.kind === "dispatch") {
+        operation = options.agents.get(work.record.snapshot.endpoint.agent)?.dispatch({
+          request: jsonSnapshot(work.record.snapshot),
+          signal: controller.signal,
+        });
+      } else if (chunk) {
+        operation = options.channels.get(work.record.target.accountId)?.send({
+          deliveryId: work.record.deliveryId,
+          requestId: work.record.requestId,
+          target: jsonSnapshot(work.record.target),
+          chunk: jsonSnapshot(chunk),
+          chunkIndex: work.record.currentChunk,
+          signal: controller.signal,
+        });
+      }
+      if (!operation) {
         return { status: "rejected", errorCode: "plugin_missing" };
+      }
       const result = await Promise.race([operation, timeout]);
       const valid = validateOutcome(result, work.kind);
       successful = valid.status === "sent" || valid.status === "accepted";
@@ -539,7 +517,9 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
     } catch {
       return { status: "unknown", errorCode: "plugin_exception" };
     } finally {
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
       span.end(successful ? "ok" : "error");
       observe.record(
         work.kind === "dispatch"
@@ -563,43 +543,33 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
       const start = Date.now();
       try {
         return await app.fetch(
-          await boundedRequest(
-            request,
-            worker.maxHttpBodyBytes,
-            worker.callTimeoutMs,
-          ),
+          await boundedRequest(request, worker.maxHttpBodyBytes, worker.callTimeoutMs),
         );
       } catch (error) {
-        const code =
-          error instanceof CoreError ? error.code : "invalid_request";
-        return new Response(JSON.stringify({ error: code }), {
-          status:
-            code === "body_too_large"
-              ? 413
-              : code === "request_timeout"
-                ? 408
-                : 400,
-          headers: { "content-type": "application/json" },
-        });
+        const code = error instanceof CoreError ? error.code : "invalid_request";
+        let status = 400;
+        if (code === "body_too_large") {
+          status = 413;
+        } else if (code === "request_timeout") {
+          status = 408;
+        }
+        return Response.json({ error: code }, { status });
       } finally {
-        observe.record(
-          "relanox_http_duration_seconds",
-          (Date.now() - start) / 1000,
-          { operation: "http" },
-        );
+        observe.record("relanox_http_duration_seconds", (Date.now() - start) / 1000, {
+          operation: "http",
+        });
       }
     },
     async processDue() {
-      if (busy) return { processed: 0, conflicts: 0 };
+      if (busy) {
+        return { processed: 0, conflicts: 0 };
+      }
       busy = true;
       const start = Date.now();
       let processed = 0;
       let conflicts = 0;
       try {
-        while (
-          processed < worker.batchSize &&
-          Date.now() - start < worker.batchDurationMs
-        ) {
+        while (processed < worker.batchSize && Date.now() - start < worker.batchDurationMs) {
           // Lease one at a time, so queued calls cannot expire behind earlier slow calls.
           const work = (
             await storage.takeDue({
@@ -610,39 +580,23 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
               safeRetryAccountIds,
             })
           )[0];
-          if (!work) break;
+          if (!work) {
+            break;
+          }
           const attempts =
-            work.kind === "dispatch"
-              ? work.record.dispatch.attempts
-              : work.record.attempts;
+            work.kind === "dispatch" ? work.record.dispatch.attempts : work.record.attempts;
           let outcome: DispatchResult | SendResult =
             attempts >= worker.maxAttempts
               ? { status: "rejected", errorCode: "retry_budget_exhausted" }
               : await invoke(work);
-          if (
-            (outcome.status === "retryable" || outcome.status === "accepted") &&
-            attempts + 1 >= worker.maxAttempts
-          )
+          if (retryBudgetExhausted(outcome, attempts, worker.maxAttempts)) {
             outcome = {
               status: "rejected",
               errorCode: "retry_budget_exhausted",
             };
+          }
           const now = Date.now();
-          const delay =
-            outcome.status === "accepted"
-              ? worker.notificationIntervalMs
-              : outcome.status === "retryable"
-                ? Math.max(
-                    worker.retryBaseMs,
-                    Math.min(
-                      worker.retryMaxMs,
-                      Number.isFinite(outcome.retryAfterMs) &&
-                        (outcome.retryAfterMs ?? 0) >= 0
-                        ? (outcome.retryAfterMs ?? 0)
-                        : worker.retryBaseMs * 2 ** attempts,
-                    ),
-                  )
-                : 0;
+          const delay = retryDelay(outcome, attempts, worker);
           const settlement =
             work.kind === "dispatch"
               ? await storage.settleAttempt({
@@ -661,49 +615,40 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
                   nextDueAt: now + delay,
                   now,
                 });
-          if (settlement.status !== "updated") conflicts++;
+          if (settlement.status !== "updated") {
+            conflicts++;
+          }
           processed++;
-          if (work.kind === "dispatch")
+          if (work.kind === "dispatch") {
             observe.count("relanox_dispatch_total", {
               agent: work.record.snapshot.endpoint.agent,
               outcome: outcome.status,
             });
-          else
+          } else {
             observe.count("relanox_delivery_total", {
               channel: work.record.target.channel,
               outcome: outcome.status,
             });
-          if (outcome.status === "retryable")
+          }
+          if (outcome.status === "retryable") {
             observe.count("relanox_retries_total", { operation: work.kind });
+          }
           observe.log(
-            outcome.status === "unknown" || outcome.status === "rejected"
-              ? "warn"
-              : "info",
-            work.kind === "dispatch"
-              ? "dispatch.completed"
-              : "delivery.completed",
+            outcome.status === "unknown" || outcome.status === "rejected" ? "warn" : "info",
+            work.kind === "dispatch" ? "dispatch.completed" : "delivery.completed",
             {
               plugin: "core",
               operation: work.kind === "dispatch" ? "dispatch" : "send",
               requestId:
-                work.kind === "dispatch"
-                  ? work.record.snapshot.requestId
-                  : work.record.requestId,
-              ...(work.kind === "send"
-                ? { deliveryId: work.record.deliveryId }
-                : {}),
+                work.kind === "dispatch" ? work.record.snapshot.requestId : work.record.requestId,
+              ...(work.kind === "send" ? { deliveryId: work.record.deliveryId } : {}),
               outcome: outcome.status,
-              ...("errorCode" in outcome
-                ? { errorCode: outcome.errorCode }
-                : {}),
+              ...("errorCode" in outcome ? { errorCode: outcome.errorCode } : {}),
             },
           );
         }
         workerError = false;
-        observe.record(
-          "relanox_worker_last_success_timestamp_seconds",
-          Date.now() / 1000,
-        );
+        observe.record("relanox_worker_last_success_timestamp_seconds", Date.now() / 1000);
         await refreshStats();
         return { processed, conflicts };
       } catch (error) {
@@ -713,8 +658,8 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
         busy = false;
       }
     },
-    async status(filter = { limit: 100 }) {
-      const bounded = { ...filter, limit: limit(filter.limit) };
+    async status(filter) {
+      const bounded = { ...filter, limit: limit(filter?.limit ?? 100) };
       const [stats, requests, deliveries] = await Promise.all([
         storage.getStats(),
         storage.listInbound(bounded),
@@ -730,31 +675,27 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
     health,
     async readiness() {
       const status = await health();
-      if (!status.ok) return status;
-      if (!accepting) return { ok: false, errorCode: "not_accepting" };
-      if (workerError) return { ok: false, errorCode: "worker_failed" };
+      if (!status.ok) {
+        return status;
+      }
+      if (!accepting) {
+        return { ok: false, errorCode: "not_accepting" };
+      }
+      if (workerError) {
+        return { ok: false, errorCode: "worker_failed" };
+      }
       return { ok: true };
     },
     cleanup: (input) =>
       storage.cleanup({
-        before: z
-          .number()
-          .int()
-          .nonnegative()
-          .safe()
-          .max(Date.now())
-          .parse(input.before),
+        before: z.number().int().nonnegative().max(Date.now()).parse(input.before),
         limit: limit(input.limit),
       }),
     requeue: (input) =>
       storage.requeue({
         ...input,
         id: textId.parse(input.id),
-        expectedVersion: z
-          .number()
-          .int()
-          .positive()
-          .parse(input.expectedVersion),
+        expectedVersion: z.number().int().positive().parse(input.expectedVersion),
         now: Date.now(),
       }),
     setAccepting(value) {
@@ -767,12 +708,12 @@ function limit(value: number): number {
 }
 const errorOutcome = z.strictObject({
   status: z.enum(["rejected", "unknown"]),
-  errorCode: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
+  errorCode: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u),
 });
 const retryOutcome = z.strictObject({
   status: z.literal("retryable"),
-  errorCode: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
-  retryAfterMs: z.number().finite().nonnegative().optional(),
+  errorCode: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u),
+  retryAfterMs: z.number().nonnegative().optional(),
 });
 const dispatchOutcome = z.union([
   z.strictObject({ status: z.literal("accepted") }),
@@ -790,13 +731,8 @@ const sendOutcome = z.union([
   retryOutcome,
   errorOutcome,
 ]);
-function validateOutcome(
-  input: unknown,
-  kind: "dispatch" | "send",
-): DispatchResult | SendResult {
-  const result = (
-    kind === "dispatch" ? dispatchOutcome : sendOutcome
-  ).safeParse(input);
+function validateOutcome(input: unknown, kind: "dispatch" | "send"): DispatchResult | SendResult {
+  const result = (kind === "dispatch" ? dispatchOutcome : sendOutcome).safeParse(input);
   return result.success
     ? (result.data as DispatchResult | SendResult)
     : { status: "unknown", errorCode: "invalid_plugin_outcome" };
@@ -806,7 +742,9 @@ async function boundedRequest(
   maximum: number,
   timeoutMs: number,
 ): Promise<Request> {
-  if (!request.body) return request;
+  if (!request.body) {
+    return request;
+  }
   const reader = request.body.getReader();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const chunks: Uint8Array[] = [];
@@ -814,9 +752,13 @@ async function boundedRequest(
   const read = async () => {
     while (true) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
       size += value.byteLength;
-      if (size > maximum) throw new CoreError("body_too_large");
+      if (size > maximum) {
+        throw new CoreError("body_too_large");
+      }
       chunks.push(value);
     }
     const bytes = new Uint8Array(size);
@@ -825,22 +767,56 @@ async function boundedRequest(
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return new Request(request, { body: bytes });
+    return new Request(request, { method: request.method, body: bytes });
   };
   try {
     return await Promise.race([
       read(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new CoreError("request_timeout")),
-          timeoutMs,
-        );
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new CoreError("request_timeout"));
+        }, timeoutMs);
       }),
     ]);
   } catch (error) {
     void reader.cancel().catch(() => {});
     throw error;
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
+}
+
+function retryDelay(
+  outcome: DispatchResult | SendResult,
+  attempts: number,
+  worker: z.output<typeof workerSchema>,
+): number {
+  let delay = 0;
+  if (outcome.status === "accepted") {
+    delay = worker.notificationIntervalMs;
+  } else if (outcome.status === "retryable") {
+    delay = Math.max(
+      worker.retryBaseMs,
+      Math.min(
+        worker.retryMaxMs,
+        Number.isFinite(outcome.retryAfterMs) && (outcome.retryAfterMs ?? 0) >= 0
+          ? (outcome.retryAfterMs ?? 0)
+          : worker.retryBaseMs * 2 ** attempts,
+      ),
+    );
+  }
+
+  return delay;
+}
+
+function retryBudgetExhausted(
+  outcome: DispatchResult | SendResult,
+  attempts: number,
+  maximum: number,
+): boolean {
+  return (
+    (outcome.status === "retryable" || outcome.status === "accepted") && attempts + 1 >= maximum
+  );
 }

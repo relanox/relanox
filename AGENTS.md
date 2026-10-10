@@ -23,4 +23,6 @@ External protocol peers may record real HTTP/socket traffic, but must not implem
 
 ## Commits
 
+Use Oxfmt and type-aware Oxlint through the root scripts. Read `docs/CODE_QUALITY.md`. Run `pnpm format`, `pnpm lint`, `pnpm typecheck`, and relevant Vitest checks before committing. The tracked pre-commit hook must pass; never use `--no-verify` or disable rules just to integrate work. Keep complexity <=20 and nesting <=4; split meaningful operations instead of dense nested expressions. New test folders must have a discoverable tsconfig so type-aware linting uses real types. No new Biome/ESLint/Prettier formatter layer.
+
 Before every git commit, inspect recent messages (`git log --oneline -20`) and match the dominant recent convention. The empty repository starts with Conventional Commits. Commit coherent tasks, never secrets/reference clones/worktrees/build output. Never force-push. Subagents commit their assigned work; root alone integrates and pushes master.

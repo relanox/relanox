@@ -1,7 +1,7 @@
-import { noopObservability, type Observability } from "@relanox/sdk";
-export function safeObservability(
-  delegate: Observability = noopObservability,
-): Observability {
+import { noopObservability } from "@relanox/sdk";
+import type { Observability } from "@relanox/sdk";
+
+export function safeObservability(delegate: Observability = noopObservability): Observability {
   return {
     log(...args) {
       try {
@@ -25,7 +25,9 @@ export function safeObservability(
         return {
           ...(span.context ? { context: span.context } : {}),
           end(outcome) {
-            if (ended) return;
+            if (ended) {
+              return;
+            }
             ended = true;
             try {
               span.end(outcome);

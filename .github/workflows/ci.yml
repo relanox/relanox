@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: relanox
+          POSTGRES_PASSWORD: relanox-test
+          POSTGRES_DB: relanox_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U relanox -d relanox_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      RELANOX_TEST_POSTGRES_URL: postgresql://relanox:relanox-test@127.0.0.1:5432/relanox_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm check

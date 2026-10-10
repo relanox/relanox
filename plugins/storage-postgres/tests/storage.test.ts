@@ -10,7 +10,7 @@ import {
 } from "../../../tests/contracts/storage-contract.js";
 import { createPostgresStorage, postgresStoragePlugin } from "../src/index.js";
 
-const enabled = !!process.env.RELANOX_TEST_POSTGRES_URL;
+const enabled = Boolean(process.env.RELANOX_TEST_POSTGRES_URL);
 const schemaName = () => `relanox_test_${randomUUID().replaceAll("-", "")}`;
 const open = (schema: string): Storage =>
   createPostgresStorage({
@@ -19,7 +19,9 @@ const open = (schema: string): Storage =>
   });
 async function drop(schema: string) {
   const connectionString = process.env.RELANOX_TEST_POSTGRES_URL;
-  if (!connectionString) throw new Error("Test PostgreSQL URL required");
+  if (!connectionString) {
+    throw new Error("Test PostgreSQL URL required");
+  }
   const pool = new Pool({ connectionString });
   try {
     await pool.query(`DROP SCHEMA "${schema}" CASCADE`);
@@ -28,7 +30,7 @@ async function drop(schema: string) {
   }
 }
 
-describe.skipIf(!enabled)("PostgreSQL real database", () => {
+describe.skipIf(!enabled)("postgreSQL real database", () => {
   storageContract("PostgreSQL shared storage contract", async () => {
     const schema = schemaName();
     const storage = open(schema);
@@ -151,10 +153,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
           claimToken: token,
           now: 105,
         });
-      const claims = await Promise.all([
-        claim(a, firstId, "first"),
-        claim(b, "r2", "second"),
-      ]);
+      const claims = await Promise.all([claim(a, firstId, "first"), claim(b, "r2", "second")]);
       expect(claims[0]).toMatchObject({ status: "claimed" });
       expect(claims[1]).toEqual({ status: "busy" });
       await a.acceptInbound(snapshot("r3", 101, "independent"));
@@ -175,12 +174,8 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
       expect(finals.filter((r) => r.status === "completed")).toHaveLength(1);
       expect(finals.filter((r) => r.status === "conflict")).toHaveLength(1);
       expect(await a.listOutbound({ limit: 10 })).toHaveLength(1);
-      expect(
-        await a.listInbound({ requestStatus: "completed", limit: 10 }),
-      ).toHaveLength(1);
-      expect(
-        await a.listInbound({ requestStatus: "claimed", limit: 10 }),
-      ).toHaveLength(1);
+      expect(await a.listInbound({ requestStatus: "completed", limit: 10 })).toHaveLength(1);
+      expect(await a.listInbound({ requestStatus: "claimed", limit: 10 })).toHaveLength(1);
       const ns = { pluginId: "dot", ownerId: "a" };
       const creates = await Promise.all([
         a.compareAndSetState(ns, {
@@ -233,8 +228,9 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
         claimToken: "head",
         now: 101,
       });
-      for (const id of ["a-next1", "a-next2", "a-next3"])
+      for (const id of ["a-next1", "a-next2", "a-next3"]) {
         await s.acceptInbound(snapshot(id, 101, "blocked"));
+      }
       const pull = snapshot("b-pull", 102, "pull");
       await s.acceptInbound({
         ...pull,
@@ -250,11 +246,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
             leaseOwner: "worker",
             safeRetryAccountIds: [],
           })
-        ).map((w) =>
-          w.kind === "dispatch"
-            ? w.record.snapshot.requestId
-            : w.record.deliveryId,
-        ),
+        ).map((w) => (w.kind === "dispatch" ? w.record.snapshot.requestId : w.record.deliveryId)),
       ).toEqual(["c-due"]);
       expect(
         (
@@ -268,9 +260,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
         ).map((r) => r.snapshot.requestId),
       ).toEqual(["a-next2"]);
       expect(
-        (await s.listPending({ endpointIds: ["pull"], limit: 1 })).map(
-          (r) => r.requestId,
-        ),
+        (await s.listPending({ endpointIds: ["pull"], limit: 1 })).map((r) => r.requestId),
       ).toEqual(["b-pull"]);
       const ns = { pluginId: "dot", ownerId: "a" };
       for (const [key, expiry] of [
@@ -303,9 +293,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
         now: 105,
       });
       await s.completeAndEnqueue(completion("c-due", "final"));
-      expect(
-        await s.listOutbound({ endpointId: "blocked", limit: 10 }),
-      ).toEqual([]);
+      expect(await s.listOutbound({ endpointId: "blocked", limit: 10 })).toEqual([]);
       expect(
         (
           await s.listOutbound({
@@ -327,7 +315,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
               leaseOwner: "send",
               safeRetryAccountIds: [],
             })
-          ).find((w) => w.kind === "send"),
+          ).find((candidate) => candidate.kind === "send"),
         );
         await s.settleAttempt({
           kind: "send",
@@ -366,6 +354,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
       await drop(schema);
     }
   });
+
   it("blocks a newly inserted lower FIFO ID while its endpoint has an active claim or dispatch lease", async () => {
     const schema = schemaName();
     const a = open(schema);
@@ -409,11 +398,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
             leaseOwner: "a",
             safeRetryAccountIds: [],
           })
-        ).map((w) =>
-          w.kind === "dispatch"
-            ? w.record.snapshot.requestId
-            : w.record.deliveryId,
-        ),
+        ).map((w) => (w.kind === "dispatch" ? w.record.snapshot.requestId : w.record.deliveryId)),
       ).toEqual(["z-dispatch"]);
       await b.acceptInbound(snapshot("a-dispatch", 101, "dispatch"));
       await b.acceptInbound(snapshot("free", 102, "free"));
@@ -426,11 +411,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
             leaseOwner: "b",
             safeRetryAccountIds: [],
           })
-        ).map((w) =>
-          w.kind === "dispatch"
-            ? w.record.snapshot.requestId
-            : w.record.deliveryId,
-        ),
+        ).map((w) => (w.kind === "dispatch" ? w.record.snapshot.requestId : w.record.deliveryId)),
       ).toEqual(["free"]);
       expect(
         await b.claimRequest({
@@ -517,12 +498,13 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
       ).toMatchObject({ status: "updated" });
       const next = required((await due(a, 123))[0]);
       expect(next.kind).toBe("send");
-      if (next.kind === "send")
+      if (next.kind === "send") {
         expect(next.record).toMatchObject({
           currentChunk: 1,
           chunks: [{ idempotencyKey: "c1" }, { idempotencyKey: "c2" }],
           receipts: [{ platformMessageId: "first-chunk" }],
         });
+      }
       expect(
         await b.settleAttempt({
           kind: "send",
@@ -547,10 +529,7 @@ describe.skipIf(!enabled)("PostgreSQL real database", () => {
       expect(await a.getOutbound("d-r1")).toMatchObject({
         status: "sent",
         currentChunk: 2,
-        receipts: [
-          { platformMessageId: "first-chunk" },
-          { platformMessageId: "second-chunk" },
-        ],
+        receipts: [{ platformMessageId: "first-chunk" }, { platformMessageId: "second-chunk" }],
       });
     } finally {
       await a.close();
@@ -573,8 +552,9 @@ it("validates SecretRef, SQL identifiers and bounded pool config without exposin
     { ...base, maxConnections: 0 },
     { ...base, statementTimeoutMs: 0 },
     { ...base, unrecognized: true },
-  ])
+  ]) {
     expect(() => postgresStoragePlugin.validateConfig(input)).toThrow();
+  }
   expect(() =>
     createPostgresStorage({
       connectionString: {

@@ -20,35 +20,64 @@ export type SqliteConfig = z.infer<typeof configSchema>;
 const encode = (v: unknown): string => {
   const ancestors = new Set<object>();
   const check = (x: unknown): void => {
-    if (x === null || typeof x === "string" || typeof x === "boolean") return;
-    if (typeof x === "number" && Number.isFinite(x)) return;
-    if (typeof x !== "object" || !x || ancestors.has(x))
+    if (x === null || typeof x === "string" || typeof x === "boolean") {
+      return;
+    }
+    if (typeof x === "number" && Number.isFinite(x)) {
+      return;
+    }
+    if (typeof x !== "object" || ancestors.has(x)) {
       throw new TypeError("Non-JSON durable value");
-    if (!Array.isArray(x) && Object.getPrototypeOf(x) !== Object.prototype)
+    }
+    if (!Array.isArray(x) && Object.getPrototypeOf(x) !== Object.prototype) {
       throw new TypeError("Non-plain durable value");
+    }
     ancestors.add(x);
-    for (const value of Object.values(x)) check(value);
+    for (const value of Object.values(x)) {
+      check(value);
+    }
     ancestors.delete(x);
   };
   check(v);
   return JSON.stringify(v);
 };
 const decode = <T>(v: unknown): T => JSON.parse(String(v)) as T;
-const digest = (text: string): string =>
-  createHash("sha256").update(text).digest("hex");
+const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
 const equal = (a: unknown, b: unknown): boolean => {
-  const canonical = (v: unknown): unknown =>
-    Array.isArray(v)
-      ? v.map(canonical)
-      : v && typeof v === "object"
-        ? Object.fromEntries(
-            Object.entries(v)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([k, x]) => [k, canonical(x)]),
-          )
-        : v;
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(canonical);
+    }
+    if (value !== null && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value)
+          .toSorted(([left], [right]) => left.localeCompare(right))
+          .map(([key, child]) => [key, canonical(child)]),
+      );
+    }
+    return value;
+  };
   return encode(canonical(a)) === encode(canonical(b));
 };
+function matchesResult(
+  outbound: OutboundRecord,
+  request: InboundRecord,
+  input: Parameters<Storage["completeAndEnqueue"]>[0],
+): boolean {
+  return (
+    outbound.requestId === input.requestId &&
+    outbound.resultId === input.result.resultId &&
+    equal(outbound.target, request.snapshot.target) &&
+    outbound.currentChunk === 0 &&
+    outbound.receipts.length === 0 &&
+    outbound.status === "pending" &&
+    outbound.version === 1 &&
+    outbound.attempts === 0 &&
+    outbound.lease === undefined &&
+    outbound.chunks.length > 0 &&
+    outbound.chunks.map((chunk) => chunk.text).join("") === input.result.text
+  );
+}
 export function createSqliteStorage(config: SqliteConfig): Storage {
   const db = new Database(config.filename);
   db.pragma(`busy_timeout = ${config.busyTimeoutMs}`);
@@ -83,10 +112,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
         )
         .get(r.snapshot.endpoint.id) as { id: string } | undefined
     )?.id === r.snapshot.requestId;
-  const scoped = (r: InboundRecord, ids: readonly string[]) =>
-    ids.includes(r.snapshot.endpoint.id);
+  const scoped = (r: InboundRecord, ids: readonly string[]) => ids.includes(r.snapshot.endpoint.id);
   const fence = (a: Lease | undefined, b: Lease, now: number) =>
-    !!a && equal(a, b) && a.expiresAt > now;
+    a !== undefined && equal(a, b) && a.expiresAt > now;
   const storage: Storage = {
     async migrate() {
       transaction(() => {
@@ -97,17 +125,13 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     },
     async health() {
       try {
-        const r = db
-          .prepare("SELECT MAX(version) AS version FROM migration_metadata")
-          .get() as { version: number };
+        const r = db.prepare("SELECT MAX(version) AS version FROM migration_metadata").get() as {
+          version: number;
+        };
         db.prepare("SELECT id,record,final_digest FROM inbound LIMIT 0").all();
         db.prepare("SELECT id,record FROM outbound LIMIT 0").all();
-        db.prepare(
-          "SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0",
-        ).all();
-        return r.version === 1
-          ? { ok: true }
-          : { ok: false, errorCode: "migration_required" };
+        db.prepare("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0").all();
+        return r.version === 1 ? { ok: true } : { ok: false, errorCode: "migration_required" };
       } catch {
         return { ok: false, errorCode: "migration_required" };
       }
@@ -118,15 +142,13 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async acceptInbound(snapshot) {
       return transaction(() => {
         const row = db
-          .prepare(
-            "SELECT id FROM inbound WHERE channel=? AND account=? AND event=?",
-          )
-          .get(
-            snapshot.source.channel,
-            snapshot.source.accountId,
-            snapshot.source.eventId,
-          ) as { id: string } | undefined;
-        if (row) return { requestId: row.id, duplicate: true };
+          .prepare("SELECT id FROM inbound WHERE channel=? AND account=? AND event=?")
+          .get(snapshot.source.channel, snapshot.source.accountId, snapshot.source.eventId) as
+          | { id: string }
+          | undefined;
+        if (row) {
+          return { requestId: row.id, duplicate: true };
+        }
         const r: InboundRecord = {
           snapshot: decode(encode(snapshot)),
           status: "pending",
@@ -150,7 +172,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       });
     },
     async listPending(input) {
-      if (input.endpointIds.length === 0) return [];
+      if (input.endpointIds.length === 0) {
+        return [];
+      }
       const placeholders = input.endpointIds.map(() => "?").join(",");
       return (
         db
@@ -163,8 +187,10 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async claimRequest(input) {
       return transaction(() => {
         const r = inbound(input.requestId);
-        if (!r || !scoped(r, input.endpointIds)) return { status: "not_found" };
-        if (r.status === "claimed")
+        if (!r || !scoped(r, input.endpointIds)) {
+          return { status: "not_found" };
+        }
+        if (r.status === "claimed") {
           return r.claim?.key === input.claimKey
             ? {
                 status: "claimed",
@@ -173,8 +199,13 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
                 replay: true,
               }
             : { status: "busy" };
-        if (r.status !== "pending") return { status: "not_pending" };
-        if (!first(r)) return { status: "busy" };
+        }
+        if (r.status !== "pending") {
+          return { status: "not_pending" };
+        }
+        if (!first(r)) {
+          return { status: "busy" };
+        }
         const dispatch = { ...r.dispatch };
         delete dispatch.lease;
         saveIn({
@@ -199,12 +230,12 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async completeAndEnqueue(input) {
       return transaction(() => {
         const r = inbound(input.requestId);
-        if (!r) return { status: "not_found" };
-        if (
-          !scoped(r, input.endpointIds) ||
-          r.claim?.token !== input.claimToken
-        )
+        if (!r) {
+          return { status: "not_found" };
+        }
+        if (!scoped(r, input.endpointIds) || r.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
+        }
         if (r.status === "completed") {
           const row = db
             .prepare("SELECT final_digest FROM inbound WHERE id=?")
@@ -217,29 +248,20 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
             ? { status: "completed", deliveryId: o.id, replay: true }
             : { status: "conflict" };
         }
-        if (r.status !== "claimed") return { status: "conflict" };
+        if (r.status !== "claimed") {
+          return { status: "conflict" };
+        }
         const o = input.outbound;
-        if (
-          o.requestId !== input.requestId ||
-          o.resultId !== input.result.resultId ||
-          !equal(o.target, r.snapshot.target) ||
-          o.currentChunk !== 0 ||
-          o.receipts.length !== 0 ||
-          o.status !== "pending" ||
-          o.version !== 1 ||
-          o.attempts !== 0 ||
-          o.lease ||
-          o.chunks.length === 0 ||
-          o.chunks.map((c) => c.text).join("") !== input.result.text
-        )
+        if (!matchesResult(o, r, input)) {
           return { status: "conflict" };
+        }
         if (
-          db
-            .prepare("SELECT id FROM inbound WHERE final_id=?")
-            .get(input.result.resultId) ||
-          db.prepare("SELECT id FROM outbound WHERE id=?").get(o.deliveryId)
-        )
+          db.prepare("SELECT id FROM inbound WHERE final_id=?").get(input.result.resultId) !==
+            undefined ||
+          db.prepare("SELECT id FROM outbound WHERE id=?").get(o.deliveryId) !== undefined
+        ) {
           return { status: "conflict" };
+        }
         const dispatch = { ...r.dispatch };
         delete dispatch.lease;
         db.prepare(
@@ -252,9 +274,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
           result: input.result,
           dispatch,
         });
-        db.prepare(
-          "UPDATE inbound SET final_id=?,final_digest=? WHERE id=?",
-        ).run(
+        db.prepare("UPDATE inbound SET final_id=?,final_digest=? WHERE id=?").run(
           input.result.resultId,
           digest(input.result.text),
           input.requestId,
@@ -265,15 +285,18 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async fail(input) {
       return transaction(() => {
         const r = inbound(input.requestId);
-        if (!r) return { status: "not_found" };
-        if (
-          !scoped(r, input.endpointIds) ||
-          r.claim?.token !== input.claimToken
-        )
+        if (!r) {
+          return { status: "not_found" };
+        }
+        if (!scoped(r, input.endpointIds) || r.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
-        if (r.status === "failed" && r.errorCode === input.errorCode)
+        }
+        if (r.status === "failed" && r.errorCode === input.errorCode) {
           return { status: "updated", version: r.version };
-        if (r.status !== "claimed") return { status: "conflict" };
+        }
+        if (r.status !== "claimed") {
+          return { status: "conflict" };
+        }
         const dispatch = { ...r.dispatch };
         delete dispatch.lease;
         saveIn({
@@ -290,7 +313,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       return transaction(() => {
         if (input.kind === "request") {
           const r = inbound(input.id);
-          if (!r) return { status: "not_found" };
+          if (!r) {
+            return { status: "not_found" };
+          }
           if (
             r.version !== input.expectedVersion ||
             r.redactedAt !== undefined ||
@@ -302,8 +327,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
               r.dispatch.status === "rejected"
             ) ||
             (r.dispatch.status === "unknown" && !input.acknowledgeUnknown)
-          )
+          ) {
             return { status: "conflict" };
+          }
           const next = {
             ...r,
             status: "pending" as const,
@@ -316,13 +342,16 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
           return { status: "updated", version: next.version };
         }
         const r = outbound(input.id);
-        if (!r) return { status: "not_found" };
+        if (!r) {
+          return { status: "not_found" };
+        }
         if (
           r.version !== input.expectedVersion ||
           !["rejected", "unknown"].includes(r.status) ||
           (r.status === "unknown" && !input.acknowledgeUnknown)
-        )
+        ) {
           return { status: "conflict" };
+        }
         const next = {
           ...r,
           status: "pending" as const,
@@ -365,8 +394,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
             next.dispatch.lease ||
             next.dispatch.dueAt > input.now ||
             !first(next)
-          )
+          ) {
             continue;
+          }
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: next.version + 1,
@@ -405,8 +435,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
             next.status !== "pending" ||
             next.lease ||
             next.dueAt > input.now
-          )
+          ) {
             continue;
+          }
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: next.version + 1,
@@ -423,19 +454,19 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       return transaction(() => {
         if (input.kind === "dispatch") {
           const r = inbound(input.id);
-          if (!r) return { status: "not_found" };
+          if (!r) {
+            return { status: "not_found" };
+          }
           if (
             r.status !== "pending" ||
             r.version !== input.lease.version ||
             !fence(r.dispatch.lease, input.lease, input.now)
-          )
+          ) {
             return { status: "conflict" };
+          }
           const outcome = input.outcome;
           const dispatch = {
-            status:
-              outcome.status === "retryable"
-                ? ("due" as const)
-                : outcome.status,
+            status: outcome.status === "retryable" ? ("due" as const) : outcome.status,
             attempts: r.dispatch.attempts + 1,
             dueAt: input.nextDueAt,
             ...("errorCode" in outcome ? { errorCode: outcome.errorCode } : {}),
@@ -444,13 +475,16 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
           return { status: "updated", version: r.version + 1 };
         }
         const r = outbound(input.id);
-        if (!r) return { status: "not_found" };
+        if (!r) {
+          return { status: "not_found" };
+        }
         if (
           r.status !== "pending" ||
           r.version !== input.lease.version ||
           !fence(r.lease, input.lease, input.now)
-        )
+        ) {
           return { status: "conflict" };
+        }
         const outcome = input.outcome;
         const next = {
           ...r,
@@ -464,11 +498,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
           next.currentChunk++;
           next.attempts = 0;
           next.receipts = [...r.receipts, outcome.receipt];
-          next.status =
-            next.currentChunk === next.chunks.length ? "sent" : "pending";
+          next.status = next.currentChunk === next.chunks.length ? "sent" : "pending";
         } else {
-          next.status =
-            outcome.status === "retryable" ? "pending" : outcome.status;
+          next.status = outcome.status === "retryable" ? "pending" : outcome.status;
           next.errorCode = outcome.errorCode;
         }
         saveOut(next);
@@ -477,9 +509,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     },
     async getState(ns, key) {
       const row = db
-        .prepare(
-          "SELECT record FROM plugin_state WHERE plugin=? AND owner=? AND key=?",
-        )
+        .prepare("SELECT record FROM plugin_state WHERE plugin=? AND owner=? AND key=?")
         .get(ns.pluginId, ns.ownerId, key) as { record: string } | undefined;
       return row ? decode<StateEntry>(row.record) : undefined;
     },
@@ -505,52 +535,42 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async compareAndSetState(ns, input) {
       return transaction(() => {
         const old = db
-          .prepare(
-            "SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=?",
-          )
-          .get(ns.pluginId, ns.ownerId, input.key) as
-          | { version: number }
-          | undefined;
+          .prepare("SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=?")
+          .get(ns.pluginId, ns.ownerId, input.key) as { version: number } | undefined;
         if (
-          input.expectedVersion === null
-            ? !!old
-            : old?.version !== input.expectedVersion
-        )
+          input.expectedVersion === null ? Boolean(old) : old?.version !== input.expectedVersion
+        ) {
           return { status: "conflict" };
+        }
         const version = (old?.version ?? 0) + 1;
         const entry: StateEntry = {
           key: input.key,
           value: input.value,
           version,
-          ...(input.expiresAt !== undefined
-            ? { expiresAt: input.expiresAt }
-            : {}),
+          ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
         };
         db.prepare(
           "INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record) VALUES(?,?,?,?,?,?) ON CONFLICT(plugin,owner,key) DO UPDATE SET version=excluded.version,expires_at=excluded.expires_at,record=excluded.record",
-        ).run(
-          ns.pluginId,
-          ns.ownerId,
-          input.key,
-          version,
-          input.expiresAt ?? null,
-          encode(entry),
-        );
+        ).run(ns.pluginId, ns.ownerId, input.key, version, input.expiresAt ?? null, encode(entry));
         return { status: "updated", version };
       });
     },
     async deleteState(ns, key, version) {
       return transaction(() => {
         const old = db
-          .prepare(
-            "SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=?",
-          )
+          .prepare("SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=?")
           .get(ns.pluginId, ns.ownerId, key) as { version: number } | undefined;
-        if (!old) return { status: "not_found" };
-        if (old.version !== version) return { status: "conflict" };
-        db.prepare(
-          "DELETE FROM plugin_state WHERE plugin=? AND owner=? AND key=?",
-        ).run(ns.pluginId, ns.ownerId, key);
+        if (!old) {
+          return { status: "not_found" };
+        }
+        if (old.version !== version) {
+          return { status: "conflict" };
+        }
+        db.prepare("DELETE FROM plugin_state WHERE plugin=? AND owner=? AND key=?").run(
+          ns.pluginId,
+          ns.ownerId,
+          key,
+        );
         return { status: "updated", version: version + 1 };
       });
     },
@@ -577,9 +597,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       }
       return (
         db
-          .prepare(
-            `SELECT record FROM inbound WHERE ${where.join(" AND ")} ORDER BY id LIMIT ?`,
-          )
+          .prepare(`SELECT record FROM inbound WHERE ${where.join(" AND ")} ORDER BY id LIMIT ?`)
           .all(...params, f.limit) as { record: string }[]
       ).map((x) => decode<InboundRecord>(x.record));
     },
@@ -647,21 +665,20 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
         }[];
         for (const row of rows) {
           const r = decode<InboundRecord>(row.inbound_record);
-          const o = row.outbound_record
-            ? decode<OutboundRecord>(row.outbound_record)
-            : undefined;
+          const o = row.outbound_record ? decode<OutboundRecord>(row.outbound_record) : undefined;
           saveIn({
             ...r,
             snapshot: { ...r.snapshot, text: "", context: null },
             ...(r.result ? { result: { ...r.result, text: "" } } : {}),
             redactedAt: input.before,
           });
-          if (o)
+          if (o) {
             saveOut({
               ...o,
               chunks: o.chunks.map((c) => ({ ...c, text: "", state: null })),
               receipts: o.receipts.map(() => ({})),
             });
+          }
           redacted++;
         }
         return { redacted };

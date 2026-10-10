@@ -2,16 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import {
-  required,
-  snapshot,
-  storageContract,
-} from "../../../tests/contracts/storage-contract.js";
+import { required, snapshot, storageContract } from "../../../tests/contracts/storage-contract.js";
 import { createSqliteStorage } from "../src/index.js";
 
 storageContract("SQLite shared storage contract", async () =>
   createSqliteStorage({ filename: ":memory:", busyTimeoutMs: 5000 }),
 );
+
 it("requires explicit migration and persists fenced claims/leases across independent connections and restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "relanox-sqlite-"));
   const filename = join(dir, "relay.db");

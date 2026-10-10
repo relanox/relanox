@@ -11,17 +11,16 @@ import type {
   StoragePlugin,
 } from "@relanox/sdk";
 import { noopObservability } from "@relanox/sdk";
-import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { Pool } from "pg";
+import type { PoolClient, QueryResultRow } from "pg";
 import { z } from "zod";
 
 const configSchema = z
   .object({
-    connectionString: z
-      .object({ env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/) })
-      .strict(),
+    connectionString: z.object({ env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u) }).strict(),
     schema: z
       .string()
-      .regex(/^[a-z_][a-z0-9_]{0,62}$/)
+      .regex(/^[a-z_][a-z0-9_]{0,62}$/u)
       .default("public"),
     maxConnections: z.number().int().min(1).max(100).default(10),
     connectionTimeoutMs: z.number().int().min(1).max(300_000).default(5000),
@@ -34,56 +33,84 @@ export type PostgresConfig = z.infer<typeof configSchema>;
 const encode = (v: unknown): string => {
   const ancestors = new Set<object>();
   const check = (x: unknown): void => {
-    if (x === null || typeof x === "string" || typeof x === "boolean") return;
-    if (typeof x === "number" && Number.isFinite(x)) return;
-    if (typeof x !== "object" || !x || ancestors.has(x))
+    if (x === null || typeof x === "string" || typeof x === "boolean") {
+      return;
+    }
+    if (typeof x === "number" && Number.isFinite(x)) {
+      return;
+    }
+    if (typeof x !== "object" || ancestors.has(x)) {
       throw new TypeError("Non-JSON durable value");
-    if (!Array.isArray(x) && Object.getPrototypeOf(x) !== Object.prototype)
+    }
+    if (!Array.isArray(x) && Object.getPrototypeOf(x) !== Object.prototype) {
       throw new TypeError("Non-plain durable value");
+    }
     ancestors.add(x);
-    for (const value of Object.values(x)) check(value);
+    for (const value of Object.values(x)) {
+      check(value);
+    }
     ancestors.delete(x);
   };
   check(v);
   return JSON.stringify(v);
 };
-const digest = (text: string): string =>
-  createHash("sha256").update(text).digest("hex");
+const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
 const equal = (a: unknown, b: unknown): boolean => {
-  const canonical = (v: unknown): unknown =>
-    Array.isArray(v)
-      ? v.map(canonical)
-      : v && typeof v === "object"
-        ? Object.fromEntries(
-            Object.entries(v)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([k, x]) => [k, canonical(x)]),
-          )
-        : v;
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(canonical);
+    }
+    if (value !== null && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value)
+          .toSorted(([left], [right]) => left.localeCompare(right))
+          .map(([key, child]) => [key, canonical(child)]),
+      );
+    }
+    return value;
+  };
   return encode(canonical(a)) === encode(canonical(b));
 };
 const code = (error: unknown): string | undefined =>
-  error &&
-  typeof error === "object" &&
-  "code" in error &&
-  typeof error.code === "string"
+  error !== null && typeof error === "object" && "code" in error && typeof error.code === "string"
     ? error.code
     : undefined;
 const bounded = (limit: number): number => {
-  if (!Number.isSafeInteger(limit) || limit < 0)
+  if (!Number.isSafeInteger(limit) || limit < 0) {
     throw new TypeError("Invalid storage limit");
+  }
   return Math.min(limit, 1000);
 };
 
 /** Secrets resolve at pool construction; validated config retains only the environment reference. */
+function matchesResult(
+  outbound: OutboundRecord,
+  request: InboundRecord,
+  input: Parameters<Storage["completeAndEnqueue"]>[0],
+): boolean {
+  return (
+    outbound.requestId === input.requestId &&
+    outbound.resultId === input.result.resultId &&
+    equal(outbound.target, request.snapshot.target) &&
+    outbound.currentChunk === 0 &&
+    outbound.receipts.length === 0 &&
+    outbound.status === "pending" &&
+    outbound.version === 1 &&
+    outbound.attempts === 0 &&
+    outbound.lease === undefined &&
+    outbound.chunks.length > 0 &&
+    outbound.chunks.map((chunk) => chunk.text).join("") === input.result.text
+  );
+}
 export function createPostgresStorage(
-  input: z.input<typeof configSchema>,
+  configuration: z.input<typeof configSchema>,
   observe: Observability = noopObservability,
 ): Storage {
-  const config = configSchema.parse(input);
+  const config = configSchema.parse(configuration);
   const connectionString = process.env[config.connectionString.env];
-  if (!connectionString)
+  if (!connectionString) {
     throw new Error("PostgreSQL connection secret is unavailable");
+  }
   const pool = new Pool({
     connectionString,
     max: config.maxConnections,
@@ -100,7 +127,7 @@ export function createPostgresStorage(
         errorCode: "unavailable",
       });
     } catch {
-      /* telemetry is best effort */
+      /* Telemetry is best effort */
     }
   });
   const query = async <T extends QueryResultRow>(
@@ -108,9 +135,7 @@ export function createPostgresStorage(
     sql: string,
     values: unknown[] = [],
   ): Promise<T[]> => (await client.query<T>(sql, values)).rows;
-  const transaction = async <T>(
-    fn: (client: PoolClient) => Promise<T>,
-  ): Promise<T> => {
+  const transaction = async <T>(fn: (client: PoolClient) => Promise<T>): Promise<T> => {
     const started = performance.now();
     let span: Span | undefined;
     try {
@@ -119,7 +144,7 @@ export function createPostgresStorage(
         operation: "storage",
       });
     } catch {
-      /* telemetry is best effort */
+      /* Telemetry is best effort */
     }
     let outcome: "ok" | "error" = "error";
     try {
@@ -138,12 +163,9 @@ export function createPostgresStorage(
           } catch {
             discard = true;
           }
-          if (
-            !discard &&
-            attempt < 7 &&
-            ["40001", "40P01"].includes(code(error) ?? "")
-          )
+          if (!discard && attempt < 7 && ["40001", "40P01"].includes(code(error) ?? "")) {
             continue;
+          }
           throw error;
         } finally {
           client.release(discard);
@@ -153,16 +175,16 @@ export function createPostgresStorage(
       try {
         span?.end(outcome);
       } catch {
-        /* telemetry is best effort */
+        /* Telemetry is best effort */
       }
       try {
-        observe.record(
-          "relanox_storage_duration_seconds",
-          (performance.now() - started) / 1000,
-          { plugin: "storage-postgres", operation: "storage", outcome },
-        );
+        observe.record("relanox_storage_duration_seconds", (performance.now() - started) / 1000, {
+          plugin: "storage-postgres",
+          operation: "storage",
+          outcome,
+        });
       } catch {
-        /* telemetry is best effort */
+        /* Telemetry is best effort */
       }
     }
   };
@@ -171,33 +193,25 @@ export function createPostgresStorage(
     id: string,
   ): Promise<InboundRecord | undefined> =>
     (
-      await query<{ record: InboundRecord }>(
-        client,
-        "SELECT record FROM inbound WHERE id=$1",
-        [id],
-      )
+      await query<{ record: InboundRecord }>(client, "SELECT record FROM inbound WHERE id=$1", [id])
     )[0]?.record;
   const outbound = async (
     client: Pool | PoolClient,
     id: string,
   ): Promise<OutboundRecord | undefined> =>
     (
-      await query<{ record: OutboundRecord }>(
-        client,
-        "SELECT record FROM outbound WHERE id=$1",
-        [id],
-      )
+      await query<{ record: OutboundRecord }>(client, "SELECT record FROM outbound WHERE id=$1", [
+        id,
+      ])
     )[0]?.record;
-  const saveIn = async (
-    client: PoolClient,
-    r: InboundRecord,
-    expectedVersion = r.version - 1,
-  ) => {
+  const saveIn = async (client: PoolClient, r: InboundRecord, expectedVersion = r.version - 1) => {
     const changed = await client.query(
       "UPDATE inbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5",
       [r.status, r.version, encode(r), r.snapshot.requestId, expectedVersion],
     );
-    if (changed.rowCount !== 1) throw new Error("Inbound version conflict");
+    if (changed.rowCount !== 1) {
+      throw new Error("Inbound version conflict");
+    }
   };
   const saveOut = async (
     client: PoolClient,
@@ -208,10 +222,12 @@ export function createPostgresStorage(
       "UPDATE outbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5",
       [r.status, r.version, encode(r), r.deliveryId, expectedVersion],
     );
-    if (changed.rowCount !== 1) throw new Error("Outbound version conflict");
+    if (changed.rowCount !== 1) {
+      throw new Error("Outbound version conflict");
+    }
   };
   const first = async (client: PoolClient, r: InboundRecord) =>
-    !(
+    (
       await query(
         client,
         "SELECT id FROM inbound WHERE endpoint=$1 AND id<>$3 AND status IN ('pending','claimed') AND (status='claimed' OR record#>'{dispatch,lease}' IS NOT NULL OR (record#>>'{dispatch,attempts}')::int>0 OR record#>>'{dispatch,status}' IN ('unknown','rejected') OR (NOT $4 AND (accepted_at,id)<($2,$3))) LIMIT 1",
@@ -219,24 +235,22 @@ export function createPostgresStorage(
           r.snapshot.endpoint.id,
           r.snapshot.acceptedAt,
           r.snapshot.requestId,
-          !!r.dispatch.lease ||
+          Boolean(r.dispatch.lease) ||
             r.dispatch.attempts > 0 ||
             ["unknown", "rejected"].includes(r.dispatch.status),
         ],
       )
-    ).length;
-  const scoped = (r: InboundRecord, ids: readonly string[]) =>
-    ids.includes(r.snapshot.endpoint.id);
+    ).length === 0;
+  const scoped = (r: InboundRecord, ids: readonly string[]) => ids.includes(r.snapshot.endpoint.id);
   const fence = (a: Lease | undefined, b: Lease, now: number) =>
-    !!a && equal(a, b) && a.expiresAt > now;
+    a !== undefined && equal(a, b) && a.expiresAt > now;
   const storage: Storage = {
     async migrate() {
       await transaction(async (client) => {
         // DDL is explicitly requested, schema is a validated PostgreSQL identifier.
-        await client.query(
-          "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
-          [`relanox:migrate:${config.schema}`],
-        );
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+          `relanox:migrate:${config.schema}`,
+        ]);
         await client.query(`CREATE SCHEMA IF NOT EXISTS "${config.schema}"`);
         await client.query(`
           CREATE TABLE IF NOT EXISTS migration_metadata(version INTEGER PRIMARY KEY);
@@ -269,12 +283,8 @@ export function createPostgresStorage(
         )[0];
         await pool.query("SELECT id,record,final_digest FROM inbound LIMIT 0");
         await pool.query("SELECT id,record FROM outbound LIMIT 0");
-        await pool.query(
-          "SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0",
-        );
-        return r?.version === 1
-          ? { ok: true }
-          : { ok: false, errorCode: "migration_required" };
+        await pool.query("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0");
+        return r?.version === 1 ? { ok: true } : { ok: false, errorCode: "migration_required" };
       } catch (error) {
         return {
           ok: false,
@@ -293,14 +303,12 @@ export function createPostgresStorage(
           await query<{ id: string }>(
             client,
             "SELECT id FROM inbound WHERE channel=$1 AND account=$2 AND event=$3",
-            [
-              snapshot.source.channel,
-              snapshot.source.accountId,
-              snapshot.source.eventId,
-            ],
+            [snapshot.source.channel, snapshot.source.accountId, snapshot.source.eventId],
           )
         )[0];
-        if (existing) return { requestId: existing.id, duplicate: true };
+        if (existing) {
+          return { requestId: existing.id, duplicate: true };
+        }
         const r: InboundRecord = {
           snapshot,
           status: "pending",
@@ -322,20 +330,19 @@ export function createPostgresStorage(
             encode(r),
           ],
         );
-        if (inserted.length)
+        if (inserted.length > 0) {
           return { requestId: snapshot.requestId, duplicate: false };
+        }
         const original = (
           await query<{ id: string }>(
             client,
             "SELECT id FROM inbound WHERE channel=$1 AND account=$2 AND event=$3",
-            [
-              snapshot.source.channel,
-              snapshot.source.accountId,
-              snapshot.source.eventId,
-            ],
+            [snapshot.source.channel, snapshot.source.accountId, snapshot.source.eventId],
           )
         )[0];
-        if (!original) throw new Error("Concurrent source key is unavailable");
+        if (!original) {
+          throw new Error("Concurrent source key is unavailable");
+        }
         return { requestId: original.id, duplicate: true };
       });
     },
@@ -351,8 +358,10 @@ export function createPostgresStorage(
     async claimRequest(input) {
       return transaction(async (client) => {
         const r = await inbound(client, input.requestId);
-        if (!r || !scoped(r, input.endpointIds)) return { status: "not_found" };
-        if (r.status === "claimed")
+        if (!r || !scoped(r, input.endpointIds)) {
+          return { status: "not_found" };
+        }
+        if (r.status === "claimed") {
           return r.claim?.key === input.claimKey
             ? {
                 status: "claimed",
@@ -361,8 +370,13 @@ export function createPostgresStorage(
                 replay: true,
               }
             : { status: "busy" };
-        if (r.status !== "pending") return { status: "not_pending" };
-        if (!(await first(client, r))) return { status: "busy" };
+        }
+        if (r.status !== "pending") {
+          return { status: "not_pending" };
+        }
+        if (!(await first(client, r))) {
+          return { status: "busy" };
+        }
         const dispatch = { ...r.dispatch };
         delete dispatch.lease;
         await saveIn(client, {
@@ -387,12 +401,12 @@ export function createPostgresStorage(
     async completeAndEnqueue(input) {
       return transaction(async (client) => {
         const r = await inbound(client, input.requestId);
-        if (!r) return { status: "not_found" };
-        if (
-          !scoped(r, input.endpointIds) ||
-          r.claim?.token !== input.claimToken
-        )
+        if (!r) {
+          return { status: "not_found" };
+        }
+        if (!scoped(r, input.endpointIds) || r.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
+        }
         if (r.status === "completed") {
           const row = (
             await query<{ final_digest: string }>(
@@ -402,11 +416,9 @@ export function createPostgresStorage(
             )
           )[0];
           const o = (
-            await query<{ id: string }>(
-              client,
-              "SELECT id FROM outbound WHERE request_id=$1",
-              [input.requestId],
-            )
+            await query<{ id: string }>(client, "SELECT id FROM outbound WHERE request_id=$1", [
+              input.requestId,
+            ])
           )[0];
           return r.result?.resultId === input.result.resultId &&
             row?.final_digest === digest(input.result.text) &&
@@ -414,28 +426,21 @@ export function createPostgresStorage(
             ? { status: "completed", deliveryId: o.id, replay: true }
             : { status: "conflict" };
         }
-        if (r.status !== "claimed") return { status: "conflict" };
-        const o = input.outbound;
-        if (
-          o.requestId !== input.requestId ||
-          o.resultId !== input.result.resultId ||
-          !equal(o.target, r.snapshot.target) ||
-          o.currentChunk !== 0 ||
-          o.receipts.length !== 0 ||
-          o.status !== "pending" ||
-          o.version !== 1 ||
-          o.attempts !== 0 ||
-          o.lease ||
-          o.chunks.length === 0 ||
-          o.chunks.map((c) => c.text).join("") !== input.result.text
-        )
+        if (r.status !== "claimed") {
           return { status: "conflict" };
+        }
+        const o = input.outbound;
+        if (!matchesResult(o, r, input)) {
+          return { status: "conflict" };
+        }
         const inserted = await query(
           client,
           "INSERT INTO outbound(id,request_id,result_id,status,version,record) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING RETURNING id",
           [o.deliveryId, o.requestId, o.resultId, o.status, 1, encode(o)],
         );
-        if (!inserted.length) return { status: "conflict" };
+        if (inserted.length === 0) {
+          return { status: "conflict" };
+        }
         const dispatch = { ...r.dispatch };
         delete dispatch.lease;
         await saveIn(client, {
@@ -447,12 +452,7 @@ export function createPostgresStorage(
         });
         await client.query(
           "UPDATE inbound SET final_id=$1,final_digest=$2 WHERE id=$3 AND version=$4",
-          [
-            input.result.resultId,
-            digest(input.result.text),
-            input.requestId,
-            r.version + 1,
-          ],
+          [input.result.resultId, digest(input.result.text), input.requestId, r.version + 1],
         );
         return { status: "completed", deliveryId: o.deliveryId, replay: false };
       });
@@ -460,15 +460,18 @@ export function createPostgresStorage(
     async fail(input) {
       return transaction(async (client) => {
         const r = await inbound(client, input.requestId);
-        if (!r) return { status: "not_found" };
-        if (
-          !scoped(r, input.endpointIds) ||
-          r.claim?.token !== input.claimToken
-        )
+        if (!r) {
+          return { status: "not_found" };
+        }
+        if (!scoped(r, input.endpointIds) || r.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
-        if (r.status === "failed" && r.errorCode === input.errorCode)
+        }
+        if (r.status === "failed" && r.errorCode === input.errorCode) {
           return { status: "updated", version: r.version };
-        if (r.status !== "claimed") return { status: "conflict" };
+        }
+        if (r.status !== "claimed") {
+          return { status: "conflict" };
+        }
         const dispatch = { ...r.dispatch };
         delete dispatch.lease;
         await saveIn(client, {
@@ -485,7 +488,9 @@ export function createPostgresStorage(
       return transaction(async (client) => {
         if (input.kind === "request") {
           const r = await inbound(client, input.id);
-          if (!r) return { status: "not_found" };
+          if (!r) {
+            return { status: "not_found" };
+          }
           if (
             r.version !== input.expectedVersion ||
             r.redactedAt !== undefined ||
@@ -497,8 +502,9 @@ export function createPostgresStorage(
               r.dispatch.status === "rejected"
             ) ||
             (r.dispatch.status === "unknown" && !input.acknowledgeUnknown)
-          )
+          ) {
             return { status: "conflict" };
+          }
           const next = {
             ...r,
             status: "pending" as const,
@@ -511,13 +517,16 @@ export function createPostgresStorage(
           return { status: "updated", version: next.version };
         }
         const r = await outbound(client, input.id);
-        if (!r) return { status: "not_found" };
+        if (!r) {
+          return { status: "not_found" };
+        }
         if (
           r.version !== input.expectedVersion ||
           !["rejected", "unknown"].includes(r.status) ||
           (r.status === "unknown" && !input.acknowledgeUnknown)
-        )
+        ) {
           return { status: "conflict" };
+        }
         const next = {
           ...r,
           status: "pending" as const,
@@ -618,19 +627,19 @@ export function createPostgresStorage(
       return transaction(async (client) => {
         if (input.kind === "dispatch") {
           const r = await inbound(client, input.id);
-          if (!r) return { status: "not_found" };
+          if (!r) {
+            return { status: "not_found" };
+          }
           if (
             r.status !== "pending" ||
             r.version !== input.lease.version ||
             !fence(r.dispatch.lease, input.lease, input.now)
-          )
+          ) {
             return { status: "conflict" };
+          }
           const outcome = input.outcome;
           const dispatch = {
-            status:
-              outcome.status === "retryable"
-                ? ("due" as const)
-                : outcome.status,
+            status: outcome.status === "retryable" ? ("due" as const) : outcome.status,
             attempts: r.dispatch.attempts + 1,
             dueAt: input.nextDueAt,
             ...("errorCode" in outcome ? { errorCode: outcome.errorCode } : {}),
@@ -639,13 +648,16 @@ export function createPostgresStorage(
           return { status: "updated", version: r.version + 1 };
         }
         const r = await outbound(client, input.id);
-        if (!r) return { status: "not_found" };
+        if (!r) {
+          return { status: "not_found" };
+        }
         if (
           r.status !== "pending" ||
           r.version !== input.lease.version ||
           !fence(r.lease, input.lease, input.now)
-        )
+        ) {
           return { status: "conflict" };
+        }
         const next = {
           ...r,
           version: r.version + 1,
@@ -658,13 +670,9 @@ export function createPostgresStorage(
           next.currentChunk++;
           next.attempts = 0;
           next.receipts = [...r.receipts, input.outcome.receipt];
-          next.status =
-            next.currentChunk === next.chunks.length ? "sent" : "pending";
+          next.status = next.currentChunk === next.chunks.length ? "sent" : "pending";
         } else {
-          next.status =
-            input.outcome.status === "retryable"
-              ? "pending"
-              : input.outcome.status;
+          next.status = input.outcome.status === "retryable" ? "pending" : input.outcome.status;
           next.errorCode = input.outcome.errorCode;
         }
         await saveOut(client, next);
@@ -707,9 +715,7 @@ export function createPostgresStorage(
           key: input.key,
           value: input.value,
           version,
-          ...(input.expiresAt !== undefined
-            ? { expiresAt: input.expiresAt }
-            : {}),
+          ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
         };
         const params = [
           ns.pluginId,
@@ -731,9 +737,7 @@ export function createPostgresStorage(
                 "UPDATE plugin_state SET version=$4,expires_at=$5,record=$6::jsonb WHERE plugin=$1 AND owner=$2 AND key=$3 AND version=$7 RETURNING version",
                 [...params, input.expectedVersion],
               );
-        return changed.length
-          ? { status: "updated", version }
-          : { status: "conflict" };
+        return changed.length > 0 ? { status: "updated", version } : { status: "conflict" };
       });
     },
     async deleteState(ns, key, version) {
@@ -745,8 +749,12 @@ export function createPostgresStorage(
             [ns.pluginId, ns.ownerId, key],
           )
         )[0];
-        if (!old) return { status: "not_found" };
-        if (old.version !== version) return { status: "conflict" };
+        if (!old) {
+          return { status: "not_found" };
+        }
+        if (old.version !== version) {
+          return { status: "conflict" };
+        }
         await client.query(
           "DELETE FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3 AND version=$4",
           [ns.pluginId, ns.ownerId, key, version],
@@ -825,7 +833,9 @@ export function createPostgresStorage(
           COUNT(*) FILTER(WHERE record#>>'{dispatch,status}'='unknown')+(SELECT COUNT(*) FROM outbound WHERE status='unknown') unknown FROM inbound`,
         )
       )[0];
-      if (!row) throw new Error("Storage aggregates unavailable");
+      if (!row) {
+        throw new Error("Storage aggregates unavailable");
+      }
       return {
         pending: Number(row.pending),
         claimed: Number(row.claimed),
@@ -858,7 +868,7 @@ export function createPostgresStorage(
             },
             r.version,
           );
-          if (o)
+          if (o) {
             await saveOut(
               client,
               {
@@ -868,6 +878,7 @@ export function createPostgresStorage(
               },
               o.version,
             );
+          }
         }
         return { redacted: rows.length };
       });

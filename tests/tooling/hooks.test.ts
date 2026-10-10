@@ -1,0 +1,122 @@
+import { spawn } from "node:child_process";
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import process from "node:process";
+import { afterEach, expect, it } from "vitest";
+
+const folders: string[] = [];
+const root = path.resolve(import.meta.dirname, "../..");
+
+async function execute(directory: string, command: string, args: readonly string[]) {
+  return new Promise<{ code: number | null; output: string }>((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: directory,
+      env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    child.once("error", reject);
+    child.once("close", (code) => {
+      resolve({ code, output });
+    });
+  });
+}
+
+function git(directory: string, args: readonly string[]) {
+  return execute(directory, "git", args);
+}
+
+async function stage(directory: string) {
+  expect((await git(directory, ["add", "."])).code).toBe(0);
+}
+
+afterEach(async () => {
+  for (const folder of folders.splice(0)) {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+it("enforces format and type-aware lint on real commits without overwriting staged changes", async () => {
+  const folder = await mkdtemp(path.join(tmpdir(), "relanox-hooks-"));
+  folders.push(folder);
+  expect((await git(folder, ["init", "--quiet"])).code).toBe(0);
+  expect((await git(folder, ["config", "user.email", "hook-test@example.invalid"])).code).toBe(0);
+  expect((await git(folder, ["config", "user.name", "Hook Test"])).code).toBe(0);
+  expect((await git(folder, ["config", "core.hooksPath", ".githooks"])).code).toBe(0);
+  for (const file of [
+    ".githooks",
+    ".oxlintrc.json",
+    ".oxfmtrc.json",
+    "scripts",
+    "tsconfig.base.json",
+  ]) {
+    await cp(path.join(root, file), path.join(folder, file), { recursive: true });
+  }
+  await symlink(path.join(root, "node_modules"), path.join(folder, "node_modules"), "junction");
+  await writeFile(path.join(folder, ".gitignore"), "node_modules/\n");
+  await writeFile(
+    path.join(folder, "tsconfig.json"),
+    '{ "extends": "./tsconfig.base.json", "compilerOptions": {"types": ["node"]}, "include": ["*.ts", "scripts/**/*.mts"] }\n',
+  );
+  const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+    packageManager: string;
+  };
+  await writeFile(
+    path.join(folder, "package.json"),
+    `${JSON.stringify(
+      {
+        private: true,
+        type: "module",
+        packageManager: manifest.packageManager,
+        scripts: { lint: manifest.scripts.lint, "format:check": manifest.scripts["format:check"] },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  expect(
+    (
+      await execute(folder, process.execPath, [
+        path.join(root, "node_modules/oxfmt/bin/oxfmt"),
+        "--write",
+        ".",
+      ])
+    ).code,
+  ).toBe(0);
+  await writeFile(path.join(folder, "sample.ts"), "export const answer=42;\n");
+  await stage(folder);
+  const malformed = await git(folder, ["commit", "-m", "test: malformed format"]);
+  expect(malformed.code).not.toBe(0);
+  expect(malformed.output).toContain("sample.ts");
+  expect(await readFile(path.join(folder, "sample.ts"), "utf8")).toBe("export const answer=42;\n");
+
+  await writeFile(path.join(folder, "sample.ts"), "Promise.resolve(42);\n");
+  await stage(folder);
+  const floating = await git(folder, ["commit", "-m", "test: floating promise"]);
+  expect(floating.code).not.toBe(0);
+  expect(floating.output).toContain("no-floating-promises");
+
+  await writeFile(path.join(folder, "sample.ts"), "export const answer = 42;\n");
+  const partial = await git(folder, ["commit", "-m", "test: partial staged content"]);
+  expect(partial.code).not.toBe(0);
+  expect(partial.output).toContain("Partially staged files detected");
+  expect((await git(folder, ["show", ":sample.ts"])).output).toBe("Promise.resolve(42);\n");
+
+  await stage(folder);
+  const clean = await git(folder, ["commit", "-m", "test: valid style"]);
+  if (clean.code !== 0) {
+    throw new Error(clean.output);
+  }
+  expect(clean).toMatchObject({ code: 0 });
+  expect((await git(folder, ["show", "HEAD:sample.ts"])).output).toBe(
+    "export const answer = 42;\n",
+  );
+}, 60_000);

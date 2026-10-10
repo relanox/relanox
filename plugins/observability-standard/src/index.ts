@@ -2,18 +2,9 @@ import type { Writable } from "node:stream";
 import { ROOT_CONTEXT, SpanStatusCode, trace } from "@opentelemetry/api";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import {
-  BatchSpanProcessor,
-  TraceIdRatioBasedSampler,
-} from "@opentelemetry/sdk-trace-base";
+import { BatchSpanProcessor, TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
-import {
-  Counter,
-  collectDefaultMetrics,
-  Gauge,
-  Histogram,
-  Registry,
-} from "@prometheus-io/client";
+import { Counter, collectDefaultMetrics, Gauge, Histogram, Registry } from "@prometheus-io/client";
 import type {
   LogFields,
   MetricLabels,
@@ -170,16 +161,15 @@ export interface StandardConfig {
   };
 }
 function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value))
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("invalid observability configuration");
+  }
   return value as Record<string, unknown>;
 }
-function keys(
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-): void {
-  if (Object.keys(value).some((key) => !allowed.includes(key)))
+function keys(value: Record<string, unknown>, allowed: readonly string[]): void {
+  if (Object.keys(value).some((key) => !allowed.includes(key))) {
     throw new Error("unknown observability configuration field");
+  }
 }
 function number(
   value: unknown,
@@ -195,14 +185,18 @@ function number(
     result < min ||
     result > max ||
     (integer && !Number.isInteger(result))
-  )
+  ) {
     throw new Error("invalid observability numeric configuration");
+  }
   return result;
 }
 function boolean(value: unknown, fallback: boolean): boolean {
-  if (value === undefined) return fallback;
-  if (typeof value !== "boolean")
-    throw new Error("invalid observability boolean configuration");
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== "boolean") {
+    throw new TypeError("invalid observability boolean configuration");
+  }
   return value;
 }
 export function validateStandardConfig(input: unknown): StandardConfig {
@@ -217,13 +211,9 @@ export function validateStandardConfig(input: unknown): StandardConfig {
     "tracing",
   ]);
   const level = raw.level ?? "info";
-  if (
-    level !== "debug" &&
-    level !== "info" &&
-    level !== "warn" &&
-    level !== "error"
-  )
+  if (level !== "debug" && level !== "info" && level !== "warn" && level !== "error") {
     throw new Error("invalid log level");
+  }
   let tracing: StandardConfig["tracing"];
   if (raw.tracing !== undefined) {
     const value = object(raw.tracing);
@@ -235,8 +225,9 @@ export function validateStandardConfig(input: unknown): StandardConfig {
       "scheduledDelayMs",
       "exportTimeoutMs",
     ]);
-    if (typeof value.endpoint !== "string")
-      throw new Error("tracing requires explicit endpoint");
+    if (typeof value.endpoint !== "string") {
+      throw new TypeError("tracing requires explicit endpoint");
+    }
     const url = new URL(value.endpoint);
     if (
       !["http:", "https:"].includes(url.protocol) ||
@@ -244,8 +235,9 @@ export function validateStandardConfig(input: unknown): StandardConfig {
       url.password ||
       url.search ||
       url.hash
-    )
+    ) {
       throw new Error("invalid tracing endpoint");
+    }
     const maxQueueSize = number(value.maxQueueSize, 512, 1, 4096);
     tracing = {
       endpoint: url.href,
@@ -257,8 +249,8 @@ export function validateStandardConfig(input: unknown): StandardConfig {
         1,
         maxQueueSize,
       ),
-      scheduledDelayMs: number(value.scheduledDelayMs, 1000, 100, 10000),
-      exportTimeoutMs: number(value.exportTimeoutMs, 2000, 100, 10000),
+      scheduledDelayMs: number(value.scheduledDelayMs, 1000, 100, 10_000),
+      exportTimeoutMs: number(value.exportTimeoutMs, 2000, 100, 10_000),
     };
   }
   return {
@@ -266,15 +258,13 @@ export function validateStandardConfig(input: unknown): StandardConfig {
     level,
     metrics: boolean(raw.metrics, true),
     processMetrics: boolean(raw.processMetrics, true),
-    logBufferBytes: number(raw.logBufferBytes, 65536, 1024, 1048576),
-    lifecycleTimeoutMs: number(raw.lifecycleTimeoutMs, 3000, 100, 10000),
+    logBufferBytes: number(raw.logBufferBytes, 65_536, 1024, 1_048_576),
+    lifecycleTimeoutMs: number(raw.lifecycleTimeoutMs, 3000, 100, 10_000),
     ...(tracing ? { tracing } : {}),
   };
 }
 function member(value: unknown, values: readonly string[]): string | undefined {
-  return typeof value === "string" && values.includes(value)
-    ? value
-    : undefined;
+  return typeof value === "string" && values.includes(value) ? value : undefined;
 }
 function safeFields(fields: LogFields = {}): Record<string, string> {
   const safe: Record<string, string> = {};
@@ -296,35 +286,38 @@ function safeFields(fields: LogFields = {}): Record<string, string> {
     operation: operations,
   })) {
     const value = member(fields[key as keyof LogFields], values);
-    if (value) safe[key] = value;
+    if (value) {
+      safe[key] = value;
+    }
   }
   // Correlation IDs are generated UUIDs; arbitrary caller strings cannot carry message text or secrets.
   for (const key of ["requestId", "deliveryId"] as const) {
     const value = fields[key];
     if (
       typeof value === "string" &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        value,
-      )
-    )
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value)
+    ) {
       safe[key] = value;
+    }
   }
-  if (
-    typeof fields.traceId === "string" &&
-    /^[0-9a-f]{32}$/i.test(fields.traceId)
-  )
+  if (typeof fields.traceId === "string" && /^[0-9a-f]{32}$/iu.test(fields.traceId)) {
     safe.traceId = fields.traceId;
+  }
   return safe;
 }
-function safeLabels(
-  labels: MetricLabels = {},
-): Record<string, string> | undefined {
+function safeLabels(labels: MetricLabels = {}): Record<string, string> | undefined {
   const safe: Record<string, string> = {};
   // Reject unknown keys/values entirely: mapping hostile identities into combinations still grows cardinality.
-  for (const key of Object.keys(labels)) if (!labelNames.includes(key)) return;
+  for (const key of Object.keys(labels)) {
+    if (!labelNames.includes(key)) {
+      return undefined;
+    }
+  }
   for (const key of labelNames) {
     const value = labels[key as keyof MetricLabels];
-    if (value !== undefined && !member(value, vocabulary[key] ?? [])) return;
+    if (value !== undefined && !member(value, vocabulary[key] ?? [])) {
+      return undefined;
+    }
     safe[key] = value ?? "none";
   }
   return safe;
@@ -345,24 +338,30 @@ class BoundedLogWriter {
     destination.on("drain", this.drain);
     destination.on("error", this.error);
   }
-  private error = (): void => {
+  private readonly error = (): void => {
     this.failed = true;
     this.queue = [];
     this.bytes = 0;
     this.wake();
   };
-  private drain = (): void => {
+  private readonly drain = (): void => {
     this.blocked = false;
-    while (!this.blocked && this.queue.length) {
+    while (!this.blocked && this.queue.length > 0) {
       const line = this.queue.shift();
-      if (line === undefined) break;
+      if (line === undefined) {
+        break;
+      }
       this.bytes -= Buffer.byteLength(line);
       this.write(line);
     }
-    if (!this.blocked && this.queue.length === 0) this.wake();
+    if (!this.blocked && this.queue.length === 0) {
+      this.wake();
+    }
   };
   private wake(): void {
-    for (const done of this.waiters) done();
+    for (const done of this.waiters) {
+      done();
+    }
   }
   write(line: string): void {
     if (this.closed || this.failed) {
@@ -387,12 +386,9 @@ class BoundedLogWriter {
     }
   }
   async flush(signal: AbortSignal): Promise<void> {
-    if (
-      this.failed ||
-      (!this.blocked && this.queue.length === 0) ||
-      signal.aborted
-    )
+    if (this.failed || (!this.blocked && this.queue.length === 0) || signal.aborted) {
       return;
+    }
     await new Promise<void>((resolve) => {
       const done = () => {
         this.waiters.delete(done);
@@ -412,7 +408,7 @@ class BoundedLogWriter {
     this.destination.removeListener("error", this.error);
   }
 }
-/** destination is for a production-owned collector stream; the plugin never owns/ends stdout or that stream. */
+/** Destination is for a production-owned collector stream; the plugin never owns/ends stdout or that stream. */
 export function createStandardObservability(
   options: { readonly logDestination?: Writable } = {},
 ): ObservabilityPlugin<StandardConfig> {
@@ -441,9 +437,13 @@ export function createStandardObservability(
           labelNames,
           registers: [registry],
         };
-        if (kind === "counter") counters.set(name, new Counter(shared));
-        if (kind === "gauge") gauges.set(name, new Gauge(shared));
-        if (kind === "histogram")
+        if (kind === "counter") {
+          counters.set(name, new Counter(shared));
+        }
+        if (kind === "gauge") {
+          gauges.set(name, new Gauge(shared));
+        }
+        if (kind === "histogram") {
           histograms.set(
             name,
             new Histogram({
@@ -451,13 +451,17 @@ export function createStandardObservability(
               buckets: [0.005, 0.025, 0.1, 0.5, 1, 5, 30, 120, 600, 3600],
             }),
           );
+        }
       }
-      if (config.metrics && config.processMetrics)
+      if (config.metrics && config.processMetrics) {
         collectDefaultMetrics({ register: registry, prefix: "relanox_" });
+      }
       const writer = new BoundedLogWriter(
         options.logDestination ?? process.stdout,
         config.logBufferBytes,
-        () => dropped.inc({ signal: "logs" }),
+        () => {
+          dropped.inc({ signal: "logs" });
+        },
       );
       const logger = pino(
         {
@@ -465,7 +469,11 @@ export function createStandardObservability(
           base: null,
           timestamp: pino.stdTimeFunctions.isoTime,
         },
-        { write: (line) => writer.write(line) },
+        {
+          write: (line) => {
+            writer.write(line);
+          },
+        },
       );
       // Do not register a global provider/context manager: instances and other applications remain independent.
       const provider = config.tracing
@@ -506,12 +514,14 @@ export function createStandardObservability(
         labels?: MetricLabels,
       ): Record<string, string> | undefined => {
         const safe = safeLabels(labels);
-        if (!safe) return;
+        if (!safe) {
+          return undefined;
+        }
         const key = JSON.stringify(safe);
         const tuples = series.get(name) ?? new Set<string>();
         if (!tuples.has(key) && tuples.size >= 64) {
           dropped.inc({ signal: "metrics" });
-          return;
+          return undefined;
         }
         tuples.add(key);
         series.set(name, tuples);
@@ -519,7 +529,9 @@ export function createStandardObservability(
       };
       let closed = false;
       const isolate = (operation: () => void, signal: string): void => {
-        if (closed) return;
+        if (closed) {
+          return;
+        }
         try {
           operation();
         } catch {
@@ -529,11 +541,9 @@ export function createStandardObservability(
       const observe: Observability = {
         log(level, event, fields) {
           isolate(() => {
-            if (
-              !config.logs ||
-              !member(level, ["debug", "info", "warn", "error"])
-            )
+            if (!config.logs || !member(level, ["debug", "info", "warn", "error"])) {
               return;
+            }
             logger[level]({
               event: member(event, events) ?? "operation.failed",
               ...safeFields(fields),
@@ -542,52 +552,54 @@ export function createStandardObservability(
         },
         count(name, labels, value = 1) {
           isolate(() => {
-            if (!config.metrics || !Number.isFinite(value) || value < 0) return;
-            if (!counters.has(name)) return;
+            if (!config.metrics || !Number.isFinite(value) || value < 0) {
+              return;
+            }
+            if (!counters.has(name)) {
+              return;
+            }
             const safe = labelsFor(name, labels);
-            if (safe) counters.get(name)?.inc(safe, value);
+            if (safe) {
+              counters.get(name)?.inc(safe, value);
+            }
           }, "metrics");
         },
         record(name, value, labels) {
           isolate(() => {
-            if (!config.metrics || !Number.isFinite(value) || value < 0) return;
-            if (!histograms.has(name) && !gauges.has(name)) return;
+            if (!config.metrics || !Number.isFinite(value) || value < 0) {
+              return;
+            }
+            if (!histograms.has(name) && !gauges.has(name)) {
+              return;
+            }
             const safe = labelsFor(name, labels);
-            if (!safe) return;
+            if (!safe) {
+              return;
+            }
             histograms.get(name)?.observe(safe, value);
             gauges.get(name)?.set(safe, value);
           }, "metrics");
         },
         span(name, fields, parent): Span {
-          if (closed || !tracer || !member(name, operations))
+          if (closed || !tracer || !member(name, operations)) {
             return { end() {} };
+          }
           try {
             let context = ROOT_CONTEXT;
-            if (
-              parent &&
-              /^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/.test(parent.traceparent)
-            ) {
+            if (parent && /^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/u.test(parent.traceparent)) {
               const parts = parent.traceparent.split("-");
               const traceId = parts[1];
               const spanId = parts[2];
-              if (
-                traceId &&
-                spanId &&
-                !/^0+$/.test(traceId) &&
-                !/^0+$/.test(spanId)
-              )
+              if (traceId && spanId && !/^0+$/u.test(traceId) && !/^0+$/u.test(spanId)) {
                 context = trace.setSpanContext(context, {
                   traceId,
                   spanId,
                   traceFlags: parts[3] === "01" ? 1 : 0,
                   isRemote: true,
                 });
+              }
             }
-            const span = tracer.startSpan(
-              name,
-              { attributes: safeFields(fields) },
-              context,
-            );
+            const span = tracer.startSpan(name, { attributes: safeFields(fields) }, context);
             const spanContext = span.spanContext();
             const durable: TraceContext = {
               traceparent: `00-${spanContext.traceId}-${spanContext.spanId}-${(spanContext.traceFlags & 1) === 1 ? "01" : "00"}`,
@@ -596,14 +608,13 @@ export function createStandardObservability(
             return {
               context: durable,
               end(outcome = "ok") {
-                if (ended) return;
+                if (ended) {
+                  return;
+                }
                 ended = true;
                 isolate(() => {
                   span.setStatus({
-                    code:
-                      outcome === "error"
-                        ? SpanStatusCode.ERROR
-                        : SpanStatusCode.OK,
+                    code: outcome === "error" ? SpanStatusCode.ERROR : SpanStatusCode.OK,
                   });
                   span.end();
                 }, "traces");
@@ -619,9 +630,13 @@ export function createStandardObservability(
         signal: AbortSignal,
         operation: (boundedSignal: AbortSignal) => Promise<unknown>,
       ): Promise<void> {
-        if (signal.aborted) return;
+        if (signal.aborted) {
+          return;
+        }
         const controller = new AbortController();
-        const abort = () => controller.abort();
+        const abort = () => {
+          controller.abort();
+        };
         signal.addEventListener("abort", abort, { once: true });
         const timer = setTimeout(abort, config.lifecycleTimeoutMs);
         try {
@@ -631,11 +646,17 @@ export function createStandardObservability(
               .catch(() => {
                 dropped.inc({ signal: "traces" });
               }),
-            new Promise<void>((resolve) =>
-              controller.signal.addEventListener("abort", () => resolve(), {
-                once: true,
-              }),
-            ),
+            new Promise<void>((resolve) => {
+              controller.signal.addEventListener(
+                "abort",
+                () => {
+                  resolve();
+                },
+                {
+                  once: true,
+                },
+              );
+            }),
           ]);
         } finally {
           clearTimeout(timer);
@@ -643,21 +664,19 @@ export function createStandardObservability(
         }
       }
       const metrics = async (request: Request): Promise<Response> => {
-        if (request.method !== "GET" && request.method !== "HEAD")
+        if (request.method !== "GET" && request.method !== "HEAD") {
           return new Response(null, {
             status: 405,
             headers: { allow: "GET, HEAD" },
           });
+        }
         try {
-          return new Response(
-            request.method === "HEAD" ? null : await registry.metrics(),
-            {
-              headers: {
-                "content-type": registry.contentType,
-                "cache-control": "no-store",
-              },
+          return new Response(request.method === "HEAD" ? null : await registry.metrics(), {
+            headers: {
+              "content-type": registry.contentType,
+              "cache-control": "no-store",
             },
-          );
+          });
         } catch {
           return new Response("metrics unavailable\n", { status: 503 });
         }
@@ -667,7 +686,9 @@ export function createStandardObservability(
         observe,
         ...(config.metrics ? { metrics } : {}),
         async flush(signal) {
-          if (closed) return;
+          if (closed) {
+            return;
+          }
           await bounded(signal, async (deadline) => {
             await Promise.all([writer.flush(deadline), provider?.forceFlush()]);
           });
