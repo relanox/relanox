@@ -158,6 +158,48 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       expect(await claim("a-later")).toMatchObject({ status: "busy" });
       expect(await claim("z-active")).toMatchObject({ status: "claimed" });
     });
+    it("starts a fresh delivery retry budget on explicit recovery", async () => {
+      await s.acceptInbound(snapshot());
+      await claim();
+      await s.completeAndEnqueue(completion());
+      const first = required((await due(110))[0]);
+      await s.settleAttempt({
+        kind: "send",
+        id: "d-r1",
+        lease: first.lease,
+        outcome: { status: "retryable", errorCode: "rate_limit" },
+        now: 111,
+        nextDueAt: 112,
+      });
+      const second = required((await due(112))[0]);
+      await s.settleAttempt({
+        kind: "send",
+        id: "d-r1",
+        lease: second.lease,
+        outcome: { status: "rejected", errorCode: "retry_budget_exhausted" },
+        now: 113,
+        nextDueAt: 113,
+      });
+      const rejected = required(await s.getOutbound("d-r1"));
+      expect(rejected.attempts).toBe(2);
+      expect(
+        await s.requeue({
+          kind: "delivery",
+          id: "d-r1",
+          expectedVersion: rejected.version,
+          now: 114,
+          acknowledgeUnknown: false,
+        }),
+      ).toMatchObject({ status: "updated" });
+      expect(await s.getOutbound("d-r1")).toMatchObject({
+        attempts: 0,
+        currentChunk: 0,
+        receipts: [],
+        status: "pending",
+        chunks: [{ idempotencyKey: "c1" }, { idempotencyKey: "c2" }],
+      });
+      expect(await due(114)).toHaveLength(1);
+    });
     it("serializes acceptance and retains source deduplication", async () => {
       const input = snapshot();
       await s.acceptInbound(input);
