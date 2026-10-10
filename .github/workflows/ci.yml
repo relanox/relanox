@@ -35,3 +35,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm check
+      - run: docker build --tag relanox:test .
+      - run: pnpm exec vitest run tests/deployment/container.test.ts
+        env:
+          RELANOX_TEST_CONTAINER_IMAGE: relanox:test
