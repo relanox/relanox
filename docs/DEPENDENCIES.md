@@ -1,14 +1,14 @@
-# 计划依赖与审计清单
+# 依赖与审计清单
 
-核对日期：2026-10-11。只提出选型，实施前依赖基线，安装与锁文件由 T01 完成。版本来自本轮 npm registry 查询，是建议审计基线，不代表兼容性或漏洞审计通过。完整直接依赖元数据、各自声明的传递依赖范围、peerDependencies、scripts 与 tarball integrity 见 [JSON 快照](DEPENDENCIES.snapshot.json)；它不是解析过的 lockfile，也不是完整传递依赖清单。
+核对日期：2026-10-11。直接依赖固定精确版本，解析结果以根 pnpm-lock.yaml 为准。下表记录实际选型与审计重点；registry 元数据和 tarball integrity 见 [JSON 快照](DEPENDENCIES.snapshot.json)，完整已安装生产依赖的许可证清单见 [LICENSES](LICENSES.md)。元数据快照不替代 lockfile；本地和 CI 检查证据见 TODO。
 
-运行环境计划采用 Node.js 24 LTS（当前官网列出的 24.21.0 为候选补丁版本），ESM + TypeScript，pnpm workspace。Node 状态依据[官方发布表](https://nodejs.org/en/about/previous-releases)。引入时固定精确版本和 lockfile，Node 类型包使用 24.x，不随 npm latest 跳到 26.x。
+运行环境采用 Node.js 24 LTS、ESM + TypeScript 和 pnpm workspace；Docker 固定 Node 24.21.0 的镜像摘要。Node 状态依据[官方发布表](https://nodejs.org/en/about/previous-releases)。引入时固定精确版本和 lockfile，Node 类型包使用 24.x，不随 npm latest 跳到 26.x。
 
 ## 1. 运行时直接依赖
 
-以下 17 个包覆盖全部 v0.1 插件组合；仅使用 SQLite 时不需要 PostgreSQL 插件。插件依赖归各自包，sdk 保持纯契约，core 不 import 数据库驱动或观测库。所有 npm 链接指向具体提议版本。
+以下 17 个包覆盖全部 v0.1 插件组合。CLI 同时装配两种存储插件，运行时按配置只打开一种。插件依赖归各自包，sdk 保持纯契约，core 不 import 数据库驱动或观测库。所有 npm 链接指向具体固定版本。
 
-| 包 / 候选版本                                                                                                                      | 许可证声明 | 引入位置与用途                                                          | 审计重点                                                                                                |
+| 包 / 固定版本                                                                                                                      | 许可证声明 | 引入位置与用途                                                          | 审计重点                                                                                                |
 | ---------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | [hono 4.13.13](https://www.npmjs.com/package/hono/v/4.13.13)                                                                       | MIT        | core：HTTP 路由与 Web Request/Response handler                          | 限制请求体、路由鉴权和代理信任；不引入额外 Web 框架                                                     |
 | [@hono/node-server 2.1.4](https://www.npmjs.com/package/@hono/node-server/v/2.1.4)                                                 | MIT        | CLI：Node listener 适配                                                 | 与 Hono 组合及 HTTP 超时/关闭行为需验证；[官方 Node 接入](https://hono.dev/docs/getting-started/nodejs) |
@@ -30,11 +30,11 @@
 
 OTel 采用[官方 tracing/instrumentation](https://opentelemetry.io/docs/languages/js/instrumentation/)和[exporter](https://opentelemetry.io/docs/languages/js/exporters/)路线。API、稳定 SDK 和 exporter 使用不同版本系列，不能强行统一版本号。首版日志走 stdout、指标走 Prometheus、trace 走 OTLP，避免同一信号重复维护两条出口。
 
-MCP 使用[官方 v2 包划分](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/get-started/packages.md)：`createMcpHandler` 可直接处理 Web Request/Response，计划挂到已有 Hono，不再加 MCP 的 node/hono adapter。v1 `@modelcontextprotocol/sdk` 不列入新项目默认依赖。若 Grok 协议验收发现兼容问题，先确定具体 transport/版本差异，再提出精确的额外依赖，不能自动降级 dot 的 MCP 2.0。
+MCP 使用[官方 v2 包划分](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/get-started/packages.md)：`createMcpHandler` 可直接处理 Web Request/Response，挂到已有 Hono，不再加 MCP 的 node/hono adapter。v1 `@modelcontextprotocol/sdk` 不列入新项目默认依赖。若 Grok 协议验收发现兼容问题，先确定具体 transport/版本差异，再提出精确的额外依赖，不能自动降级 dot 的 MCP 2.0。
 
 ## 2. 开发与构建依赖
 
-| 包 / 候选版本                                                                              | 许可证声明 | 用途及边界                                                                                       |
+| 包 / 固定版本                                                                              | 许可证声明 | 用途及边界                                                                                       |
 | ------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------ |
 | [typescript 7.0.2](https://www.npmjs.com/package/typescript/v/7.0.2)                       | Apache-2.0 | 类型检查、tsc 编译与声明输出；需确认本包在目标环境的实际编译器入口、与各工具的兼容，不仅看版本号 |
 | [tsx 4.23.15](https://www.npmjs.com/package/tsx/v/4.23.15)                                 | MIT        | 开发运行/watch；不作为生产启动依赖；审计 esbuild 传递依赖/平台二进制                             |

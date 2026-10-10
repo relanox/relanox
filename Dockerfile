@@ -9,6 +9,7 @@ FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build --chown=node:node /output ./
+COPY --from=build /build/LICENSE /build/THIRD_PARTY_NOTICES.txt ./
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 8787
