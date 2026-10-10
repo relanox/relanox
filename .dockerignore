@@ -1,0 +1,14 @@
+.git
+.worktree
+.ref
+.research
+.firecrawl
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+data
+*.log
