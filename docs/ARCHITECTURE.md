@@ -13,7 +13,7 @@ Relanox 把渠道文字交给用户已有的托管 Agent，再把异步结果发
 | 项目 | v0.1 交付边界 |
 |---|---|
 | 用户与消息 | 单个自托管实例；静态账号/绑定/发送者 allowlist；每条输入对应一个最终文字结果 |
-| 渠道 | 全部 15 个原生文字渠道，见附录 本次；按平台保留会话/线程/引用、权限、窗口与分片语义 |
+| 渠道 | 全部 15 个原生文字渠道，见附录 C；按平台保留会话/线程/引用、权限、窗口与分片语义 |
 | Agent | 用户已有 dot、已有 Grok Bot，各自独立插件；SDK/文档强类型边界和本地协议 E2E |
 | 存储 | SQLite（默认）、PostgreSQL 两个插件；每个部署选择一个权威库 |
 | 可观测性 | 独立 Observability 插件；JSON 日志、Prometheus 指标、可选 OTLP traces；存活/就绪检查 |
@@ -57,7 +57,7 @@ flowchart LR
 
 ## 3. 最小接口与归属
 
-以下是设计语义，尚未创建 TypeScript API。工具名为 Relanox 自定义，不是 Agent 平台预定义 API。
+以下是设计语义；TypeScript API 已定义于 `packages/sdk/src/index.ts`，精确事务语义见 [SDK 契约](SDK.md)。工具名为 Relanox 自定义，不是 Agent 平台预定义 API。
 
 | 接口 | 语义 |
 |---|---|
@@ -318,15 +318,15 @@ agent-dot 实现远程 MCP 服务，用户已有 dot 安装/连接相应 ChatGPT
 | 平台 | 原生 npm 包（计划） | 源码参考位置（非依赖） | 本次范围与边界 |
 |---|---|---|---|
 | Telegram | `@relanox/channel-telegram` | `extensions/telegram` | 本次文字；媒体后置 |
-| Discord | `@relanox/channel-discord` | `extensions/discord` | 本次；消息/交互入口、线程与权限 |
+| Discord | `@relanox/channel-discord` | `extensions/discord` | 本次；文字消息入口、线程与权限 |
 | Slack | `@relanox/channel-slack` | `extensions/slack` | 本次；Socket/HTTP 分别验证，thread、HTTP routes |
-| 飞书 / Lark | `@relanox/channel-feishu` | `extensions/feishu` | 本次；域名/租户、去重、卡片 |
+| 飞书 / Lark | `@relanox/channel-feishu` | `extensions/feishu` | 本次；域名/租户、去重、文字消息 |
 | 企业微信 | `@relanox/channel-wecom` | 官方外置 `@wecom/wecom-openclaw-plugin` | 本次；智能机器人 WS + 主动发送，见附录 B 专项审计 |
 | 钉钉 | `@relanox/channel-dingtalk` | 官方外置 `@dingtalk-real-ai/dingtalk-connector` | 本次；应用机器人 Stream + OpenAPI 独立发送 |
 | QQ | `@relanox/channel-qq` | 官方外置 `@tencent-connect/openclaw-qqbot` | 本次；WS/可选 Webhook，回复窗口与主动发送按账号验收 |
 | Microsoft Teams | `@relanox/channel-msteams` | `extensions/msteams` | 本次；租户、会话引用、主动回复 |
 | WhatsApp | `@relanox/channel-whatsapp` | `extensions/whatsapp` | 本次；Business 官方接口；不计划 WhatsApp Web 路线 |
-| Matrix | `@relanox/channel-matrix` | `extensions/matrix` | 本次；同步恢复、加密状态、验证与 lifecycle |
+| Matrix | `@relanox/channel-matrix` | `extensions/matrix` | 本次；非加密文字、同步恢复；显式拒绝加密输入 |
 | Google Chat | `@relanox/channel-googlechat` | `extensions/googlechat` | 本次；Space/Thread、应用身份 |
 | LINE | `@relanox/channel-line` | `extensions/line` | 本次；即时 reply 与延迟 push |
 | Mattermost | `@relanox/channel-mattermost` | `extensions/mattermost` | 本次；团队/频道、线程 |
@@ -335,7 +335,7 @@ agent-dot 实现远程 MCP 服务，用户已有 dot 安装/连接相应 ChatGPT
 
 全部直接实现 Relanox Channel 契约，不提供 OpenClaw 兼容；本次不允许只创建空包或只发送不接收。所有渠道都需实现、装配、配置说明及本地协议测试。
 
-源码依据 [固定版本 extensions 树](https://github.com/openclaw/openclaw/tree/c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3/extensions)。已深入追踪 Telegram、Discord、Slack、飞书的主要入站与公共生命周期，其余渠道目录检查不代表完成逐路径审计。企业微信/钉钉/QQ 的外置官方插件已做专项源码审计，详见附录 本次；它们不是该 OpenClaw SHA 的 bundled 插件。
+源码依据 [固定版本 extensions 树](https://github.com/openclaw/openclaw/tree/c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3/extensions)。已深入追踪 Telegram、Discord、Slack、飞书的主要入站与公共生命周期，其余渠道目录检查不代表完成逐路径审计。企业微信/钉钉/QQ 的外置官方插件已做专项源码审计，详见附录 C；它们不是该 OpenClaw SHA 的 bundled 插件。
 
 [OpenClaw WhatsApp package](https://github.com/openclaw/openclaw/blob/c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3/extensions/whatsapp/package.json) 明确为 WhatsApp Web，依赖 Baileys，不能当作 Business API。原生路线的发送窗口/模板/权限仍需专项确认。
 
