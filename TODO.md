@@ -38,7 +38,7 @@ Each task uses a fresh `.worktree/<task>` after prerequisites land on master. In
 - [x] T02: validated config/secrets/bindings; scoped Host APIs; worker, retries, health, retention and explicit recovery; immutable targets.
 - [x] T03: SQLite schema/migrations/atomic operations; shared storage contract suite; restart and conflict behavior.
 - [x] T04: observability-standard, safe no-op/error isolation, logs/metrics/optional bounded traces; redaction/public contract tests.
-- [ ] T05: PostgreSQL same storage contract; real temporary PostgreSQL tests.
+- [x] T05: PostgreSQL same storage contract; real temporary PostgreSQL tests.
 - [ ] T06: dot Events subscription/challenge/signing/lifecycle and MCP tools; Grok text Webhook and MCP tools; typed SDK/protocol tests.
 - [ ] T07: Telegram, Discord, Slack, Feishu native text receive/send; authentication, targets, errors, connection lifecycle and Vitest protocol tests.
 - [ ] T08: WeCom, DingTalk, QQ native text receive/send; protocol auth, window/sequence semantics, reconnect and Vitest tests.
@@ -64,3 +64,5 @@ Integration commits and check results will be recorded here as work completes.
 - T04: c11c0c0 integrated; 18 observability tests (29 combined), build/typecheck/lint pass. Prometheus client replacement verified separately against the existing 18 behavior tests.
 
 - T02: f70d889 integrated; 8 core policy tests (37 combined), build/typecheck/lint pass. Native plugins now start from the integrated core contract; real end-to-end storage/transport integration remains T12.
+
+- T05: ffe77e2 / dde2688 integrated; combined 65 tests pass against real SQLite and PostgreSQL, plus build/typecheck/lint. Shared regression additions 87c13f9/fa1e66d preserve active endpoint ownership and reset delivery recovery budgets.
