@@ -1,0 +1,38 @@
+{
+  "name": "@relanox/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "relanox": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.4",
+    "@relanox/agent-dot": "workspace:*",
+    "@relanox/agent-grok": "workspace:*",
+    "@relanox/channel-dingtalk": "workspace:*",
+    "@relanox/channel-discord": "workspace:*",
+    "@relanox/channel-feishu": "workspace:*",
+    "@relanox/channel-qq": "workspace:*",
+    "@relanox/channel-slack": "workspace:*",
+    "@relanox/channel-telegram": "workspace:*",
+    "@relanox/channel-wecom": "workspace:*",
+    "@relanox/core": "workspace:*",
+    "@relanox/observability-standard": "workspace:*",
+    "@relanox/sdk": "workspace:*",
+    "@relanox/storage-postgres": "workspace:*",
+    "@relanox/storage-sqlite": "workspace:*",
+    "commander": "15.0.0",
+    "zod": "4.6.5"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}
