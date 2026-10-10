@@ -12,6 +12,53 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import { chunkText, createCore, resolveSecretRef, validateConfig } from "../src/index.js";
 
+it.each(["before", "during"])("cancels an inbound body aborted %s reading", async (timing) => {
+  vi.useFakeTimers();
+  let cancelled = false;
+  try {
+    const runtime = await createCore({
+      config: { ...config, accounts: [], endpoints: [], bindings: [] },
+      storage: recordingStorage({}),
+      channels: new Map(),
+      agents: new Map(),
+      worker: { callTimeoutMs: 1000, leaseMs: 2000 },
+    });
+    const controller = new AbortController();
+    if (timing === "before") {
+      controller.abort();
+    }
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      body,
+      signal: controller.signal,
+      duplex: "half",
+    };
+    const response = runtime.fetch(new Request("http://localhost/aborted", init));
+    if (timing === "during") {
+      controller.abort();
+    }
+    const bounded = Promise.race([
+      response,
+      new Promise<{ status: number }>((resolve) => {
+        setTimeout(() => {
+          resolve({ status: 0 });
+        }, 100);
+      }),
+    ]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect((await bounded).status).toBe(408);
+    expect(cancelled).toBe(true);
+  } finally {
+    await vi.advanceTimersByTimeAsync(1000);
+    vi.useRealTimers();
+  }
+});
+
 const config: RelanoxConfig = {
   accounts: [
     {

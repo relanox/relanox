@@ -742,11 +742,16 @@ async function boundedRequest(
   maximum: number,
   timeoutMs: number,
 ): Promise<Request> {
+  if (request.signal.aborted) {
+    void request.body?.cancel().catch(() => {});
+    throw new CoreError("request_timeout");
+  }
   if (!request.body) {
     return request;
   }
   const reader = request.body.getReader();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   const chunks: Uint8Array[] = [];
   let size = 0;
   const read = async () => {
@@ -773,6 +778,10 @@ async function boundedRequest(
     return await Promise.race([
       read(),
       new Promise<never>((_resolve, reject) => {
+        onAbort = () => {
+          reject(new CoreError("request_timeout"));
+        };
+        request.signal.addEventListener("abort", onAbort, { once: true });
         timer = setTimeout(() => {
           reject(new CoreError("request_timeout"));
         }, timeoutMs);
@@ -782,6 +791,9 @@ async function boundedRequest(
     void reader.cancel().catch(() => {});
     throw error;
   } finally {
+    if (onAbort) {
+      request.signal.removeEventListener("abort", onAbort);
+    }
     if (timer) {
       clearTimeout(timer);
     }
