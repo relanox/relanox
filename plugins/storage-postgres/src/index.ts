@@ -95,9 +95,9 @@ export function createPostgresStorage(
   // An idle socket failure must not become an unhandled EventEmitter error.
   pool.on("error", () => {
     try {
-      observe.log("error", "storage.connection", {
-        plugin: "postgres",
-        errorCode: "connection_failed",
+      observe.log("error", "storage.failed", {
+        plugin: "storage-postgres",
+        errorCode: "unavailable",
       });
     } catch {
       /* telemetry is best effort */
@@ -109,14 +109,14 @@ export function createPostgresStorage(
     values: unknown[] = [],
   ): Promise<T[]> => (await client.query<T>(sql, values)).rows;
   const transaction = async <T>(
-    operation: string,
     fn: (client: PoolClient) => Promise<T>,
   ): Promise<T> => {
+    const started = performance.now();
     let span: Span | undefined;
     try {
-      span = observe.span("storage.transaction", {
-        plugin: "postgres",
-        operation,
+      span = observe.span("storage", {
+        plugin: "storage-postgres",
+        operation: "storage",
       });
     } catch {
       /* telemetry is best effort */
@@ -152,6 +152,15 @@ export function createPostgresStorage(
     } finally {
       try {
         span?.end(outcome);
+      } catch {
+        /* telemetry is best effort */
+      }
+      try {
+        observe.record(
+          "relanox_storage_duration_seconds",
+          (performance.now() - started) / 1000,
+          { plugin: "storage-postgres", operation: "storage", outcome },
+        );
       } catch {
         /* telemetry is best effort */
       }
@@ -222,7 +231,7 @@ export function createPostgresStorage(
     !!a && equal(a, b) && a.expiresAt > now;
   const storage: Storage = {
     async migrate() {
-      await transaction("migrate", async (client) => {
+      await transaction(async (client) => {
         // DDL is explicitly requested, schema is a validated PostgreSQL identifier.
         await client.query(
           "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
@@ -279,7 +288,7 @@ export function createPostgresStorage(
       await pool.end();
     },
     async acceptInbound(snapshot) {
-      return transaction("accept", async (client) => {
+      return transaction(async (client) => {
         const existing = (
           await query<{ id: string }>(
             client,
@@ -340,7 +349,7 @@ export function createPostgresStorage(
       ).map((r) => r.record.snapshot);
     },
     async claimRequest(input) {
-      return transaction("claim", async (client) => {
+      return transaction(async (client) => {
         const r = await inbound(client, input.requestId);
         if (!r || !scoped(r, input.endpointIds)) return { status: "not_found" };
         if (r.status === "claimed")
@@ -376,7 +385,7 @@ export function createPostgresStorage(
       });
     },
     async completeAndEnqueue(input) {
-      return transaction("complete", async (client) => {
+      return transaction(async (client) => {
         const r = await inbound(client, input.requestId);
         if (!r) return { status: "not_found" };
         if (
@@ -449,7 +458,7 @@ export function createPostgresStorage(
       });
     },
     async fail(input) {
-      return transaction("fail", async (client) => {
+      return transaction(async (client) => {
         const r = await inbound(client, input.requestId);
         if (!r) return { status: "not_found" };
         if (
@@ -473,7 +482,7 @@ export function createPostgresStorage(
       });
     },
     async requeue(input) {
-      return transaction("requeue", async (client) => {
+      return transaction(async (client) => {
         if (input.kind === "request") {
           const r = await inbound(client, input.id);
           if (!r) return { status: "not_found" };
@@ -513,6 +522,7 @@ export function createPostgresStorage(
           ...r,
           status: "pending" as const,
           version: r.version + 1,
+          attempts: 0,
           dueAt: input.now,
         };
         delete next.lease;
@@ -523,7 +533,7 @@ export function createPostgresStorage(
     },
     async takeDue(input) {
       const limit = bounded(input.limit);
-      return transaction("take_due", async (client) => {
+      return transaction(async (client) => {
         const work: DueWork[] = [];
         // Expiry recovery and executable selection are separate bounded scans. Unknown effects never auto-repeat.
         const expiredIn = await query<{ record: InboundRecord }>(
@@ -605,7 +615,7 @@ export function createPostgresStorage(
       });
     },
     async settleAttempt(input) {
-      return transaction("settle", async (client) => {
+      return transaction(async (client) => {
         if (input.kind === "dispatch") {
           const r = await inbound(client, input.id);
           if (!r) return { status: "not_found" };
@@ -691,7 +701,7 @@ export function createPostgresStorage(
       ).map((r) => r.record);
     },
     async compareAndSetState(ns, input) {
-      return transaction("state_cas", async (client) => {
+      return transaction(async (client) => {
         const version = (input.expectedVersion ?? 0) + 1;
         const entry: StateEntry = {
           key: input.key,
@@ -727,7 +737,7 @@ export function createPostgresStorage(
       });
     },
     async deleteState(ns, key, version) {
-      return transaction("state_delete", async (client) => {
+      return transaction(async (client) => {
         const old = (
           await query<{ version: number }>(
             client,
@@ -825,7 +835,7 @@ export function createPostgresStorage(
       };
     },
     async cleanup(input) {
-      return transaction("cleanup", async (client) => {
+      return transaction(async (client) => {
         const rows = await query<{
           inbound_record: InboundRecord;
           outbound_record: OutboundRecord | null;
