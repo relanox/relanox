@@ -33,8 +33,8 @@ Each task uses a fresh `.worktree/<task>` after prerequisites land on master. In
 
 ## Checklist
 
-- [ ] T00: reconcile PRD/architecture/dependencies, final scope/test policy; docs commit and push master.
-- [ ] T01: pnpm/TypeScript/Vitest workspace; SDK message/Host/Storage/Channel/Agent/Observability contracts; toolchain and lockfile.
+- [x] T00: reconcile PRD/architecture/dependencies, final scope/test policy; docs commit and push master.
+- [x] T01: pnpm/TypeScript/Vitest workspace; SDK message/Host/Storage/Channel/Agent/Observability contracts; toolchain and lockfile.
 - [ ] T02: validated config/secrets/bindings; scoped Host APIs; worker, retries, health, retention and explicit recovery; immutable targets.
 - [ ] T03: SQLite schema/migrations/atomic operations; shared storage contract suite; restart and conflict behavior.
 - [ ] T04: observability-standard, safe no-op/error isolation, logs/metrics/optional bounded traces; redaction/public contract tests.
@@ -55,3 +55,6 @@ Record the four required test answers before implementation in `docs/testing/<ta
 ## Evidence
 
 Integration commits and check results will be recorded here as work completes.
+
+- T00: ab1a61b / 39ed410 pushed master; native scope, protocol sources and test policy finalized.
+- T01: 7f4abde integrated; build/typecheck pass. Root lint exclusion corrected in 83ddc98; runtime tests begin with behavioral modules, no synthetic SDK tests.
