@@ -1,0 +1,17 @@
+# 本地参考源码
+
+参考项目 clone 到 `.ref/`，整个目录由根 `.gitignore` 忽略。以下 commit 与本轮审计版本一致，工作树使用 detached HEAD；更新时应重新核对架构中的源码引用。仅作阅读参考，不安装依赖、不运行上游项目，也不自动将其代码并入 Relanox。
+
+| 本地目录 | 上游 | 固定 commit | 用途 |
+|---|---|---|---|
+| [openclaw](../.ref/openclaw/) | [openclaw](https://github.com/openclaw/openclaw) | [c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3](https://github.com/openclaw/openclaw/commit/c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3) | Telegram/Discord/Slack/飞书等渠道协议与边界案例；不加载宿主 |
+| [wecom-plugin](../.ref/wecom-plugin/) | [wecom-plugin](https://github.com/WecomTeam/wecom-openclaw-plugin) | [3b1cbe3e664352821758d99ae5907f5620fce26e](https://github.com/WecomTeam/wecom-openclaw-plugin/commit/3b1cbe3e664352821758d99ae5907f5620fce26e) | 企业微信原生消息/连接行为参考 |
+| [wecom-sdk](../.ref/wecom-sdk/) | [wecom-sdk](https://github.com/WecomTeam/aibot-node-sdk) | [80615b987ef69c6028ad764924609247c0725955](https://github.com/WecomTeam/aibot-node-sdk/commit/80615b987ef69c6028ad764924609247c0725955) | 企业微信机器人长连接协议与 SDK |
+| [dingtalk-connector](../.ref/dingtalk-connector/) | [dingtalk-connector](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector) | [5fef12d37377e299e26d18b0145baf646cd17a8b](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/commit/5fef12d37377e299e26d18b0145baf646cd17a8b) | 钉钉 Stream 接入与独立发送 |
+| [qqbot](../.ref/qqbot/) | [qqbot](https://github.com/tencent-connect/openclaw-qqbot) | [b9ba494f068959ffc1bd8a790822c613810d9f40](https://github.com/tencent-connect/openclaw-qqbot/commit/b9ba494f068959ffc1bd8a790822c613810d9f40) | QQ 原生事件/发送行为参考 |
+| [qq-sdk](../.ref/qq-sdk/) | [qq-sdk](https://github.com/tencent-connect/qqbot-nodejs) | [f77fab29e78f5c69a4194237aab81e12f41afb3e](https://github.com/tencent-connect/qqbot-nodejs/commit/f77fab29e78f5c69a4194237aab81e12f41afb3e) | QQ Webhook/WS 与发送序号 |
+| [linq-grokbot-text-channel](../.ref/linq-grokbot-text-channel/) | [linq-grokbot-text-channel](https://github.com/jeffhuber/linq-grokbot-text-channel) | [91eddc9203c28b747c81678f5012dd7e150b6c30](https://github.com/jeffhuber/linq-grokbot-text-channel/commit/91eddc9203c28b747c81678f5012dd7e150b6c30) | Grok Webhook 正文转发示例；不复用其可靠性设计 |
+
+现有 `.research/` 调研材料保留；后续源码参考统一使用 `.ref/`。不纳入当前路线的 Hermes 等项目没有复制进来。
+
+OpenClaw 及外置插件仅作源码参考，不是 Relanox 兼容目标或安装依赖。实现原生渠道时只提取所需平台行为；直接复用代码另行记录来源并保留相应版权/许可。
