@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type { SpawnSyncOptionsWithStringEncoding } from "node:child_process";
+import path from "node:path";
 import process from "node:process";
 
 function run(
@@ -35,9 +36,13 @@ if (staged.length > 0) {
     );
     process.exit(1);
   }
-  const executable = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  const options = process.platform === "win32" ? { shell: true } : {};
-  // Fixed arguments only; filenames are never interpolated through a shell.
-  run(executable, ["run", "format:check"], options);
-  run(executable, ["run", "lint"], options);
+  // Invoke the pinned local CLIs directly, without platform shell interpolation.
+  run(process.execPath, [path.resolve("node_modules/oxfmt/bin/oxfmt"), "--check", "."]);
+  run(process.execPath, [
+    path.resolve("node_modules/oxlint/bin/oxlint"),
+    "--deny-warnings",
+    "--report-unused-disable-directives-severity",
+    "error",
+    ".",
+  ]);
 }
