@@ -71,6 +71,9 @@ export async function startRuntime(input: unknown) {
       config.server.managementPort,
       config.server.managementHost,
     );
+    // A connection can receive its first message before another connection finishes starting.
+    // Readiness remains gated on the worker's first successful scan.
+    core.setAccepting(true);
     await deadline(
       Promise.all(
         [...channels.values(), ...agents.values()].map(async (plugin) =>
@@ -79,8 +82,7 @@ export async function startRuntime(input: unknown) {
       ),
       config.server.startupTimeoutMs,
     );
-    core.setAccepting(true);
-    await deadline(worker.start(), config.server.startupTimeoutMs);
+    worker.start();
     observe.log("info", "startup.completed", {
       plugin: "cli",
       operation: "startup",

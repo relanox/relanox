@@ -19,12 +19,12 @@ SQLite filenames resolve against the process working directory, not the config f
 | `managementHost` / `managementPort` | `127.0.0.1` / `8788` | Management listener; host must be literal `127.0.0.1` or `::1`       |
 | `workerIntervalMs`                  | `1000`               | Delay between completed durable batches; batches never overlap       |
 | `workerStaleMs`                     | `60000`              | Maximum age of a successful batch; must exceed interval              |
-| `startupTimeoutMs`                  | `30000`              | Bound connection initialization and initial worker wait              |
+| `startupTimeoutMs`                  | `30000`              | Bound native connection initialization                               |
 | `shutdownTimeoutMs`                 | `15000`              | One total shutdown budget across draining, storage and observability |
 
 Use `host: "0.0.0.0"` in a container and terminate HTTPS at a trusted reverse proxy. Only business HTTP paths need forwarding. Agent host/origin allowlists must describe the external URL. Management serves GET `/health/live`, `/health/ready`, and `/metrics` when enabled. It exposes no administrative records or recovery endpoint. Business HTTP does not serve management health/metrics. Readiness checks storage/version, accepting state, worker failure and batch freshness. Connection health is exported through `relanox_connection_status` metrics and structured connection diagnostics; live account validation is excluded.
 
-Run owns native connections and one durable worker. SIGINT/SIGTERM stop acceptance, abort connections, close listeners and wait for in-flight work within the total shutdown budget. Cleanup still attempts storage and observability if another cleanup fails. Timeout reports a redacted command failure; it does not promise remote cancellation or that an uncertain external effect was undone. Persisted leases and unknown-state recovery remain authoritative after restart. Partial startup failures release acquired resources.
+Run owns native connections and one durable worker. Connected channels can persist inbound messages while other native connections are still initializing. After connection initialization, the worker processes its first durable batch in the background; readiness stays HTTP 503 until that batch succeeds. Persisted backlog processing is not part of `startupTimeoutMs`. SIGINT/SIGTERM stop acceptance, abort connections, close listeners and wait for in-flight work within the total shutdown budget. Cleanup still attempts storage and observability if another cleanup fails. Timeout reports a redacted command failure; it does not promise remote cancellation or that an uncertain external effect was undone. Persisted leases and unknown-state recovery remain authoritative after restart. Partial startup failures release acquired resources.
 
 ```sh
 node apps/cli/dist/main.js status --config relay.json --limit 100
