@@ -70,8 +70,8 @@ Signal 明确依赖用户自行部署的非官方 signal-cli 服务，不冒充 
 
 ## 5. 本轮核对的范围
 
-已核对直接依赖精确 npm 包版本的存在性及 registry 声明，阅读 MCP/Hono/OTel 等上游说明。本轮仅元数据核对；实现时另行安装、构建并运行依赖审计，未声称不存在漏洞；registry 的 license 字段不替代发布包 LICENSE/NOTICE 核查。实施时生成 lockfile 后再检查完整传递依赖、安装脚本/二进制来源、许可证和已知漏洞，并运行真实兼容测试。依赖增加或候选版本改变时更新本清单与快照。
+已核对直接依赖的精确 registry 元数据和完整锁文件，完成安装、类型检查、构建、真实数据库及本地协议测试。生产图中的 56 个第三方包已逐项核查发布内容中的许可证；pg-types/pgpass 的许可位于 README，Standard Webhooks 的库许可与 Prometheus NOTICE 从各自发布 gitHead 补齐。完整文本随 Docker 镜像一起保留。pnpm audit 的已知漏洞结果及最终 CI 证据见 TODO；它仅反映核对时的公告库，不替代后续维护。依赖变更时应更新本清单、快照、lockfile 与许可声明。
 
 Prometheus 客户端在实现时按官方 [v0.16.0 迁移发布](https://github.com/prometheus/client_js/releases/tag/v0.16.0) 改用 @prometheus-io/client@0.16.1。旧 prom-client 15.1.3 已在 npm 标弃用；新包支持 Node 24，许可证仍为 Apache-2.0，无 install/postinstall hook，保留现有依赖类型。原有 18 项可观测性测试不改断言即通过，另完成构建、类型检查；当前已安装树的 pnpm audit 未报告已知漏洞（仅此时点/此已安装树）。
 
-MCP 协议验收新增开发依赖 [@modelcontextprotocol/client 2.3.1](https://www.npmjs.com/package/@modelcontextprotocol/client/v/2.3.1)（Apache-2.0，Node >=20）：官方 server 包不导出客户端，用真实客户端验证现代/legacy wire 协议。仅 agent-dot/agent-grok 的 devDependencies 引入；发布包不加载该客户端。精确元数据、传递依赖和 integrity 已纳入快照与 lockfile，无 install/postinstall hook。
+MCP 协议验收新增开发依赖 [@modelcontextprotocol/client 2.3.1](https://www.npmjs.com/package/@modelcontextprotocol/client/v/2.3.1)（Apache-2.0，Node >=20）：官方 server 包不导出客户端，用真实客户端验证现代/legacy wire 协议。仅根 E2E 测试及 agent-dot/agent-grok 的 devDependencies 引入；生产包不加载该客户端。精确元数据、传递依赖和 integrity 已纳入快照与 lockfile，无 install/postinstall hook。
