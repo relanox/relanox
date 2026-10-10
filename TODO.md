@@ -71,3 +71,5 @@ Integration commits and check results will be recorded here as work completes.
 - Quality gate: 2119f5d pushed; Oxfmt, 533-rule type-aware Oxlint policy, complexity/depth limits and real pre-commit verification. GitHub Actions run 38078691064 passed on Linux/PostgreSQL.
 
 - T09 / T11 baseline: 5f93e5d / 17f9a31 integrated; 220 tests pass including real PostgreSQL and seven CLI command/lifecycle regressions. Eleven channels are implemented; CLI final assembly awaits T10. Format/lint/typecheck/build pass.
+
+- T12a: 0654997 integrates three real CLI/HTTP/MCP recovery E2E cases; these and seven CLI regressions pass together. T12 final gate still waits for all native channel assembly. Docker image migration/readiness/restart test is enabled in CI; no local Docker daemon is available.
