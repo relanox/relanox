@@ -36,3 +36,10 @@ These tests protect core-owned decisions. Recording Storage calls does not imple
 2. Dropping lease/version permits stale settlement, unbounded retryAfter bypasses retry budgets, exceptions become blind resend, or exporter errors stop messaging.
 3. Storage tests enforce fences but cannot check which fence core passes or core transport timeout/retry policy; observability tests isolate its own exporter but not core callers.
 4. No unused production seam: public processDue and production WorkerOptions. Recording IO returns a fixed persisted due record and captures settlement; it does not decide lease/state/FIFO/retry transitions. Vitest fake timers control the native timeout, not a test-only clock.
+
+## Aborted inbound streams (before adding the regression)
+
+1. Protect public core.fetch: an already-aborted request or abort during an unfinished body read returns 408 promptly and cancels its reader, without waiting for the global body timeout or calling storage.
+2. A listener installed only after an abort, or ignoring request.signal while awaiting reader.read(), leaves disconnected clients consuming a full timeout budget.
+3. Existing body-size/timeout cases cover oversized and slow live clients; plugin guards cannot observe a body still blocked in the outer core guard.
+4. No new production seam. The existing Core API accepts actual Request/ReadableStream/AbortSignal objects; recording storage throws for every unexpected call. Virtual time checks a 100ms cancellation budget against the configured 1000ms ordinary timeout.
