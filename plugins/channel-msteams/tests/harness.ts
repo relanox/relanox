@@ -12,6 +12,7 @@ export interface Traffic {
 }
 export async function peer() {
   const traffic: Traffic[] = [];
+  const disconnects = new Set<string>();
   const routes = new Map<
     string,
     { status: number; body: Json | Uint8Array; headers: Record<string, string> }
@@ -29,6 +30,10 @@ export async function peer() {
     }
     const path = incoming.url ?? "/";
     traffic.push({ path, body: Buffer.concat(parts).toString("utf8"), headers: incoming.headers });
+    if (disconnects.delete(path)) {
+      response.destroy();
+      return;
+    }
     response.setHeader("content-type", "application/json");
     if (path === "/keys") {
       response.end(JSON.stringify(jwks));
@@ -60,6 +65,9 @@ export async function peer() {
   return {
     base: `http://127.0.0.1:${address.port}`,
     traffic,
+    disconnectOnce(path: string) {
+      disconnects.add(path);
+    },
     route(
       path: string,
       body: Json | Uint8Array,

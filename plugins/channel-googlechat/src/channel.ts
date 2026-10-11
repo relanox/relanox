@@ -56,8 +56,13 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     if (typeof token !== "string") {
       return token;
     }
+    let cardsV2: Awaited<ReturnType<typeof mediaCards>>;
     try {
-      const cardsV2 = await mediaCards(input, runtime.host);
+      cardsV2 = await mediaCards(input, runtime.host);
+    } catch (error) {
+      return preparationFailure(error);
+    }
+    try {
       const url = validateEndpointUrl(
         `${config.apiBase}/v1/${target.space}/messages`,
         config.allowLoopback,
@@ -85,10 +90,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         status: "sent",
         receipt: { platformMessageId: receiptSchema.parse(await response.json()).name },
       };
-    } catch (error) {
-      if (error instanceof Error && error.message === "media_publication_unavailable") {
-        return { status: "rejected", errorCode: "media_publication_unavailable" };
-      }
+    } catch {
       return unavailable();
     }
   }
@@ -147,4 +149,11 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     },
     send,
   };
+}
+
+function preparationFailure(error: unknown): SendResult {
+  if (error instanceof Error && error.message === "media_publication_unavailable") {
+    return { status: "rejected", errorCode: "media_publication_unavailable" };
+  }
+  return { status: "retryable", errorCode: "media_preparation_unavailable" };
 }

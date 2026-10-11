@@ -353,6 +353,32 @@ it("downloads pure Google Chat media with bot auth and returns a native image ca
   if (claim.status !== "claimed") {
     throw new Error("claim_failed");
   }
+  const media = await scoped.media?.read({
+    requestId: item.requestId,
+    claimToken: claim.claimToken,
+    mediaId: item.attachments[0].id,
+  });
+  if (!media) {
+    throw new Error("missing_media_bytes");
+  }
+  const storageFailure = vi
+    .spyOn(local.storage, "getInbound")
+    .mockRejectedValueOnce(new Error("storage_temporarily_unavailable"));
+  expect(
+    await local.plugin.send({
+      deliveryId: "publication-attempt",
+      requestId: item.requestId,
+      target: item.target,
+      chunkIndex: 0,
+      chunk: { text: "", state: null, idempotencyKey: "publication:0", media: media.reference },
+      media,
+      signal: new AbortController().signal,
+    }),
+  ).toMatchObject({ status: "retryable", errorCode: "media_preparation_unavailable" });
+  storageFailure.mockRestore();
+  expect(
+    local.remote.traffic.filter((request) => request.path.startsWith("/v1/spaces/space/messages")),
+  ).toHaveLength(0);
   await scoped.complete({
     requestId: item.requestId,
     claimToken: claim.claimToken,
