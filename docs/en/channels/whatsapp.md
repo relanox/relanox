@@ -46,3 +46,5 @@ Output first uploads multipart file/type/messaging_product to `POST /<apiVersion
 The 24-hour customer-service window applies to media too. Pre-message upload failures are safe to retry; ambiguous message creation remains unknown. Media is buffered and durably stored, without streaming. Local signed HTTP/SQLite/MCP/multipart tests verify protocol byte relay, not live-account compatibility.
 
 Protocol source: [WhatsApp Business Platform media](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media).
+
+[Media transfer](../media.md)

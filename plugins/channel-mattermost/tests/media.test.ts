@@ -5,15 +5,19 @@ import { mediaRelay } from "../../channel-matrix/tests/media-harness.js";
 import { createMattermostChannel } from "../src/index.js";
 
 const kinds = [
-  ["image", "image/png", "picture.png"],
-  ["audio", "audio/ogg", "voice.ogg"],
-  ["video", "video/mp4", "clip.mp4"],
-  ["file", "application/pdf", "report.pdf"],
+  ["image", "image/png", "picture.png", 201, "sent"],
+  ["audio", "audio/ogg", "voice.ogg", 201, "sent"],
+  ["video", "video/mp4", "clip.mp4", 201, "sent"],
+  ["file", "application/pdf", "report.pdf", 201, "sent"],
+  ["image", "image/png", "picture.png", 429, "pending"],
+  ["image", "image/png", "picture.png", 403, "rejected"],
+  ["image", "image/png", "picture.png", 503, "pending"],
+  ["image", "image/png", "picture.png", 200, "pending"],
 ] as const;
 
 it.each(kinds)(
-  "relays native Mattermost %s from authenticated posted events through MCP and binary upload",
-  async (kind, mimeType, fileName) => {
+  "relays native Mattermost %s (%s, %s) upload HTTP %s settles %s through SQLite and authenticated MCP",
+  async (kind, mimeType, fileName, uploadStatus, expected) => {
     const received: { path: string; authorization: string | undefined }[] = [];
     const uploaded: {
       bytes: Uint8Array;
@@ -40,7 +44,11 @@ it.each(kinds)(
           contentType: request.headers["content-type"] ?? "",
           authorization: request.headers.authorization,
         });
-        json(response, { file_infos: [{ id: "generated" }] }, 201);
+        json(
+          response,
+          uploadStatus === 201 ? { file_infos: [{ id: "generated" }] } : {},
+          uploadStatus,
+        );
       } else if (path === "/api/v4/posts") {
         posts.push(await body(request));
         json(response, { id: "sent-post" }, 201);
@@ -134,6 +142,11 @@ it.each(kinds)(
     expect(file.type).toBe(mimeType);
     expect(new Uint8Array(await file.arrayBuffer())).toEqual(new Uint8Array([9, 8, 7]));
     expect(upload.authorization).toBe("Bearer mattermost-secret");
+    if (expected !== "sent") {
+      expect(posts).toEqual([]);
+      expect((await fixture.storage.getOutbound(turn.deliveryId))?.status).toBe(expected);
+      return;
+    }
     expect(posts).toEqual([
       { channel_id: "channel", root_id: "root", message: "", file_ids: ["generated"] },
     ]);

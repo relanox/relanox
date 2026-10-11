@@ -4,15 +4,19 @@ import { body, httpPeer, json, waitFor } from "./harness.js";
 import { mediaRelay } from "./media-harness.js";
 
 const kinds = [
-  ["image", "image/png", "picture.png"],
-  ["audio", "audio/ogg", "voice.ogg"],
-  ["video", "video/mp4", "clip.mp4"],
-  ["file", "application/pdf", "report.pdf"],
+  ["image", "image/png", "picture.png", 201, "sent"],
+  ["audio", "audio/ogg", "voice.ogg", 201, "sent"],
+  ["video", "video/mp4", "clip.mp4", 201, "sent"],
+  ["file", "application/pdf", "report.pdf", 201, "sent"],
+  ["image", "image/png", "picture.png", 429, "pending"],
+  ["image", "image/png", "picture.png", 403, "rejected"],
+  ["image", "image/png", "picture.png", 503, "pending"],
+  ["image", "image/png", "picture.png", 200, "pending"],
 ] as const;
 
 it.each(kinds)(
-  "relays native Matrix %s bytes through SQLite and authenticated MCP to uploaded room media",
-  async (kind, mimeType, fileName) => {
+  "relays native Matrix %s (%s, %s) upload HTTP %s settles %s through SQLite and authenticated MCP",
+  async (kind, mimeType, fileName, uploadStatus, expected) => {
     let syncs = 0;
     const downloads: { path: string; authorization: string | undefined }[] = [];
     const uploads: { bytes: Uint8Array; mimeType: string | undefined; filename: string | null }[] =
@@ -37,7 +41,8 @@ it.each(kinds)(
                             type: "m.room.message",
                             content: {
                               msgtype: `m.${kind}`,
-                              body: fileName,
+                              body: "Caption ".repeat(50),
+                              filename: fileName,
                               url: "mxc://remote.example/original",
                               info: {
                                 mimetype: mimeType,
@@ -67,7 +72,11 @@ it.each(kinds)(
           mimeType: request.headers["content-type"],
           filename: url.searchParams.get("filename"),
         });
-        json(response, { content_uri: "mxc://homeserver.example/generated" });
+        json(
+          response,
+          uploadStatus === 201 ? { content_uri: "mxc://homeserver.example/generated" } : {},
+          uploadStatus,
+        );
       } else if (url.pathname.includes("/state/")) {
         json(response, {}, 404);
       } else {
@@ -96,6 +105,7 @@ it.each(kinds)(
     if (!record) {
       throw new Error("Missing request");
     }
+    expect(record.snapshot.text).toBe("Caption ".repeat(50));
     const turn = await fixture.turn(record.snapshot.requestId, [
       {
         kind,
@@ -115,6 +125,11 @@ it.each(kinds)(
     ]);
     await fixture.runtime.processDue();
     expect(uploads).toEqual([{ bytes: new Uint8Array([9, 8, 7]), mimeType, filename: fileName }]);
+    if (expected !== "sent") {
+      expect(sent).toEqual([]);
+      expect((await fixture.storage.getOutbound(turn.deliveryId))?.status).toBe(expected);
+      return;
+    }
     expect(sent).toEqual([
       {
         msgtype: `m.${kind}`,

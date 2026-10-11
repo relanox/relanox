@@ -35,3 +35,7 @@
 输出先调用 `POST /_matrix/media/v3/upload`，再发送对应的 m.image、m.audio、m.video 或 m.file 房间事件。保留文件名、MIME、大小和可选时长；同一请求已有图片预览会上传并写入 thumbnail_url/thumbnail_info。核心按顺序在文本后发送结果附件。上传或发送结果不明确时遵守已有 unknown 恢复规则。媒体完整缓冲并持久保存，不支持流式传输；homeserver 上限可能低于核心上限。本地 HTTP、SQLite 和 MCP 测试验证协议约定，不证明真实账号兼容。
 
 协议来源：[Matrix Client-Server API](https://spec.matrix.org/latest/client-server-api/)。
+
+媒体上传在提交收件人消息前完成。上传传输错误、无效上传响应及服务端失败可重试；明确的客户端拒绝保持拒绝，限流遵循重试间隔。随后发送消息仍保留通常的结果不确定性处理。 原生媒体事件提供独立 `filename` 时，与其不同的 `body` 会作为说明正文与附件一起保存。
+
+[媒体传输](../media.md)

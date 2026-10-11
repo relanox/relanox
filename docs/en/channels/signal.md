@@ -36,3 +36,5 @@ Attachment metadata comes from the authenticated daemon event. Relanox calls nat
 Output uses native `send` attachments as RFC 2397 data URIs with MIME, filename and complete bytes. Images, audio, video and files use the same native attachment contract; independent duration or preview fields are not supplied by this interface. Relanox buffers and persists media, without streaming. Native Signal limits and the daemon's external attachment retention still apply. Local SSE/JSON-RPC/SQLite/MCP tests verify byte relay and group addressing, not live-account compatibility.
 
 Protocol sources: [signal-cli manual](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli.1.adoc#getattachment), [JSON-RPC manual](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli-jsonrpc.5.adoc).
+
+[Media transfer](../media.md)

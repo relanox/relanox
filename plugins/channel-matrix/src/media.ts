@@ -1,18 +1,20 @@
 import { downloadMedia, mediaBlob } from "@relanox/media";
-import type { ChannelHost, MediaUpload, SendInput } from "@relanox/sdk";
+import type { ChannelHost, MediaUpload, SendInput, SendResult } from "@relanox/sdk";
 import { z } from "zod";
 import type { MatrixConfig } from "./config.js";
-import { readJson } from "./protocol.js";
+import { httpFailure, readJson } from "./protocol.js";
 
-const mediaSchema = z.object({
-  msgtype: z.enum(["m.image", "m.audio", "m.video", "m.file"]),
-  body: z.string().min(1).max(255),
-  filename: z.string().min(1).max(255).optional(),
-  url: z.string(),
-  info: z
-    .object({ mimetype: z.string().optional(), duration: z.number().int().positive().optional() })
-    .optional(),
-});
+const mediaSchema = z
+  .object({
+    msgtype: z.enum(["m.image", "m.audio", "m.video", "m.file"]),
+    body: z.string().min(1).max(1_048_576),
+    filename: z.string().min(1).max(255).optional(),
+    url: z.string(),
+    info: z
+      .object({ mimetype: z.string().optional(), duration: z.number().int().positive().optional() })
+      .optional(),
+  })
+  .refine((value) => value.filename !== undefined || value.body.length <= 255);
 const uploadResponse = z.object({ content_uri: z.string() });
 const kinds = {
   "m.image": "image",
@@ -65,28 +67,41 @@ export async function receiveMedia(
     },
   ];
 }
+export function mediaCaption(content: unknown): string {
+  const parsed = mediaSchema.safeParse(content);
+  return parsed.success && parsed.data.filename && parsed.data.body !== parsed.data.filename
+    ? parsed.data.body
+    : "";
+}
 async function upload(
   base: string,
   headers: Readonly<Record<string, string>>,
   media: NonNullable<SendInput["media"]>,
   signal: AbortSignal,
-): Promise<string> {
-  const url = new URL(`${base}/_matrix/media/v3/upload`);
-  url.searchParams.set("filename", media.reference.fileName);
-  const response = await fetch(url, {
-    method: "POST",
-    redirect: "error",
-    signal,
-    headers: { ...headers, "Content-Type": media.reference.mimeType },
-    body: mediaBlob(media),
-  });
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new Error("media_upload_failed");
+): Promise<string | SendResult> {
+  try {
+    const url = new URL(`${base}/_matrix/media/v3/upload`);
+    url.searchParams.set("filename", media.reference.fileName);
+    const response = await fetch(url, {
+      method: "POST",
+      redirect: "error",
+      signal,
+      headers: { ...headers, "Content-Type": media.reference.mimeType },
+      body: mediaBlob(media),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      const result = httpFailure(response);
+      return result.status === "unknown"
+        ? { status: "retryable", errorCode: "media_upload_failed" }
+        : result;
+    }
+    const result = uploadResponse.parse(await readJson(response));
+    contentUri(result.content_uri);
+    return result.content_uri;
+  } catch {
+    return { status: "retryable", errorCode: "media_upload_failed" };
   }
-  const result = uploadResponse.parse(await readJson(response));
-  contentUri(result.content_uri);
-  return result.content_uri;
 }
 export async function messageContent(
   input: SendInput,
@@ -99,9 +114,15 @@ export async function messageContent(
   }
   const media = input.media;
   const url = await upload(base, headers, media, signal);
+  if (typeof url !== "string") {
+    return url;
+  }
   const thumbnailUrl = input.preview
     ? await upload(base, headers, input.preview, signal)
     : undefined;
+  if (thumbnailUrl !== undefined && typeof thumbnailUrl !== "string") {
+    return thumbnailUrl;
+  }
   return {
     msgtype: `m.${media.reference.kind}`,
     body: media.reference.fileName,

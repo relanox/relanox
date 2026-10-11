@@ -33,3 +33,7 @@ Native posted `file_ids` are resolved through `GET /api/v4/files/<id>/info` and 
 Output uploads binary multipart `files` with `channel_id` to `POST /api/v4/files`, then creates the frozen thread post with `file_ids`. Server MIME processing generates native previews; this protocol does not accept the SDK's separate preview or duration fields. File order is preserved by core. The bot needs upload_file and read_channel permissions, and server file-size limits still apply. Buffering and durable storage are supported; streaming is not. Local WebSocket/HTTP/SQLite/MCP tests verify binary relay and thread metadata without claiming live-account compatibility.
 
 Protocol source: [Mattermost file API](https://github.com/mattermost/mattermost/blob/master/api/v4/source/files.yaml).
+
+Media uploads finish before the recipient message is submitted. Upload transport errors, invalid upload responses and server failures are retryable; explicit client rejection remains rejected and rate limits honor retry delay. The subsequent message send retains its normal ambiguity handling.
+
+[Media transfer](../media.md)
