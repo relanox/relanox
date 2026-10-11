@@ -6,7 +6,9 @@ For a new setup, use the [connection configurator](connect.md): choose channels 
 
 The generated file omits default listener settings and monitoring switches. Without a `server` section, the business listener uses `127.0.0.1:8787` and management uses `127.0.0.1:8788`. Omitting `relay.observability` enables standard logs and metrics. Add overrides only when your deployment needs them; containers need `server.host: "0.0.0.0"`.
 
-The configurator requires a public HTTPS address for selected webhook channels. Outbound channels such as Discord, WeCom and IRC can leave the service address blank; generated MCP URLs then use `http://127.0.0.1:8787` for local use. Cloud Agents still need a reachable MCP address. An explicit service address is preserved when you switch channels. On narrow screens, settings and preview follow each other in normal page flow.
+The configurator requires a public HTTPS address for selected webhook channels and dot OAuth. For Grok, outbound channels such as Discord, WeCom and IRC can leave the service address blank; generated MCP URLs then use `http://127.0.0.1:8787` for local use. Cloud Agents still need a reachable MCP address. An explicit service address is preserved when you switch channels. On narrow screens, settings and preview follow each other in normal page flow.
+
+The configurator generates a 32-byte hexadecimal MCP token in your browser when loaded. You can edit or regenerate it. Copy the exact generated values into your server environment; JSON keeps environment references. Relanox does not automatically load `.env` files. For dot, this value is the OAuth consent password; for Grok, it is the URL token. Manual setup can still use the random-token command in [Quick start](getting-started.md).
 
 ## Set your public address once
 

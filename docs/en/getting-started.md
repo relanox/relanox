@@ -62,7 +62,7 @@ foreach ($name in @('TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET', 'GROK_MCP_T
 }
 ```
 
-For a service, supply these variables through its protected environment settings. Docker uses the `.env` file in [Operations](operations.md). A source-run process reads its shell environment; load the variables before starting it.
+For a service, supply these variables through its protected environment settings. Docker uses the `.env` file in [Operations](operations.md). A source-run process reads its shell environment; supply the variables before starting it. Relanox does not automatically load `.env` files.
 
 ## 4. Start Relanox
 
@@ -99,8 +99,8 @@ Telegram should return `ok: true`. Keep tokens out of shared screenshots and out
 
 Add an MCP connection to your Grok Bot:
 
-- URL: `https://relay.example.com/agents/grok/mcp/grok-main`.
-- Authentication: Bearer using `GROK_MCP_TOKEN`. Enter the token alone in a token field, or `Bearer <token>` in an Authorization header field.
+- URL: `https://relay.example.com/agents/grok/mcp/grok-main/<URL-encoded-GROK_MCP_TOKEN>`.
+- Authentication: no additional authentication; the example sets `mcp.auth` to `path`, so no Authorization header is required.
 
 Configure the Routine to use that bot. Relanox provides reply guidance through the MCP connection; no separate reply prompt is needed. See [Connect an agent](agents.md). Check its URL and Authorization against the environment variables. Restart Relanox after editing its configuration or deployment environment.
 
