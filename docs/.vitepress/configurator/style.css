@@ -528,3 +528,22 @@
     padding: 10px 12px;
   }
 }
+
+@media (max-width: 1199px) {
+  .connection-link,
+  .connection-button,
+  .draft-label,
+  .connection-details summary {
+    min-height: 44px;
+  }
+  .connection-link,
+  .draft-label {
+    padding: 8px 0;
+  }
+  .connection-details summary {
+    align-content: center;
+  }
+  .channel-choice {
+    min-height: 44px;
+  }
+}
