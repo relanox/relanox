@@ -18,20 +18,20 @@
     ],
     "endpoints": [
       {
-        "id": "grok-main",
+        "id": "agent-1",
         "agent": "grok",
         "config": {
           "mcp": {
             "token": {
-              "env": "GROK_MCP_TOKEN"
+              "env": "RELANOX_AGENT_1_MCP_TOKEN"
             },
             "auth": "path"
           },
           "routineUrl": {
-            "env": "GROK_ROUTINE_URL"
+            "env": "RELANOX_AGENT_1_ROUTINE_URL"
           },
           "routineAuthorization": {
-            "env": "GROK_ROUTINE_AUTHORIZATION"
+            "env": "RELANOX_AGENT_1_ROUTINE_AUTHORIZATION"
           }
         }
       }
@@ -40,7 +40,7 @@
       {
         "accountId": "telegram-main",
         "chatId": "12345678",
-        "endpointId": "grok-main"
+        "endpointId": "agent-1"
       }
     ],
     "storage": {

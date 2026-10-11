@@ -26,7 +26,7 @@ These delivery methods need a public HTTPS address served by Relanox:
 | Google Chat     | Image cards and file download buttons                      |
 | Microsoft Teams | Images larger than 15,000 bytes in group chats or channels |
 
-Set top-level `publicUrl` in `relay.json`. If you already set it for your Agent connection, media uses the same address automatically:
+Set top-level `publicUrl` in `relanox.json`. If you already set it for your Agent connection, media uses the same address automatically:
 
 ```json
 {

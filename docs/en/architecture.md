@@ -28,6 +28,8 @@ Relanox uses the original message to choose the reply destination and checks the
 
 Prepare a computer or server to run Relanox and an available dot or Grok Bot. Start with SQLite to store data in a local file, or connect to PostgreSQL. Some channels need a public HTTPS address for webhooks or media downloads; others connect outward to the platform. Each [channel guide](channels/index.md) explains its requirements.
 
+Both cloud Agents need a publicly reachable HTTPS address for MCP, including with outbound channels.
+
 The service has a separate local management address for health checks and metrics. Keep that address private. Message contents and credentials are excluded from the standard operational logs; administrative commands can show message content only when you ask for it.
 
 Start with [Quick start](getting-started.md), then use [Configuration](configuration.md), [Media transfer](media.md) and [Operations](operations.md) for deployment details. If you are contributing an integration, see [Build an integration](reference/sdk.md).

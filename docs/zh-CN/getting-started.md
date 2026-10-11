@@ -11,13 +11,13 @@
 - 可以持续运行 Relanox 的机器，以及公开 HTTPS 地址，例如 `https://relay.example.com`。[部署与备份](operations.md)提供反向代理示例。
 - 源码安装需要 Git、Node.js 26.11.1 和 pnpm 12.11.2。[部署与备份](operations.md)也提供 Docker 安装方式。
 
-分别为 Telegram webhook 和 Grok MCP 连接生成独立随机密钥，并保存在密钥管理器中：
+手动配置时，分别为 Telegram webhook 和 Grok MCP 连接生成独立随机密钥，并保存在密钥管理器中：
 
 ```sh
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-## 2. 安装并复制示例
+## 2. 安装并准备配置
 
 ```sh
 git clone https://github.com/relanox/relanox.git
@@ -26,13 +26,13 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-PowerShell 中复制示例：
+如果使用了[连接配置器](connect.md)，将下载的 `relanox.json` 放到仓库根目录并保留，按生成的接入教程操作。下方 Telegram/Grok 命令对应手动示例。手动配置时，在 PowerShell 中复制示例：
 
 ```powershell
-Copy-Item examples/relanox.sqlite.json relay.json
+Copy-Item examples/relanox.sqlite.json relanox.json
 ```
 
-Linux/macOS 使用 `cp examples/relanox.sqlite.json relay.json`。编辑 `relay.json`：
+Linux/macOS 使用 `cp examples/relanox.sqlite.json relanox.json`。编辑 `relanox.json`：
 
 | 位置                               | 你的值                                                                      |
 | ---------------------------------- | --------------------------------------------------------------------------- |
@@ -41,22 +41,24 @@ Linux/macOS 使用 `cp examples/relanox.sqlite.json relay.json`。编辑 `relay.
 | `publicUrl`                        | 公开 HTTPS 地址，例如 `https://relay.example.com`；使用非默认端口时带上端口 |
 | `relay.storage.config.filename`    | 数据库路径；示例为启动目录中的 `relanox.sqlite`                             |
 
-保留本地名字 `telegram-main` 和 `grok-main`，下面的 URL 会使用它们。同一主机上的反向代理使用 `server.host: "127.0.0.1"`；容器内使用 `0.0.0.0`。
+保留本地名字 `telegram-main` 和 `agent-1`，下面的 URL 会使用它们。同一主机上的反向代理使用 `server.host: "127.0.0.1"`；容器内使用 `0.0.0.0`。
 
 ## 3. 提供环境变量
 
-| 变量                         | 值                                     |
-| ---------------------------- | -------------------------------------- |
-| `TELEGRAM_BOT_TOKEN`         | BotFather 提供的 token                 |
-| `TELEGRAM_WEBHOOK_SECRET`    | 你生成的 Telegram webhook 随机密钥     |
-| `GROK_MCP_TOKEN`             | 独立生成的 MCP 原始 token              |
-| `GROK_ROUTINE_URL`           | 完整 Routine webhook URL               |
-| `GROK_ROUTINE_AUTHORIZATION` | 该 Routine 提供的完整 Authorization 值 |
+使用生成配置时，按配置器显示的准确环境变量名和值填写。下表对应手动 Telegram/Grok 示例。
+
+| 变量                                    | 值                                     |
+| --------------------------------------- | -------------------------------------- |
+| `TELEGRAM_BOT_TOKEN`                    | BotFather 提供的 token                 |
+| `TELEGRAM_WEBHOOK_SECRET`               | 你生成的 Telegram webhook 随机密钥     |
+| `RELANOX_AGENT_1_MCP_TOKEN`             | 独立生成的 MCP 原始 token              |
+| `RELANOX_AGENT_1_ROUTINE_URL`           | 完整 Routine webhook URL               |
+| `RELANOX_AGENT_1_ROUTINE_AUTHORIZATION` | 该 Routine 提供的完整 Authorization 值 |
 
 在 PowerShell 中通过提示输入，避免把密钥直接写入命令历史：
 
 ```powershell
-foreach ($name in @('TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET', 'GROK_MCP_TOKEN', 'GROK_ROUTINE_URL', 'GROK_ROUTINE_AUTHORIZATION')) {
+foreach ($name in @('TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET', 'RELANOX_AGENT_1_MCP_TOKEN', 'RELANOX_AGENT_1_ROUTINE_URL', 'RELANOX_AGENT_1_ROUTINE_AUTHORIZATION')) {
   $value = Read-Host $name -AsSecureString
   [Environment]::SetEnvironmentVariable($name, [System.Net.NetworkCredential]::new('', $value).Password, 'Process')
 }
@@ -67,8 +69,8 @@ foreach ($name in @('TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET', 'GROK_MCP_T
 ## 4. 启动 Relanox
 
 ```sh
-node apps/cli/dist/main.js validate --config relay.json
-node apps/cli/dist/main.js run --config relay.json
+node apps/cli/dist/main.js validate --config relanox.json
+node apps/cli/dist/main.js run --config relanox.json
 ```
 
 校验成功会输出 `ok: true` 和账号、Agent 数量。启动会创建数据库表，并输出带监听地址的 `started` 事件。保持终端运行。
@@ -76,7 +78,7 @@ node apps/cli/dist/main.js run --config relay.json
 另开终端，提供相同环境变量并运行：
 
 ```sh
-node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
+node apps/cli/dist/main.js doctor --config relanox.json --management-url http://127.0.0.1:8788
 ```
 
 等待 `ok` 为 `true`。新数据库应先启动服务再检查：启动会初始化存储，首次消息处理批次成功后就绪状态转为健康。
@@ -99,7 +101,7 @@ Telegram 应返回 `ok: true`。共享截图和输出前去掉 token。
 
 为 Grok Bot 添加 MCP 连接：
 
-- URL：`https://relay.example.com/agents/grok/mcp/grok-main/<URL编码后的GROK_MCP_TOKEN>`。
+- URL：`https://relay.example.com/agents/grok/mcp/agent-1/<URL编码后的RELANOX_AGENT_1_MCP_TOKEN>`。
 - 认证：无需额外认证。将 URL 最后一段替换为按路径段编码的 token；示例使用 `mcp.auth: "path"`。
 
 设置 Routine 使用这个 bot。Relanox 通过 MCP 连接提供回信说明，无需单独配置回信 prompt。详细步骤见[连接 Agent](agents.md)。检查 Routine URL 和 Authorization 与环境变量一致。更改配置或部署环境后重启 Relanox。
@@ -109,7 +111,7 @@ Telegram 应返回 `ok: true`。共享截图和输出前去掉 token。
 打开 Telegram bot 的私人聊天，用允许的用户在已绑定聊天发送 `你好，请简单打个招呼。`。Grok 调用 `relanox_send_message`，Relanox 将答案发回 Telegram。
 
 ```sh
-node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main
+node apps/cli/dist/main.js status --config relanox.json --endpoint-id agent-1
 ```
 
 来信记录的 `accepted` 表示 Routine 已接收通知；回信记录的 `sent` 表示 Telegram 已接收回信。如果只看到来信，检查 Grok MCP 连接和 Routine 执行情况；更新 Relanox 后刷新 MCP 连接。如果没有来信记录，检查 webhook、用户 ID 和聊天绑定。[部署与备份](operations.md#查找并恢复卡住的消息)介绍其他状态和恢复方法。

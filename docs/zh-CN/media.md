@@ -26,7 +26,7 @@ MCP 说明已包含生成文件的发送方式：在 `relanox_send_message` 的 
 | Google Chat     | 图片卡片和文件下载按钮             |
 | Microsoft Teams | 群聊或频道中大于 15,000 字节的图片 |
 
-在 `relay.json` 顶层设置 `publicUrl`。如果已经为 Agent 连接配置过，媒体会自动使用同一个地址：
+在 `relanox.json` 顶层设置 `publicUrl`。如果已经为 Agent 连接配置过，媒体会自动使用同一个地址：
 
 ```json
 {

@@ -15,6 +15,8 @@ cp examples/relanox.sqlite.json deploy/relanox.json
 
 PowerShell uses `New-Item -ItemType Directory -Force deploy` and `Copy-Item examples/relanox.sqlite.json deploy/relanox.json`.
 
+If you downloaded a configuration, copy that file to `deploy/relanox.json` instead of copying the example.
+
 Edit `deploy/relanox.json` using [Configuration](configuration.md). For the supplied Compose file, set:
 
 - `server.host`: `0.0.0.0`.
@@ -27,9 +29,9 @@ Create a protected `.env` file in the repository root with the variables referen
 ```dotenv
 TELEGRAM_BOT_TOKEN=REPLACE_WITH_BOT_TOKEN
 TELEGRAM_WEBHOOK_SECRET=REPLACE_WITH_WEBHOOK_SECRET
-GROK_MCP_TOKEN=REPLACE_WITH_MCP_TOKEN
-GROK_ROUTINE_URL=REPLACE_WITH_COMPLETE_ROUTINE_URL
-GROK_ROUTINE_AUTHORIZATION='REPLACE_WITH_COMPLETE_AUTHORIZATION_VALUE'
+RELANOX_AGENT_1_MCP_TOKEN=REPLACE_WITH_MCP_TOKEN
+RELANOX_AGENT_1_ROUTINE_URL=REPLACE_WITH_COMPLETE_ROUTINE_URL
+RELANOX_AGENT_1_ROUTINE_AUTHORIZATION='REPLACE_WITH_COMPLETE_AUTHORIZATION_VALUE'
 ```
 
 Replace all placeholders. Follow Compose's quoting syntax for values containing spaces or `$`. Restrict access to the deployment operator; on POSIX systems use `chmod 600 .env`. Keep this file and account configuration out of commits.
@@ -49,6 +51,14 @@ Business HTTP maps to host `127.0.0.1:8787`. The JSON mounts read-only at `/conf
 docker compose exec relanox node dist/main.js doctor --config /config/relanox.json --management-url http://127.0.0.1:8788
 docker compose exec relanox node dist/main.js status --config /config/relanox.json --limit 100
 ```
+
+For WeCom chat and sender IDs, stop any running process using the same bot, supply `WECOM_BOT_SECRET`, then run the discovery command below. It can use configuration with incomplete bindings or missing Agent credentials. Send a message to the bot; the command prints only IDs and makes no configuration changes. See [WeCom](channels/wecom.md).
+
+```sh
+node apps/cli/dist/main.js discover --config relanox.json --account wecom-main --timeout 120
+```
+
+The timeout accepts 1–600 seconds (default 120); press Ctrl+C to stop sooner.
 
 ## Give the service an HTTPS address
 
@@ -136,7 +146,7 @@ These use POSIX variables; PowerShell uses `$env:RELANOX_DATABASE_URL` and `$env
 For source installations, use `node apps/cli/dist/main.js`. Inside Docker:
 
 ```sh
-docker compose exec relanox node dist/main.js status --config /config/relanox.json --endpoint-id grok-main
+docker compose exec relanox node dist/main.js status --config /config/relanox.json --endpoint-id agent-1
 ```
 
 | State                           | Check                                                                                    |

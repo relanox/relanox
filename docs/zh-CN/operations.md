@@ -15,6 +15,8 @@ cp examples/relanox.sqlite.json deploy/relanox.json
 
 PowerShell 使用 `New-Item -ItemType Directory -Force deploy` 和 `Copy-Item examples/relanox.sqlite.json deploy/relanox.json`。
 
+如果已经下载了生成配置，将该文件复制到 `deploy/relanox.json`，不要用示例覆盖。
+
 按[修改配置](configuration.md)编辑 `deploy/relanox.json`。随仓库提供的 Compose 文件需要：
 
 - `server.host`：`0.0.0.0`。
@@ -27,9 +29,9 @@ PowerShell 使用 `New-Item -ItemType Directory -Force deploy` 和 `Copy-Item ex
 ```dotenv
 TELEGRAM_BOT_TOKEN=REPLACE_WITH_BOT_TOKEN
 TELEGRAM_WEBHOOK_SECRET=REPLACE_WITH_WEBHOOK_SECRET
-GROK_MCP_TOKEN=REPLACE_WITH_MCP_TOKEN
-GROK_ROUTINE_URL=REPLACE_WITH_COMPLETE_ROUTINE_URL
-GROK_ROUTINE_AUTHORIZATION='REPLACE_WITH_COMPLETE_AUTHORIZATION_VALUE'
+RELANOX_AGENT_1_MCP_TOKEN=REPLACE_WITH_MCP_TOKEN
+RELANOX_AGENT_1_ROUTINE_URL=REPLACE_WITH_COMPLETE_ROUTINE_URL
+RELANOX_AGENT_1_ROUTINE_AUTHORIZATION='REPLACE_WITH_COMPLETE_AUTHORIZATION_VALUE'
 ```
 
 替换全部占位符。值含空格或 `$` 时按 Compose 的环境文件语法使用引号。限制文件仅部署人员可读；POSIX 系统可用 `chmod 600 .env`。提交代码时排除这个文件和账号配置。
@@ -49,6 +51,14 @@ Compose 构建本地镜像，启动服务，并在异常退出后重启。存储
 docker compose exec relanox node dist/main.js doctor --config /config/relanox.json --management-url http://127.0.0.1:8788
 docker compose exec relanox node dist/main.js status --config /config/relanox.json --limit 100
 ```
+
+获取企业微信聊天和发送者 ID 时，先停止使用同一个 bot 的运行进程，提供 `WECOM_BOT_SECRET`，再运行下方发现命令。绑定未完成或 Agent 凭据未填写的配置也可使用。向 bot 发送消息，命令只输出 ID，不修改配置。详见[企业微信](channels/wecom.md)。
+
+```sh
+node apps/cli/dist/main.js discover --config relanox.json --account wecom-main --timeout 120
+```
+
+超时范围为 1–600 秒，默认 120 秒；可按 Ctrl+C 提前停止。
 
 ## 提供 HTTPS 地址
 
@@ -136,7 +146,7 @@ pg_restore --dbname="$RESTORE_DATABASE_URL" relanox.dump
 源码安装使用 `node apps/cli/dist/main.js`。Docker 中：
 
 ```sh
-docker compose exec relanox node dist/main.js status --config /config/relanox.json --endpoint-id grok-main
+docker compose exec relanox node dist/main.js status --config /config/relanox.json --endpoint-id agent-1
 ```
 
 | 状态                      | 检查事项                                                    |

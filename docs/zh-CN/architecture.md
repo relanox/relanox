@@ -28,6 +28,8 @@ Relanox 根据收到的原始消息确定回复位置，并核对 Agent 的访�
 
 准备一台运行 Relanox 的电脑或服务器，以及一个可用的 dot 或 Grok Bot。开始使用时可选择 SQLite，数据保存在本机文件中；也可以连接 PostgreSQL。有些渠道需要公开的 HTTPS 地址来接收回调或提供媒体下载；另一些渠道主动连接平台。各[渠道指南](channels/index.md)说明了具体要求。
 
+两种云端 Agent 都需要公网可访问的 HTTPS 地址连接 MCP，包括主动连接平台的渠道。
+
 服务另有一个本机管理地址，用于健康检查和指标采集。请保持该地址私有。标准运行日志不包含消息正文或凭据；管理命令仅在你明确要求时显示消息正文。
 
 从[快速开始](getting-started.md)入手，再参阅[配置](configuration.md)、[媒体传输](media.md)和[运行维护](operations.md)。想贡献新接入方式，请看[扩展接入](reference/sdk.md)。

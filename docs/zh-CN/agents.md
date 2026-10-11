@@ -9,55 +9,57 @@
 
 先将顶层 `publicUrl` 设为你的公开 HTTPS 地址，例如 `https://relay.example.com`，只需配置一次。使用账号中提供的连接器或 Routine 设置填写以下值。界面名称可能不同；这些步骤列出需要的地址和凭据。
 
+以下示例分别将第一个 Agent 配置为 `agent-1`。使用下载配置时保留其中的 ID 和环境变量引用；添加另一个 Agent 时使用 `agent-2` 和 `RELANOX_AGENT_2_*`，不要重复第一个条目。
+
 ## 连接 Grok
 
 1. 选择负责回信的 Grok Bot，配置它的 Routine 接受 webhook 触发。
-2. 复制完整 webhook URL 和 Authorization 值，在 Relanox 环境中提供 `GROK_ROUTINE_URL`、`GROK_ROUTINE_AUTHORIZATION`。
-3. 生成随机 MCP token，保存为 `GROK_MCP_TOKEN`，在 `relay.endpoints` 添加：
+2. 复制完整 webhook URL 和 Authorization 值，在 Relanox 环境中提供 `RELANOX_AGENT_1_ROUTINE_URL`、`RELANOX_AGENT_1_ROUTINE_AUTHORIZATION`。
+3. 使用配置器生成的 MCP token，或在手动配置时生成随机 token，提供为 `RELANOX_AGENT_1_MCP_TOKEN`。手动配置时，在 `relay.endpoints` 添加：
 
 ```json
 {
-  "id": "grok-main",
+  "id": "agent-1",
   "agent": "grok",
   "config": {
     "mcp": {
       "auth": "path",
-      "token": { "env": "GROK_MCP_TOKEN" }
+      "token": { "env": "RELANOX_AGENT_1_MCP_TOKEN" }
     },
-    "routineUrl": { "env": "GROK_ROUTINE_URL" },
-    "routineAuthorization": { "env": "GROK_ROUTINE_AUTHORIZATION" }
+    "routineUrl": { "env": "RELANOX_AGENT_1_ROUTINE_URL" },
+    "routineAuthorization": { "env": "RELANOX_AGENT_1_ROUTINE_AUTHORIZATION" }
   }
 }
 ```
 
 4. 设置好 `publicUrl` 后重启 Relanox。HTTPS 设置见[部署与备份](operations.md)。
-5. 添加 MCP 连接，地址为 `https://relay.example.com/agents/grok/mcp/grok-main/<URL编码后的GROK_MCP_TOKEN>`。将末段替换为你的 token，按 URL 路径段编码。选择无需额外认证，不需要 Authorization 请求头。
-6. 把聊天绑定的 `endpointId` 设为 `grok-main`。
+5. 添加 MCP 连接，地址为 `https://relay.example.com/agents/grok/mcp/agent-1/<URL编码后的RELANOX_AGENT_1_MCP_TOKEN>`。将末段替换为你的 token，按 URL 路径段编码。选择无需额外认证，不需要 Authorization 请求头。
+6. 把聊天绑定的 `endpointId` 设为 `agent-1`。
 7. 在这个聊天发送短消息，确认收到回信。卡住时用 `status` 查看。
 
 Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 变量保存原始 token。保护这三个变量，Routine URL 也可能包含密钥。
 
 ## 连接 dot
 
-1. 使用配置器生成的授权口令，或自行生成至少 32 个字符的随机值，提供为 `DOT_MCP_TOKEN`。
+1. 使用配置器生成的授权口令，或自行生成至少 32 个字符的随机值，提供为 `RELANOX_AGENT_1_MCP_TOKEN`。
 2. 在 `relay.endpoints` 添加以下条目：
 
 ```json
 {
-  "id": "dot-main",
+  "id": "agent-1",
   "agent": "dot",
   "config": {
     "mcp": {
       "auth": "oauth",
-      "token": { "env": "DOT_MCP_TOKEN" }
+      "token": { "env": "RELANOX_AGENT_1_MCP_TOKEN" }
     }
   }
 }
 ```
 
-3. 重启 Relanox，让 dot 通过 OAuth 连接 `https://relay.example.com/agents/dot/mcp/dot-main`。如需选择注册方式，选择 **Dynamic Client Registration (DCR，动态客户端注册)**。自动发现后，在 Relanox 授权页面输入 `DOT_MCP_TOKEN` 作为密码并允许访问。这个值不作为固定 Bearer access token 使用。
+3. 重启 Relanox，让 dot 通过 OAuth 连接 `https://relay.example.com/agents/dot/mcp/agent-1`。如需选择注册方式，选择 **Dynamic Client Registration (DCR，动态客户端注册)**。自动发现后，在 Relanox 授权页面输入 `RELANOX_AGENT_1_MCP_TOKEN` 作为密码并允许访问。这个值不作为固定 Bearer access token 使用。
 4. 通过连接的 Events 功能开启 `relanox.message_available` 订阅。在连接中开启自动续订，使它持续接收新消息。
-5. 将聊天绑定的 `endpointId` 设为 `dot-main`，然后在该聊天发送消息。
+5. 将聊天绑定的 `endpointId` 设为 `agent-1`，然后在该聊天发送消息。
 
 dot OAuth 要求公网 HTTPS `publicUrl`。Relanox 使用 PKCE S256，支持 ChatGPT OAuth 跳转地址 `https://chatgpt.com/connector_platform_oauth_redirect` 和 `https://chatgpt.com/connector/oauth/<id>`，它们与 Events 回调不同。access token 有效期一小时；refresh token 使用时轮换，授权总有效期为首次授权起 30 天。授权保存在配置的数据库中。重用旧 refresh token 会撤销对应授权；修改配置的口令并重启后，需要重新连接 dot。
 
