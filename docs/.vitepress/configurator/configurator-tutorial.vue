@@ -16,6 +16,7 @@ const props = defineProps<{
   connections: ConnectionDetails[]
   issues: DraftIssue[]
   chinese: boolean
+  accountName(id: string): string
 }>()
 
 const clipboardStatus = ref('')
@@ -47,9 +48,6 @@ const webhooks = computed(() => webhookDetails(props.state))
 
 const channelDefinition = (id: string): ChannelDefinition | undefined =>
   CHANNELS.find((channel) => channel.id === id)
-
-const channelName = (id: string): string =>
-  channelDefinition(id)?.name[props.chinese ? 'zh' : 'en'] ?? id
 
 const agentName = (id: string): string =>
   props.state.agents.find((agent) => agent.id === id)?.name ?? id
@@ -106,9 +104,9 @@ onUnmounted(() => {
               :href="link(`channels/${channel.channel}.html`)"
               target="_blank"
               rel="noopener"
-              >{{ channelName(channel.channel) }}</a
+              >{{ accountName(channel.id) }}</a
             >
-            · {{ channel.id }}<br />
+            <br />
             <span
               v-for="(chat, index) in channel.chats"
               :key="chat.id"
@@ -157,8 +155,8 @@ onUnmounted(() => {
           <p>
             {{
               text(
-                'This configuration uses SQLite. Keep data/relanox.sqlite on persistent storage. Forward your public HTTPS address to 127.0.0.1:8787 so dot or Grok can reach MCP. Outbound channels need no additional webhook registration.',
-                '这份配置使用 SQLite，请持久保存 data/relanox.sqlite。将公开 HTTPS 地址转发到本机 127.0.0.1:8787，让 dot 或 Grok 能访问 MCP。长连接渠道无需另行注册 webhook。'
+                'Follow the deployment guide to make your service available at the address you entered and keep its data backed up.',
+                '按部署说明，让服务可通过你填写的公开地址访问，并定期备份数据。'
               )
             }}
             <a :href="link('operations.html')" target="_blank" rel="noopener">{{
@@ -195,8 +193,8 @@ onUnmounted(() => {
           <p>
             {{
               text(
-                'These passwords stay in this browser session. Save them securely before closing or reloading the page. JSON contains only environment variable names.',
-                '这些密码仅保留在当前页面中。关闭或刷新前请妥善保存；JSON 只包含环境变量名称。'
+                'Save these passwords before closing or reloading the page; they are not included in the downloaded file.',
+                '关闭或刷新页面前请保存这些密码；下载的配置文件不包含密码。'
               )
             }}
           </p>
@@ -251,8 +249,8 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
                       '在 dot 选择 OAuth 与动态客户端注册，随后在 Relanox 授权页面输入生成的密码并确认授权。'
                     )
                   : text(
-                      'Paste the complete MCP address into Grok. Its path authenticates this connection; no custom headers are needed.',
-                      '将完整 MCP 地址粘贴到 Grok，路径中的密码用于认证，无需自定义请求头。'
+                      'Paste the complete MCP address into Grok and choose no additional authentication.',
+                      '将完整 MCP 地址粘贴到 Grok，选择无需额外认证。'
                     )
               }}
             </p>
@@ -274,8 +272,8 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
           <p>
             {{
               text(
-                'Relanox provides reply and attachment instructions through MCP. No separate reply prompt is needed.',
-                'Relanox 通过 MCP 提供回信与附件说明，无需另配回信 prompt。'
+                'Once connected, your Agent can reply with text and attachments. No separate reply prompt is needed.',
+                '连接后即可收发文字与附件，无需另外编写回信说明。'
               )
             }}
             <a :href="link('agents.html')" target="_blank" rel="noopener">{{
@@ -303,7 +301,7 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
           <pre><code>node apps/cli/dist/main.js doctor --config relanox.json --management-url http://127.0.0.1:8788
 node apps/cli/dist/main.js status --config relanox.json</code></pre>
           <p v-for="webhook in webhooks" :key="webhook.id">
-            {{ channelName(webhook.channel) }} · {{ webhook.id }} ·
+            {{ accountName(webhook.id) }} ·
             {{ text('Platform callback address', '平台回调地址') }}
             <code class="connection-url">{{ webhook.webhookUrl }}</code>
           </p>

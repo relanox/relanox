@@ -13,7 +13,6 @@ import {
   environmentNames,
   generateMcpToken,
   removeAgent,
-  publicHttpsChannels,
   validateDraft
 } from './model.js'
 import type {
@@ -37,7 +36,6 @@ type ConfiguratorView = {
   selectedDetails: Ref<string>
   feedback: Ref<string>
   selected: ComputedRef<ChannelState[]>
-  httpsChannels: ComputedRef<string[]>
   json: ComputedRef<string>
   lines: ComputedRef<{ text: string; kind: string }[][]>
   issues: ComputedRef<DraftIssue[]>
@@ -47,6 +45,7 @@ type ConfiguratorView = {
   activeChannel: ComputedRef<ChannelState | undefined>
   definition(id: string): ChannelDefinition | undefined
   channelName(id: string): string
+  accountName(id: string): string
   visibleChannels: ComputedRef<ChannelState[]>
   toggleChannel(id: string, enabled: boolean): void
   appendAccount(channelId: string): void
@@ -130,9 +129,19 @@ export function useConfigurator(): ConfiguratorView {
   const channelName = (id: string): string =>
     local(definition(id)?.name ?? { en: id, zh: id })
 
-  const httpsChannels = computed(() =>
-    publicHttpsChannels(state).map((channel) => local(channel.name))
-  )
+  function accountName(id: string): string {
+    const account = state.channels.find((channel) => channel.id === id)
+    if (!account) {
+      return ''
+    }
+
+    const siblings = state.channels.filter(
+      (channel) => channel.channel === account.channel
+    )
+
+    const index = siblings.findIndex((channel) => channel.id === id) + 1
+    return `${channelName(account.channel)} · ${text(`Account ${index}`, `账号 ${index}`)}`
+  }
 
   const common = ['telegram', 'feishu', 'discord', 'slack', 'wecom', 'dingtalk']
 
@@ -236,7 +245,6 @@ export function useConfigurator(): ConfiguratorView {
     selectedDetails,
     feedback,
     selected,
-    httpsChannels,
     json,
     lines,
     issues,
@@ -246,6 +254,7 @@ export function useConfigurator(): ConfiguratorView {
     activeChannel,
     definition,
     channelName,
+    accountName,
     visibleChannels,
     toggleChannel,
     appendAccount,

@@ -4,7 +4,7 @@ Connect an internal Feishu or Lark application bot to your agent.
 
 ## Prepare your account
 
-Create an internal application, enable its bot capability and grant message reception, sending and resource access permissions. Record the app ID and tenant key; save the app secret, event verification token and encryption key in the environment variables shown below. For Lark, select lark in **Platform domain**.
+Create an internal application, enable its bot capability and grant message reception, sending and resource access permissions. Record the app ID and tenant key; save the app secret, event verification token and encryption key in the environment variables listed in the generated setup guide. For Lark, select lark in **Platform domain**.
 
 ## Fill in the configurator
 
@@ -20,7 +20,7 @@ Download the configuration as `relanox.json` and set the secret variables in the
 
 Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-Use the message event’s sender `open_id` for **Allowed user IDs** and `message.chat_id` for **Chat ID**. The event header supplies `tenant_key`; the bot identity can be obtained from the bot information API. A thread binding uses `message.thread_id`, or `root_id` when that is the supplied thread reference.
+Use the message event’s sender `open_id` for **Allowed user IDs** and `message.chat_id` for **Chat ID**. The event header supplies `tenant_key`. A thread binding uses `message.thread_id`, or `root_id` when that is the supplied thread reference.
 
 ## Enable the connection
 

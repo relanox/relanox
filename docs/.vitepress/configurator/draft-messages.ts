@@ -82,7 +82,9 @@ export function draftMessage(
   const subject = [
     agent?.name,
     channel?.name[locale],
-    account?.id,
+    account
+      ? `${chinese ? '账号' : 'Account'} ${state.channels.filter((entry) => entry.channel === account.channel).findIndex((entry) => entry.id === account.id) + 1}`
+      : '',
     chatIndex >= 0 ? `${chinese ? '聊天' : 'Chat'} ${chatIndex + 1}` : '',
     field?.label[locale]
   ]

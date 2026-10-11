@@ -10,7 +10,7 @@
 
 打开[连接配置器](../connect.md)，选择 **Telegram**，填写上一步取得的账号信息。凭据变量名保持默认，按照下载后生成的教程设置实际密钥。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#telegram)。
+将下载的配置保存为 `relanox.json`，并按接入教程在服务器上设置密钥。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#telegram)。
 
 注册 webhook 前，先向机器人私聊发送“你好”，在已设置 `TELEGRAM_BOT_TOKEN` 的 PowerShell 中执行下方命令。输出中的 `result[].message.from.id` 为用户 ID，`result[].message.chat.id` 为会话 ID。群组或话题 ID 也可通过在其中发送测试消息，再查看对应事件取得。此步骤适合新建机器人；已有机器人需先移除原 webhook 才能使用 `getUpdates`，请先与其维护者协调变更。
 

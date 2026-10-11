@@ -14,7 +14,7 @@
 | --------------- | --------------------------- |
 | Homeserver 地址 | 上一步取得的Homeserver 地址 |
 
-下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#matrix)。
+将下载的配置保存为 `relanox.json`，并按接入教程在服务器上设置密钥。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#matrix)。
 
 允许发送者填写完整 Matrix 用户 ID，如 `@alice:example.com`。从房间信息或房间事件复制内部房间 ID（如 `!support:example.com`）填入 「聊天 ID」。房间别名 `#support:example.com` 与房间 ID 不同。绑定消息串时，「话题 / 线程 ID」填原始 `m.thread` 根事件 ID。
 

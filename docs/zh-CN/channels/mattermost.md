@@ -14,7 +14,7 @@
 | ---------- | ---------------------- |
 | 服务器地址 | 上一步取得的服务器地址 |
 
-下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#mattermost)。
+将下载的配置保存为 `relanox.json`，并按接入教程在服务器上设置密钥。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#mattermost)。
 
 「允许使用的用户 ID」填 Mattermost 用户 ID，「聊天 ID」填频道 ID。机器人 Token 可调用 `GET /api/v4/users/username/<username>` 取得发送者 ID，`GET /api/v4/teams/name/<team>/channels/name/<channel>` 取得频道 ID；消息事件也包含 `user_id` 和 `channel_id`。指定消息串时，「话题 / 线程 ID」填根帖 ID。
 
