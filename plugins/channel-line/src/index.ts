@@ -196,8 +196,11 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
     },
     validateConfig(value) {
       const config = configSchema.parse(value);
-      const apiBase = endpoint(config.apiBase, config.allowLoopback).toString().replace(/\/$/u, "");
-      return { ...config, apiBase };
+      const apiBase = endpoint(config.apiBase, config.allowLoopback);
+      if (/[?#]/u.test(apiBase.href)) {
+        throw new Error("invalid_api_base");
+      }
+      return { ...config, apiBase: apiBase.href.replace(/\/$/u, "") };
     },
     async setup(host, account, config) {
       runtime = { host, account, config };

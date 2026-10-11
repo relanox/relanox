@@ -64,7 +64,7 @@ const receiptSchema = z.object({ id: identifier });
 
 function serviceUrl(value: string, config: TeamsConfig): URL {
   const url = endpoint(value, config.allowLoopback);
-  if (url.search || !config.trustedServiceOrigins.includes(url.origin)) {
+  if (/[?#]/u.test(url.href) || !config.trustedServiceOrigins.includes(url.origin)) {
     throw new Error("untrusted_service_origin");
   }
   return url;

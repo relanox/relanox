@@ -228,7 +228,11 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
     },
     validateConfig(value) {
       const config = configSchema.parse(value);
-      config.apiBase = endpoint(config.apiBase, config.allowLoopback).href.replace(/\/+$/u, "");
+      const apiBase = endpoint(config.apiBase, config.allowLoopback);
+      if (/[?#]/u.test(apiBase.href)) {
+        throw new Error("invalid_api_base");
+      }
+      config.apiBase = apiBase.href.replace(/\/+$/u, "");
       return config;
     },
     async setup(host, account, config) {

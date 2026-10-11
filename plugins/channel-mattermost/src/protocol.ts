@@ -20,8 +20,7 @@ export function trustedBase(value: string, allowInsecureLocalhost: boolean): str
   if (
     url.username ||
     url.password ||
-    url.search ||
-    url.hash ||
+    /[?#]/u.test(url.href) ||
     (url.protocol !== "https:" && !(url.protocol === "http:" && local && allowInsecureLocalhost))
   ) {
     throw new Error("invalid_base_url");

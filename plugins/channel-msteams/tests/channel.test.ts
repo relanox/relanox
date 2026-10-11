@@ -72,6 +72,19 @@ async function setup(endorsements = ["msteams"], filename = ":memory:") {
 }
 
 describe("native Microsoft Teams", () => {
+  it.each(["?", "#"])(
+    "rejects a signed service base with a bare '%s' delimiter",
+    async (suffix) => {
+      const local = await setup();
+      const serviceUrl = `${local.activity.serviceUrl}${suffix}`;
+      const response = await local.core.fetch(
+        await local.incoming({ serviceurl: serviceUrl }, { ...local.activity, serviceUrl }),
+      );
+      expect(response.status).toBe(401);
+      expect((await local.storage.getStats()).pending).toBe(0);
+    },
+  );
+
   it("authenticates endorsed JWT and frozen conversation reference through proactive OAuth send", async () => {
     const local = await setup();
     expect((await local.core.fetch(await local.incoming({}, "{"))).status).toBe(400);

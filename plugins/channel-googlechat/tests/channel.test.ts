@@ -29,7 +29,7 @@ const body = JSON.stringify({
     thread: { name: "spaces/space/threads/thread" },
   },
 });
-async function setup(filename = ":memory:") {
+async function setup(filename = ":memory:", baseSuffix = "") {
   const remote = await peer();
   cleanup.push(remote.close);
   const keys = await generateKeyPair("RS256", { extractable: true });
@@ -47,7 +47,7 @@ async function setup(filename = ":memory:") {
   const config: Json = {
     audience,
     serviceAccount: { env: "CHAT_SERVICE" },
-    apiBase: remote.base,
+    apiBase: `${remote.base}${baseSuffix}`,
     tokenUrl: `${remote.base}/token`,
     jwksUrl: `${remote.base}/keys`,
     allowLoopback: true,
@@ -93,37 +93,40 @@ async function setup(filename = ":memory:") {
 }
 
 describe("native Google Chat", () => {
-  it("verifies caller JWT then persists, deduplicates, obtains service-account OAuth and sends to the frozen thread", async () => {
-    const local = await setup();
-    expect((await local.core.fetch(await local.incoming(undefined, "{"))).status).toBe(400);
-    expect((await local.core.fetch(await local.incoming())).status).toBe(200);
-    expect((await local.core.fetch(await local.incoming())).status).toBe(200);
-    expect((await local.storage.getStats()).pending).toBe(1);
-    const completed = await local.complete();
-    expect(completed.delivery?.status).toBe("sent");
-    expect(local.dispatches).toEqual(["hello"]);
-    const oauth = local.remote.traffic.find((request) => request.path === "/token");
-    const form = new URLSearchParams(oauth?.body);
-    expect(form.get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:jwt-bearer");
-    const assertion = form.get("assertion");
-    if (!assertion) {
-      throw new Error("Missing OAuth assertion");
-    }
-    const verified = await jwtVerify(assertion, local.keys.publicKey, {
-      algorithms: ["RS256"],
-      issuer: "relay@example.iam.gserviceaccount.com",
-      audience: `${local.remote.base}/token`,
-    });
-    expect(verified.payload.scope).toBe("https://www.googleapis.com/auth/chat.bot");
-    const sent = local.remote.traffic.find((request) => request.path.startsWith("/v1/"));
-    expect(sent?.path).toBe("/v1/spaces/space/messages?messageReplyOption=REPLY_MESSAGE_OR_FAIL");
-    expect(sent?.headers.authorization).toBe("Bearer oauth-token");
-    expect(JSON.parse(sent?.body ?? "null") as unknown).toEqual({
-      text: "answer",
-      thread: { name: "spaces/space/threads/thread" },
-    });
-    expect(completed.request.target.threadId).toBe("spaces/space/threads/thread");
-  });
+  it.each(["", "/"])(
+    "verifies caller JWT then persists, deduplicates, obtains service-account OAuth and sends to the frozen thread with base suffix '%s'",
+    async (baseSuffix) => {
+      const local = await setup(":memory:", baseSuffix);
+      expect((await local.core.fetch(await local.incoming(undefined, "{"))).status).toBe(400);
+      expect((await local.core.fetch(await local.incoming())).status).toBe(200);
+      expect((await local.core.fetch(await local.incoming())).status).toBe(200);
+      expect((await local.storage.getStats()).pending).toBe(1);
+      const completed = await local.complete();
+      expect(completed.delivery?.status).toBe("sent");
+      expect(local.dispatches).toEqual(["hello"]);
+      const oauth = local.remote.traffic.find((request) => request.path === "/token");
+      const form = new URLSearchParams(oauth?.body);
+      expect(form.get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:jwt-bearer");
+      const assertion = form.get("assertion");
+      if (!assertion) {
+        throw new Error("Missing OAuth assertion");
+      }
+      const verified = await jwtVerify(assertion, local.keys.publicKey, {
+        algorithms: ["RS256"],
+        issuer: "relay@example.iam.gserviceaccount.com",
+        audience: `${local.remote.base}/token`,
+      });
+      expect(verified.payload.scope).toBe("https://www.googleapis.com/auth/chat.bot");
+      const sent = local.remote.traffic.find((request) => request.path.startsWith("/v1/"));
+      expect(sent?.path).toBe("/v1/spaces/space/messages?messageReplyOption=REPLY_MESSAGE_OR_FAIL");
+      expect(sent?.headers.authorization).toBe("Bearer oauth-token");
+      expect(JSON.parse(sent?.body ?? "null") as unknown).toEqual({
+        text: "answer",
+        thread: { name: "spaces/space/threads/thread" },
+      });
+      expect(completed.request.target.threadId).toBe("spaces/space/threads/thread");
+    },
+  );
 
   it.each([
     { aud: "another-app" },

@@ -31,6 +31,12 @@ const configSchema = z
   .superRefine((c, ctx) => {
     try {
       checkedUrl(c.apiBase, false, c.allowInsecureLoopback);
+      if (/[?#]/u.test(new URL(c.apiBase).href)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "API base URL cannot contain a query or fragment",
+        });
+      }
     } catch {
       ctx.addIssue({ code: "custom", message: "Invalid secure API URL" });
     }

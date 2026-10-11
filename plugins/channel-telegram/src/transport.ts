@@ -25,7 +25,12 @@ export function equal(a: string, b: string): boolean {
 }
 export function address(value: string, insecure: boolean, socket = false): string {
   const url = new URL(value);
-  if (url.username || url.password || url.hash || (!socket && url.search)) {
+  if (
+    url.username ||
+    url.password ||
+    url.href.includes("#") ||
+    (!socket && url.href.includes("?"))
+  ) {
     throw new Error("invalid_transport_url");
   }
   const secure = socket ? "wss:" : "https:";
