@@ -1,2 +1,2 @@
-export { createWeComChannel } from "./channel.js";
-export type { WeComConfig } from "./config.js";
+export { createWeComChannel } from './channel.js'
+export type { WeComConfig } from './config.js'

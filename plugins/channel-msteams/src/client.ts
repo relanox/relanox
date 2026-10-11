@@ -1,40 +1,43 @@
-import type { SendResult } from "@relanox/sdk";
-import type { TeamsConfig } from "./config.js";
-import { validateEndpointUrl } from "./config.js";
-import { failure, request, secret } from "./io.js";
-import { oauthTokenResponseSchema } from "./schemas.js";
+import type { SendResult } from '@relanox/sdk'
+import type { TeamsConfig } from './config.js'
+import { validateEndpointUrl } from './config.js'
+import { failure, request, secret } from './io.js'
+import { oauthTokenResponseSchema } from './schemas.js'
 
 export async function accessToken(
   config: TeamsConfig,
-  signal: AbortSignal,
+  signal: AbortSignal
 ): Promise<string | SendResult> {
   const response = await request(
     validateEndpointUrl(config.tokenUrl, config.allowLoopback),
     {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: "client_credentials",
+        grant_type: 'client_credentials',
         client_id: config.appId,
         client_secret: secret(config.appSecret),
-        scope: "https://api.botframework.com/.default",
-      }),
+        scope: 'https://api.botframework.com/.default'
+      })
     },
-    signal,
-  );
+    signal
+  )
 
   if (!response.ok) {
     return response.status >= 500
-      ? { status: "retryable", errorCode: "oauth_unavailable" }
-      : failure(response);
+      ? { status: 'retryable', errorCode: 'oauth_unavailable' }
+      : failure(response)
   }
-  return oauthTokenResponseSchema.parse(await response.json()).access_token;
+  return oauthTokenResponseSchema.parse(await response.json()).access_token
 }
 
 export function serviceUrl(value: string, config: TeamsConfig): URL {
-  const url = validateEndpointUrl(value, config.allowLoopback);
-  if (/[?#]/u.test(url.href) || !config.trustedServiceOrigins.includes(url.origin)) {
-    throw new Error("untrusted_service_origin");
+  const url = validateEndpointUrl(value, config.allowLoopback)
+  if (
+    /[?#]/u.test(url.href) ||
+    !config.trustedServiceOrigins.includes(url.origin)
+  ) {
+    throw new Error('untrusted_service_origin')
   }
-  return url;
+  return url
 }

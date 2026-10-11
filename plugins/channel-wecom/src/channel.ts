@@ -1,259 +1,315 @@
-import { receiveParts, uploadResource, outgoingBody, uploadFailure } from "./media.js";
+import {
+  receiveParts,
+  uploadResource,
+  outgoingBody,
+  uploadFailure
+} from './media.js'
 import type {
   AccountConfig,
   ChannelHost,
   ChannelPlugin,
   SendInput,
-  SendResult,
-} from "@relanox/sdk";
-import { randomUUID } from "node:crypto";
-import type { z } from "zod";
-import { configSchema, validateTransportUrl } from "./config.js";
-import type { WeComConfig } from "./config.js";
-import { frameSchema, messageSchema, targetSchema, botEventSchema } from "./schemas.js";
-import { JsonSocketConnection, ingestText, secret } from "./transport.js";
+  SendResult
+} from '@relanox/sdk'
+import { randomUUID } from 'node:crypto'
+import type { z } from 'zod'
+import { configSchema, validateTransportUrl } from './config.js'
+import type { WeComConfig } from './config.js'
+import {
+  frameSchema,
+  messageSchema,
+  targetSchema,
+  botEventSchema
+} from './schemas.js'
+import { JsonSocketConnection, ingestText, secret } from './transport.js'
 
-type Frame = z.infer<typeof frameSchema>;
+type Frame = z.infer<typeof frameSchema>
 
 export function createWeComChannel(): ChannelPlugin<WeComConfig> {
-  let host: ChannelHost;
-  let account: AccountConfig;
-  let config: WeComConfig;
-  let connection: JsonSocketConnection;
-  let authenticated = false;
-  const pending = new Map<string, { resolve(frame: Frame): void; reject(): void }>();
+  let host: ChannelHost
+  let account: AccountConfig
+  let config: WeComConfig
+  let connection: JsonSocketConnection
+  let authenticated = false
 
-  async function request(cmd: string, body: unknown, signal: AbortSignal): Promise<Frame> {
-    const id = randomUUID();
-    signal.throwIfAborted();
+  const pending = new Map<
+    string,
+    { resolve(frame: Frame): void; reject(): void }
+  >()
+
+  async function request(
+    cmd: string,
+    body: unknown,
+    signal: AbortSignal
+  ): Promise<Frame> {
+    const id = randomUUID()
+    signal.throwIfAborted()
     return new Promise((resolve, reject) => {
       const fail = () => {
-        cleanup();
-        reject(new Error("request_uncertain"));
-      };
+        cleanup()
+        reject(new Error('request_uncertain'))
+      }
 
       const cleanup = () => {
-        clearTimeout(timer);
-        signal.removeEventListener("abort", fail);
-        pending.delete(id);
-      };
+        clearTimeout(timer)
+        signal.removeEventListener('abort', fail)
+        pending.delete(id)
+      }
 
-      const timer = setTimeout(fail, 10_000);
+      const timer = setTimeout(fail, 10_000)
       pending.set(id, {
         resolve: (frame) => {
-          cleanup();
-          resolve(frame);
+          cleanup()
+          resolve(frame)
         },
-        reject: fail,
-      });
-      signal.addEventListener("abort", fail, { once: true });
+        reject: fail
+      })
+      signal.addEventListener('abort', fail, { once: true })
       try {
         connection.send({
           cmd,
           headers: { req_id: id },
-          ...(body === undefined ? {} : { body }),
-        });
+          ...(body === undefined ? {} : { body })
+        })
       } catch {
-        fail();
+        fail()
       }
-    });
+    })
   }
 
   async function receive(raw: unknown): Promise<void> {
-    const frame = frameSchema.parse(raw);
+    const frame = frameSchema.parse(raw)
     if (frame.errcode !== undefined) {
-      pending.get(frame.headers.req_id)?.resolve(frame);
-      return;
+      pending.get(frame.headers.req_id)?.resolve(frame)
+      return
     }
-    if (frame.cmd === "aibot_event_callback") {
-      const event = botEventSchema.parse(frame.body);
-      if (event.aibotid === config.botId && event.event.eventtype === "disconnected_event") {
-        await connection.stop();
-        host.connection("degraded", "bot_connection_replaced");
-        host.observe.log("warn", "channel_connection_replaced", {
-          errorCode: "bot_connection_replaced",
-        });
+    if (frame.cmd === 'aibot_event_callback') {
+      const event = botEventSchema.parse(frame.body)
+      if (
+        event.aibotid === config.botId &&
+        event.event.eventtype === 'disconnected_event'
+      ) {
+        await connection.stop()
+        host.connection('degraded', 'bot_connection_replaced')
+        host.observe.log('warn', 'channel_connection_replaced', {
+          errorCode: 'bot_connection_replaced'
+        })
       }
-      return;
+      return
     }
-    if (!authenticated || frame.cmd !== "aibot_msg_callback") {
-      return;
+    if (!authenticated || frame.cmd !== 'aibot_msg_callback') {
+      return
     }
-    const message = messageSchema.parse(frame.body);
-    if (message.aibotid !== config.botId || message.from.userid === config.botId) {
-      return;
+    const message = messageSchema.parse(frame.body)
+    if (
+      message.aibotid !== config.botId ||
+      message.from.userid === config.botId
+    ) {
+      return
     }
-    if (!["text", "image", "file", "video", "mixed", "voice"].includes(message.msgtype)) {
-      host.observe.log("info", "channel_unsupported_input", {
-        errorCode: "unsupported_message_type",
-      });
-      return;
+    if (
+      !['text', 'image', 'file', 'video', 'mixed', 'voice'].includes(
+        message.msgtype
+      )
+    ) {
+      host.observe.log('info', 'channel_unsupported_input', {
+        errorCode: 'unsupported_message_type'
+      })
+      return
     }
-    const chatId = message.chattype === "group" ? message.chatid : message.from.userid;
+
+    const chatId =
+      message.chattype === 'group' ? message.chatid : message.from.userid
+
     if (!chatId) {
-      throw new Error("missing_group_address");
+      throw new Error('missing_group_address')
     }
-    const { text, attachments } = await receiveParts(message, host, config, connection.signal);
+
+    const { text, attachments } = await receiveParts(
+      message,
+      host,
+      config,
+      connection.signal
+    )
+
     if (!text && attachments.length === 0) {
-      return;
+      return
     }
     await ingestText(host, {
       source: {
-        channel: "wecom",
+        channel: 'wecom',
         accountId: account.id,
-        eventId: message.msgid,
+        eventId: message.msgid
       },
       senderId: message.from.userid,
       text,
       attachments,
       target: {
-        channel: "wecom",
+        channel: 'wecom',
         accountId: account.id,
         chatId,
         replyToId: message.msgid,
         data: {
           chattype: message.chattype,
-          scope: { botId: config.botId, wsUrl: new URL(config.wsUrl).href },
-        },
+          scope: { botId: config.botId, wsUrl: new URL(config.wsUrl).href }
+        }
       },
       receivedAt: Date.now(),
-      context: null,
-    });
+      context: null
+    })
   }
 
   return {
-    id: "channel-wecom",
+    id: 'channel-wecom',
     sdkMajor: 1,
-    runtime: "node",
-    kind: "channel",
-    channel: "wecom",
+    runtime: 'node',
+    kind: 'channel',
+    channel: 'wecom',
     // Independent sends have no documented idempotency promise. Escaping can double UTF-8 size.
     capabilities: {
       receive: true,
-      transport: "connection",
+      transport: 'connection',
       maxTextLength: 2048,
-      lengthUnit: "utf8",
+      lengthUnit: 'utf8',
       idempotentSend: false,
-      media: { receive: ["image", "video", "file"], send: ["image", "audio", "video", "file"] },
+      media: {
+        receive: ['image', 'video', 'file'],
+        send: ['image', 'audio', 'video', 'file']
+      }
     },
     validateConfig: (value) => configSchema.parse(value),
     async setup(nextHost, nextAccount, nextConfig) {
-      host = nextHost;
-      account = nextAccount;
-      config = configSchema.parse(nextConfig);
+      host = nextHost
+      account = nextAccount
+      config = configSchema.parse(nextConfig)
       connection = new JsonSocketConnection(
         host,
-        async () => validateTransportUrl(config.wsUrl, true, config.allowInsecureLoopback),
+        async () =>
+          validateTransportUrl(
+            config.wsUrl,
+            true,
+            config.allowInsecureLoopback
+          ),
         async () => {
           const result = await request(
-            "aibot_subscribe",
+            'aibot_subscribe',
             { bot_id: config.botId, secret: secret(config.secret) },
-            connection.signal,
-          );
+            connection.signal
+          )
 
           if (result.errcode !== 0) {
-            connection.socket?.terminate();
-            throw new Error("authentication_failed");
+            connection.socket?.terminate()
+            throw new Error('authentication_failed')
           }
-          authenticated = true;
-          connection.ready();
-          let awaiting = false;
+          authenticated = true
+          connection.ready()
+          let awaiting = false
           connection.setHeartbeat(config.heartbeatMs, () => {
             if (awaiting) {
-              connection.socket?.terminate();
-              return;
+              connection.socket?.terminate()
+              return
             }
-            awaiting = true;
+            awaiting = true
             void (async () => {
               try {
-                const response = await request("ping", undefined, connection.signal);
+                const response = await request(
+                  'ping',
+                  undefined,
+                  connection.signal
+                )
+
                 if (response.errcode !== 0) {
-                  connection.socket?.terminate();
+                  connection.socket?.terminate()
                 }
               } catch {
-                connection.socket?.terminate();
+                connection.socket?.terminate()
               } finally {
-                awaiting = false;
+                awaiting = false
               }
-            })();
-          });
+            })()
+          })
         },
         receive,
         () => {
-          authenticated = false;
+          authenticated = false
           for (const p of pending.values()) {
-            p.reject();
+            p.reject()
           }
         },
-        config.maxReconnectAttempts,
-      );
+        config.maxReconnectAttempts
+      )
     },
     start: (signal) => connection.start(signal),
     stop: () => connection.stop(),
     async send(input: SendInput): Promise<SendResult> {
-      const target = targetSchema.safeParse(input.target.data);
+      const target = targetSchema.safeParse(input.target.data)
       if (
-        input.target.channel !== "wecom" ||
+        input.target.channel !== 'wecom' ||
         input.target.accountId !== account.id ||
         !target.success
       ) {
-        return { status: "rejected", errorCode: "invalid_target" };
+        return { status: 'rejected', errorCode: 'invalid_target' }
       }
       if (
         target.data.scope.botId !== config.botId ||
         target.data.scope.wsUrl !== new URL(config.wsUrl).href
       ) {
-        return { status: "rejected", errorCode: "target_identity_changed" };
+        return { status: 'rejected', errorCode: 'target_identity_changed' }
       }
       if (!authenticated) {
         return {
-          status: "retryable",
-          errorCode: "not_connected",
-          retryAfterMs: 1000,
-        };
+          status: 'retryable',
+          errorCode: 'not_connected',
+          retryAfterMs: 1000
+        }
       }
-      const content = input.chunk.text.replaceAll(/[\\`*_{}[\]()#+.!>~|-]/gu, String.raw`\$&`);
+
+      const content = input.chunk.text.replaceAll(
+        /[\\`*_{}[\]()#+.!>~|-]/gu,
+        String.raw`\$&`
+      )
+
       if (Buffer.byteLength(content) > 4096) {
-        return { status: "rejected", errorCode: "text_too_long" };
+        return { status: 'rejected', errorCode: 'text_too_long' }
       }
-      let transmitting = false;
+      let transmitting = false
       try {
         if (input.chunk.media && !input.media) {
-          return { status: "rejected", errorCode: "missing_media" };
+          return { status: 'rejected', errorCode: 'missing_media' }
         }
 
         const mediaId = input.media
           ? await uploadResource(input.media, request, input.signal)
-          : undefined;
+          : undefined
 
-        transmitting = true;
+        transmitting = true
 
         const response = await request(
-          "aibot_send_msg",
+          'aibot_send_msg',
           {
             chatid: input.target.chatId,
-            chat_type: target.data.chattype === "single" ? 1 : 2,
-            ...outgoingBody(input.media, mediaId, content),
+            chat_type: target.data.chattype === 'single' ? 1 : 2,
+            ...outgoingBody(input.media, mediaId, content)
           },
-          input.signal,
-        );
+          input.signal
+        )
 
         if (response.errcode === 0) {
-          return { status: "sent", receipt: {} };
+          return { status: 'sent', receipt: {} }
         }
         if (response.errcode === -1 || response.errcode === 45_009) {
           return {
-            status: "retryable",
+            status: 'retryable',
             errorCode: `wecom_${response.errcode}`,
-            retryAfterMs: 1000,
-          };
+            retryAfterMs: 1000
+          }
         }
-        return { status: "rejected", errorCode: `wecom_${response.errcode}` };
+        return { status: 'rejected', errorCode: `wecom_${response.errcode}` }
       } catch (error) {
         return transmitting
-          ? { status: "unknown", errorCode: "transport_uncertain" }
-          : uploadFailure(error);
+          ? { status: 'unknown', errorCode: 'transport_uncertain' }
+          : uploadFailure(error)
       }
-    },
-  };
+    }
+  }
 }

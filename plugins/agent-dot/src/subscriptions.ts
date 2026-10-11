@@ -1,68 +1,86 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { ProtocolError } from "@modelcontextprotocol/server";
-import type { AgentHost, EndpointConfig, Json, StateEntry } from "@relanox/sdk";
-import { Webhook } from "standardwebhooks";
-import { z } from "zod";
-import { CallbackError, callbackUrl, postCallback } from "./callback.js";
-import type { DotConfig } from "./config.js";
-import { equalSecret } from "./secrets.js";
-import { name, subscriptionSchema } from "./protocol.js";
-import type { Subscription, subscribeParams, unsubscribeParams } from "./protocol.js";
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { ProtocolError } from '@modelcontextprotocol/server'
+import type { AgentHost, EndpointConfig, Json, StateEntry } from '@relanox/sdk'
+import { Webhook } from 'standardwebhooks'
+import { z } from 'zod'
+import { CallbackError, callbackUrl, postCallback } from './callback.js'
+import type { DotConfig } from './config.js'
+import { equalSecret } from './secrets.js'
+import { name, subscriptionSchema } from './protocol.js'
+import type {
+  Subscription,
+  subscribeParams,
+  unsubscribeParams
+} from './protocol.js'
 
 const canonical = (value: unknown): string =>
   JSON.stringify(value, (_key, v: unknown) =>
-    v !== null && typeof v === "object" && !Array.isArray(v)
-      ? Object.fromEntries(Object.entries(v).toSorted(([a], [b]) => a.localeCompare(b)))
-      : v,
-  );
+    v !== null && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.entries(v).toSorted(([a], [b]) => a.localeCompare(b))
+        )
+      : v
+  )
 
 function identity(owner: string, url: string, eventArgs: unknown): string {
-  return `sub_${createHash("sha256")
+  return `sub_${createHash('sha256')
     .update(canonical({ owner, url, name, arguments: eventArgs }))
-    .digest("hex")}`;
+    .digest('hex')}`
 }
 
 export function signedHeaders(
   sub: Subscription,
   body: string,
-  eventId: string,
+  eventId: string
 ): Record<string, string> {
-  const now = new Date();
-  const signatures = [new Webhook(sub.secret).sign(eventId, now, body)];
-  if (sub.previousSecret !== undefined && (sub.previousUntil ?? 0) > now.getTime()) {
-    signatures.push(new Webhook(sub.previousSecret).sign(eventId, now, body));
+  const now = new Date()
+  const signatures = [new Webhook(sub.secret).sign(eventId, now, body)]
+  if (
+    sub.previousSecret !== undefined &&
+    (sub.previousUntil ?? 0) > now.getTime()
+  ) {
+    signatures.push(new Webhook(sub.previousSecret).sign(eventId, now, body))
   }
   return {
-    "Content-Type": "application/json",
-    "webhook-id": eventId,
-    "webhook-timestamp": String(Math.floor(now.getTime() / 1000)),
-    "webhook-signature": signatures.join(" "),
-    "X-MCP-Subscription-Id": sub.id,
-  };
+    'Content-Type': 'application/json',
+    'webhook-id': eventId,
+    'webhook-timestamp': String(Math.floor(now.getTime() / 1000)),
+    'webhook-signature': signatures.join(' '),
+    'X-MCP-Subscription-Id': sub.id
+  }
 }
 
 function callbackProtocolError(reason: string): ProtocolError {
-  return new ProtocolError(-32_015, "CallbackEndpointError", { reason });
+  return new ProtocolError(-32_015, 'CallbackEndpointError', { reason })
 }
 
 function rotationFields(
   old: Subscription | undefined,
   secret: string,
   now: number,
-  config: DotConfig,
-): Pick<Subscription, "previousSecret" | "previousUntil"> {
+  config: DotConfig
+): Pick<Subscription, 'previousSecret' | 'previousUntil'> {
   if (old !== undefined && old.secret !== secret) {
-    return { previousSecret: old.secret, previousUntil: now + config.rotationWindowMs };
+    return {
+      previousSecret: old.secret,
+      previousUntil: now + config.rotationWindowMs
+    }
   }
   if (old?.previousSecret !== undefined && (old.previousUntil ?? 0) > now) {
-    return { previousSecret: old.previousSecret, previousUntil: old.previousUntil ?? now };
+    return {
+      previousSecret: old.previousSecret,
+      previousUntil: old.previousUntil ?? now
+    }
   }
-  return {};
+  return {}
 }
 
-async function verifySubscription(sub: Subscription, config: DotConfig): Promise<void> {
-  const challenge = randomBytes(32).toString("base64url");
-  const challengeBody = JSON.stringify({ type: "verification", challenge });
+async function verifySubscription(
+  sub: Subscription,
+  config: DotConfig
+): Promise<void> {
+  const challenge = randomBytes(32).toString('base64url')
+  const challengeBody = JSON.stringify({ type: 'verification', challenge })
   try {
     const response = await postCallback(
       sub.url,
@@ -70,90 +88,110 @@ async function verifySubscription(sub: Subscription, config: DotConfig): Promise
       challengeBody,
       signedHeaders(sub, challengeBody, `verification_${randomUUID()}`),
       AbortSignal.timeout(config.callback.timeoutMs),
-      "body",
-    );
+      'body'
+    )
 
-    const echoed = z.strictObject({ challenge: z.string() }).safeParse(JSON.parse(response.body));
+    const echoed = z
+      .strictObject({ challenge: z.string() })
+      .safeParse(JSON.parse(response.body))
+
     if (
       response.status < 200 ||
       response.status >= 300 ||
       !echoed.success ||
       !equalSecret(challenge, echoed.data.challenge)
     ) {
-      throw callbackProtocolError("challenge_failed");
+      throw callbackProtocolError('challenge_failed')
     }
   } catch (error) {
     if (error instanceof ProtocolError) {
-      throw error;
+      throw error
     }
-    throw callbackProtocolError(error instanceof CallbackError ? error.reason : "challenge_failed");
+    throw callbackProtocolError(
+      error instanceof CallbackError ? error.reason : 'challenge_failed'
+    )
   }
 }
 
 export interface SubscriptionReceipt {
-  readonly id: string;
-  readonly refreshBefore: string;
-  readonly cursor: null;
-  readonly truncated: false;
+  readonly id: string
+  readonly refreshBefore: string
+  readonly cursor: null
+  readonly truncated: false
 }
 
 export interface SubscriptionStore {
-  activeEntries(this: void, endpointId: string): Promise<readonly StateEntry[]>;
+  activeEntries(this: void, endpointId: string): Promise<readonly StateEntry[]>
   subscribe(
     this: void,
     endpoint: EndpointConfig,
     config: DotConfig,
-    input: z.infer<typeof subscribeParams>,
-  ): Promise<SubscriptionReceipt>;
+    input: z.infer<typeof subscribeParams>
+  ): Promise<SubscriptionReceipt>
   unsubscribe(
     this: void,
     endpoint: EndpointConfig,
-    input: z.infer<typeof unsubscribeParams>,
-  ): Promise<Record<string, never>>;
+    input: z.infer<typeof unsubscribeParams>
+  ): Promise<Record<string, never>>
 }
 
-export function createSubscriptions(state: AgentHost["state"]): SubscriptionStore {
-  async function activeEntries(endpointId: string): Promise<readonly StateEntry[]> {
+export function createSubscriptions(
+  state: AgentHost['state']
+): SubscriptionStore {
+  async function activeEntries(
+    endpointId: string
+  ): Promise<readonly StateEntry[]> {
     return state.list({
       prefix: `subscriptions/${endpointId}/`,
-      limit: 1000,
-    });
+      limit: 1000
+    })
   }
 
-  async function checkSubscriptionCapacity(owner: string, now: number): Promise<void> {
-    const entries = await activeEntries(owner);
+  async function checkSubscriptionCapacity(
+    owner: string,
+    now: number
+  ): Promise<void> {
+    const entries = await activeEntries(owner)
     for (const entry of entries) {
       if ((entry.expiresAt ?? Infinity) <= now) {
-        await state.delete(entry.key, entry.version);
+        await state.delete(entry.key, entry.version)
       }
     }
-    if (entries.filter((entry) => (entry.expiresAt ?? Infinity) > now).length >= 100) {
-      throw new ProtocolError(-32_000, "subscription_limit");
+    if (
+      entries.filter((entry) => (entry.expiresAt ?? Infinity) > now).length >=
+      100
+    ) {
+      throw new ProtocolError(-32_000, 'subscription_limit')
     }
   }
 
   async function subscribe(
     endpoint: EndpointConfig,
     config: DotConfig,
-    input: z.infer<typeof subscribeParams>,
+    input: z.infer<typeof subscribeParams>
   ): Promise<SubscriptionReceipt> {
-    const owner = endpoint.id;
-    let url: string;
+    const owner = endpoint.id
+    let url: string
     try {
-      url = callbackUrl(input.delivery.url, config.callback).href;
+      url = callbackUrl(input.delivery.url, config.callback).href
     } catch {
-      throw callbackProtocolError("forbidden_destination");
+      throw callbackProtocolError('forbidden_destination')
     }
-    const id = identity(owner, url, input.arguments);
-    const key = `subscriptions/${owner}/${id}`;
-    const existing = await state.get(key);
-    const old = existing ? subscriptionSchema.parse(existing.value) : undefined;
-    const now = Date.now();
+    const id = identity(owner, url, input.arguments)
+    const key = `subscriptions/${owner}/${id}`
+    const existing = await state.get(key)
+    const old = existing ? subscriptionSchema.parse(existing.value) : undefined
+    const now = Date.now()
 
     const expiresAt =
-      now + Math.min(input.ttlMs ?? config.subscriptionTtlMs, config.subscriptionTtlMs);
+      now +
+      Math.min(
+        input.ttlMs ?? config.subscriptionTtlMs,
+        config.subscriptionTtlMs
+      )
 
-    const replacement = old !== undefined && old.secret !== input.delivery.secret;
+    const replacement =
+      old !== undefined && old.secret !== input.delivery.secret
 
     const sub: Subscription = {
       id,
@@ -165,49 +203,57 @@ export function createSubscriptions(state: AgentHost["state"]): SubscriptionStor
       secret: input.delivery.secret,
       expiresAt,
       verifiedAt: now,
-      ...rotationFields(old, input.delivery.secret, now, config),
-    };
+      ...rotationFields(old, input.delivery.secret, now, config)
+    }
 
     // Verification cache is durable, short-lived and bound to owner, URL AND signing key.
-    if (!old || old.expiresAt <= now || replacement || now - old.verifiedAt > 60_000) {
-      await verifySubscription(sub, config);
+    if (
+      !old ||
+      old.expiresAt <= now ||
+      replacement ||
+      now - old.verifiedAt > 60_000
+    ) {
+      await verifySubscription(sub, config)
     } else {
-      sub.verifiedAt = old.verifiedAt;
+      sub.verifiedAt = old.verifiedAt
     }
     if (!existing) {
-      await checkSubscriptionCapacity(owner, now);
+      await checkSubscriptionCapacity(owner, now)
     }
 
     const mutation = await state.compareAndSet({
       key,
       expectedVersion: existing?.version ?? null,
       value: JSON.parse(JSON.stringify(sub)) as Json,
-      expiresAt,
-    });
+      expiresAt
+    })
 
-    if (mutation.status !== "updated") {
-      throw new ProtocolError(-32_000, "subscription_conflict");
+    if (mutation.status !== 'updated') {
+      throw new ProtocolError(-32_000, 'subscription_conflict')
     }
     return {
       id,
       refreshBefore: new Date(expiresAt).toISOString(),
       cursor: null,
-      truncated: false,
-    };
+      truncated: false
+    }
   }
 
   async function unsubscribe(
     endpoint: EndpointConfig,
-    input: z.infer<typeof unsubscribeParams>,
+    input: z.infer<typeof unsubscribeParams>
   ): Promise<Record<string, never>> {
-    const url = new URL(input.delivery.url).href;
-    const key = `subscriptions/${endpoint.id}/${identity(endpoint.id, url, input.arguments)}`;
-    const entry = await state.get(key);
-    if (entry && (await state.delete(key, entry.version)).status !== "updated") {
-      throw new ProtocolError(-32_000, "subscription_conflict");
+    const url = new URL(input.delivery.url).href
+    const key = `subscriptions/${endpoint.id}/${identity(endpoint.id, url, input.arguments)}`
+    const entry = await state.get(key)
+    if (
+      entry &&
+      (await state.delete(key, entry.version)).status !== 'updated'
+    ) {
+      throw new ProtocolError(-32_000, 'subscription_conflict')
     }
-    return {};
+    return {}
   }
 
-  return { activeEntries, subscribe, unsubscribe };
+  return { activeEntries, subscribe, unsubscribe }
 }

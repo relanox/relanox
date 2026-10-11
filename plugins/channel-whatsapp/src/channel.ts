@@ -3,39 +3,52 @@ import type {
   ChannelHost,
   ChannelPlugin,
   SendInput,
-  SendResult,
-} from "@relanox/sdk";
-import { receiveMedia, uploadMedia } from "./media.js";
-import { z } from "zod";
-import { validateConfig, validateEndpointUrl } from "./config.js";
-import type { WhatsAppConfig } from "./config.js";
-import { failure, ingest, parseBody, rawBody, request, secret, signed, unavailable } from "./io.js";
-import { webhookSchema, targetSchema, responseSchema } from "./schemas.js";
-import type { messageSchema } from "./schemas.js";
+  SendResult
+} from '@relanox/sdk'
+import { receiveMedia, uploadMedia } from './media.js'
+import { z } from 'zod'
+import { validateConfig, validateEndpointUrl } from './config.js'
+import type { WhatsAppConfig } from './config.js'
+import {
+  failure,
+  ingest,
+  parseBody,
+  rawBody,
+  request,
+  secret,
+  signed,
+  unavailable
+} from './io.js'
+import { webhookSchema, targetSchema, responseSchema } from './schemas.js'
+import type { messageSchema } from './schemas.js'
 
 function windowKey(config: WhatsAppConfig, customer: string): string {
-  return `window:${JSON.stringify([config.apiBase, config.businessAccountId, config.phoneNumberId, customer])}`;
+  return `window:${JSON.stringify([config.apiBase, config.businessAccountId, config.phoneNumberId, customer])}`
 }
 
-async function updateWindow(host: ChannelHost, key: string, until: number): Promise<void> {
+async function updateWindow(
+  host: ChannelHost,
+  key: string,
+  until: number
+): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const previous = await host.state.get(key);
-    const previousUntil = previous ? z.number().int().parse(previous.value) : 0;
+    const previous = await host.state.get(key)
+    const previousUntil = previous ? z.number().int().parse(previous.value) : 0
     if (previousUntil >= until) {
-      return;
+      return
     }
 
     const result = await host.state.compareAndSet({
       key,
       expectedVersion: previous?.version ?? null,
-      value: until,
-    });
+      value: until
+    })
 
-    if (result.status === "updated") {
-      return;
+    if (result.status === 'updated') {
+      return
     }
   }
-  throw new Error("window_conflict");
+  throw new Error('window_conflict')
 }
 
 async function receiveMessage(
@@ -43,32 +56,36 @@ async function receiveMessage(
   account: AccountConfig,
   config: WhatsAppConfig,
   message: z.infer<typeof messageSchema>,
-  signal: AbortSignal,
+  signal: AbortSignal
 ): Promise<void> {
   if (!account.allowedSenders.includes(message.from)) {
-    host.observe.log("info", "channel_policy_rejection", { errorCode: "sender_not_allowed" });
-    return;
+    host.observe.log('info', 'channel_policy_rejection', {
+      errorCode: 'sender_not_allowed'
+    })
+    return
   }
-  const timestamp = Number(message.timestamp) * 1000;
+  const timestamp = Number(message.timestamp) * 1000
   if (!Number.isSafeInteger(timestamp) || timestamp > Date.now() + 300_000) {
-    throw new Error("invalid_timestamp");
+    throw new Error('invalid_timestamp')
   }
-  const windowUntil = timestamp + 86_400_000;
-  await updateWindow(host, windowKey(config, message.from), windowUntil);
-  const media = await receiveMedia(message, host, config, signal);
+  const windowUntil = timestamp + 86_400_000
+  await updateWindow(host, windowKey(config, message.from), windowUntil)
+  const media = await receiveMedia(message, host, config, signal)
   if (!media.text && media.attachments.length === 0) {
-    host.observe.log("debug", "channel_event_ignored", { errorCode: "unsupported_or_empty_text" });
-    return;
+    host.observe.log('debug', 'channel_event_ignored', {
+      errorCode: 'unsupported_or_empty_text'
+    })
+    return
   }
   await ingest(host, {
-    source: { channel: "whatsapp", accountId: account.id, eventId: message.id },
+    source: { channel: 'whatsapp', accountId: account.id, eventId: message.id },
     senderId: message.from,
     text: media.text,
     ...(media.attachments.length > 0 ? { attachments: media.attachments } : {}),
     receivedAt: Date.now(),
     context: null,
     target: {
-      channel: "whatsapp",
+      channel: 'whatsapp',
       accountId: account.id,
       chatId: message.from,
       replyToId: message.id,
@@ -77,10 +94,10 @@ async function receiveMessage(
         businessAccountId: config.businessAccountId,
         apiBase: config.apiBase,
         customer: message.from,
-        windowUntil,
-      },
-    },
-  });
+        windowUntil
+      }
+    }
+  })
 }
 
 async function receive(
@@ -88,157 +105,169 @@ async function receive(
   account: AccountConfig,
   config: WhatsAppConfig,
   body: z.infer<typeof webhookSchema>,
-  signal: AbortSignal,
+  signal: AbortSignal
 ): Promise<void> {
   for (const entry of body.entry) {
     if (entry.id !== config.businessAccountId) {
-      throw new Error("wrong_business_account");
+      throw new Error('wrong_business_account')
     }
     for (const change of entry.changes) {
-      if (change.field !== "messages") {
-        continue;
+      if (change.field !== 'messages') {
+        continue
       }
       if (change.value.metadata.phone_number_id !== config.phoneNumberId) {
-        throw new Error("wrong_phone_account");
+        throw new Error('wrong_phone_account')
       }
       for (const message of change.value.messages ?? []) {
-        await receiveMessage(host, account, config, message, signal);
+        await receiveMessage(host, account, config, message, signal)
       }
     }
   }
 }
 
 export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
-  let runtime: { host: ChannelHost; account: AccountConfig; config: WhatsAppConfig } | undefined;
+  let runtime:
+    | { host: ChannelHost; account: AccountConfig; config: WhatsAppConfig }
+    | undefined
 
   async function send(input: SendInput): Promise<SendResult> {
     if (
       !runtime ||
       input.target.accountId !== runtime.account.id ||
-      input.target.channel !== "whatsapp"
+      input.target.channel !== 'whatsapp'
     ) {
-      return { status: "rejected", errorCode: "invalid_target" };
+      return { status: 'rejected', errorCode: 'invalid_target' }
     }
-    const { host, config } = runtime;
-    const parsed = targetSchema.safeParse(input.target.data);
+    const { host, config } = runtime
+    const parsed = targetSchema.safeParse(input.target.data)
     if (!parsed.success) {
-      return { status: "rejected", errorCode: "invalid_target" };
+      return { status: 'rejected', errorCode: 'invalid_target' }
     }
-    const target = parsed.data;
-    if (target.customer !== input.target.chatId || target.phoneNumberId !== config.phoneNumberId) {
-      return { status: "rejected", errorCode: "invalid_target" };
+    const target = parsed.data
+    if (
+      target.customer !== input.target.chatId ||
+      target.phoneNumberId !== config.phoneNumberId
+    ) {
+      return { status: 'rejected', errorCode: 'invalid_target' }
     }
     if (
       target.businessAccountId !== config.businessAccountId ||
       target.apiBase !== config.apiBase
     ) {
-      return { status: "rejected", errorCode: "target_identity_changed" };
+      return { status: 'rejected', errorCode: 'target_identity_changed' }
     }
-    const latest = await host.state.get(windowKey(config, target.customer));
-    const until = Math.max(target.windowUntil, latest ? z.number().int().parse(latest.value) : 0);
+    const latest = await host.state.get(windowKey(config, target.customer))
+
+    const until = Math.max(
+      target.windowUntil,
+      latest ? z.number().int().parse(latest.value) : 0
+    )
+
     if (Date.now() >= until) {
-      return { status: "rejected", errorCode: "customer_window_expired" };
+      return { status: 'rejected', errorCode: 'customer_window_expired' }
     }
     try {
-      const media = input.media ? await uploadMedia(input, config) : undefined;
-      if (media && "status" in media) {
-        return media;
+      const media = input.media ? await uploadMedia(input, config) : undefined
+      if (media && 'status' in media) {
+        return media
       }
 
       const content = media
         ? { type: media.type, [media.type]: media.value }
-        : { type: "text", text: { body: input.chunk.text, preview_url: false } };
+        : { type: 'text', text: { body: input.chunk.text, preview_url: false } }
 
       const response = await request(
         validateEndpointUrl(
           `${config.apiBase}/${config.apiVersion}/${encodeURIComponent(target.phoneNumberId)}/messages`,
-          config.allowLoopback,
+          config.allowLoopback
         ),
         {
-          method: "POST",
+          method: 'POST',
           headers: {
             authorization: `Bearer ${secret(config.accessToken)}`,
-            "content-type": "application/json",
+            'content-type': 'application/json'
           },
           body: JSON.stringify({
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
             to: target.customer,
-            ...content,
-          }),
+            ...content
+          })
         },
-        input.signal,
-      );
+        input.signal
+      )
 
       if (!response.ok) {
-        return failure(response);
+        return failure(response)
       }
-      const decoded = responseSchema.parse(await response.json());
-      const message = decoded.messages[0];
+      const decoded = responseSchema.parse(await response.json())
+      const message = decoded.messages[0]
       if (!message) {
-        return unavailable();
+        return unavailable()
       }
-      return { status: "sent", receipt: { platformMessageId: message.id } };
+      return { status: 'sent', receipt: { platformMessageId: message.id } }
     } catch {
-      return unavailable();
+      return unavailable()
     }
   }
 
   return {
-    id: "channel-whatsapp",
+    id: 'channel-whatsapp',
     sdkMajor: 1,
-    runtime: "node",
-    kind: "channel",
-    channel: "whatsapp",
+    runtime: 'node',
+    kind: 'channel',
+    channel: 'whatsapp',
     capabilities: {
       receive: true,
-      transport: "http",
+      transport: 'http',
       maxTextLength: 4096,
-      lengthUnit: "utf16",
+      lengthUnit: 'utf16',
       idempotentSend: false,
       media: {
-        receive: ["image", "audio", "video", "file"],
-        send: ["image", "audio", "video", "file"],
-      },
+        receive: ['image', 'audio', 'video', 'file'],
+        send: ['image', 'audio', 'video', 'file']
+      }
     },
     validateConfig,
     async setup(host, account, config) {
-      runtime = { host, account, config };
-      host.mountHttp("/webhook", async (incoming) => {
-        if (incoming.method === "GET") {
-          const query = new URL(incoming.url).searchParams;
+      runtime = { host, account, config }
+      host.mountHttp('/webhook', async (incoming) => {
+        if (incoming.method === 'GET') {
+          const query = new URL(incoming.url).searchParams
           if (
-            query.get("hub.mode") !== "subscribe" ||
-            query.get("hub.verify_token") !== secret(config.verifyToken)
+            query.get('hub.mode') !== 'subscribe' ||
+            query.get('hub.verify_token') !== secret(config.verifyToken)
           ) {
-            return new Response(null, { status: 403 });
+            return new Response(null, { status: 403 })
           }
-          const challenge = query.get("hub.challenge");
-          return challenge ? new Response(challenge) : new Response(null, { status: 400 });
+          const challenge = query.get('hub.challenge')
+          return challenge
+            ? new Response(challenge)
+            : new Response(null, { status: 400 })
         }
-        if (incoming.method !== "POST") {
-          return new Response(null, { status: 405 });
+        if (incoming.method !== 'POST') {
+          return new Response(null, { status: 405 })
         }
-        const bytes = await rawBody(incoming);
+        const bytes = await rawBody(incoming)
         if (
           !signed(
             bytes,
-            incoming.headers.get("x-hub-signature-256"),
+            incoming.headers.get('x-hub-signature-256'),
             secret(config.appSecret),
-            "hex",
-            "sha256=",
+            'hex',
+            'sha256='
           )
         ) {
-          return new Response(null, { status: 401 });
+          return new Response(null, { status: 401 })
         }
-        const decoded = webhookSchema.safeParse(parseBody(bytes));
+        const decoded = webhookSchema.safeParse(parseBody(bytes))
         if (!decoded.success) {
-          return new Response(null, { status: 400 });
+          return new Response(null, { status: 400 })
         }
-        await receive(host, account, config, decoded.data, incoming.signal);
-        return Response.json({});
-      });
+        await receive(host, account, config, decoded.data, incoming.signal)
+        return Response.json({})
+      })
     },
-    send,
-  };
+    send
+  }
 }

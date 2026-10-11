@@ -1,88 +1,95 @@
-import type { Storage, InboundRecord, OutboundRecord } from "@relanox/sdk";
-import type { DatabaseContext } from "./database.js";
-import { randomUUID } from "node:crypto";
-import { decodeDurableRecord } from "./record-codec.js";
-import { isActiveLease } from "./record-contracts.js";
+import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
+import type { DatabaseContext } from './database.js'
+import { randomUUID } from 'node:crypto'
+import { decodeDurableRecord } from './record-codec.js'
+import { isActiveLease } from './record-contracts.js'
 
 export function createWorkOperations(
   context: Pick<
     DatabaseContext,
-    | "db"
-    | "transaction"
-    | "readInbound"
-    | "readOutbound"
-    | "saveInbound"
-    | "saveOutbound"
-    | "isEndpointHead"
-  >,
-): Pick<Storage, "requeue" | "takeDue" | "settleAttempt"> {
-  const { db, transaction, readInbound, readOutbound, saveInbound, saveOutbound, isEndpointHead } =
-    context;
+    | 'db'
+    | 'transaction'
+    | 'readInbound'
+    | 'readOutbound'
+    | 'saveInbound'
+    | 'saveOutbound'
+    | 'isEndpointHead'
+  >
+): Pick<Storage, 'requeue' | 'takeDue' | 'settleAttempt'> {
+  const {
+    db,
+    transaction,
+    readInbound,
+    readOutbound,
+    saveInbound,
+    saveOutbound,
+    isEndpointHead
+  } = context
 
   return {
     async requeue(input) {
       return transaction(() => {
-        if (input.kind === "request") {
-          const record = readInbound(input.id);
+        if (input.kind === 'request') {
+          const record = readInbound(input.id)
           if (!record) {
-            return { status: "not_found" };
+            return { status: 'not_found' }
           }
           if (
             record.version !== input.expectedVersion ||
             record.redactedAt !== undefined ||
-            record.status === "completed" ||
+            record.status === 'completed' ||
             !(
-              record.status === "claimed" ||
-              record.status === "failed" ||
-              record.dispatch.status === "unknown" ||
-              record.dispatch.status === "rejected"
+              record.status === 'claimed' ||
+              record.status === 'failed' ||
+              record.dispatch.status === 'unknown' ||
+              record.dispatch.status === 'rejected'
             ) ||
-            (record.dispatch.status === "unknown" && !input.acknowledgeUnknown)
+            (record.dispatch.status === 'unknown' && !input.acknowledgeUnknown)
           ) {
-            return { status: "conflict" };
+            return { status: 'conflict' }
           }
 
           const next = {
             ...record,
-            status: "pending" as const,
+            status: 'pending' as const,
             version: record.version + 1,
-            dispatch: { status: "due" as const, attempts: 0, dueAt: input.now },
-          };
+            dispatch: { status: 'due' as const, attempts: 0, dueAt: input.now }
+          }
 
-          delete next.claim;
-          delete next.errorCode;
-          saveInbound(next);
-          return { status: "updated", version: next.version };
+          delete next.claim
+          delete next.errorCode
+          saveInbound(next)
+          return { status: 'updated', version: next.version }
         }
-        const record = readOutbound(input.id);
+        const record = readOutbound(input.id)
         if (!record) {
-          return { status: "not_found" };
+          return { status: 'not_found' }
         }
         if (
           record.version !== input.expectedVersion ||
-          !["rejected", "unknown"].includes(record.status) ||
-          (record.status === "unknown" && !input.acknowledgeUnknown)
+          !['rejected', 'unknown'].includes(record.status) ||
+          (record.status === 'unknown' && !input.acknowledgeUnknown)
         ) {
-          return { status: "conflict" };
+          return { status: 'conflict' }
         }
 
         const next = {
           ...record,
-          status: "pending" as const,
+          status: 'pending' as const,
           version: record.version + 1,
           attempts: 0,
-          dueAt: input.now,
-        };
+          dueAt: input.now
+        }
 
-        delete next.lease;
-        delete next.errorCode;
-        saveOutbound(next);
-        return { status: "updated", version: next.version };
-      });
+        delete next.lease
+        delete next.errorCode
+        saveOutbound(next)
+        return { status: 'updated', version: next.version }
+      })
     },
     async takeDue(input) {
       return transaction(() => {
-        const work: Awaited<ReturnType<Storage["takeDue"]>>[number][] = [];
+        const work: Awaited<ReturnType<Storage['takeDue']>>[number][] = []
         for (const record of (
           db
             .prepare(
@@ -96,47 +103,50 @@ export function createWorkOperations(
                       AND json_extract(record,'$.dispatch.dueAt')<=?
                       AND json_extract(record,'$.dispatch.status') IN ('due','accepted')))
                 ORDER BY accepted_at,id
-              `,
+              `
             )
             .all(input.now, input.now) as { record: string }[]
         ).map((row) => decodeDurableRecord<InboundRecord>(row.record))) {
-          let next = record;
-          if (record.dispatch.lease && record.dispatch.lease.expiresAt <= input.now) {
+          let next = record
+          if (
+            record.dispatch.lease &&
+            record.dispatch.lease.expiresAt <= input.now
+          ) {
             const dispatch = {
               ...record.dispatch,
-              status: "unknown" as const,
-              errorCode: "lease_expired",
-            };
+              status: 'unknown' as const,
+              errorCode: 'lease_expired'
+            }
 
-            delete dispatch.lease;
-            next = { ...record, version: record.version + 1, dispatch };
-            saveInbound(next);
+            delete dispatch.lease
+            next = { ...record, version: record.version + 1, dispatch }
+            saveInbound(next)
           }
           if (
             work.length >= input.limit ||
-            next.snapshot.endpoint.dispatchMode === "pull" ||
-            next.dispatch.status === "unknown" ||
-            next.dispatch.status === "rejected" ||
+            next.snapshot.endpoint.dispatchMode === 'pull' ||
+            next.dispatch.status === 'unknown' ||
+            next.dispatch.status === 'rejected' ||
             next.dispatch.lease ||
             next.dispatch.dueAt > input.now ||
             !isEndpointHead(next)
           ) {
-            continue;
+            continue
           }
 
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: next.version + 1,
-            expiresAt: input.now + input.leaseMs,
-          };
+            expiresAt: input.now + input.leaseMs
+          }
 
           next = {
             ...next,
             version: lease.version,
-            dispatch: { ...next.dispatch, lease },
-          };
-          saveInbound(next);
-          work.push({ kind: "dispatch", record: next, lease });
+            dispatch: { ...next.dispatch, lease }
+          }
+          saveInbound(next)
+          work.push({ kind: 'dispatch', record: next, lease })
         }
         for (const record of (
           db
@@ -149,106 +159,113 @@ export function createWorkOperations(
                     OR (json_extract(record,'$.lease') IS NULL
                       AND json_extract(record,'$.dueAt')<=?))
                 ORDER BY id
-              `,
+              `
             )
             .all(input.now, input.now) as { record: string }[]
         ).map((row) => decodeDurableRecord<OutboundRecord>(row.record))) {
-          let next = record;
+          let next = record
           if (record.lease && record.lease.expiresAt <= input.now) {
             next = {
               ...record,
               version: record.version + 1,
-              status: input.safeRetryAccountIds.includes(record.target.accountId)
-                ? "pending"
-                : "unknown",
-              errorCode: "lease_expired",
-            };
-            const { lease: _expiredLease, ...recovered } = next;
-            next = recovered;
-            saveOutbound(next);
+              status: input.safeRetryAccountIds.includes(
+                record.target.accountId
+              )
+                ? 'pending'
+                : 'unknown',
+              errorCode: 'lease_expired'
+            }
+            const { lease: _expiredLease, ...recovered } = next
+            next = recovered
+            saveOutbound(next)
           }
           if (
             work.length >= input.limit ||
-            next.status !== "pending" ||
+            next.status !== 'pending' ||
             next.lease ||
             next.dueAt > input.now
           ) {
-            continue;
+            continue
           }
 
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: next.version + 1,
-            expiresAt: input.now + input.leaseMs,
-          };
+            expiresAt: input.now + input.leaseMs
+          }
 
-          next = { ...next, version: lease.version, lease };
-          saveOutbound(next);
-          work.push({ kind: "send", record: next, lease });
+          next = { ...next, version: lease.version, lease }
+          saveOutbound(next)
+          work.push({ kind: 'send', record: next, lease })
         }
-        return work;
-      });
+        return work
+      })
     },
     async settleAttempt(input) {
       return transaction(() => {
-        if (input.kind === "dispatch") {
-          const record = readInbound(input.id);
+        if (input.kind === 'dispatch') {
+          const record = readInbound(input.id)
           if (!record) {
-            return { status: "not_found" };
+            return { status: 'not_found' }
           }
           if (
-            record.status !== "pending" ||
+            record.status !== 'pending' ||
             record.version !== input.lease.version ||
             !isActiveLease(record.dispatch.lease, input.lease, input.now)
           ) {
-            return { status: "conflict" };
+            return { status: 'conflict' }
           }
-          const outcome = input.outcome;
+          const outcome = input.outcome
 
           const dispatch = {
-            status: outcome.status === "retryable" ? ("due" as const) : outcome.status,
+            status:
+              outcome.status === 'retryable'
+                ? ('due' as const)
+                : outcome.status,
             attempts: record.dispatch.attempts + 1,
             dueAt: input.nextDueAt,
-            ...("errorCode" in outcome ? { errorCode: outcome.errorCode } : {}),
-          };
+            ...('errorCode' in outcome ? { errorCode: outcome.errorCode } : {})
+          }
 
-          saveInbound({ ...record, version: record.version + 1, dispatch });
-          return { status: "updated", version: record.version + 1 };
+          saveInbound({ ...record, version: record.version + 1, dispatch })
+          return { status: 'updated', version: record.version + 1 }
         }
-        const record = readOutbound(input.id);
+        const record = readOutbound(input.id)
         if (!record) {
-          return { status: "not_found" };
+          return { status: 'not_found' }
         }
         if (
-          record.status !== "pending" ||
+          record.status !== 'pending' ||
           record.version !== input.lease.version ||
           !isActiveLease(record.lease, input.lease, input.now)
         ) {
-          return { status: "conflict" };
+          return { status: 'conflict' }
         }
-        const outcome = input.outcome;
+        const outcome = input.outcome
 
         const next = {
           ...record,
           version: record.version + 1,
           attempts: record.attempts + 1,
-          dueAt: input.nextDueAt,
-        };
-
-        delete next.lease;
-        delete next.errorCode;
-        if (outcome.status === "sent") {
-          next.currentChunk++;
-          next.attempts = 0;
-          next.receipts = [...record.receipts, outcome.receipt];
-          next.status = next.currentChunk === next.chunks.length ? "sent" : "pending";
-        } else {
-          next.status = outcome.status === "retryable" ? "pending" : outcome.status;
-          next.errorCode = outcome.errorCode;
+          dueAt: input.nextDueAt
         }
-        saveOutbound(next);
-        return { status: "updated", version: next.version };
-      });
-    },
-  };
+
+        delete next.lease
+        delete next.errorCode
+        if (outcome.status === 'sent') {
+          next.currentChunk++
+          next.attempts = 0
+          next.receipts = [...record.receipts, outcome.receipt]
+          next.status =
+            next.currentChunk === next.chunks.length ? 'sent' : 'pending'
+        } else {
+          next.status =
+            outcome.status === 'retryable' ? 'pending' : outcome.status
+          next.errorCode = outcome.errorCode
+        }
+        saveOutbound(next)
+        return { status: 'updated', version: next.version }
+      })
+    }
+  }
 }

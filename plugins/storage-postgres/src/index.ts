@@ -1,41 +1,41 @@
-import type { Storage, StoragePlugin, Observability } from "@relanox/sdk";
-import { noopObservability } from "@relanox/sdk";
-import type { z } from "zod";
-import { configSchema } from "./config.js";
-import type { PostgresConfig } from "./config.js";
-import { openDatabase } from "./database.js";
-import { createLifecycle } from "./lifecycle.js";
-import { createRequestOperations } from "./requests.js";
-import { createWorkOperations } from "./work.js";
-import { createStateOperations } from "./plugin-state.js";
-import { createInspectionOperations } from "./inspection.js";
+import type { Storage, StoragePlugin, Observability } from '@relanox/sdk'
+import { noopObservability } from '@relanox/sdk'
+import type { z } from 'zod'
+import { configSchema } from './config.js'
+import type { PostgresConfig } from './config.js'
+import { openDatabase } from './database.js'
+import { createLifecycle } from './lifecycle.js'
+import { createRequestOperations } from './requests.js'
+import { createWorkOperations } from './work.js'
+import { createStateOperations } from './plugin-state.js'
+import { createInspectionOperations } from './inspection.js'
 
-import { createMediaOperations } from "./media.js";
+import { createMediaOperations } from './media.js'
 
-export type { PostgresConfig } from "./config.js";
+export type { PostgresConfig } from './config.js'
 
 export function createPostgresStorage(
   configuration: z.input<typeof configSchema>,
-  observe: Observability = noopObservability,
+  observe: Observability = noopObservability
 ): Storage {
-  const context = openDatabase(configuration, observe);
+  const context = openDatabase(configuration, observe)
   return {
     media: createMediaOperations(context),
     ...createLifecycle(context),
     ...createRequestOperations(context),
     ...createWorkOperations(context),
     ...createStateOperations(context),
-    ...createInspectionOperations(context),
-  };
+    ...createInspectionOperations(context)
+  }
 }
 
 export const postgresStoragePlugin: StoragePlugin<PostgresConfig> = {
-  id: "postgres",
-  kind: "storage",
+  id: 'postgres',
+  kind: 'storage',
   sdkMajor: 1,
-  runtime: "node",
+  runtime: 'node',
   validateConfig: (input) => configSchema.parse(input),
   async setup(config, observe) {
-    return createPostgresStorage(config, observe);
-  },
-};
+    return createPostgresStorage(config, observe)
+  }
+}

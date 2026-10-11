@@ -1,39 +1,43 @@
-import { z } from "zod";
+import { z } from 'zod'
 
 const secretRefSchema = z.strictObject({
-  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
-});
+  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u)
+})
 
-export const platformIdSchema = z.string().min(1).max(256);
+export const platformIdSchema = z.string().min(1).max(256)
 
 const transportOptions = {
   allowInsecureLoopback: z.boolean().default(false),
-  timeoutMs: z.number().int().min(100).max(60_000).default(10_000),
-};
+  timeoutMs: z.number().int().min(100).max(60_000).default(10_000)
+}
 
-export function validateTransportUrl(value: string, insecure: boolean, socket = false): string {
-  const url = new URL(value);
+export function validateTransportUrl(
+  value: string,
+  insecure: boolean,
+  socket = false
+): string {
+  const url = new URL(value)
   if (
     url.username ||
     url.password ||
-    url.href.includes("#") ||
-    (!socket && url.href.includes("?"))
+    url.href.includes('#') ||
+    (!socket && url.href.includes('?'))
   ) {
-    throw new Error("invalid_transport_url");
+    throw new Error('invalid_transport_url')
   }
-  const secure = socket ? "wss:" : "https:";
-  const local = socket ? "ws:" : "http:";
+  const secure = socket ? 'wss:' : 'https:'
+  const local = socket ? 'ws:' : 'http:'
   if (
     url.protocol !== secure &&
     !(
       insecure &&
       url.protocol === local &&
-      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+      ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
     )
   ) {
-    throw new Error("insecure_transport_url");
+    throw new Error('insecure_transport_url')
   }
-  return url.toString();
+  return url.toString()
 }
 
 const configSchema = z.strictObject({
@@ -43,17 +47,17 @@ const configSchema = z.strictObject({
   encryptKey: secretRefSchema,
   tenantKey: platformIdSchema,
   botOpenId: platformIdSchema,
-  domain: z.enum(["feishu", "lark"]).default("feishu"),
+  domain: z.enum(['feishu', 'lark']).default('feishu'),
   apiBaseUrl: z.string().optional(),
-  ...transportOptions,
-});
+  ...transportOptions
+})
 
-export type FeishuConfig = z.infer<typeof configSchema>;
+export type FeishuConfig = z.infer<typeof configSchema>
 
 export function validateConfig(input: unknown): FeishuConfig {
-  const parsed = configSchema.parse(input);
+  const parsed = configSchema.parse(input)
   if (parsed.apiBaseUrl) {
-    validateTransportUrl(parsed.apiBaseUrl, parsed.allowInsecureLoopback);
+    validateTransportUrl(parsed.apiBaseUrl, parsed.allowInsecureLoopback)
   }
-  return parsed;
+  return parsed
 }

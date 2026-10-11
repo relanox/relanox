@@ -1,192 +1,197 @@
-import { setTimeout as delay } from "node:timers/promises";
-import { downloadMedia, mediaKind } from "@relanox/media";
-import type { AccountConfig, ChannelHost } from "@relanox/sdk";
-import { WebSocket } from "ws";
-import type { z } from "zod";
-import type { DiscordConfig } from "./config.js";
-import { validateTransportUrl } from "./config.js";
+import { setTimeout as delay } from 'node:timers/promises'
+import { downloadMedia, mediaKind } from '@relanox/media'
+import type { AccountConfig, ChannelHost } from '@relanox/sdk'
+import { WebSocket } from 'ws'
+import type { z } from 'zod'
+import type { DiscordConfig } from './config.js'
+import { validateTransportUrl } from './config.js'
 import {
   channelInfoSchema,
   helloEventSchema,
   packetSchema,
   sessionSchema,
   readySchema,
-  messageSchema,
-} from "./schemas.js";
-import { frameText, waitForStop } from "./socket.js";
-import { credential, ingest, jsonResponse } from "./transport.js";
+  messageSchema
+} from './schemas.js'
+import { frameText, waitForStop } from './socket.js'
+import { credential, ingest, jsonResponse } from './transport.js'
 
 export interface DiscordGateway {
-  start(signal: AbortSignal): Promise<void>;
-  stop(): Promise<void>;
+  start(signal: AbortSignal): Promise<void>
+  stop(): Promise<void>
 }
 
-type Session = z.infer<typeof sessionSchema>;
+type Session = z.infer<typeof sessionSchema>
 
 export function createDiscordGateway(
   config: DiscordConfig,
   host: ChannelHost,
   account: AccountConfig,
-  environment: NodeJS.ProcessEnv,
+  environment: NodeJS.ProcessEnv
 ): DiscordGateway {
-  let controller: AbortController | undefined;
-  let task: Promise<void> | undefined;
-  let socket: WebSocket | undefined;
-  let session: Session | undefined;
-  let fatal = false;
+  let controller: AbortController | undefined
+  let task: Promise<void> | undefined
+  let socket: WebSocket | undefined
+  let session: Session | undefined
+  let fatal = false
 
   const identity = () => ({
     botId: config.botUserId,
-    apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, ""),
-  });
+    apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, '')
+  })
 
   async function persist() {
     if (!session) {
-      return;
+      return
     }
-    const previous = await host.state.get("gateway-session");
+    const previous = await host.state.get('gateway-session')
 
     const result = await host.state.compareAndSet({
-      key: "gateway-session",
+      key: 'gateway-session',
       expectedVersion: previous?.version ?? null,
-      value: session,
-    });
+      value: session
+    })
 
-    if (result.status !== "updated") {
-      throw new Error("session_conflict");
+    if (result.status !== 'updated') {
+      throw new Error('session_conflict')
     }
   }
 
   async function clearSession() {
-    session = undefined;
-    const previous = await host.state.get("gateway-session");
+    session = undefined
+    const previous = await host.state.get('gateway-session')
     if (previous) {
-      await host.state.delete("gateway-session", previous.version);
+      await host.state.delete('gateway-session', previous.version)
     }
   }
 
   async function messageTarget(
     message: z.infer<typeof messageSchema>,
-    signal: AbortSignal,
+    signal: AbortSignal
   ): Promise<{ chatId: string; threadId?: string }> {
     if (!message.guild_id) {
-      return { chatId: message.channel_id };
+      return { chatId: message.channel_id }
     }
 
     const response = await fetch(
-      `${config.apiBaseUrl.replace(/\/$/u, "")}/channels/${encodeURIComponent(message.channel_id)}`,
+      `${config.apiBaseUrl.replace(/\/$/u, '')}/channels/${encodeURIComponent(message.channel_id)}`,
       {
-        headers: { authorization: `Bot ${credential(config.botToken, environment)}` },
-        signal: AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]),
-        redirect: "error",
-      },
-    );
+        headers: {
+          authorization: `Bot ${credential(config.botToken, environment)}`
+        },
+        signal: AbortSignal.any([
+          signal,
+          AbortSignal.timeout(config.timeoutMs)
+        ]),
+        redirect: 'error'
+      }
+    )
 
     if (!response.ok) {
-      throw new Error("channel_lookup_failed");
+      throw new Error('channel_lookup_failed')
     }
-    const channel = channelInfoSchema.parse(await jsonResponse(response));
+    const channel = channelInfoSchema.parse(await jsonResponse(response))
     if (channel.id !== message.channel_id) {
-      throw new Error("channel_lookup_mismatch");
+      throw new Error('channel_lookup_mismatch')
     }
     if (![10, 11, 12].includes(channel.type)) {
-      return { chatId: message.channel_id };
+      return { chatId: message.channel_id }
     }
     if (!channel.parent_id) {
-      throw new Error("thread_parent_missing");
+      throw new Error('thread_parent_missing')
     }
-    return { chatId: channel.parent_id, threadId: message.channel_id };
+    return { chatId: channel.parent_id, threadId: message.channel_id }
   }
 
   async function connect(signal: AbortSignal) {
-    const botToken = credential(config.botToken, environment);
+    const botToken = credential(config.botToken, environment)
 
     const url = new URL(
       validateTransportUrl(
         session?.resume_gateway_url ?? config.gatewayUrl,
         config.allowInsecureLoopback,
-        true,
-      ),
-    );
+        true
+      )
+    )
 
-    url.searchParams.set("v", "10");
-    url.searchParams.set("encoding", "json");
+    url.searchParams.set('v', '10')
+    url.searchParams.set('encoding', 'json')
 
     const ws = new WebSocket(url, {
       maxPayload: 1_048_576,
-      handshakeTimeout: config.timeoutMs,
-    });
+      handshakeTimeout: config.timeoutMs
+    })
 
-    socket = ws;
-    let heartbeat: ReturnType<typeof setTimeout> | undefined;
-    let interval = 0;
-    let acknowledged = true;
-    let pending = 0;
-    let failed = false;
-    let chain = Promise.resolve();
-    let sequence = session?.seq ?? null;
+    socket = ws
+    let heartbeat: ReturnType<typeof setTimeout> | undefined
+    let interval = 0
+    let acknowledged = true
+    let pending = 0
+    let failed = false
+    let chain = Promise.resolve()
+    let sequence = session?.seq ?? null
 
     const send = (value: unknown) => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(value));
+        ws.send(JSON.stringify(value))
       }
-    };
+    }
 
     const beat = () => {
       if (!acknowledged) {
-        ws.terminate();
-        return;
+        ws.terminate()
+        return
       }
-      acknowledged = false;
-      send({ op: 1, d: sequence });
-      heartbeat = setTimeout(beat, interval);
-    };
+      acknowledged = false
+      send({ op: 1, d: sequence })
+      heartbeat = setTimeout(beat, interval)
+    }
 
     const abort = () => {
-      ws.terminate();
-    };
+      ws.terminate()
+    }
 
-    signal.addEventListener("abort", abort, { once: true });
+    signal.addEventListener('abort', abort, { once: true })
     if (signal.aborted) {
-      abort();
+      abort()
     }
     await new Promise<void>((resolve) => {
-      ws.on("error", () => {
-        host.connection("degraded", "gateway_transport_error");
-        ws.terminate();
-      });
-      ws.on("close", (code) => {
+      ws.on('error', () => {
+        host.connection('degraded', 'gateway_transport_error')
+        ws.terminate()
+      })
+      ws.on('close', (code) => {
         if (heartbeat) {
-          clearTimeout(heartbeat);
+          clearTimeout(heartbeat)
         }
-        signal.removeEventListener("abort", abort);
-        host.connection("disconnected");
+        signal.removeEventListener('abort', abort)
+        host.connection('disconnected')
         if ([4004, 4010, 4011, 4012, 4013, 4014].includes(code)) {
-          fatal = true;
-          host.connection("degraded", "gateway_configuration_error");
+          fatal = true
+          host.connection('degraded', 'gateway_configuration_error')
         }
         if ([4007, 4009].includes(code)) {
-          session = undefined;
+          session = undefined
         }
-        resolve();
-      });
-      ws.on("message", (raw) => {
-        let packet: z.infer<typeof packetSchema>;
+        resolve()
+      })
+      ws.on('message', (raw) => {
+        let packet: z.infer<typeof packetSchema>
         try {
-          packet = packetSchema.parse(JSON.parse(frameText(raw)));
+          packet = packetSchema.parse(JSON.parse(frameText(raw)))
         } catch {
-          host.connection("degraded", "invalid_gateway_frame");
-          ws.terminate();
-          return;
+          host.connection('degraded', 'invalid_gateway_frame')
+          ws.terminate()
+          return
         }
         if (packet.op === 10) {
-          const hello = helloEventSchema.safeParse(packet.d);
+          const hello = helloEventSchema.safeParse(packet.d)
           if (!hello.success || interval) {
-            ws.terminate();
-            return;
+            ws.terminate()
+            return
           }
-          interval = hello.data.heartbeat_interval;
-          heartbeat = setTimeout(beat, Math.random() * interval);
+          interval = hello.data.heartbeat_interval
+          heartbeat = setTimeout(beat, Math.random() * interval)
           send(
             session
               ? {
@@ -194,8 +199,8 @@ export function createDiscordGateway(
                   d: {
                     token: botToken,
                     session_id: session.session_id,
-                    seq: session.seq,
-                  },
+                    seq: session.seq
+                  }
                 }
               : {
                   op: 2,
@@ -204,72 +209,76 @@ export function createDiscordGateway(
                     intents: config.intents,
                     properties: {
                       os: process.platform,
-                      browser: "relanox",
-                      device: "relanox",
-                    },
-                  },
-                },
-          );
-          return;
+                      browser: 'relanox',
+                      device: 'relanox'
+                    }
+                  }
+                }
+          )
+          return
         }
         if (packet.op === 11) {
-          acknowledged = true;
-          return;
+          acknowledged = true
+          return
         }
         if (packet.op === 1) {
-          acknowledged = false;
-          send({ op: 1, d: sequence });
-          return;
+          acknowledged = false
+          send({ op: 1, d: sequence })
+          return
         }
         if (packet.op === 7) {
-          ws.terminate();
-          return;
+          ws.terminate()
+          return
         }
         if (packet.op === 9) {
           const invalidate = async () => {
             if (packet.d !== true) {
-              await clearSession();
+              await clearSession()
             }
-            ws.terminate();
-          };
+            ws.terminate()
+          }
 
           chain = chain.then(invalidate).catch(() => {
-            ws.terminate();
-          });
-          return;
+            ws.terminate()
+          })
+          return
         }
         if (packet.op !== 0 || packet.s === null || packet.s === undefined) {
-          return;
+          return
         }
         if (++pending > 64) {
-          ws.terminate();
-          return;
+          ws.terminate()
+          return
         }
 
         const consume = async () => {
           if (failed || signal.aborted) {
-            return;
+            return
           }
-          if (packet.t === "READY") {
-            const ready = readySchema.parse(packet.d);
+          if (packet.t === 'READY') {
+            const ready = readySchema.parse(packet.d)
             if (ready.user.id !== config.botUserId) {
-              fatal = true;
-              throw new Error("bot_identity_mismatch");
+              fatal = true
+              throw new Error('bot_identity_mismatch')
             }
-            validateTransportUrl(ready.resume_gateway_url, config.allowInsecureLoopback, true);
+            validateTransportUrl(
+              ready.resume_gateway_url,
+              config.allowInsecureLoopback,
+              true
+            )
             session = {
               session_id: ready.session_id,
               resume_gateway_url: ready.resume_gateway_url,
               seq: packet.s as number,
               botId: ready.user.id,
               apiBaseUrl: identity().apiBaseUrl,
-              gatewayUrl: new URL(config.gatewayUrl).toString(),
-            };
-            host.connection("connected");
-          } else if (packet.t === "RESUMED") {
-            host.connection("connected");
-          } else if (packet.t === "MESSAGE_CREATE") {
-            const message = messageSchema.parse(packet.d);
+              gatewayUrl: new URL(config.gatewayUrl).toString()
+            }
+            host.connection('connected')
+          } else if (packet.t === 'RESUMED') {
+            host.connection('connected')
+          } else if (packet.t === 'MESSAGE_CREATE') {
+            const message = messageSchema.parse(packet.d)
             if (
               !message.author.bot &&
               !message.webhook_id &&
@@ -277,125 +286,132 @@ export function createDiscordGateway(
               [0, 19].includes(message.type) &&
               (message.content || message.attachments.length > 0)
             ) {
-              const target = await messageTarget(message, signal);
+              const target = await messageTarget(message, signal)
               await ingest(host, {
                 source: {
-                  channel: "discord",
+                  channel: 'discord',
                   accountId: account.id,
-                  eventId: message.id,
+                  eventId: message.id
                 },
                 senderId: message.author.id,
                 text: message.content,
                 attachments: await Promise.all(
                   message.attachments.map(async (attachment) => {
-                    if (attachment.size > (host.maxMediaBytes ?? 25 * 1024 * 1024)) {
-                      throw new Error("media_too_large");
+                    if (
+                      attachment.size > (host.maxMediaBytes ?? 25 * 1024 * 1024)
+                    ) {
+                      throw new Error('media_too_large')
                     }
 
                     const downloaded = await downloadMedia(attachment.url, {
                       maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
                       signal,
                       trustedOrigins: [new URL(config.apiBaseUrl).origin],
-                      allowInsecureLocalhost: config.allowInsecureLoopback,
-                    });
+                      allowInsecureLocalhost: config.allowInsecureLoopback
+                    })
 
-                    const mimeType = attachment.content_type ?? downloaded.mimeType;
+                    const mimeType =
+                      attachment.content_type ?? downloaded.mimeType
+
                     return {
                       kind: mediaKind(mimeType),
                       mimeType,
                       fileName: attachment.filename,
-                      data: downloaded.data,
-                    };
-                  }),
+                      data: downloaded.data
+                    }
+                  })
                 ),
                 target: {
-                  channel: "discord",
+                  channel: 'discord',
                   accountId: account.id,
                   ...target,
                   replyToId: message.id,
-                  data: identity(),
+                  data: identity()
                 },
                 context: message.guild_id ? { guildId: message.guild_id } : {},
-                receivedAt: Date.now(),
-              });
+                receivedAt: Date.now()
+              })
             } else {
-              host.observe.count("relanox_inbound_total", {
-                channel: "discord",
-                operation: "ingest",
-                outcome: "rejected",
-                error_class: "unsupported",
-              });
+              host.observe.count('relanox_inbound_total', {
+                channel: 'discord',
+                operation: 'ingest',
+                outcome: 'rejected',
+                error_class: 'unsupported'
+              })
             }
           }
-          sequence = packet.s as number;
+          sequence = packet.s as number
           if (session) {
-            session.seq = sequence;
-            await persist();
+            session.seq = sequence
+            await persist()
           }
-        };
+        }
 
         chain = chain
           .then(consume)
           .catch(() => {
-            failed = true;
-            host.connection("degraded", "gateway_ingest_error");
-            ws.terminate();
+            failed = true
+            host.connection('degraded', 'gateway_ingest_error')
+            ws.terminate()
           })
           .finally(() => {
-            pending--;
-          });
-      });
-    });
+            pending--
+          })
+      })
+    })
     // Do not reconnect using a cursor while its earlier dispatch is still committing.
-    await chain;
+    await chain
   }
 
   async function run(signal: AbortSignal) {
-    const saved = await host.state.get("gateway-session");
-    const parsed = sessionSchema.safeParse(saved?.value);
-    session = undefined;
+    const saved = await host.state.get('gateway-session')
+    const parsed = sessionSchema.safeParse(saved?.value)
+    session = undefined
     if (
       parsed.success &&
       parsed.data.botId === config.botUserId &&
       parsed.data.apiBaseUrl === identity().apiBaseUrl &&
       parsed.data.gatewayUrl === new URL(config.gatewayUrl).toString()
     ) {
-      session = parsed.data;
+      session = parsed.data
     }
-    let failures = 0;
+    let failures = 0
     while (!signal.aborted && !fatal) {
       try {
-        await connect(signal);
+        await connect(signal)
       } catch {
-        host.connection("degraded", "gateway_connection_error");
+        host.connection('degraded', 'gateway_connection_error')
       }
       if (signal.aborted || fatal) {
-        break;
+        break
       }
       await delay(
-        Math.min(30_000, config.reconnectDelayMs * 2 ** Math.min(failures++, 5)),
+        Math.min(
+          30_000,
+          config.reconnectDelayMs * 2 ** Math.min(failures++, 5)
+        ),
         undefined,
-        { signal },
-      ).catch(() => {});
+        { signal }
+      ).catch(() => {})
     }
   }
 
   return {
     async start(signal: AbortSignal) {
       if (task) {
-        return;
+        return
       }
-      controller = new AbortController();
-      fatal = false;
+      controller = new AbortController()
+      fatal = false
       task = run(AbortSignal.any([signal, controller.signal])).catch(() => {
-        host.connection("degraded", "gateway_lifecycle_error");
-      });
+        host.connection('degraded', 'gateway_lifecycle_error')
+      })
     },
     async stop() {
-      controller?.abort();
-      socket?.terminate();
-      await waitForStop(task, config.timeoutMs);
-      task = undefined;
-    },
-  };
+      controller?.abort()
+      socket?.terminate()
+      await waitForStop(task, config.timeoutMs)
+      task = undefined
+    }
+  }
 }

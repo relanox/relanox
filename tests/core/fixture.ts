@@ -1,6 +1,6 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type {
   AgentHost,
   AgentPlugin,
@@ -8,87 +8,104 @@ import type {
   ChannelPlugin,
   MediaKind,
   RelanoxConfig,
-  SendInput,
-} from "../../packages/sdk/src/index.js";
-import type { CoreOptions } from "../../packages/core/src/types.js";
-import { createCore } from "../../packages/core/src/index.js";
-import { createSqliteStorage } from "../../plugins/storage-sqlite/src/index.js";
+  SendInput
+} from '../../packages/sdk/src/index.js'
+import type { CoreOptions } from '../../packages/core/src/types.js'
+import { createCore } from '../../packages/core/src/index.js'
+import { createSqliteStorage } from '../../plugins/storage-sqlite/src/index.js'
 
 export async function mediaFixture(
-  sendKinds: readonly MediaKind[] = ["image", "file"],
-  media?: CoreOptions["media"],
+  sendKinds: readonly MediaKind[] = ['image', 'file'],
+  media?: CoreOptions['media']
 ) {
-  const directory = await mkdtemp(join(tmpdir(), "relanox-core-media-"));
-  const filename = join(directory, "relay.sqlite");
-  let storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
+  const directory = await mkdtemp(join(tmpdir(), 'relanox-core-media-'))
+  const filename = join(directory, 'relay.sqlite')
+  let storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
 
   const close = async () => {
-    await storage.close();
-    await rm(directory, { recursive: true, force: true });
-  };
+    await storage.close()
+    await rm(directory, { recursive: true, force: true })
+  }
 
-  await storage.initialize();
-  let channelHost: ChannelHost | undefined;
-  let agentHost: AgentHost | undefined;
-  const sent: SendInput[] = [];
+  await storage.initialize()
+  let channelHost: ChannelHost | undefined
+  let agentHost: AgentHost | undefined
+  const sent: SendInput[] = []
 
   const channel: ChannelPlugin = {
-    id: "channel-telegram",
-    kind: "channel",
-    channel: "telegram",
+    id: 'channel-telegram',
+    kind: 'channel',
+    channel: 'telegram',
     sdkMajor: 1,
-    runtime: "node",
+    runtime: 'node',
     capabilities: {
       receive: true,
-      transport: "http",
+      transport: 'http',
       maxTextLength: 3,
-      lengthUnit: "codepoint",
+      lengthUnit: 'codepoint',
       idempotentSend: false,
-      media: { receive: ["image", "file"], send: sendKinds },
+      media: { receive: ['image', 'file'], send: sendKinds }
     },
     validateConfig: () => null,
     async setup(host) {
-      channelHost = host;
+      channelHost = host
     },
     async send(input) {
-      sent.push(input);
-      return { status: "sent", receipt: { platformMessageId: String(sent.length) } };
-    },
-  };
+      sent.push(input)
+      return {
+        status: 'sent',
+        receipt: { platformMessageId: String(sent.length) }
+      }
+    }
+  }
 
   const agent: AgentPlugin = {
-    id: "agent-grok",
-    kind: "agent",
-    agent: "grok",
+    id: 'agent-grok',
+    kind: 'agent',
+    agent: 'grok',
     sdkMajor: 1,
-    runtime: "node",
+    runtime: 'node',
     validateConfig: () => null,
     async setup(host) {
-      agentHost = host;
-      host.mountHttp("/json", async (request) => new Response(await request.arrayBuffer()));
-      host.mountHttp("/media/*", async (request) => new Response(await request.arrayBuffer()), {
-        maxBodyBytes: 16,
-        authorize: async (request) =>
-          request.headers.get("authorization") === "Bearer test"
-            ? undefined
-            : new Response(null, { status: 401 }),
-      });
+      agentHost = host
+      host.mountHttp(
+        '/json',
+        async (request) => new Response(await request.arrayBuffer())
+      )
+      host.mountHttp(
+        '/media/*',
+        async (request) => new Response(await request.arrayBuffer()),
+        {
+          maxBodyBytes: 16,
+          authorize: async (request) =>
+            request.headers.get('authorization') === 'Bearer test'
+              ? undefined
+              : new Response(null, { status: 401 })
+        }
+      )
     },
     async dispatch() {
-      return { status: "accepted" };
-    },
-  };
+      return { status: 'accepted' }
+    }
+  }
 
   const config: RelanoxConfig = {
-    accounts: [{ id: "bot", channel: "telegram", config: null, allowedSenders: ["alice"] }],
-    endpoints: [
-      { id: "first", agent: "grok", config: null, dispatchMode: "pull" },
-      { id: "other", agent: "grok", config: null, dispatchMode: "pull" },
+    accounts: [
+      {
+        id: 'bot',
+        channel: 'telegram',
+        config: null,
+        allowedSenders: ['alice']
+      }
     ],
-    bindings: [{ accountId: "bot", chatId: "chat", endpointId: "first" }],
-    storage: { plugin: "sqlite", config: {} },
-    observability: { plugin: "none", config: {} },
-  };
+    endpoints: [
+      { id: 'first', agent: 'grok', config: null, dispatchMode: 'pull' },
+      { id: 'other', agent: 'grok', config: null, dispatchMode: 'pull' }
+    ],
+    bindings: [{ accountId: 'bot', chatId: 'chat', endpointId: 'first' }],
+    storage: { plugin: 'sqlite', config: {} },
+    observability: { plugin: 'none', config: {} }
+  }
 
   try {
     const assemble = () =>
@@ -96,19 +113,19 @@ export async function mediaFixture(
         ...(media ? { media } : {}),
         config,
         storage,
-        channels: new Map([["bot", channel]]),
-        agents: new Map([["grok", agent]]),
+        channels: new Map([['bot', channel]]),
+        agents: new Map([['grok', agent]]),
         worker: {
           maxHttpBodyBytes: 8,
           maxMediaBytes: 16,
           maxTotalMediaBytes: 24,
-          maxAttachments: 2,
-        },
-      });
+          maxAttachments: 2
+        }
+      })
 
-    const runtime = await assemble();
+    const runtime = await assemble()
     if (!channelHost || !agentHost) {
-      throw new Error("Hosts not initialized");
+      throw new Error('Hosts not initialized')
     }
     return {
       storage,
@@ -119,37 +136,46 @@ export async function mediaFixture(
       agent: requireHost<AgentHost>(agentHost),
       sent,
       async restart() {
-        await storage.close();
-        storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
-        await storage.initialize();
-        return assemble();
-      },
-    };
+        await storage.close()
+        storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+        await storage.initialize()
+        return assemble()
+      }
+    }
   } catch (error) {
-    await close();
-    throw error;
+    await close()
+    throw error
   }
 }
 
 export const incoming = {
-  source: { channel: "telegram" as const, accountId: "bot", eventId: "media-event" },
-  senderId: "alice",
-  text: "",
-  target: { channel: "telegram" as const, accountId: "bot", chatId: "chat", data: null },
+  source: {
+    channel: 'telegram' as const,
+    accountId: 'bot',
+    eventId: 'media-event'
+  },
+  senderId: 'alice',
+  text: '',
+  target: {
+    channel: 'telegram' as const,
+    accountId: 'bot',
+    chatId: 'chat',
+    data: null
+  },
   context: null,
-  receivedAt: 1,
-};
+  receivedAt: 1
+}
 
 export const picture = {
-  kind: "image" as const,
-  mimeType: "image/png",
-  fileName: "picture.png",
-  data: new Uint8Array([1, 2, 3]),
-};
+  kind: 'image' as const,
+  mimeType: 'image/png',
+  fileName: 'picture.png',
+  data: new Uint8Array([1, 2, 3])
+}
 
 function requireHost<T>(host: T | undefined): T {
   if (host === undefined) {
-    throw new Error("Host missing");
+    throw new Error('Host missing')
   }
-  return host;
+  return host
 }

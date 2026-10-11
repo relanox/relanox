@@ -1,19 +1,24 @@
-import { z } from "zod";
+import { z } from 'zod'
 
 const secretRefSchema = z.strictObject({
-  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
-});
+  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u)
+})
 
-const requestTimeoutSchema = z.number().int().min(100).max(120_000).default(10_000);
+const requestTimeoutSchema = z
+  .number()
+  .int()
+  .min(100)
+  .max(120_000)
+  .default(10_000)
 
 export const nicknameSchema = z
   .string()
-  .regex(/^[A-Za-z_[\]\\`^{}|][A-Za-z0-9_[\]\\`^{}|-]{0,29}$/u);
+  .regex(/^[A-Za-z_[\]\\`^{}|][A-Za-z0-9_[\]\\`^{}|-]{0,29}$/u)
 
 export const channelSchema = z
   .string()
   .regex(/^[#&][^\s,:\0\r\n]{1,89}$/u)
-  .refine((value) => Buffer.byteLength(value) <= 90);
+  .refine((value) => Buffer.byteLength(value) <= 90)
 
 const configSchema = z.strictObject({
   server: z
@@ -34,23 +39,24 @@ const configSchema = z.strictObject({
         .min(1)
         .max(128)
         .regex(/^[^\0\r\n]+$/u),
-      password: secretRefSchema,
+      password: secretRefSchema
     })
     .optional(),
   allowNickFallback: z.boolean().default(false),
   timeoutMs: requestTimeoutSchema,
-  reconnectMs: z.number().int().min(100).max(60_000).default(1000),
-});
+  reconnectMs: z.number().int().min(100).max(60_000).default(1000)
+})
 
-export type IrcConfig = z.infer<typeof configSchema>;
+export type IrcConfig = z.infer<typeof configSchema>
 
 export function validateConfig(value: unknown): IrcConfig {
-  const config = configSchema.parse(value);
+  const config = configSchema.parse(value)
   if (
     !config.tls &&
-    (!config.allowInsecureLocalhost || !["localhost", "127.0.0.1", "::1"].includes(config.server))
+    (!config.allowInsecureLocalhost ||
+      !['localhost', '127.0.0.1', '::1'].includes(config.server))
   ) {
-    throw new Error("tls_required");
+    throw new Error('tls_required')
   }
-  return config;
+  return config
 }

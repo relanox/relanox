@@ -1,59 +1,79 @@
-import type { Storage, InboundRecord, OutboundRecord } from "@relanox/sdk";
-import type { DatabaseContext } from "./database.js";
-import { decodeDurableRecord } from "./record-codec.js";
+import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
+import type { DatabaseContext } from './database.js'
+import { decodeDurableRecord } from './record-codec.js'
 
 export function createInspectionOperations(
   context: Pick<
     DatabaseContext,
-    "db" | "transaction" | "readInbound" | "readOutbound" | "saveInbound" | "saveOutbound"
-  >,
+    | 'db'
+    | 'transaction'
+    | 'readInbound'
+    | 'readOutbound'
+    | 'saveInbound'
+    | 'saveOutbound'
+  >
 ): Pick<
   Storage,
-  "getInbound" | "getOutbound" | "listInbound" | "listOutbound" | "getStats" | "cleanup"
+  | 'getInbound'
+  | 'getOutbound'
+  | 'listInbound'
+  | 'listOutbound'
+  | 'getStats'
+  | 'cleanup'
 > {
-  const { db, transaction, readInbound, readOutbound, saveInbound, saveOutbound } = context;
+  const {
+    db,
+    transaction,
+    readInbound,
+    readOutbound,
+    saveInbound,
+    saveOutbound
+  } = context
+
   return {
     async getInbound(id) {
-      return readInbound(id);
+      return readInbound(id)
     },
     async getOutbound(id) {
-      return readOutbound(id);
+      return readOutbound(id)
     },
     async listInbound(filter) {
-      const where = ["1=1"];
-      const params: (string | number)[] = [];
+      const where = ['1=1']
+      const params: (string | number)[] = []
       if (filter.requestStatus) {
-        where.push("status=?");
-        params.push(filter.requestStatus);
+        where.push('status=?')
+        params.push(filter.requestStatus)
       }
       if (filter.endpointId) {
-        where.push("endpoint=?");
-        params.push(filter.endpointId);
+        where.push('endpoint=?')
+        params.push(filter.endpointId)
       }
       if (filter.afterId) {
-        where.push("id>?");
-        params.push(filter.afterId);
+        where.push('id>?')
+        params.push(filter.afterId)
       }
       return (
         db
-          .prepare(`SELECT record FROM inbound WHERE ${where.join(" AND ")} ORDER BY id LIMIT ?`)
+          .prepare(
+            `SELECT record FROM inbound WHERE ${where.join(' AND ')} ORDER BY id LIMIT ?`
+          )
           .all(...params, filter.limit) as { record: string }[]
-      ).map((row) => decodeDurableRecord<InboundRecord>(row.record));
+      ).map((row) => decodeDurableRecord<InboundRecord>(row.record))
     },
     async listOutbound(filter) {
-      const where = ["1=1"];
-      const params: (string | number)[] = [];
+      const where = ['1=1']
+      const params: (string | number)[] = []
       if (filter.deliveryStatus) {
-        where.push("outbound_delivery.status=?");
-        params.push(filter.deliveryStatus);
+        where.push('outbound_delivery.status=?')
+        params.push(filter.deliveryStatus)
       }
       if (filter.endpointId) {
-        where.push("inbound_request.endpoint=?");
-        params.push(filter.endpointId);
+        where.push('inbound_request.endpoint=?')
+        params.push(filter.endpointId)
       }
       if (filter.afterId) {
-        where.push("outbound_delivery.id>?");
-        params.push(filter.afterId);
+        where.push('outbound_delivery.id>?')
+        params.push(filter.afterId)
       }
       return (
         db
@@ -62,13 +82,13 @@ export function createInspectionOperations(
               SELECT outbound_delivery.record
               FROM outbound outbound_delivery
               JOIN inbound inbound_request ON inbound_request.id=outbound_delivery.request_id
-              WHERE ${where.join(" AND ")}
+              WHERE ${where.join(' AND ')}
               ORDER BY outbound_delivery.id
               LIMIT ?
-            `,
+            `
           )
           .all(...params, filter.limit) as { record: string }[]
-      ).map((row) => decodeDurableRecord<OutboundRecord>(row.record));
+      ).map((row) => decodeDurableRecord<OutboundRecord>(row.record))
     },
     async getStats() {
       const inboundStats = db
@@ -79,19 +99,19 @@ export function createInspectionOperations(
               SUM(status='claimed') claimed,
               MIN(CASE WHEN status='pending' THEN accepted_at END) oldest
             FROM inbound
-          `,
+          `
         )
         .get() as {
-        pending: number | null;
-        claimed: number | null;
-        oldest: number | null;
-      };
+        pending: number | null
+        claimed: number | null
+        oldest: number | null
+      }
 
       const outboundStats = db
         .prepare(
-          "SELECT SUM(status!='sent') undelivered,SUM(status='unknown') unknown FROM outbound",
+          "SELECT SUM(status!='sent') undelivered,SUM(status='unknown') unknown FROM outbound"
         )
-        .get() as { undelivered: number | null; unknown: number | null };
+        .get() as { undelivered: number | null; unknown: number | null }
 
       const unknownDispatches = db
         .prepare(
@@ -100,21 +120,23 @@ export function createInspectionOperations(
             FROM inbound
             WHERE status='pending'
               AND json_extract(record,'$.dispatch.status')='unknown'
-          `,
+          `
         )
-        .get() as { count: number };
+        .get() as { count: number }
 
       return {
         pending: inboundStats.pending ?? 0,
         claimed: inboundStats.claimed ?? 0,
         undelivered: outboundStats.undelivered ?? 0,
         unknown: (outboundStats.unknown ?? 0) + unknownDispatches.count,
-        ...(inboundStats.oldest !== null ? { oldestPendingAt: inboundStats.oldest } : {}),
-      };
+        ...(inboundStats.oldest !== null
+          ? { oldestPendingAt: inboundStats.oldest }
+          : {})
+      }
     },
     async cleanup(input) {
       return transaction(() => {
-        let redacted = 0;
+        let redacted = 0
 
         const rows = db
           .prepare(
@@ -129,45 +151,51 @@ export function createInspectionOperations(
                     AND outbound_delivery.status='sent'))
               ORDER BY inbound_request.accepted_at,inbound_request.id
               LIMIT ?
-            `,
+            `
           )
           .all(input.before, input.limit) as {
-          inbound_record: string;
-          outbound_record: string | null;
-        }[];
+          inbound_record: string
+          outbound_record: string | null
+        }[]
 
         for (const row of rows) {
-          const record = decodeDurableRecord<InboundRecord>(row.inbound_record);
+          const record = decodeDurableRecord<InboundRecord>(row.inbound_record)
 
           const delivery = row.outbound_record
             ? decodeDurableRecord<OutboundRecord>(row.outbound_record)
-            : undefined;
+            : undefined
 
           saveInbound({
             ...record,
-            snapshot: { ...record.snapshot, text: "", context: null, attachments: [] },
-            ...(record.result ? { result: { ...record.result, text: "", attachments: [] } } : {}),
-            redactedAt: input.before,
-          });
-          db.prepare("UPDATE media SET data=NULL,reference=? WHERE request_id=?").run(
-            "{}",
-            record.snapshot.requestId,
-          );
+            snapshot: {
+              ...record.snapshot,
+              text: '',
+              context: null,
+              attachments: []
+            },
+            ...(record.result
+              ? { result: { ...record.result, text: '', attachments: [] } }
+              : {}),
+            redactedAt: input.before
+          })
+          db.prepare(
+            'UPDATE media SET data=NULL,reference=? WHERE request_id=?'
+          ).run('{}', record.snapshot.requestId)
           if (delivery) {
             saveOutbound({
               ...delivery,
               chunks: delivery.chunks.map((chunk) => ({
-                text: "",
+                text: '',
                 state: null,
-                idempotencyKey: chunk.idempotencyKey,
+                idempotencyKey: chunk.idempotencyKey
               })),
-              receipts: delivery.receipts.map(() => ({})),
-            });
+              receipts: delivery.receipts.map(() => ({}))
+            })
           }
-          redacted++;
+          redacted++
         }
-        return { redacted };
-      });
-    },
-  };
+        return { redacted }
+      })
+    }
+  }
 }

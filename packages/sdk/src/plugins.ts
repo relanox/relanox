@@ -1,5 +1,10 @@
-import type { Json, SDK_MAJOR } from "./values.js";
-import type { ChannelId, AgentId, AccountConfig, EndpointConfig } from "./config.js";
+import type { Json, SDK_MAJOR } from './values.js'
+import type {
+  ChannelId,
+  AgentId,
+  AccountConfig,
+  EndpointConfig
+} from './config.js'
 import type {
   IngestInput,
   InboundSnapshot,
@@ -10,117 +15,128 @@ import type {
   DispatchResult,
   SendResult,
   SendInput,
-  DispatchInput,
-} from "./messages.js";
-import type { StateStore } from "./state.js";
-import type { Storage } from "./storage.js";
-import type { Observability } from "./observability.js";
-import type { AgentMediaHost, ChannelMediaHost, MediaKind } from "./media.js";
+  DispatchInput
+} from './messages.js'
+import type { StateStore } from './state.js'
+import type { Storage } from './storage.js'
+import type { Observability } from './observability.js'
+import type { AgentMediaHost, ChannelMediaHost, MediaKind } from './media.js'
 
-export type HttpHandler = (request: Request) => Promise<Response>;
+export type HttpHandler = (request: Request) => Promise<Response>
 
 export interface HttpRouteOptions {
-  readonly maxBodyBytes: number;
+  readonly maxBodyBytes: number
   /** Reject unauthorized transfers before core reads a potentially large binary body. */
-  authorize(request: Request): Promise<Response | undefined>;
+  authorize(request: Request): Promise<Response | undefined>
 }
 
 export interface CommonHost {
-  readonly observe: Observability;
-  readonly state: StateStore;
-  mountHttp(path: string, handler: HttpHandler, options?: HttpRouteOptions): void;
-  connection(status: "connected" | "disconnected" | "degraded", errorCode?: string): void;
+  readonly observe: Observability
+  readonly state: StateStore
+  mountHttp(
+    path: string,
+    handler: HttpHandler,
+    options?: HttpRouteOptions
+  ): void
+  connection(
+    status: 'connected' | 'disconnected' | 'degraded',
+    errorCode?: string
+  ): void
 }
 
 /** Core binds this host to a single validated account; plugins cannot choose the account scope. */
 export interface ChannelHost extends CommonHost {
-  readonly maxMediaBytes?: number;
-  readonly media?: ChannelMediaHost;
-  ingest(input: IngestInput): Promise<IngestReceipt>;
+  readonly maxMediaBytes?: number
+  readonly media?: ChannelMediaHost
+  ingest(input: IngestInput): Promise<IngestReceipt>
 }
 
 export interface AgentPrincipal {
-  readonly subject: string;
-  readonly endpointIds: readonly string[];
+  readonly subject: string
+  readonly endpointIds: readonly string[]
 }
 
 /** Principal comes only from verified protocol authentication. Core intersects it with this plugin's configured endpoints. */
 export interface ScopedAgentHost {
-  readonly media?: AgentMediaHost;
-  listPending(limit: number): Promise<readonly InboundSnapshot[]>;
-  claim(requestId: string, claimKey: string): Promise<ClaimResult>;
+  readonly media?: AgentMediaHost
+  listPending(limit: number): Promise<readonly InboundSnapshot[]>
+  claim(requestId: string, claimKey: string): Promise<ClaimResult>
   complete(input: {
-    readonly requestId: string;
-    readonly claimToken: string;
-    readonly resultId: string;
-    readonly text: string;
+    readonly requestId: string
+    readonly claimToken: string
+    readonly resultId: string
+    readonly text: string
     /** Ordered IDs of uploaded or inbound media owned by this request. */
-    readonly attachments?: readonly string[];
-  }): Promise<CompletionResult>;
+    readonly attachments?: readonly string[]
+  }): Promise<CompletionResult>
   fail(input: {
-    readonly requestId: string;
-    readonly claimToken: string;
-    readonly errorCode: string;
-  }): Promise<MutationResult>;
+    readonly requestId: string
+    readonly claimToken: string
+    readonly errorCode: string
+  }): Promise<MutationResult>
 }
 
 export interface AgentHost extends CommonHost {
-  forPrincipal(principal: AgentPrincipal): ScopedAgentHost;
+  forPrincipal(principal: AgentPrincipal): ScopedAgentHost
 }
 
 export interface PluginMetadata {
-  readonly id: string;
-  readonly sdkMajor: typeof SDK_MAJOR;
-  readonly runtime: "node";
+  readonly id: string
+  readonly sdkMajor: typeof SDK_MAJOR
+  readonly runtime: 'node'
 }
 
 export interface Lifecycle {
-  start?(signal: AbortSignal): Promise<void>;
-  stop?(): Promise<void>;
+  start?(signal: AbortSignal): Promise<void>
+  stop?(): Promise<void>
 }
 
 export interface ChannelPlugin<C = Json> extends PluginMetadata, Lifecycle {
-  readonly kind: "channel";
-  readonly channel: ChannelId;
+  readonly kind: 'channel'
+  readonly channel: ChannelId
   readonly capabilities: {
-    readonly receive: true;
-    readonly transport: "http" | "connection" | "both";
-    readonly maxTextLength: number;
-    readonly lengthUnit: "utf16" | "codepoint" | "utf8";
-    readonly idempotentSend: boolean;
+    readonly receive: true
+    readonly transport: 'http' | 'connection' | 'both'
+    readonly maxTextLength: number
+    readonly lengthUnit: 'utf16' | 'codepoint' | 'utf8'
+    readonly idempotentSend: boolean
     readonly media?: {
-      readonly receive: readonly MediaKind[];
-      readonly send: readonly MediaKind[];
-    };
-  };
-  validateConfig(config: unknown): C;
-  setup(host: ChannelHost, account: AccountConfig, config: C): Promise<void>;
-  send(input: SendInput): Promise<SendResult>;
+      readonly receive: readonly MediaKind[]
+      readonly send: readonly MediaKind[]
+    }
+  }
+  validateConfig(config: unknown): C
+  setup(host: ChannelHost, account: AccountConfig, config: C): Promise<void>
+  send(input: SendInput): Promise<SendResult>
 }
 
 export interface AgentPlugin<C = Json> extends PluginMetadata, Lifecycle {
-  readonly kind: "agent";
-  readonly agent: AgentId;
-  validateConfig(config: unknown): C;
-  setup(host: AgentHost, endpoints: readonly EndpointConfig[], config: C): Promise<void>;
-  dispatch(input: DispatchInput): Promise<DispatchResult>;
+  readonly kind: 'agent'
+  readonly agent: AgentId
+  validateConfig(config: unknown): C
+  setup(
+    host: AgentHost,
+    endpoints: readonly EndpointConfig[],
+    config: C
+  ): Promise<void>
+  dispatch(input: DispatchInput): Promise<DispatchResult>
 }
 
 export interface StoragePlugin<C = Json> extends PluginMetadata {
-  readonly kind: "storage";
-  validateConfig(config: unknown): C;
-  setup(config: C, observe: Observability): Promise<Storage>;
+  readonly kind: 'storage'
+  validateConfig(config: unknown): C
+  setup(config: C, observe: Observability): Promise<Storage>
 }
 
 export interface ObservabilityRuntime {
-  readonly observe: Observability;
-  readonly metrics?: HttpHandler;
-  flush(signal: AbortSignal): Promise<void>;
-  shutdown(signal: AbortSignal): Promise<void>;
+  readonly observe: Observability
+  readonly metrics?: HttpHandler
+  flush(signal: AbortSignal): Promise<void>
+  shutdown(signal: AbortSignal): Promise<void>
 }
 
 export interface ObservabilityPlugin<C = Json> extends PluginMetadata {
-  readonly kind: "observability";
-  validateConfig(config: unknown): C;
-  setup(config: C): Promise<ObservabilityRuntime>;
+  readonly kind: 'observability'
+  validateConfig(config: unknown): C
+  setup(config: C): Promise<ObservabilityRuntime>
 }

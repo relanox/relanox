@@ -1,10 +1,10 @@
-import type { Storage } from "@relanox/sdk";
-import type { DatabaseContext } from "./database.js";
+import type { Storage } from '@relanox/sdk'
+import type { DatabaseContext } from './database.js'
 
 export function createLifecycle(
-  context: Pick<DatabaseContext, "db" | "transaction">,
-): Pick<Storage, "initialize" | "health" | "close"> {
-  const { db, transaction } = context;
+  context: Pick<DatabaseContext, 'db' | 'transaction'>
+): Pick<Storage, 'initialize' | 'health' | 'close'> {
+  const { db, transaction } = context
   return {
     async initialize() {
       transaction(() => {
@@ -28,23 +28,25 @@ export function createLifecycle(
             plugin TEXT NOT NULL, owner TEXT NOT NULL, key TEXT NOT NULL,
             version INTEGER NOT NULL, expires_at INTEGER, record TEXT NOT NULL,
             PRIMARY KEY(plugin,owner,key));
-        `,
-        );
-      });
+        `
+        )
+      })
     },
     async health() {
       try {
-        db.prepare("SELECT id,record,final_digest FROM inbound LIMIT 0").all();
-        db.prepare("SELECT id,record FROM outbound LIMIT 0").all();
-        db.prepare("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0").all();
-        db.prepare("SELECT id,reference,data FROM media LIMIT 0").all();
-        return { ok: true };
+        db.prepare('SELECT id,record,final_digest FROM inbound LIMIT 0').all()
+        db.prepare('SELECT id,record FROM outbound LIMIT 0').all()
+        db.prepare(
+          'SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0'
+        ).all()
+        db.prepare('SELECT id,reference,data FROM media LIMIT 0').all()
+        return { ok: true }
       } catch {
-        return { ok: false, errorCode: "storage_unavailable" };
+        return { ok: false, errorCode: 'storage_unavailable' }
       }
     },
     async close() {
-      db.close();
-    },
-  };
+      db.close()
+    }
+  }
 }

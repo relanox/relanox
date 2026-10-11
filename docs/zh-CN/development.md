@@ -37,7 +37,7 @@ CI 在 master push、PR 和手动触发中独立运行构建/质量、Linux/Wind
 
 ## 代码质量与组织
 
-Prettier 负责格式，类型感知 Oxlint 负责 lint，使用根脚本，不增加 formatter 层。CI 先构建 workspace 声明再检查；新测试目录需要可发现的 tsconfig。
+Prettier 直接使用 `prettier-config-standard` 共享配置，遵循 JavaScript Standard Style 的格式约定：2 空格缩进、80 列、单引号、不加可省略的分号、无尾逗号。这不代表启用完整的 Standard ESLint 规则集。类型感知 Oxlint 负责 lint，使用根脚本，不增加 formatter 层。CI 先构建 workspace 声明再检查；新测试目录需要可发现的 tsconfig。
 
 Oxlint 同时检查函数、类、接口、类型别名和枚举声明前后的空行，多行 export 与变量声明前后的空行、import 后的空行，以及类方法之间的空行。这些规则通过 Oxlint 的 JavaScript 插件支持运行。Prettier 保留声明间距，但不会补上要求的空行。运行 `pnpm lint:fix` 后再运行 `pnpm format`，分别修复间距和格式；`pnpm lint` 与 pre-commit hook 会拒绝缺少空行的代码，无需单独运行 ESLint 命令。
 

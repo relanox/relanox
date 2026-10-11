@@ -8,27 +8,27 @@ import type {
   Observability,
   Storage,
   MediaKind,
-  ChannelMediaHost,
-} from "@relanox/sdk";
-import type { WorkerConfig } from "../worker/options.js";
-import { bindingKey } from "../config/relations.js";
-import { CoreError } from "../errors.js";
-import { jsonSnapshot } from "../json.js";
-import { ingestSchema, boundedText } from "../validation.js";
-import { inboundMedia } from "../media.js";
-import { createOperationTracer } from "./tracing.js";
+  ChannelMediaHost
+} from '@relanox/sdk'
+import type { WorkerConfig } from '../worker/options.js'
+import { bindingKey } from '../config/relations.js'
+import { CoreError } from '../errors.js'
+import { jsonSnapshot } from '../json.js'
+import { ingestSchema, boundedText } from '../validation.js'
+import { inboundMedia } from '../media.js'
+import { createOperationTracer } from './tracing.js'
 
 interface ChannelHostOptions {
-  readonly mediaPublisher?: ChannelMediaHost;
-  readonly account: AccountConfig;
-  readonly bindings: ReadonlyMap<string, Binding>;
-  readonly endpoints: ReadonlyMap<string, EndpointConfig>;
-  readonly common: CommonHost;
-  readonly storage: Storage;
-  readonly observe: Observability;
-  readonly worker: WorkerConfig;
-  readonly mediaKinds?: readonly MediaKind[];
-  isAccepting(this: void): boolean;
+  readonly mediaPublisher?: ChannelMediaHost
+  readonly account: AccountConfig
+  readonly bindings: ReadonlyMap<string, Binding>
+  readonly endpoints: ReadonlyMap<string, EndpointConfig>
+  readonly common: CommonHost
+  readonly storage: Storage
+  readonly observe: Observability
+  readonly worker: WorkerConfig
+  readonly mediaKinds?: readonly MediaKind[]
+  isAccepting(this: void): boolean
 }
 
 /** Authorizes sender and conversation before persisting the immutable inbound snapshot. */
@@ -42,51 +42,53 @@ export function createChannelHost({
   observe,
   worker,
   mediaKinds,
-  isAccepting,
+  isAccepting
 }: ChannelHostOptions): ChannelHost {
-  const traced = createOperationTracer(observe);
+  const traced = createOperationTracer(observe)
   return {
     ...common,
     ...(mediaPublisher ? { media: mediaPublisher } : {}),
     maxMediaBytes: worker.maxMediaBytes,
     async ingest(input: IngestInput) {
-      const { attachments, ...message } = input;
+      const { attachments, ...message } = input
       if (!isAccepting()) {
-        throw new CoreError("not_accepting");
+        throw new CoreError('not_accepting')
       }
-      ingestSchema.parse(message);
-      boundedText(input.text, worker.maxTextBytes, !attachments?.length);
+      ingestSchema.parse(message)
+      boundedText(input.text, worker.maxTextBytes, !attachments?.length)
       if (
         input.source.accountId !== account.id ||
         input.target.accountId !== account.id ||
         input.source.channel !== account.channel ||
         input.target.channel !== account.channel
       ) {
-        throw new CoreError("account_scope_mismatch");
+        throw new CoreError('account_scope_mismatch')
       }
       if (
-        new TextEncoder().encode(JSON.stringify([input.context, input.target.data])).length >
-        worker.maxContextBytes
+        new TextEncoder().encode(
+          JSON.stringify([input.context, input.target.data])
+        ).length > worker.maxContextBytes
       ) {
-        throw new CoreError("context_too_large");
+        throw new CoreError('context_too_large')
       }
 
       const binding = bindings.get(
-        bindingKey(account.id, input.target.chatId, input.target.threadId),
-      );
+        bindingKey(account.id, input.target.chatId, input.target.threadId)
+      )
 
       if (!binding) {
-        throw new CoreError("unbound_conversation");
+        throw new CoreError('unbound_conversation')
       }
       if (
         !account.allowedSenders.includes(input.senderId) ||
-        (binding.allowedSenders && !binding.allowedSenders.includes(input.senderId))
+        (binding.allowedSenders &&
+          !binding.allowedSenders.includes(input.senderId))
       ) {
-        throw new CoreError("sender_not_allowed");
+        throw new CoreError('sender_not_allowed')
       }
-      const endpoint = endpoints.get(binding.endpointId);
+      const endpoint = endpoints.get(binding.endpointId)
       if (!endpoint) {
-        throw new CoreError("unbound_endpoint");
+        throw new CoreError('unbound_endpoint')
       }
 
       const media = inboundMedia(
@@ -94,40 +96,46 @@ export function createChannelHost({
         worker.maxMediaBytes,
         worker.maxAttachments,
         Boolean(storage.media),
-        worker.maxTotalMediaBytes,
-      );
+        worker.maxTotalMediaBytes
+      )
 
       if (media.some((item) => !mediaKinds?.includes(item.reference.kind))) {
-        throw new CoreError("media_not_supported");
+        throw new CoreError('media_not_supported')
       }
 
       const receipt = await traced(
-        "ingest",
+        'ingest',
         (trace) =>
           storage.acceptInbound(
             jsonSnapshot({
               ...message,
-              ...(media.length > 0 ? { attachments: media.map((item) => item.reference) } : {}),
+              ...(media.length > 0
+                ? { attachments: media.map((item) => item.reference) }
+                : {}),
               ...(trace ? { trace } : {}),
               requestId: crypto.randomUUID(),
               endpoint,
-              acceptedAt: Date.now(),
+              acceptedAt: Date.now()
             }),
-            media,
+            media
           ),
-        input.trace,
-      );
+        input.trace
+      )
 
-      observe.count("relanox_inbound_total", {
+      observe.count('relanox_inbound_total', {
         channel: account.channel,
-        outcome: receipt.duplicate ? "duplicate" : "accepted",
-      });
-      observe.log("info", receipt.duplicate ? "inbound.duplicate" : "inbound.accepted", {
-        plugin: "core",
-        requestId: receipt.requestId,
-        outcome: receipt.duplicate ? "duplicate" : "accepted",
-      });
-      return receipt;
-    },
-  };
+        outcome: receipt.duplicate ? 'duplicate' : 'accepted'
+      })
+      observe.log(
+        'info',
+        receipt.duplicate ? 'inbound.duplicate' : 'inbound.accepted',
+        {
+          plugin: 'core',
+          requestId: receipt.requestId,
+          outcome: receipt.duplicate ? 'duplicate' : 'accepted'
+        }
+      )
+      return receipt
+    }
+  }
 }
