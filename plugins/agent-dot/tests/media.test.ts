@@ -60,7 +60,13 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
     const file = Buffer.from("inbound file bytes", "utf8");
     const receipt = await fx.ingest(0, "inspect these assets", "media-event", [
       { kind: "image", mimeType: "image/png", fileName: "pixel.png", data: png },
-      { kind: "audio", mimeType: "audio/wav", fileName: "voice.wav", data: audio },
+      {
+        kind: "audio",
+        mimeType: "audio/wav",
+        fileName: "voice.wav",
+        data: audio,
+        durationMs: 1500,
+      },
       { kind: "file", mimeType: "application/octet-stream", fileName: "input.bin", data: file },
     ]);
     const client = await fx.client();
@@ -71,7 +77,7 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
           {
             attachments: [
               { kind: "image", fileName: "pixel.png" },
-              { kind: "audio", fileName: "voice.wav" },
+              { kind: "audio", fileName: "voice.wav", durationMs: 1500 },
               { kind: "file", fileName: "input.bin" },
             ],
           },

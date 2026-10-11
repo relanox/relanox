@@ -96,6 +96,8 @@ const requestSchema = z.strictObject({
         fileName: z.string(),
         size: z.number().int().nonnegative(),
         sha256: z.string(),
+        durationMs: z.number().int().positive().optional(),
+        previewMediaId: z.uuid().optional(),
       }),
     )
     .optional(),
