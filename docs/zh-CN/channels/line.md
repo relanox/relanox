@@ -24,7 +24,17 @@
 
 ## 参数与限制
 
-`apiBase` 默认 `https://api.line.me`；`allowLoopback` 默认 false。不支持媒体、无法归属发送者的匿名事件、卡片、交互及 reply-token 发送。
+`apiBase` 默认 `https://api.line.me`；`allowLoopback` 默认 false。不支持无法归属发送者的匿名事件、卡片、交互及 reply-token 发送。
+
+## 原生媒体
+
+图片、音频、视频、文件通过 `contentApiBase`（默认 `https://api-data.line.me`）认证下载；外部内容提供方的 URL 不携带 LINE 令牌。接收纯媒体及原生文字事件，确认前保存真实字节和音视频时长。
+
+原生图片、音频、视频输出需要全局公开媒体发布配置，参见[媒体传输](../media.md)。LINE 通过不含代理 claim 凭据的随机公开 URL 获取字节。图片需 JPEG/PNG，最多 10 MB；预览图片最多 1 MB。小图片复用原图 URL，大图片及所有视频必须提供暂存图片 `previewMediaId`。视频需 MP4，音频需 MP3/M4A 和正数 `durationMs`；音视频最多 200 MB，仍受中转限制。最终文字另发；push 沿用持久 retry key。
+
+Messaging API 没有原生普通文件发送对象：可接收文件，拒绝文件输出，不声明该发送能力，也不将媒体替换成 URL 文字。可选 `contentApiBase` 支持管理员指定网关，遵循 `apiBase` 相同传输规则。
+
+官方[消息对象](https://developers.line.biz/en/reference/messaging-api/index.html.md)定义平台限制。本地测试验证签名接收和原生 URL 字节下载，未验证真实账号播放、公开可达性及配额。
 
 ## 账号变更
 

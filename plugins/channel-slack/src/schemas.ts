@@ -7,6 +7,14 @@ export const targetSchema = z.object({
   botId: platformIdSchema,
   apiBaseUrl: z.string(),
 });
+export const fileSchema = z.looseObject({
+  id: platformIdSchema,
+  name: z.string().optional(),
+  mimetype: z.string().optional(),
+  size: z.number().int().nonnegative().optional(),
+  url_private: z.url().optional(),
+  url_private_download: z.url().optional(),
+});
 export const envelopeSchema = z.looseObject({
   type: z.string(),
   team_id: platformIdSchema.optional(),
@@ -30,6 +38,7 @@ export const messageSchema = z.looseObject({
     .regex(/^\d+\.\d+$/u)
     .optional(),
   text: z.string().max(1_048_576).optional(),
+  files: z.array(fileSchema).max(10).default([]),
 });
 
 export const socketOpenResponseSchema = z.looseObject({

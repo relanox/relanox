@@ -14,7 +14,17 @@ export const eventSchema = z.object({
     })
     .optional(),
   message: z
-    .object({ id: platformIdSchema, type: z.string(), text: z.string().optional() })
+    .object({
+      id: platformIdSchema,
+      type: z.string(),
+      text: z.string().optional(),
+      fileName: z.string().optional(),
+      fileSize: z.number().int().nonnegative().optional(),
+      duration: z.number().int().positive().optional(),
+      contentProvider: z
+        .object({ type: z.enum(["line", "external"]), originalContentUrl: z.url().optional() })
+        .optional(),
+    })
     .optional(),
 });
 export const webhookSchema = z.object({
