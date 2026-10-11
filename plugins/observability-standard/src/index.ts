@@ -15,6 +15,7 @@ import type {
   TraceContext,
 } from "@relanox/sdk";
 import pino from "pino";
+import { nativeEvents, nativeField } from "./diagnostics.js";
 
 const channels = [
   "telegram",
@@ -285,7 +286,7 @@ function safeFields(fields: LogFields = {}): Record<string, string> {
     outcome: outcomes,
     operation: operations,
   })) {
-    const value = member(fields[key as keyof LogFields], values);
+    const value = member(nativeField(key, fields[key as keyof LogFields]), values);
     if (value) {
       safe[key] = value;
     }
@@ -326,6 +327,7 @@ function safeLabels(labels: MetricLabels = {}): Record<string, string> | undefin
 class BoundedLogWriter {
   private queue: string[] = [];
   private bytes = 0;
+  private pending = 0;
   private blocked = false;
   private failed = false;
   private closed = false;
@@ -354,10 +356,13 @@ class BoundedLogWriter {
       this.bytes -= Buffer.byteLength(line);
       this.write(line);
     }
-    if (!this.blocked && this.queue.length === 0) {
+    if (this.idle()) {
       this.wake();
     }
   };
+  private idle(): boolean {
+    return !this.blocked && this.queue.length === 0 && this.pending === 0;
+  }
   private wake(): void {
     for (const done of this.waiters) {
       done();
@@ -378,15 +383,24 @@ class BoundedLogWriter {
       this.bytes += size;
       return;
     }
+    this.pending++;
     try {
-      this.blocked = !this.destination.write(line);
+      this.blocked = !this.destination.write(line, (error) => {
+        this.pending--;
+        if (error) {
+          this.error();
+        } else if (this.idle()) {
+          this.wake();
+        }
+      });
     } catch {
+      this.pending--;
       this.error();
       this.dropped();
     }
   }
   async flush(signal: AbortSignal): Promise<void> {
-    if (this.failed || (!this.blocked && this.queue.length === 0) || signal.aborted) {
+    if (this.failed || this.idle() || signal.aborted) {
       return;
     }
     await new Promise<void>((resolve) => {
@@ -545,7 +559,7 @@ export function createStandardObservability(
               return;
             }
             logger[level]({
-              event: member(event, events) ?? "operation.failed",
+              event: member(nativeEvents.get(event) ?? event, events) ?? "operation.failed",
               ...safeFields(fields),
             });
           }, "logs");

@@ -1,6 +1,6 @@
 # Standard observability
 
-`createStandardObservability()` returns the SDK plugin. Call `validateConfig(unknown)` and `setup(config)`, pass `runtime.observe` to core/storage/channels, and mount `runtime.metrics` exclusively on CLI's management listener. The handler does not listen, authorize, or select a bind address. It accepts GET/HEAD; other methods return 405. `flush(signal)` and idempotent `shutdown(signal)` honor an abort signal and a local deadline. The application owns any supplied `logDestination` Writable and must keep it alive until shutdown; the plugin never ends stdout or the collector stream.
+`createStandardObservability()` returns the SDK plugin. Call `validateConfig(unknown)` and `setup(config)`, pass `runtime.observe` to core/storage/channels, and mount `runtime.metrics` exclusively on CLI's management listener. The handler does not listen, authorize, or select a bind address. It accepts GET/HEAD; other methods return 405. `flush(signal)` and idempotent `shutdown(signal)` wait for accepted log write callbacks, honoring an abort signal and a local deadline. The application owns any supplied `logDestination` Writable and must keep it alive until shutdown; the plugin never ends stdout or the collector stream. Reaching the deadline can still leave writes incomplete.
 
 Configuration is a strict object:
 
