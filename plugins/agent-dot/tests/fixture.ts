@@ -315,14 +315,10 @@ export function mcp(token = 'AGENT_TEST_TOKEN_0'): {
   token: { env: string }
   allowedHosts: string[]
   allowedOrigins: never[]
-  maxBodyBytes: number
-  timeoutMs: number
 } {
   return {
     token: { env: token },
     allowedHosts: ['relanox.test'],
-    allowedOrigins: [],
-    maxBodyBytes: 1_048_576,
-    timeoutMs: 1000
+    allowedOrigins: []
   }
 }

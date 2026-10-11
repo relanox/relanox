@@ -59,10 +59,7 @@ export async function guard(
   const chunks: Uint8Array[] = []
   let size = 0
 
-  const signal = AbortSignal.any([
-    request.signal,
-    AbortSignal.timeout(config.timeoutMs)
-  ])
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])
 
   const abort = (): void => {
     void cancelReader(reader)
@@ -79,7 +76,7 @@ export async function guard(
         break
       }
       size += chunk.value.byteLength
-      if (size > config.maxBodyBytes) {
+      if (size > 1_048_576) {
         void cancelReader(reader)
         return Response.json({ error: 'body_too_large' }, { status: 413 })
       }

@@ -58,7 +58,7 @@ export async function postCallback(
 }> {
   const url = callbackUrl(urlValue, config)
   const hostname = url.hostname.replaceAll(/^\[|\]$/gu, '')
-  const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)])
+  const bound = AbortSignal.any([signal, AbortSignal.timeout(10_000)])
 
   async function resolveAddresses(): Promise<LookupAddress[]> {
     let onAbort: (() => void) | undefined

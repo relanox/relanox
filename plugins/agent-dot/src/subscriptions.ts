@@ -57,13 +57,12 @@ function callbackProtocolError(reason: string): ProtocolError {
 function rotationFields(
   old: Subscription | undefined,
   secret: string,
-  now: number,
-  config: DotConfig
+  now: number
 ): Pick<Subscription, 'previousSecret' | 'previousUntil'> {
   if (old !== undefined && old.secret !== secret) {
     return {
       previousSecret: old.secret,
-      previousUntil: now + config.rotationWindowMs
+      previousUntil: now + 60_000
     }
   }
   if (old?.previousSecret !== undefined && (old.previousUntil ?? 0) > now) {
@@ -87,7 +86,7 @@ async function verifySubscription(
       config.callback,
       challengeBody,
       signedHeaders(sub, challengeBody, `verification_${randomUUID()}`),
-      AbortSignal.timeout(config.callback.timeoutMs),
+      AbortSignal.timeout(10_000),
       'body'
     )
 
@@ -183,12 +182,7 @@ export function createSubscriptions(
     const old = existing ? subscriptionSchema.parse(existing.value) : undefined
     const now = Date.now()
 
-    const expiresAt =
-      now +
-      Math.min(
-        input.ttlMs ?? config.subscriptionTtlMs,
-        config.subscriptionTtlMs
-      )
+    const expiresAt = now + Math.min(input.ttlMs ?? 86_400_000, 86_400_000)
 
     const replacement =
       old !== undefined && old.secret !== input.delivery.secret
@@ -203,7 +197,7 @@ export function createSubscriptions(
       secret: input.delivery.secret,
       expiresAt,
       verifiedAt: now,
-      ...rotationFields(old, input.delivery.secret, now, config)
+      ...rotationFields(old, input.delivery.secret, now)
     }
 
     // Verification cache is durable, short-lived and bound to owner, URL AND signing key.

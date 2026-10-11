@@ -104,11 +104,8 @@ async function setup(
     mcp: mcp(),
     callback: {
       allowedOrigins: [receiver.origin],
-      transport: 'loopback-http',
-      timeoutMs: 500
-    },
-    subscriptionTtlMs: 60_000,
-    rotationWindowMs: 1000
+      transport: 'loopback-http'
+    }
   }
 
   const plugin = createDotAgentPlugin()
@@ -124,7 +121,7 @@ async function setup(
 }
 
 describe('dot MCP Events and tools', () => {
-  it.each([undefined, {}, { timeoutMs: 500 }])(
+  it.each([undefined, {}])(
     'uses the hosted dot callback origin when omitted from %j',
     (callback) => {
       const config = createDotAgentPlugin().validateConfig({
@@ -138,9 +135,6 @@ describe('dot MCP Events and tools', () => {
           config.callback
         ).href
       ).toBe('https://connectors.api.openai.com/events/callback')
-      expect(config.callback.timeoutMs).toBe(
-        callback?.timeoutMs === 500 ? 500 : 10_000
-      )
       expect(() =>
         callbackUrl('https://receiver.test/callback', config.callback)
       ).toThrow('forbidden_destination')
@@ -674,7 +668,7 @@ describe('dot MCP Events and tools', () => {
     const second = await fx.client('secret-1', 1)
 
     const firstSub = await first.request(
-      subscribe(url, signingKey, 10_000),
+      subscribe(url, signingKey, 120_000),
       subResult
     )
 
@@ -703,9 +697,9 @@ describe('dot MCP Events and tools', () => {
     expect(receiver.traffic.at(-1)?.headers['x-mcp-subscription-id']).toBe(
       firstSub.id
     )
-    await first.request(subscribe(url, newKey, 10_000), subResult)
+    await first.request(subscribe(url, newKey, 120_000), subResult)
     vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(Date.now() + 1500)
+    vi.setSystemTime(Date.now() + 60_001)
     expect(
       await fx.agent.dispatch({
         request,
@@ -819,15 +813,13 @@ describe('dot MCP Events and tools', () => {
     expect(() =>
       callbackUrl('http://receiver.test/callback', {
         allowedOrigins: ['http://receiver.test'],
-        transport: 'public-https',
-        timeoutMs: 1000
+        transport: 'public-https'
       })
     ).toThrow()
     expect(() =>
       callbackUrl('https://receiver.test.evil.test/callback', {
         allowedOrigins: ['https://receiver.test'],
-        transport: 'public-https',
-        timeoutMs: 1000
+        transport: 'public-https'
       })
     ).toThrow()
   })

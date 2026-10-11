@@ -61,7 +61,7 @@ The Routine Authorization variable holds exactly the supplied value, including a
 4. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
 5. Set your conversation binding's `endpointId` to `dot-main`, add the instructions below, and send a message through that conversation.
 
-The `callback` section is optional. Relanox defaults to `https://connectors.api.openai.com`, HTTPS delivery and a 10-second timeout. For a custom receiver, set `callback.allowedOrigins` to its exact origin; this replaces the default list. You can also override `callback.timeoutMs` or `callback.transport` individually. `loopback-http` is for local protocol testing.
+The `callback` section is optional. Relanox defaults to `https://connectors.api.openai.com`, HTTPS delivery and a 10-second timeout. For a custom receiver, set `callback.allowedOrigins` to its exact origin; this replaces the default list. You can also override `callback.transport`. Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MiB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds. `loopback-http` is for local protocol testing.
 
 Keep subscription renewal enabled. The default lifetime is one day. If status reports `dot_no_active_subscription`, reconnect or renew; if the request exhausted retries, use [Operations](operations.md#find-and-recover-a-stalled-message) to recover it.
 

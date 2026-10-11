@@ -30,8 +30,7 @@ afterEach(async () => {
 
 async function setup(
   status = 200,
-  headers: Record<string, string> = {},
-  timeoutMs = 1000
+  headers: Record<string, string> = {}
 ): Promise<{
   receiver: Awaited<ReturnType<typeof peer>>
   plugin: ReturnType<typeof createGrokAgentPlugin>
@@ -45,9 +44,7 @@ async function setup(
     mcp: mcp(),
     routineUrl: { env: 'GROK_TEST_URL' },
     routineAuthorization: { env: 'GROK_TEST_AUTH' },
-    routineTransport: 'loopback-http',
-    timeoutMs,
-    maxBodyBytes: 1_048_576
+    routineTransport: 'loopback-http'
   }
 
   const plugin = createGrokAgentPlugin()
