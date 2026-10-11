@@ -493,9 +493,11 @@ describe('dot MCP Events and tools', () => {
     const tools = await client.listTools()
     expect(tools.tools.map((tool) => tool.name)).toEqual([
       'relanox_send_message',
+      'relanox_create_upload',
       'relanox_read_media'
     ])
     expect(tools.tools.map((tool) => tool.annotations?.readOnlyHint)).toEqual([
+      false,
       false,
       true
     ])

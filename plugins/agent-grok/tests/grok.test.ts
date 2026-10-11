@@ -243,7 +243,7 @@ describe('grok configured Routine and scoped MCP', () => {
       })
       const client = await fx.client('secret-0', 0, modern)
       expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
-        ['relanox_send_message', 'relanox_read_media']
+        ['relanox_send_message', 'relanox_create_upload', 'relanox_read_media']
       )
 
       const input = {

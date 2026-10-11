@@ -97,7 +97,7 @@ Agent 连接 MCP 时，Relanox 会提供回信说明，工具描述也会解释�
 
 查看收到的附件时，使用相同 `replyTo` 和附件的 `id` 作为 `mediaId` 调用 `relanox_read_media`。它返回可读的图片、音频或下载链接，下载链接五分钟后过期。
 
-转发收到的附件时，在 `attachments` 中放入 `{ "mediaId": "..." }`。生成文件使用公开 HTTPS URL：
+转发收到或已上传的附件时，在 `attachments` 中放入 `{ "mediaId": "..." }`。生成文件可以使用下方的文件工具，也可以使用公开 HTTPS URL：
 
 ```json
 {
@@ -114,7 +114,63 @@ Agent 连接 MCP 时，Relanox 会提供回信说明，工具描述也会解释�
 }
 ```
 
-Relanox 下载并保存文件后投递。使用可直接访问的 URL、准确类型和符合限制的大小。音视频平台可能需要 `durationMs`，视频可能需要 `previewUrl` 或收到的 `previewMediaId`。见[收发图片和文件](../media.md)和对应渠道指南。
+Relanox 下载并保存文件后投递。使用可直接访问的 URL、准确类型和符合限制的大小。音视频平台可能需要 `durationMs`，视频可能需要 `previewUrl` 或收到/已上传的 `previewMediaId`。见[收发图片和文件](../media.md)和对应渠道指南。
+
+## 传入 dot 文件
+
+dot 的 `relanox_send_message` 提供顶层 `files` 数组，并声明 `_meta["openai/fileParams"] = ["files"]`，遵循 [OpenAI 插件文件参数协议](https://developers.openai.com/plugins/reference)。每个对象必须包含 `download_url` 和 `file_id`，`mime_type` 和 `file_name` 可选。宿主提供临时下载地址和不透明的 OpenAI ID；Relanox 通过公网 URL 检查后下载字节，并按 MIME 类型推断媒体种类。
+
+```json
+{
+  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "text": "这是你要的报告。",
+  "files": [
+    {
+      "download_url": "COPY_FROM_THE_HOST_FILE_OBJECT",
+      "file_id": "COPY_FROM_THE_HOST_FILE_OBJECT",
+      "mime_type": "application/pdf",
+      "file_name": "report.pdf"
+    }
+  ]
+}
+```
+
+不要把本地路径当作下载地址，也不要把 OpenAI 的 `file_id` 当作 `mediaId`。同时提供两个数组时，先发送 `attachments`，再发送 `files`，合计数量和字节数必须符合消息限制。需要时长或封面参数的音视频应使用上传流程或 URL 附件参数。Grok 的发送工具不声明 OpenAI 文件参数。
+
+## 上传本地文件
+
+[Grok Bot 的云电脑](https://docs.x.ai/grok-bot/computer-and-apps)支持命令行工具和 `/workspace` 文件。Relanox 提供 `relanox_create_upload` 来上传这些文件。宿主提供终端或 HTTP 客户端时，dot 也可以使用相同工具。
+
+1. 调用 `relanox_create_upload`，提供原始 `replyTo`、媒体种类、MIME 类型、文件名和准确字节数。以下是五字节文本文件的例子：
+
+```json
+{
+  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "kind": "file",
+  "mimeType": "text/plain",
+  "fileName": "hello.txt",
+  "size": 5
+}
+```
+
+2. 工具返回 `uploadUrl`、`method: "PUT"`、`headers` 和 `expiresAt`。使用返回的请求头，以 PUT 发送原始字节。例如，把返回的地址设为 `UPLOAD_URL` 后：
+
+```sh
+printf hello > /workspace/hello.txt
+curl --fail-with-body --request PUT \
+  --header 'Content-Type: text/plain' \
+  --data-binary @/workspace/hello.txt "$UPLOAD_URL"
+```
+
+服务端保存成功后才返回 HTTP 200 和 `{ "fileId": "..." }`。不要发送 JSON、Base64 或 multipart。签名地址不需要 MCP 密码或额外的 Authorization 请求头。
+
+3. 调用 `relanox_send_message`，保留相同 `replyTo`，传入 `attachments: [{ "mediaId": "RETURNED_FILE_ID" }]`。上传本身不会发送消息；重试发送时复用稳定的 `idempotencyKey`。
+
+上传地址五分钟后过期，绑定端点、原始消息、文件元数据和大小。路径位于 `/agents/<agent>/media/<endpoint>/upload/` 下，反向代理需要转发 PUT 请求并允许配置的文件大小。完整地址属于临时凭据。使用同一地址重试相同字节会成功；签名密钥不变时，Relanox 重启后仍可在有效期内重试。不同内容返回 409，大小或累计额度超限返回 413，实际字节数不符返回 400，Content-Type 不符返回 415，签名无效或过期返回 401。日常清理会撤销访问权限并删除上传字节。
+
+音视频按渠道要求提供 `durationMs`。需要封面时，先上传图片，再将返回的 ID 用作主体上传的 `previewMediaId`，两者必须归属于同一条来信。收到的媒体、待发送上传文件和封面共用原始消息的总额度，见[媒体大小限制](media.md#调整附件大小)。
+
+这些文件流程已覆盖本地协议和存储测试，尚未用真实 dot 或 Grok Bot 账号完成端到端验证；此前 Grok 文字往返验证不涵盖上传。
 
 ## 检查连接
 

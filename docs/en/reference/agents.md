@@ -97,7 +97,7 @@ For a text reply, call `relanox_send_message`:
 
 To inspect a received attachment, call `relanox_read_media` with the same `replyTo` and the attachment's `id` as `mediaId`. It returns readable image/audio content or a download link. Links expire after five minutes.
 
-To return a received attachment, include `{ "mediaId": "..." }` in `attachments`. For a generated file, use a public HTTPS URL:
+To return a received or uploaded attachment, include `{ "mediaId": "..." }` in `attachments`. Generated files can use the file tools below or a public HTTPS URL:
 
 ```json
 {
@@ -114,7 +114,63 @@ To return a received attachment, include `{ "mediaId": "..." }` in `attachments`
 }
 ```
 
-Relanox downloads and saves the file before sending. Use a directly accessible URL with the correct type and size. Audio/video destinations may require `durationMs`; video may need `previewUrl` or a received `previewMediaId`. See [Media transfer](../media.md) and your channel guide.
+Relanox downloads and saves the file before sending. Use a directly accessible URL with the correct type and size. Audio/video destinations may require `durationMs`; video may need `previewUrl` or a received/uploaded `previewMediaId`. See [Media transfer](../media.md) and your channel guide.
+
+## Pass a dot file
+
+dot's `relanox_send_message` exposes a top-level `files` array with `_meta["openai/fileParams"] = ["files"]`, following the [OpenAI plugin file-parameter contract](https://developers.openai.com/plugins/reference). Each object requires `download_url` and `file_id`; `mime_type` and `file_name` are optional. The host supplies the temporary download URL and opaque OpenAI ID. Relanox downloads the bytes through its public-URL checks and derives the media kind from the MIME type.
+
+```json
+{
+  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "text": "Here is the report.",
+  "files": [
+    {
+      "download_url": "COPY_FROM_THE_HOST_FILE_OBJECT",
+      "file_id": "COPY_FROM_THE_HOST_FILE_OBJECT",
+      "mime_type": "application/pdf",
+      "file_name": "report.pdf"
+    }
+  ]
+}
+```
+
+Do not substitute a local path or pass OpenAI's `file_id` as `mediaId`. When both arrays are present, `attachments` precedes `files`; their combined count and byte size must fit the message limits. For audio/video that requires duration or cover metadata, use the upload flow or URL attachment parameters instead. Grok's send tool does not advertise OpenAI file parameters.
+
+## Upload a local file
+
+[Grok Bot's cloud computer](https://docs.x.ai/grok-bot/computer-and-apps) supports command-line tools and files in `/workspace`. Relanox provides `relanox_create_upload` for uploading these files. dot can use the same tool when its host provides a terminal or HTTP client.
+
+1. Call `relanox_create_upload` with the original `replyTo`, media kind, MIME type, filename and exact byte size. For a five-byte text file:
+
+```json
+{
+  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "kind": "file",
+  "mimeType": "text/plain",
+  "fileName": "hello.txt",
+  "size": 5
+}
+```
+
+2. The tool returns `uploadUrl`, `method: "PUT"`, `headers` and `expiresAt`. PUT the raw bytes with the returned headers. For example, after setting `UPLOAD_URL` to the returned address:
+
+```sh
+printf hello > /workspace/hello.txt
+curl --fail-with-body --request PUT \
+  --header 'Content-Type: text/plain' \
+  --data-binary @/workspace/hello.txt "$UPLOAD_URL"
+```
+
+The server returns HTTP 200 with `{ "fileId": "..." }` only after saving the file. Do not send JSON, Base64 or multipart data. No MCP password or additional Authorization header is required for the signed URL.
+
+3. Call `relanox_send_message` with the same `replyTo` and `attachments: [{ "mediaId": "RETURNED_FILE_ID" }]`. Uploading alone does not send a message. Use a stable `idempotencyKey` to retry the send.
+
+Upload URLs expire after five minutes and are bound to the endpoint, original message, file metadata and size. The path is under `/agents/<agent>/media/<endpoint>/upload/`; the reverse proxy must forward PUT requests and allow the configured file size. Treat the full URL as a temporary credential. Retrying identical bytes at the same URL succeeds, including after a Relanox restart with the same signing secret. Changed content returns 409; size or aggregate quota limits return 413; a mismatched byte count returns 400; an incorrect Content-Type returns 415. Invalid or expired signatures return 401. Cleanup revokes access and removes the uploaded bytes.
+
+For audio/video, include `durationMs` when required by the channel. For a cover image, upload the image first and use its returned ID as `previewMediaId` on the main upload; both must belong to the same incoming message. Received media, staged uploads and previews share the original message's aggregate allowance described in [Media limits](media.md#adjust-attachment-sizes).
+
+These file flows have local protocol and storage tests. They have not been verified end to end with live dot or Grok Bot accounts; the earlier Grok text validation does not cover uploads.
 
 ## Check the connection
 
