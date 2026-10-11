@@ -16,6 +16,7 @@ import type {
   SendResult,
 } from "./messages.js";
 import type { StateNamespace, StateEntry } from "./state.js";
+import type { MediaStorage, StoredMedia } from "./media.js";
 
 export interface StorageStats {
   readonly pending: number;
@@ -96,7 +97,9 @@ export interface StatusFilter {
   readonly afterId?: string;
 }
 export interface Storage {
-  acceptInbound(snapshot: InboundSnapshot): Promise<IngestReceipt>;
+  readonly media?: MediaStorage;
+  /** Snapshot and all incoming bytes are committed atomically; duplicate input adds no assets. */
+  acceptInbound(snapshot: InboundSnapshot, media?: readonly StoredMedia[]): Promise<IngestReceipt>;
   listPending(input: {
     readonly endpointIds: readonly string[];
     readonly agent: AgentId;

@@ -41,6 +41,10 @@ export function createChannelHost({
   return {
     ...common,
     async ingest(input: IngestInput) {
+      const { attachments, ...message } = input;
+      if (attachments !== undefined) {
+        throw new CoreError("media_not_supported");
+      }
       if (!isAccepting()) {
         throw new CoreError("not_accepting");
       }
@@ -81,7 +85,7 @@ export function createChannelHost({
         (trace) =>
           storage.acceptInbound(
             jsonSnapshot({
-              ...input,
+              ...message,
               ...(trace ? { trace } : {}),
               requestId: crypto.randomUUID(),
               endpoint,

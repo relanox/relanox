@@ -15,6 +15,7 @@ import type {
 import type { StateStore } from "./state.js";
 import type { Storage } from "./storage.js";
 import type { Observability } from "./observability.js";
+import type { AgentMediaHost, MediaKind } from "./media.js";
 
 export type HttpHandler = (request: Request) => Promise<Response>;
 export interface CommonHost {
@@ -25,6 +26,7 @@ export interface CommonHost {
 }
 /** Core binds this host to a single validated account; plugins cannot choose the account scope. */
 export interface ChannelHost extends CommonHost {
+  readonly maxMediaBytes?: number;
   ingest(input: IngestInput): Promise<IngestReceipt>;
 }
 export interface AgentPrincipal {
@@ -33,6 +35,7 @@ export interface AgentPrincipal {
 }
 /** Principal comes only from verified protocol authentication. Core intersects it with this plugin's configured endpoints. */
 export interface ScopedAgentHost {
+  readonly media?: AgentMediaHost;
   listPending(limit: number): Promise<readonly InboundSnapshot[]>;
   claim(requestId: string, claimKey: string): Promise<ClaimResult>;
   complete(input: {
@@ -40,6 +43,8 @@ export interface ScopedAgentHost {
     readonly claimToken: string;
     readonly resultId: string;
     readonly text: string;
+    /** Ordered IDs of uploaded or inbound media owned by this request. */
+    readonly attachments?: readonly string[];
   }): Promise<CompletionResult>;
   fail(input: {
     readonly requestId: string;
@@ -68,6 +73,10 @@ export interface ChannelPlugin<C = Json> extends PluginMetadata, Lifecycle {
     readonly maxTextLength: number;
     readonly lengthUnit: "utf16" | "codepoint" | "utf8";
     readonly idempotentSend: boolean;
+    readonly media?: {
+      readonly receive: readonly MediaKind[];
+      readonly send: readonly MediaKind[];
+    };
   };
   validateConfig(config: unknown): C;
   setup(host: ChannelHost, account: AccountConfig, config: C): Promise<void>;
