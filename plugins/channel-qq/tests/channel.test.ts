@@ -231,8 +231,18 @@ test('QQ reserves sequences using real SQLite CAS, reuses them after reopen and 
   )
 
   expect(before.map((request) => request.body)).toEqual([
-    { content: 'hello_*世界', msg_type: 0, msg_id: 'incoming', msg_seq: 1 },
-    { content: 'hello_*世界', msg_type: 0, msg_id: 'incoming', msg_seq: 2 }
+    {
+      markdown: { content: 'hello_*世界' },
+      msg_type: 2,
+      msg_id: 'incoming',
+      msg_seq: 1
+    },
+    {
+      markdown: { content: 'hello_*世界' },
+      msg_type: 2,
+      msg_id: 'incoming',
+      msg_seq: 2
+    }
   ])
   await host.storage.close()
   const restarted = createQqChannel()
@@ -252,10 +262,30 @@ test('QQ reserves sequences using real SQLite CAS, reuses them after reopen and 
       .filter((request) => request.path.endsWith('/messages'))
       .map((request) => request.body)
   ).toEqual([
-    { content: 'hello_*世界', msg_type: 0, msg_id: 'incoming', msg_seq: 1 },
-    { content: 'hello_*世界', msg_type: 0, msg_id: 'incoming', msg_seq: 2 },
-    { content: 'hello_*世界', msg_type: 0, msg_id: 'incoming', msg_seq: 1 },
-    { content: 'hello_*世界', msg_type: 0, msg_id: 'incoming', msg_seq: 3 }
+    {
+      markdown: { content: 'hello_*世界' },
+      msg_type: 2,
+      msg_id: 'incoming',
+      msg_seq: 1
+    },
+    {
+      markdown: { content: 'hello_*世界' },
+      msg_type: 2,
+      msg_id: 'incoming',
+      msg_seq: 2
+    },
+    {
+      markdown: { content: 'hello_*世界' },
+      msg_type: 2,
+      msg_id: 'incoming',
+      msg_seq: 1
+    },
+    {
+      markdown: { content: 'hello_*世界' },
+      msg_type: 2,
+      msg_id: 'incoming',
+      msg_seq: 3
+    }
   ])
   expect(before[0]?.headers.authorization).toBe('QQBot token')
   expect(first.capabilities.idempotentSend).toBe(false)
@@ -372,8 +402,8 @@ test.each([
       ).status
     ).toBe('sent')
     expect(remote.requests.at(-1)?.body).toEqual({
-      content: 'hello_*世界',
-      msg_type: 0
+      markdown: { content: 'hello_*世界' },
+      msg_type: 2
     })
   }
 )

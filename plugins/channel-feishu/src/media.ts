@@ -179,8 +179,10 @@ export async function messageContent(
 ): Promise<{ msg_type: string; content: string }> {
   if (!input.chunk.media) {
     return {
-      msg_type: 'text',
-      content: JSON.stringify({ text: input.chunk.text })
+      msg_type: 'post',
+      content: JSON.stringify({
+        zh_cn: { content: [[{ tag: 'md', text: input.chunk.text }]] }
+      })
     }
   }
   const media = input.media

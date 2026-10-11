@@ -182,7 +182,7 @@ export function sendInput(
     requestId: 'request-1',
     chunkIndex: 0,
     chunk: {
-      text: 'hello @everyone <@U123>',
+      text: '**hello** [link](https://example.com) @everyone <@U123>',
       idempotencyKey: '8db4f4f4-f32c-42a4-a53d-414e348f33a3:0',
       state: null
     },

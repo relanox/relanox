@@ -510,7 +510,7 @@ describe('feishu native HTTP protocol', () => {
     }
   )
 
-  it('refreshes expiring tenant tokens and uses independent nested text reply wire', async () => {
+  it('refreshes expiring tenant tokens and uses native Markdown post reply wire', async () => {
     let tokens = 0
 
     const remote = await peer((input) =>
@@ -539,8 +539,9 @@ describe('feishu native HTTP protocol', () => {
       path: '/open-apis/im/v1/messages/om_message/reply',
       headers: { authorization: 'Bearer tenant-token-2' },
       body: {
-        msg_type: 'text',
-        content: '{"text":"hello @everyone <@U123>"}',
+        msg_type: 'post',
+        content:
+          '{"zh_cn":{"content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}',
         reply_in_thread: true
       }
     })
@@ -563,8 +564,9 @@ describe('feishu native HTTP protocol', () => {
       path: '/open-apis/im/v1/messages?receive_id_type=chat_id',
       body: {
         receive_id: 'oc_chat',
-        msg_type: 'text',
-        content: '{"text":"hello @everyone <@U123>"}'
+        msg_type: 'post',
+        content:
+          '{"zh_cn":{"content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}'
       }
     })
   })

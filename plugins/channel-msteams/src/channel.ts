@@ -100,6 +100,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
           },
           body: JSON.stringify({
             type: 'message',
+            textFormat: 'extendedmarkdown',
             text: input.chunk.text,
             ...(prepared.attachment !== undefined
               ? { attachments: [prepared.attachment] }

@@ -169,14 +169,19 @@ it('authenticates WebSocket, deduplicates posted frames across reconnect and sen
   expect(dispatches).toEqual([
     { requestId: request.snapshot.requestId, text: 'question' }
   ])
-  const completed = await fixture.sendReply(request.snapshot.requestId)
+
+  const completed = await fixture.sendReply(
+    request.snapshot.requestId,
+    '**answer** [link](https://example.com)'
+  )
+
   await fixture.runtime.processDue()
   expect(sent).toEqual([
     {
       authorization: 'Bearer mattermost-access-secret',
       data: {
         channel_id: 'channel',
-        message: 'delayed answer',
+        message: '**answer** [link](https://example.com)',
         root_id: 'root'
       }
     }
@@ -270,7 +275,12 @@ it('keeps an uncertain REST POST unknown without automatic resend', async () => 
   if (!request) {
     throw new Error('Missing request')
   }
-  const completed = await fixture.sendReply(request.snapshot.requestId)
+
+  const completed = await fixture.sendReply(
+    request.snapshot.requestId,
+    '**answer** [link](https://example.com)'
+  )
+
   await fixture.runtime.processDue()
   expect(
     (await fixture.storage.getOutbound(completed.deliveryId))?.status

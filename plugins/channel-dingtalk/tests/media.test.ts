@@ -83,7 +83,7 @@ test('DingTalk downloads a pure picture before durable ACK and uploads original 
   await scoped.sendMessage({
     replyTo: task.requestId,
     idempotencyKey: 'result',
-    text: 'caption',
+    text: '**caption** [link](https://example.com)',
     attachments: [task.attachments[0].id]
   })
   await local.runtime.processDue()
@@ -116,8 +116,9 @@ test('DingTalk downloads a pure picture before durable ACK and uploads original 
       body: {
         robotCode: 'robot',
         userIds: ['staff'],
-        msgKey: 'sampleText',
-        msgParam: '{"content":"caption"}'
+        msgKey: 'sampleMarkdown',
+        msgParam:
+          '{"title":"Relanox","text":"**caption** [link](https://example.com)"}'
       }
     })
   )
