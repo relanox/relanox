@@ -1,6 +1,6 @@
 # Resident CLI
 
-Build with `pnpm install --frozen-lockfile` and `pnpm build`, then use Node 24:
+Build with `pnpm install --frozen-lockfile` and `pnpm build`, then use Node 26:
 
 ```sh
 node apps/cli/dist/main.js validate --config examples/relanox.sqlite.json

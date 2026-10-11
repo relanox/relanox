@@ -14,7 +14,7 @@ function release() {
   released = true;
   database.exec("ROLLBACK");
   database.close();
-  if (process.connected) {
+  if (process.connected && process.disconnect) {
     process.disconnect();
   }
 }

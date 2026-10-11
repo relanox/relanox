@@ -13,7 +13,7 @@ Oxfmt owns formatting; Oxlint owns linting. The former Biome dependency/configur
 
 Pre-commit runs format and lint checks across the checkout. It never rewrites or stages files. Partially staged files are rejected explicitly because checking only the working copy could hide a bad staged revision. Finish staging the reviewed content, or restore the unstaged portion, then retry. Build workspace packages before type-aware checking a fresh checkout (`pnpm build`). CI builds first and runs the same gates plus real PostgreSQL tests. CI remains authoritative even if a local hook is bypassed.
 
-The hook is verified by an actual disposable Git repository: malformed formatting is rejected, an unhandled Promise is rejected by type-aware linting, partial staging is rejected without changing the index, and a clean commit succeeds. This works with Node 24's native TypeScript stripping; no additional hook manager or shell interpolation of filenames is needed.
+The hook is verified by an actual disposable Git repository: malformed formatting is rejected, an unhandled Promise is rejected by type-aware linting, partial staging is rejected without changing the index, and a clean commit succeeds. This works with Node 26's native TypeScript stripping; no additional hook manager or shell interpolation of filenames is needed.
 
 ## Rule policy
 

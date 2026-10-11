@@ -1,6 +1,6 @@
 {
   "checkedAt": "2026-10-11",
-  "status": "Reviewed implementation baseline; direct metadata, not lockfile or full vulnerability audit",
+  "status": "All direct dependencies checked against npm latest stable; exact metadata and integrity retained, lockfile owns the full graph",
   "packages": [
     {
       "name": "hono",
@@ -1059,9 +1059,9 @@
     },
     {
       "name": "@types/node",
-      "version": "24.19.2",
+      "version": "26.6.5",
       "license": "MIT",
-      "source": "https://registry.npmjs.org/%40types%2Fnode/24.19.2",
+      "source": "https://registry.npmjs.org/@types/node/26.6.5",
       "repository": {
         "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
         "type": "git",
@@ -1069,28 +1069,28 @@
       },
       "engines": null,
       "dependencies": {
-        "undici-types": ">=7.24.0 <7.24.7"
+        "undici-types": "~8.9.0"
       },
       "optionalDependencies": null,
       "peerDependencies": {},
       "peerDependenciesMeta": null,
       "scripts": {},
       "dist": {
-        "shasum": "8718eedbc0f89648de6525be9f4a9c61cdbaa502",
-        "tarball": "https://registry.npmjs.org/@types/node/-/node-24.19.2.tgz",
-        "fileCount": 88,
-        "integrity": "sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==",
+        "shasum": "cb35209e7767c503551b5fa42a48231c7441d979",
+        "tarball": "https://registry.npmjs.org/@types/node/-/node-26.6.5.tgz",
+        "fileCount": 109,
+        "integrity": "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==",
         "signatures": [
           {
-            "sig": "MEQCIANcVRgt/opOpIiouz2oQFvOIyDM4lBAgR5KWFpeM0S7AiAlIKKketPR7tVtdmeqoW9ERmEN+hUSbmSsgvw4PZE5xg==",
+            "sig": "MEUCICpys+wvg3B8d5GwZcaXjRtY1v/tZfhWxMGpWP4IOdAdAiEAgcy71FiMA4XW+gZuA1uwcohcHn4HX5XA7kP5acWz1ug=",
             "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
           },
           {
-            "sig": "MEQCIEyyRKiIaH5zy091E3cDbeZApk+zitfD9OmZP0qKnrKRAiB6X7j1j2Vakh+MTSX0FSCk/vXjx9TKwcy6mTWJb+rXXg==",
+            "sig": "MEQCIEiHeuNSZyMm4RJY9UUaiZV+sUiEfPPm3I+s3NOb0TLkAiAr2YOepe3DCFvKZJpzhpAhACkiMUzzfENI/Lh148EbgA==",
             "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
           }
         ],
-        "unpackedSize": 2613701
+        "unpackedSize": 2546175
       }
     },
     {
@@ -1169,49 +1169,59 @@
     },
     {
       "name": "pnpm",
-      "version": "10.33.4",
+      "version": "12.11.2",
       "license": "MIT",
-      "source": "https://registry.npmjs.org/pnpm/10.33.4",
+      "source": "https://registry.npmjs.org/pnpm/12.11.2",
       "repository": {
-        "url": "git+https://github.com/pnpm/pnpm.git",
+        "url": "https://github.com/pnpm/pnpm",
         "type": "git",
-        "directory": "pnpm"
+        "directory": "pnpm/npm/pnpm"
       },
       "engines": {
-        "node": ">=18.12"
+        "node": ">=18.*"
       },
       "dependencies": null,
-      "optionalDependencies": null,
+      "optionalDependencies": {
+        "@pnpm/exe.linux-x64": "12.11.2",
+        "@pnpm/exe.win32-x64": "12.11.2",
+        "@pnpm/exe.darwin-x64": "12.11.2",
+        "@pnpm/exe.android-x64": "12.11.2",
+        "@pnpm/exe.freebsd-x64": "12.11.2",
+        "@pnpm/exe.linux-arm64": "12.11.2",
+        "@pnpm/exe.linux-ppc64": "12.11.2",
+        "@pnpm/exe.linux-s390x": "12.11.2",
+        "@pnpm/exe.win32-arm64": "12.11.2",
+        "@pnpm/exe.darwin-arm64": "12.11.2",
+        "@pnpm/exe.android-arm64": "12.11.2",
+        "@pnpm/exe.linux-riscv64": "12.11.2",
+        "@pnpm/exe.linux-x64-musl": "12.11.2",
+        "@pnpm/exe.linux-arm64-musl": "12.11.2"
+      },
       "peerDependencies": null,
       "peerDependenciesMeta": null,
       "scripts": {
-        "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
-        "test": "pnpm run compile && pnpm run _test",
-        "_test": "jest",
-        "start": "tsc --watch",
-        "bundle": "ts-node bundle.ts",
-        "compile": "tsc --build && pnpm run lint --fix && rimraf dist bin/nodes && pnpm run bundle && shx cp -r node-gyp-bin dist/node-gyp-bin && shx cp -r node_modules/@pnpm/tabtab/lib/templates dist/templates && shx cp -r node_modules/ps-list/vendor dist/vendor && shx cp pnpmrc dist/pnpmrc",
-        "_compile": "tsc --build",
-        "pretest:e2e": "rimraf node_modules/.bin/pnpm"
+        "preinstall": "node install.js",
+        "postinstall": "node install.js",
+        "bundle-node-gyp": "node scripts/bundle-node-gyp.mjs"
       },
       "dist": {
-        "shasum": "51c19af7e6049ca2b2a10ccb9e1d511346570cc4",
-        "tarball": "https://registry.npmjs.org/pnpm/-/pnpm-10.33.4.tgz",
-        "fileCount": 1068,
-        "integrity": "sha512-HGezs1my1AgRm6HtKJ80uPw8aHNBK+xv0mT73IJInlEPy+y5zp0i2ufzt2Jp2EQQRgFL3KU7mXnNelYa1jG4AA==",
+        "shasum": "b52ddf8ba9850292e091eee9fbec5532159464eb",
+        "tarball": "https://registry.npmjs.org/pnpm/-/pnpm-12.11.2.tgz",
+        "fileCount": 449,
+        "integrity": "sha512-JaUWUqGWeFr18ovabf6NxYLr76SsHRgCIc4TkCMcX7dmN4IupLbkYzznSs3LCnf3Ja8RutOBd/3t2u6BipVcuQ==",
         "signatures": [
           {
-            "sig": "MEUCIQD0EzM9ITmy5RyEnF+l24UFOFFSbfdnXwnUzJOdyRK2SwIgSYI5KuarBnGumcexzcxUe6UJRbfpOC+7ut6AQG//8+E=",
+            "sig": "MEQCIB50ShhYkSG+UEW1b+h9yw6b+No7xp7Vexi6XZ3wNTBsAiBJc34TpE2uQN8gHPS/Q2mrBPe5NAB6km/M/7uSQevjqg==",
             "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
           }
         ],
         "attestations": {
-          "url": "https://registry.npmjs.org/-/npm/v1/attestations/pnpm@10.33.4",
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/pnpm@12.11.2",
           "provenance": {
             "predicateType": "https://slsa.dev/provenance/v1"
           }
         },
-        "unpackedSize": 19060050
+        "unpackedSize": 4155529
       }
     },
     {
@@ -1411,9 +1421,9 @@
     },
     {
       "name": "@types/ws",
-      "version": "8.18.1",
+      "version": "8.18.2",
       "license": "MIT",
-      "source": "https://registry.npmjs.org/%40types%2Fws/8.18.1",
+      "source": "https://registry.npmjs.org/@types/ws/8.18.2",
       "repository": {
         "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
         "type": "git",
@@ -1428,17 +1438,21 @@
       "peerDependenciesMeta": null,
       "scripts": {},
       "dist": {
-        "shasum": "48464e4bf2ddfd17db13d845467f6070ffea4aa9",
-        "tarball": "https://registry.npmjs.org/@types/ws/-/ws-8.18.1.tgz",
+        "shasum": "25d6321b30ef0fddf6cc7052b4eef9ce4e412b6e",
+        "tarball": "https://registry.npmjs.org/@types/ws/-/ws-8.18.2.tgz",
         "fileCount": 6,
-        "integrity": "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==",
+        "integrity": "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==",
         "signatures": [
           {
-            "sig": "MEYCIQCO2jvDtWPdOAK76XW97eG5WE3xWPXFOejbPiuGFxkZtQIhAMqXmMsE2sCf207WIwUon4ekH9k7IhWAbAckXhZPFmT8",
+            "sig": "MEYCIQCT+Vitcb+xbO+7RLFlbrDMDRdPdEwh3nYu4N7WGyyfEQIhAJj7blzik7c7/01R7QxF2lPji7EqjgmzUkgwlh3AM+dX",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEUCIAGImh+zT/KmOywYjHNDt4xlKnmx0MSrj2Mh35EMsriHAiEA+7+71OHVFboaqIzhZOe7BvJzPJOmAQx9GVf1Q2kXsKo=",
             "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
           }
         ],
-        "unpackedSize": 42347
+        "unpackedSize": 42711
       }
     },
     {

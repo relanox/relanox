@@ -2,3 +2,18 @@ packages:
   - packages/*
   - plugins/*
   - apps/*
+
+# Reviewed versions already pinned before upgrading to pnpm 12.
+minimumReleaseAgeExclude:
+  - oxlint-tsgolint@7.0.2004
+  - "@oxlint-tsgolint/darwin-arm64@7.0.2004"
+  - "@oxlint-tsgolint/darwin-x64@7.0.2004"
+  - "@oxlint-tsgolint/linux-arm64@7.0.2004"
+  - "@oxlint-tsgolint/linux-x64@7.0.2004"
+  - "@oxlint-tsgolint/win32-arm64@7.0.2004"
+  - "@oxlint-tsgolint/win32-x64@7.0.2004"
+  - process-warning@5.1.1
+
+# esbuild verifies its pinned optional platform binary during installation.
+allowBuilds:
+  esbuild@0.28.2: true

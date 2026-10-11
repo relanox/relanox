@@ -22,9 +22,9 @@
   },
   "devDependencies": {
     "@relanox/storage-sqlite": "workspace:*",
-    "@types/ws": "8.18.1"
+    "@types/ws": "8.18.2"
   },
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=26 <27"
   }
 }
