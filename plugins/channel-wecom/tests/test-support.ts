@@ -156,7 +156,7 @@ export async function assemble<C>(
   config: Json,
   bindings: readonly { chatId: string; senderId: string }[],
   filename = ':memory:',
-  publicBaseUrl?: string
+  publicUrl?: string
 ): Promise<{
   storage: Storage
   runtime: Awaited<ReturnType<typeof createCore>>
@@ -199,9 +199,7 @@ export async function assemble<C>(
   }
 
   const runtime = await createCore({
-    ...(publicBaseUrl
-      ? { media: { publicBaseUrl, allowInsecureLocalhost: true } }
-      : {}),
+    publicUrl: publicUrl ?? 'https://relay.example',
     config: {
       accounts: [
         {

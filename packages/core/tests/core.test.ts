@@ -321,6 +321,7 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
   const p = plugins()
 
   const runtime = await createCore({
+    publicUrl: 'https://relay.test',
     config,
     channels: p.channels,
     agents: p.agents,
@@ -460,6 +461,7 @@ it("reports connection diagnostics and recovery through the registered plugin's 
   const p = plugins()
   const log = vi.fn()
   await createCore({
+    publicUrl: 'https://relay.test',
     config,
     channels: p.channels,
     agents: p.agents,
@@ -483,6 +485,7 @@ it("binds mutations to the principal agent and rejects a reused endpoint's forei
   const p = plugins()
 
   await createCore({
+    publicUrl: 'https://relay.test',
     config,
     channels: p.channels,
     agents: p.agents,
@@ -521,6 +524,7 @@ it('validates every endpoint before registering any traffic and keeps setup conf
   }
   await expect(
     createCore({
+      publicUrl: 'https://relay.test',
       config,
       channels: p.channels,
       agents: p.agents,
@@ -531,6 +535,7 @@ it('validates every endpoint before registering any traffic and keeps setup conf
   p.dot.validateConfig = (value): never => value as never
   const agentSetup = vi.spyOn(p.grok, 'setup')
   await createCore({
+    publicUrl: 'https://relay.test',
     config,
     channels: p.channels,
     agents: p.agents,
@@ -539,6 +544,38 @@ it('validates every endpoint before registering any traffic and keeps setup conf
   expect(agentSetup.mock.calls[0]?.[2]).toEqual({})
   expect(agentSetup.mock.calls[0]?.[1]).toEqual([config.endpoints[0]])
 })
+
+it.each(['endpoint', 'googlechat', 'media'])(
+  'requires a public deployment origin for %s before plugin setup',
+  async (component) => {
+    const p = plugins()
+    const setup = vi.spyOn(p.channel, 'setup')
+
+    const relay =
+      component === 'endpoint'
+        ? config
+        : {
+            ...config,
+            accounts:
+              component === 'googlechat'
+                ? [{ ...config.accounts[0], channel: 'googlechat' }]
+                : [],
+            endpoints: [],
+            bindings: []
+          }
+
+    await expect(
+      createCore({
+        config: relay,
+        ...(component === 'media' ? { media: { urlLifetimeMs: 1000 } } : {}),
+        channels: p.channels,
+        agents: p.agents,
+        storage: recordingStorage({})
+      })
+    ).rejects.toMatchObject({ code: 'public_url_required' })
+    expect(setup).not.toHaveBeenCalled()
+  }
+)
 
 it('passes lease fences, clamps retry delay, enforces budgets and isolates observers', async () => {
   const lease = { token: 'lease', version: 7, expiresAt: Date.now() + 30_000 }
@@ -569,6 +606,7 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
   )
 
   const runtime = await createCore({
+    publicUrl: 'https://relay.test',
     config,
     channels: p.channels,
     agents: p.agents,
@@ -672,6 +710,7 @@ it('aborts bounded transport calls and preserves unknown effects', async () => {
     const p = plugins(dispatch)
 
     const runtime = await createCore({
+      publicUrl: 'https://relay.test',
       config,
       channels: p.channels,
       agents: p.agents,

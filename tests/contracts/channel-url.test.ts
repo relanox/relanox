@@ -32,7 +32,7 @@ const cases = [
   {
     name: 'Google Chat',
     plugin: createGoogleChatChannel(),
-    config: { audience: 'audience', serviceAccount: { env: 'SERVICE' } }
+    config: { serviceAccount: { env: 'SERVICE' } }
   },
   {
     name: 'QQ',
@@ -96,7 +96,6 @@ describe('channel API base URL contract', () => {
 
   it('preserves query parameters on complete Google Chat OAuth and JWKS endpoints', () => {
     const config = createGoogleChatChannel().validateConfig({
-      audience: 'audience',
       serviceAccount: { env: 'SERVICE' },
       tokenUrl: 'https://auth.example/token?tenant=one',
       jwksUrl: 'https://auth.example/keys?tenant=one'

@@ -1,6 +1,7 @@
 import type { CallToolResult, McpServer } from '@modelcontextprotocol/server'
 import { downloadMedia } from '@relanox/channel-media'
 import type { MediaUpload, ScopedAgentHost } from '@relanox/sdk'
+import { validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
 import type { McpConfig } from './config.js'
 import { equalSecret, resolveAgentSecret } from './secrets.js'
@@ -18,14 +19,15 @@ async function cancelReader(
 /** All checks precede MCP parsing and Host access, including streamed/dishonest bodies. */
 export async function guard(
   request: Request,
-  config: McpConfig
+  config: McpConfig,
+  publicUrl: string
 ): Promise<Request | Response> {
   const url = new URL(request.url)
   const host = request.headers.get('host') ?? url.host
   const origin = request.headers.get('origin')
   if (
     host !== url.host ||
-    !config.allowedHosts.includes(host) ||
+    host !== new URL(validatePublicUrl(publicUrl)).host ||
     (origin !== null && !config.allowedOrigins.includes(origin))
   ) {
     return Response.json({ error: 'forbidden_origin' }, { status: 403 })

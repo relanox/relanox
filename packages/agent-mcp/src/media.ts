@@ -1,7 +1,7 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHmac } from 'node:crypto'
 import type { McpServer } from '@modelcontextprotocol/server'
 import type { ScopedAgentHost } from '@relanox/sdk'
+import { validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
 import type { McpConfig } from './config.js'
 import { equalSecret, resolveAgentSecret } from './secrets.js'
@@ -21,15 +21,16 @@ export function createMediaTransport(
   host: ScopedAgentHost,
   config: McpConfig,
   endpointId: string,
-  agent: 'dot' | 'grok'
+  agent: 'dot' | 'grok',
+  publicUrl: string
 ): {
   authorize(this: void, request: Request): Promise<Response | undefined>
   fetch(this: void, request: Request): Promise<Response>
   register(this: void, server: McpServer): void
   maxBytes: number
-  run<T>(this: void, request: Request, operation: () => T): T
 } {
-  const context = new AsyncLocalStorage<string>()
+  const origin = validatePublicUrl(publicUrl)
+  const deploymentHost = new URL(origin).host
 
   const sign = (payload: string): string =>
     createHmac('sha256', resolveAgentSecret(config.token))
@@ -37,10 +38,6 @@ export function createMediaTransport(
       .digest('base64url')
 
   function issue(ticket: Ticket): string {
-    const origin = context.getStore()
-    if (!origin) {
-      throw new Error('media_request_origin_missing')
-    }
     const payload = Buffer.from(JSON.stringify(ticket)).toString('base64url')
 
     const url = new URL(
@@ -54,11 +51,11 @@ export function createMediaTransport(
 
   function decode(request: Request): Ticket | undefined {
     const url = new URL(request.url)
-    const origin = request.headers.get('origin')
+    const callerOrigin = request.headers.get('origin')
     if (
       (request.headers.get('host') ?? url.host) !== url.host ||
-      !config.allowedHosts.includes(url.host) ||
-      (origin !== null && !config.allowedOrigins.includes(origin))
+      url.host !== deploymentHost ||
+      (callerOrigin !== null && !config.allowedOrigins.includes(callerOrigin))
     ) {
       return undefined
     }
@@ -189,8 +186,6 @@ export function createMediaTransport(
     authorize,
     fetch,
     register,
-    maxBytes: host.media?.maxBytes ?? 0,
-    run: <T>(request: Request, operation: () => T): T =>
-      context.run(new URL(request.url).origin, operation)
+    maxBytes: host.media?.maxBytes ?? 0
   }
 }

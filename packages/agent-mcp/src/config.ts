@@ -6,7 +6,6 @@ export const secretRef = z.strictObject({
 
 export const mcpConfig = z.strictObject({
   token: secretRef,
-  allowedHosts: z.array(z.string().min(1).max(255)).min(1),
   allowedOrigins: z.array(z.url()).default([])
 })
 

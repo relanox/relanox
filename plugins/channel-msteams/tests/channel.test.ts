@@ -28,7 +28,7 @@ const issuer = 'https://api.botframework.com'
 async function setup(
   endorsements = ['msteams'],
   filename = ':memory:',
-  publicBaseUrl?: string
+  publicUrl?: string
 ): Promise<{
   core: CoreRuntime
   storage: Storage
@@ -100,7 +100,7 @@ async function setup(
     'user-id',
     'root-1',
     filename,
-    publicBaseUrl
+    publicUrl
   )
 
   cleanup.push(local.close)

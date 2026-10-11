@@ -27,12 +27,24 @@ export function createEventsHandler(
   fetch(this: void, request: Request): Promise<Response>
   close(this: void): Promise<void>
 } {
+  if (agentHost.publicUrl === undefined) {
+    throw new Error('public_url_required')
+  }
+  const publicUrl = agentHost.publicUrl
+
   const scopedHost = agentHost.forPrincipal({
     subject: endpoint.id,
     endpointIds: [endpoint.id]
   })
 
-  const media = createMediaTransport(scopedHost, config.mcp, endpoint.id, 'dot')
+  const media = createMediaTransport(
+    scopedHost,
+    config.mcp,
+    endpoint.id,
+    'dot',
+    publicUrl
+  )
+
   if (media.maxBytes > 0) {
     agentHost.mountHttp(`/media/${endpoint.id}/*`, media.fetch, {
       maxBodyBytes: media.maxBytes,
@@ -101,14 +113,12 @@ export function createEventsHandler(
   )
 
   const fetch = async (request: Request): Promise<Response> => {
-    const checked = await guard(request, config.mcp)
+    const checked = await guard(request, config.mcp, publicUrl)
     if (checked instanceof Response) {
       return checked
     }
 
-    const response = await media.run(checked, async () =>
-      handler.fetch(checked)
-    )
+    const response = await handler.fetch(checked)
 
     // SDK 2.3.1's MCP 2026 schema predates Events and strips this draft capability.
     // Preserve its negotiation/validation, augment only the successful discovery wire result.

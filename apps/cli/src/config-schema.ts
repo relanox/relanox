@@ -1,10 +1,16 @@
-import { validateConfig, validateMediaOptions } from '@relanox/core'
+import {
+  validateConfig,
+  validateMediaOptions,
+  validatePublicDeployment
+} from '@relanox/core'
+import { validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
 
 const port = z.number().int().min(0).max(65_535)
 
 export const appConfigSchema = z
   .strictObject({
+    publicUrl: z.string().transform(validatePublicUrl).optional(),
     relay: z.unknown().transform(validateConfig),
     media: z.unknown().transform(validateMediaOptions).optional(),
     mediaLimits: z
@@ -43,6 +49,11 @@ export const appConfigSchema = z
       .prefault({})
   })
   .superRefine((value, ctx) => {
+    validatePublicDeployment(
+      value.publicUrl,
+      value.relay,
+      value.media !== undefined
+    )
     if (value.server.workerStaleMs <= value.server.workerIntervalMs) {
       ctx.addIssue({
         code: 'custom',

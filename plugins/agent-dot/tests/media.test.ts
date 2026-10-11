@@ -154,6 +154,9 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
     )
 
     expect(uri).not.toContain('secret-0')
+    expect(uri).toMatch(
+      /^https:\/\/relanox\.test\/agents\/(?:dot|grok)\/media\/endpoint0\//u
+    )
     await fx.reopen(
       agent === 'dot' ? createDotAgentPlugin() : createGrokAgentPlugin()
     )

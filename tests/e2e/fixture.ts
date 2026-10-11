@@ -85,7 +85,7 @@ export async function fixture(
     id: 'alpha' | 'beta'
     agent: string
     config: {
-      mcp: { token: { env: string }; allowedHosts: string[] }
+      mcp: { token: { env: string } }
       routineUrl: { env: string }
       routineAuthorization: { env: string }
       routineTransport: string
@@ -95,8 +95,7 @@ export async function fixture(
     agent: 'grok',
     config: {
       mcp: {
-        token: { env: `E2E_GROK_${id.toUpperCase()}_TOKEN` },
-        allowedHosts: [`127.0.0.1:${port}`]
+        token: { env: `E2E_GROK_${id.toUpperCase()}_TOKEN` }
       },
       routineUrl: { env: `E2E_ROUTINE_${id.toUpperCase()}_URL` },
       routineAuthorization: { env: 'E2E_ROUTINE_AUTH' },
@@ -105,6 +104,7 @@ export async function fixture(
   })
 
   const config = validateApp({
+    publicUrl: `http://127.0.0.1:${port}`,
     relay: {
       accounts: [
         {

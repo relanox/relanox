@@ -19,6 +19,10 @@ export function createGrokAgentPlugin(): AgentPlugin<GrokConfig> {
       return configSchema.parse(config)
     },
     async setup(host, endpoints) {
+      if (host.publicUrl === undefined) {
+        throw new Error('public_url_required')
+      }
+      const publicUrl = host.publicUrl
       for (const endpoint of endpoints) {
         const config = configSchema.parse(endpoint.config)
 
@@ -31,7 +35,8 @@ export function createGrokAgentPlugin(): AgentPlugin<GrokConfig> {
           scopedHost,
           config.mcp,
           endpoint.id,
-          'grok'
+          'grok',
+          publicUrl
         )
 
         if (media.maxBytes > 0) {
@@ -58,10 +63,8 @@ export function createGrokAgentPlugin(): AgentPlugin<GrokConfig> {
 
         handlers.push(handler)
         host.mountHttp(`/mcp/${endpoint.id}`, async (request) => {
-          const checked = await guard(request, config.mcp)
-          return checked instanceof Response
-            ? checked
-            : media.run(checked, async () => handler.fetch(checked))
+          const checked = await guard(request, config.mcp, publicUrl)
+          return checked instanceof Response ? checked : handler.fetch(checked)
         })
       }
     },

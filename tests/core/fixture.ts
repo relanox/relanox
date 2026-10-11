@@ -16,6 +16,7 @@ import { createSqliteStorage } from '../../plugins/storage-sqlite/src/index.js'
 
 export async function mediaFixture(
   sendKinds: readonly MediaKind[] = ['image', 'file'],
+  publicUrl = 'https://relay.example',
   media?: CoreOptions['media']
 ): Promise<{
   storage: ReturnType<typeof createSqliteStorage>
@@ -119,6 +120,7 @@ export async function mediaFixture(
   try {
     const assemble = async (): Promise<CoreRuntime> =>
       createCore({
+        publicUrl,
         ...(media ? { media } : {}),
         config,
         storage,

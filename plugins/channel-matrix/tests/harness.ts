@@ -231,6 +231,7 @@ export async function harness(
   }))
 
   const runtime = await createCore({
+    publicUrl: 'https://relay.example',
     storage,
     channels: new Map([['bot', plugin]]),
     agents: new Map([['grok', protocolAgent(dispatchUrl)]]),

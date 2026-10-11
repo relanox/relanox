@@ -16,7 +16,7 @@ import { createAgentHost } from './agent.js'
 type HostSetupOptions = {
   readonly options: Pick<
     CoreOptions,
-    'storage' | 'channels' | 'agents' | 'media'
+    'storage' | 'channels' | 'agents' | 'media' | 'publicUrl'
   >
   readonly config: RelanoxConfig
   readonly worker: WorkerConfig
@@ -47,6 +47,7 @@ export async function setupPluginHosts({
     isAccepting,
     connections,
     httpRoutes,
+    options.publicUrl,
     options.media,
     worker.maxMediaBytes
   )

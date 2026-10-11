@@ -36,6 +36,7 @@ export async function mediaRuntime(
   vi.stubEnv('MEDIA_ROUTINE_AUTH', 'Bearer media-routine-token')
 
   const app = validateApp({
+    publicUrl: `http://127.0.0.1:${port}`,
     relay: {
       accounts: [{ id: 'business', channel, config, allowedSenders: ['42'] }],
       endpoints: [
@@ -44,8 +45,7 @@ export async function mediaRuntime(
           agent: 'grok',
           config: {
             mcp: {
-              token: { env: 'MEDIA_AGENT_TOKEN' },
-              allowedHosts: [`127.0.0.1:${port}`]
+              token: { env: 'MEDIA_AGENT_TOKEN' }
             },
             routineUrl: { env: 'MEDIA_ROUTINE_URL' },
             routineAuthorization: { env: 'MEDIA_ROUTINE_AUTH' },
@@ -73,15 +73,7 @@ export async function mediaRuntime(
       workerIntervalMs: 20,
       workerStaleMs: 2000,
       shutdownTimeoutMs: 5000
-    },
-    ...(channel === 'line'
-      ? {
-          media: {
-            publicBaseUrl: `http://127.0.0.1:${port}`,
-            allowInsecureLocalhost: true
-          }
-        }
-      : {})
+    }
   })
 
   let principal: ScopedAgentHost | undefined

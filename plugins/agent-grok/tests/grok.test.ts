@@ -106,8 +106,9 @@ describe('grok configured Routine and scoped MCP', () => {
     }
 
     const response = await guard(
-      new Request('http://relanox.test/agents/grok/mcp/endpoint0', init),
-      mcp()
+      new Request('https://relanox.test/agents/grok/mcp/endpoint0', init),
+      mcp(),
+      'https://relanox.test'
     )
 
     if (!(response instanceof Response)) {

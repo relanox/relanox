@@ -25,7 +25,6 @@ export function validateEndpointUrl(
 }
 
 const configSchema = z.strictObject({
-  audience: platformIdSchema,
   jwksUrl: z.url().default('https://www.googleapis.com/oauth2/v3/certs'),
   serviceAccount: secretRefSchema,
   apiBase: z.url().default('https://chat.googleapis.com'),

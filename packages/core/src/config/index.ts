@@ -4,6 +4,7 @@ import { validateConfigRelations } from './relations.js'
 
 export { channels } from './schema.js'
 export { bindingKey } from './relations.js'
+export { validatePublicDeployment } from '../public-url.js'
 
 export const configSchema = configShapeSchema.superRefine(
   validateConfigRelations

@@ -52,9 +52,7 @@ async function throughHttp(
 }
 
 it('serves scoped durable capability URLs across SQLite restart and rejects invalid capabilities', async () => {
-  const f = await mediaFixture(undefined, {
-    publicBaseUrl: 'https://media.example'
-  })
+  const f = await mediaFixture(undefined, 'https://media.example')
 
   try {
     const receipt = await f.channel.ingest({
@@ -111,8 +109,7 @@ it('serves scoped durable capability URLs across SQLite restart and rejects inva
 })
 
 it('expires public URLs and prunes expired durable tickets before publishing', async () => {
-  const f = await mediaFixture(undefined, {
-    publicBaseUrl: 'https://media.example',
+  const f = await mediaFixture(undefined, 'https://media.example', {
     urlLifetimeMs: 1
   })
 
@@ -159,24 +156,48 @@ it('expires public URLs and prunes expired durable tickets before publishing', a
 it.each([
   'http://example.com',
   'https://user:secret@example.com',
+  'https://@example.com',
+  'https://example.com:99999',
   'https://example.com/path',
-  'http://127.0.0.1'
-])('rejects unsafe public media origin %s', async (publicBaseUrl) => {
-  await expect(mediaFixture(undefined, { publicBaseUrl })).rejects.toThrow()
-})
+  'http://localhost',
+  'http://127.1',
+  'https://example.com/?',
+  'https://example.com/#',
+  'https://example.com/path/..'
+])(
+  'rejects unsafe deployment origin %s before media publication',
+  async (publicUrl) => {
+    await expect(mediaFixture(undefined, publicUrl)).rejects.toThrow()
+  }
+)
 
-it('allows explicitly configured loopback HTTP and leaves unconfigured hosts without publishing', async () => {
-  const local = await mediaFixture(undefined, {
-    publicBaseUrl: 'http://127.0.0.1:8080',
-    allowInsecureLocalhost: true
-  })
-
-  const absent = await mediaFixture()
+it('uses one explicit loopback deployment origin for plugin hosts and automatic media publication', async () => {
+  const local = await mediaFixture(undefined, 'http://127.0.0.1:8080')
   try {
     expect(local.channel.media).toBeDefined()
-    expect(absent.channel.media).toBeUndefined()
+    expect(local.channel.publicUrl).toBe('http://127.0.0.1:8080')
+    expect(local.agent.publicUrl).toBe('http://127.0.0.1:8080')
+
+    const receipt = await local.channel.ingest({
+      ...incoming,
+      attachments: [picture]
+    })
+
+    const id = (await local.storage.getInbound(receipt.requestId))?.snapshot
+      .attachments?.[0]?.id
+
+    if (!id || !local.channel.media) {
+      throw new Error('Expected publisher')
+    }
+    expect(
+      await local.channel.media.publish({
+        requestId: receipt.requestId,
+        mediaId: id
+      })
+    ).toMatch(
+      /^http:\/\/127\.0\.0\.1:8080\/media\/bot\/.+\?token=[a-f0-9]{64}$/u
+    )
   } finally {
     await local.close()
-    await absent.close()
   }
 })
