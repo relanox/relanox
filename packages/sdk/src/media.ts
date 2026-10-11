@@ -38,6 +38,9 @@ export interface MediaStorage {
     readonly endpointIds: readonly string[];
     readonly claimToken: string;
     readonly media: StoredMedia;
+    /** Atomic per-request budget, including input and staged output assets. */
+    readonly maxCount?: number;
+    readonly maxTotalBytes?: number;
   }): Promise<MediaWriteResult>;
 }
 
