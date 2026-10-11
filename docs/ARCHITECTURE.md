@@ -59,18 +59,18 @@ flowchart LR
 
 包级入口保持稳定；下表是包内部职责，不增加公共 subpath API。内部模块直接导入所属实现，避免从本包的 `index.ts` 反向导入形成循环依赖。
 
-| 位置                                 | 职责与修改入口                                                                                                                                                                                              |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/sdk/src`                   | values/config/messages/state/storage/observability/plugins 分别定义基础值、配置、消息、插件状态、存储、观测和 Host 契约，`index.ts` 统一导出。                                                              |
-| `packages/core/src/config`           | `schema.ts` 定义配置结构与字段；`relations.ts` 校验唯一性和引用；`plugins.ts` 校验全部插件并构建路由索引；`index.ts` 提供解析。密钥和 JSON 快照分别由 core 的 `secrets.ts`、`json.ts` 负责。                |
-| `packages/core/src/hosts`            | common 管路由/命名空间/连接观测，channel 管入站授权与快照，agent 管领取/结果授权，setup 保证先全量校验再 setup，tracing 记录 Host 操作。                                                                    |
-| `packages/core/src/worker`           | options 校验参数，runtime 拥有逐条领取/调用期限/结算/健康状态，outcomes 校验插件结果，retry 维护预算与退避。                                                                                                |
-| `packages/core/src/runtime.ts`       | 组装 Host、HTTP、后台任务与运维接口；`http.ts` 管请求大小/取消/错误映射；`administration.ts` 管查询/清理/显式恢复。                                                                                         |
-| `plugins/channel-*/src`              | config 管配置，schemas 管事件/目标/回执结构，channel 管账号运行对象。已有 transport/io/socket/wire 管 I/O；按协议需要增加 gateway/client/inbound，连接与恢复状态由单一对象管理。                            |
-| `plugins/storage-*/src`              | database/lifecycle/requests/work/plugin-state/inspection 分别管事务底座、初始化、请求原子操作、租约结算、插件 CAS 和运维读取/保留；record-codec/record-contracts 管持久编码与记录约束，事务体不跨模块拆散。 |
-| `plugins/agent-*/src`                | dot 的配置、Events 路由、订阅和 dispatch 分开维护；Grok 的 Routine HTTP 交互归 routine。MCP 与 callback 保持各自协议和安全边界。                                                                            |
-| `plugins/observability-standard/src` | 配置、字段脱敏、日志背压、指标、trace、生命周期分别维护，入口负责装配与异常隔离。                                                                                                                           |
-| `apps/cli/src`                       | config-schema 定义应用配置，config 读取文件；已有 runtime/listeners/worker/lifecycle/admin/storage 保持进程级职责。                                                                                         |
+| 位置                                 | 职责与修改入口                                                                                                                                                                                                                         |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/sdk/src`                   | values/config/messages/state/storage/observability/plugins 分别定义基础值、配置、消息、插件状态、存储、观测和 Host 契约，`index.ts` 统一导出。                                                                                         |
+| `packages/core/src/config`           | `schema.ts` 定义配置结构与字段；`relations.ts` 校验唯一性和引用；`plugins.ts` 校验全部插件并构建路由索引；`index.ts` 提供解析。密钥和 JSON 快照分别由 core 的 `secrets.ts`、`json.ts` 负责。                                           |
+| `packages/core/src/hosts`            | common 管路由/命名空间/连接观测，channel 管入站授权与快照，agent 管领取/结果授权，setup 在全量校验后建立完整连接清单，再调用插件 setup；tracing 记录 Host 操作。                                                                       |
+| `packages/core/src/worker`           | options 校验参数，runtime 拥有逐条领取/调用期限/结算/健康状态，outcomes 校验插件结果，retry 维护预算与退避。                                                                                                                           |
+| `packages/core/src/runtime.ts`       | 组装 Host、HTTP、后台任务与运维接口；`http.ts` 管请求大小/取消/错误映射；`administration.ts` 管查询/清理/显式恢复。                                                                                                                    |
+| `plugins/channel-*/src`              | config 只依赖 Zod，拥有字段约束、默认值和 URL 策略；schemas 管事件/目标/回执结构，不导入 I/O 实现。channel 管账号运行对象，transport/io/socket/wire 管 I/O；gateway/client/inbound 按协议职责分工，连接与恢复状态由单一对象管理。      |
+| `plugins/storage-*/src`              | database/lifecycle/requests/work/plugin-state/inspection 分别管事务底座、初始化、请求原子操作、租约结算、插件 CAS 和运维读取/保留；record-codec/record-contracts 管持久编码与记录约束，事务体不跨模块拆散。                            |
+| `plugins/agent-*/src`                | config 拥有 MCP/callback 配置结构，secrets 负责凭据操作，运行模块依赖配置。dot 的 Events、订阅和 dispatch 分工明确，后两者仅接收所需 state；Grok 的 routine 和 MCP 共享 request-payload 投影。MCP 与 callback 保持各自协议和安全边界。 |
+| `plugins/observability-standard/src` | 配置、字段脱敏、日志背压、指标、trace、生命周期分别维护，入口负责装配与异常隔离。                                                                                                                                                      |
+| `apps/cli/src`                       | config-schema 定义应用配置，config 读取文件；plugins 集中装配十五个渠道和两个 Agent。runtime/listeners/worker/lifecycle 管常驻进程，admin 调用运维接口，storage 管存储创建和健康检查。                                                 |
 
 重构保持公开导出、配置默认值和拒绝规则、错误码、数据库格式与协议行为。验证以原有公共 API、真实数据库和本地协议测试为准，不用文件数量或私有函数测试证明可维护性。新增代码遵守[源码组织规则](CODE_QUALITY.md#source-organization)。
 
