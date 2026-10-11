@@ -1,5 +1,6 @@
 import type { Json, EpochMs } from "./values.js";
 import type { ChannelId, EndpointConfig } from "./config.js";
+import type { MediaUpload, MediaReference, StoredMedia } from "./media.js";
 
 /** Platform-specific durable address, never a reply closure or ephemeral reply token. */
 export interface ReplyTarget {
@@ -23,12 +24,14 @@ export interface IngestInput {
   readonly source: SourceKey;
   readonly senderId: string;
   readonly text: string;
+  readonly attachments?: readonly MediaUpload[];
   readonly target: ReplyTarget;
   readonly receivedAt: EpochMs;
   readonly context: Json;
   readonly trace?: TraceContext;
 }
-export interface InboundSnapshot extends IngestInput {
+export interface InboundSnapshot extends Omit<IngestInput, "attachments"> {
+  readonly attachments?: readonly MediaReference[];
   readonly requestId: string;
   readonly endpoint: EndpointConfig;
   readonly acceptedAt: EpochMs;
@@ -38,6 +41,7 @@ export type AttemptStatus = "due" | "accepted" | "rejected" | "unknown";
 export interface FinalResult {
   readonly resultId: string;
   readonly text: string;
+  readonly attachments?: readonly MediaReference[];
   readonly completedAt: EpochMs;
 }
 export interface ProcessingClaim {
@@ -69,6 +73,8 @@ export interface InboundRecord {
 }
 export interface DeliveryChunk {
   readonly text: string;
+  /** A media chunk has empty text; preceding text chunks preserve the caption. */
+  readonly media?: MediaReference;
   readonly idempotencyKey: string;
   readonly state: Json;
 }
@@ -138,6 +144,8 @@ export interface SendInput {
   readonly target: ReplyTarget;
   readonly chunk: DeliveryChunk;
   readonly chunkIndex: number;
+  /** Resolved by core from durable storage, bound to this request and chunk. */
+  readonly media?: StoredMedia;
   readonly signal: AbortSignal;
 }
 export interface DispatchInput {

@@ -2,6 +2,7 @@
 export * from "./values.js";
 export type * from "./config.js";
 export type * from "./messages.js";
+export type * from "./media.js";
 export type * from "./state.js";
 export type * from "./storage.js";
 export * from "./observability.js";
