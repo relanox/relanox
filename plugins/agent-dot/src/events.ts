@@ -3,8 +3,7 @@ import type { ServerCapabilities } from '@modelcontextprotocol/server'
 import type { AgentHost, EndpointConfig } from '@relanox/sdk'
 import { z } from 'zod'
 import type { DotConfig } from './config.js'
-import { createMediaTransport } from './media.js'
-import { guard, registerTools } from './mcp.js'
+import { createMediaTransport, guard, registerTools } from '@relanox/agent-mcp'
 import {
   args,
   name,

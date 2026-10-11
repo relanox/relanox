@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { fixture, mcp, parseWire, peer } from '../../agent-dot/tests/fixture.js'
 import { createGrokAgentPlugin } from '../src/index.js'
-import { guard } from '../src/mcp.js'
+import { guard } from '@relanox/agent-mcp'
 
 const cleanups: (() => Promise<void>)[] = []
 const stringValue: unknown = expect.any(String)

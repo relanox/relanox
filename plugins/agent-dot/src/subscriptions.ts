@@ -5,7 +5,7 @@ import { Webhook } from 'standardwebhooks'
 import { z } from 'zod'
 import { CallbackError, callbackUrl, postCallback } from './callback.js'
 import type { DotConfig } from './config.js'
-import { equalSecret } from './secrets.js'
+import { equalSecret } from '@relanox/agent-mcp'
 import { name, subscriptionSchema } from './protocol.js'
 import type {
   Subscription,

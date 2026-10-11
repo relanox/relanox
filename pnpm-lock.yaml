@@ -297,6 +297,24 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
 
+  packages/agent-mcp:
+    dependencies:
+      '@modelcontextprotocol/server':
+        specifier: 2.3.1
+        version: 2.3.1
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
+  packages/channel-media:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+
   packages/core:
     dependencies:
       '@relanox/sdk':
@@ -309,12 +327,6 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
 
-  packages/channel-media:
-    dependencies:
-      '@relanox/sdk':
-        specifier: workspace:*
-        version: link:../sdk
-
   packages/sdk: {}
 
   plugins/agent-dot:
@@ -322,6 +334,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.3.1
         version: 2.3.1
+      '@relanox/agent-mcp':
+        specifier: workspace:*
+        version: link:../../packages/agent-mcp
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -347,6 +362,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.3.1
         version: 2.3.1
+      '@relanox/agent-mcp':
+        specifier: workspace:*
+        version: link:../../packages/agent-mcp
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
