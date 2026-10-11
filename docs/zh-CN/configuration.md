@@ -6,6 +6,20 @@ Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://gi
 
 默认监听地址和监控开关无需重复填写，生成器会省略这些默认值。不写 `server` 时，业务端口为 `127.0.0.1:8787`，管理端口为 `127.0.0.1:8788`；标准可观测性插件使用 `config: {}` 即可启用日志和指标。只在部署需要时添加覆盖值；容器中需要设置 `server.host: "0.0.0.0"`。
 
+## 公开地址只配置一次
+
+在顶层设置 `publicUrl`，与 `relay` 放在同一层：
+
+```json
+{
+  "publicUrl": "https://relay.example.com"
+}
+```
+
+Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat 的认证 audience。公开媒体下载会自动启用。配置器也用这个地址展示渠道 webhook 和 Agent 连接 URL。
+
+填写 HTTPS 来源地址，可带端口，不包含用户名密码、路径、查询参数或片段。本地开发允许字面地址 `http://127.0.0.1:8787` 和 `http://[::1]:8787`。实际监听地址仍由 `server` 控制；反向代理需保留公开 Host 头。
+
 ## 决定谁可以和哪个 Agent 聊天
 
 三个列表描述你的连接：
@@ -102,7 +116,7 @@ Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://gi
 | `startupTimeoutMs`  | `30000`     | 为平台连接初始化留出更多时间                                |
 | `shutdownTimeoutMs` | `15000`     | 为正常停机留出更多时间，同时增加服务管理器的停止超时        |
 
-端口范围为 0–65535，部署时使用固定的非零端口。管理地址使用字面回环地址。通过 HTTPS 代理业务端口 8787，管理端口保留在本地。Agent 的 `mcp.allowedHosts` 填公开主机名，包括非默认端口。如果 MCP 客户端发送 Origin 头，将它的完整来源加入 `mcp.allowedOrigins`；不发送该头的服务端客户端适合空列表。
+端口范围为 0–65535，部署时使用固定的非零端口。管理地址使用字面回环地址。通过 HTTPS 代理业务端口 8787，管理端口保留在本地。如果 MCP 客户端发送 Origin 头，将它的完整来源加入 `mcp.allowedOrigins`。它表示调用方来源，与服务公开地址不同；不发送该头的服务端客户端使用默认空列表即可。
 
 用 `relay.observability` 开启日志和指标：
 
@@ -115,27 +129,29 @@ Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://gi
 }
 ```
 
-管理端口提供 `/health/live`、`/health/ready` 和开启后的 `/metrics`。[日志与运行状态](reference/observability.md)介绍指标名称。附件大小限制和公开下载地址使用顶层 `media`、`mediaLimits`，见[收发图片和文件](media.md)。
+管理端口提供 `/health/live`、`/health/ready` 和开启后的 `/metrics`。[日志与运行状态](reference/observability.md)介绍指标名称。可选的 `media.urlLifetimeMs` 控制下载链接有效期，`mediaLimits` 控制附件大小；下载地址使用 `publicUrl`，见[收发图片和文件](media.md)。
 
 ## 更新旧配置
 
-连接时序和固定的平台身份现在由程序内部管理。如果旧文件包含下列字段，请删除后再运行 `validate`；校验器会拒绝未知字段。原来的默认行为仍然保留。
+将公开部署地址移到顶层 `publicUrl`，删除 `mcp.allowedHosts`、`media.publicBaseUrl`、`media.allowInsecureLocalhost` 和 Google Chat 的 `audience`。程序会从新设置推导主机名、媒体来源和 Google Chat 端点地址。不需要覆盖链接有效期时，空的 `media` 对象也可以删除。
 
-| 配置位置                                                        | 删除字段                                                      |
-| --------------------------------------------------------------- | ------------------------------------------------------------- |
-| Agent 的 `mcp`                                                  | `maxBodyBytes`、`timeoutMs`                                   |
-| dot                                                             | `callback.timeoutMs`、`subscriptionTtlMs`、`rotationWindowMs` |
-| Grok                                                            | `timeoutMs`、`maxBodyBytes`                                   |
-| Telegram、Slack、Discord、飞书、IRC、Matrix、Mattermost、Signal | `timeoutMs`                                                   |
-| Slack、Discord                                                  | `reconnectDelayMs`                                            |
-| IRC、Matrix、Mattermost、Signal                                 | `reconnectMs`                                                 |
-| Matrix                                                          | `syncTimeoutMs`                                               |
-| 钉钉、企业微信、QQ                                              | `maxReconnectAttempts`                                        |
-| 企业微信                                                        | `heartbeatMs`                                                 |
-| QQ                                                              | `transport`                                                   |
-| Discord                                                         | `intents`                                                     |
-| Google Chat                                                     | `callerEmail`、`issuer`                                       |
-| Microsoft Teams                                                 | `issuer`                                                      |
+连接时序和固定的平台身份现在由程序内部管理。如果旧文件包含下列字段，请删除后再运行 `validate`；校验器会拒绝未知字段。dot 现在只接受原生 OpenAI 回调来源，其他固定时序保留原默认值。
+
+| 配置位置                                                        | 删除字段                                            |
+| --------------------------------------------------------------- | --------------------------------------------------- |
+| Agent 的 `mcp`                                                  | `maxBodyBytes`、`timeoutMs`                         |
+| dot                                                             | `callback`、`subscriptionTtlMs`、`rotationWindowMs` |
+| Grok                                                            | `timeoutMs`、`maxBodyBytes`                         |
+| Telegram、Slack、Discord、飞书、IRC、Matrix、Mattermost、Signal | `timeoutMs`                                         |
+| Slack、Discord                                                  | `reconnectDelayMs`                                  |
+| IRC、Matrix、Mattermost、Signal                                 | `reconnectMs`                                       |
+| Matrix                                                          | `syncTimeoutMs`                                     |
+| 钉钉、企业微信、QQ                                              | `maxReconnectAttempts`                              |
+| 企业微信                                                        | `heartbeatMs`                                       |
+| QQ                                                              | `transport`                                         |
+| Discord                                                         | `intents`                                           |
+| Google Chat                                                     | `callerEmail`、`issuer`                             |
+| Microsoft Teams                                                 | `issuer`                                            |
 
 凭据、发送者白名单、可信来源和部署地址仍可配置。配置器自动使用平台原生地址，自建服务仍需填写地址。服务、数据库、监控和媒体容量等高级选项按部署需要设置即可。
 

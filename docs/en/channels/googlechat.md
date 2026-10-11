@@ -16,7 +16,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
     {
       "id": "googlechat-main",
       "config": {
-        "audience": "https://relay.example.com/channels/googlechat-main/webhook",
         "serviceAccount": {
           "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
         }
@@ -44,7 +43,7 @@ Bindings match the exact chat and thread IDs. Include `threadId` when your test 
 
 ## Enable the connection
 
-Configure the app’s HTTP endpoint as `https://relay.example.com/channels/googlechat-main/webhook`. Set the app’s authentication audience and the account’s `audience` to that exact URL. Start Relanox before sending app interactions. Relanox verifies the caller email as `chat@system.gserviceaccount.com`.
+Set top-level `publicUrl` to `https://relay.example.com`. In the Google Chat console, configure the app’s HTTP endpoint as `https://relay.example.com/channels/googlechat-main/webhook` and select **HTTP endpoint URL** as the authentication audience mode. Relanox derives the expected audience from `publicUrl` and this account’s ID; replace `googlechat-main` in the endpoint path if you renamed the account. Start Relanox before sending app interactions. Relanox verifies the caller email as `chat@system.gserviceaccount.com`.
 
 ## Send your first message
 
@@ -52,8 +51,8 @@ Mention the installed app with “Hello” inside the configured space/thread. F
 
 ## Images and files
 
-Upload an attachment directly to Chat with your question. For generated media, configure `media.publicBaseUrl` as described in [Media](../media.md). Image replies appear as cards; audio, videos and files appear as named download buttons. The public media address must be reachable by recipients and by Google for image display.
+Upload an attachment directly to Chat with your question. For generated media, configure `publicUrl` as described in [Media](../media.md). Image replies appear as cards; audio, videos and files appear as named download buttons. The public media address must be reachable by recipients and by Google for image display.
 
 ## Troubleshooting
 
-For authentication errors, compare `audience` with the complete endpoint URL, including the account ID and path. For send failures, check the service-account JSON, Chat API and app membership. For missing images/downloads, check the public media URL. Upload the file directly to Chat when you want the agent to read its bytes.
+For authentication errors, check the console’s HTTP endpoint URL audience mode and compare the endpoint with `publicUrl` plus `/channels/<account-id>/webhook`. For send failures, check the service-account JSON, Chat API and app membership. For missing images/downloads, check the public media URL. Upload the file directly to Chat when you want the agent to read its bytes.

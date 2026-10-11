@@ -19,7 +19,7 @@ Edit `deploy/relanox.json` using [Configuration](configuration.md). For the supp
 
 - `server.host`: `0.0.0.0`.
 - `relay.storage.config.filename`: `/data/relanox.sqlite`.
-- `mcp.allowedHosts`: your public hostname, such as `relay.example.com`.
+- `publicUrl`: your public HTTPS origin, such as `https://relay.example.com`.
 - Your sender IDs and exact conversation bindings.
 
 Create a protected `.env` file in the repository root with the variables referenced by your config. For Telegram/Grok:
@@ -62,7 +62,7 @@ relay.example.com {
 
 Replace the domain, make TCP ports 80/443 reachable for certificate issuance and HTTPS traffic, and configure Caddy as a service using its installation instructions. A proxy in another container needs a Docker network route to Relanox instead of this host-loopback address.
 
-Preserve the public Host header to match `mcp.allowedHosts`. Register channel webhook and Agent MCP URLs under the public address. Forward business HTTP and retain management on loopback. [Media transfer](media.md) describes public attachment URLs when your channel needs them.
+Preserve the public Host header to match the host in `publicUrl`. Register channel webhook and Agent MCP URLs under the public address. Forward business HTTP and retain management on loopback. [Media transfer](media.md) describes public attachment URLs when your channel needs them.
 
 ## Stop, restart and upgrade
 

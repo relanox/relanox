@@ -35,10 +35,6 @@ export const fieldLabels: Record<string, [string, string]> = {
   accessToken: ['Access token environment variable', '访问令牌环境变量'],
   homeserver: ['Homeserver URL', 'Homeserver 地址'],
   userId: ['Bot user ID', '机器人用户 ID'],
-  audience: [
-    'Authentication audience (generated from public host)',
-    '认证受众（由公开域名生成）'
-  ],
   serviceAccount: [
     'Service account JSON environment variable',
     '服务账号 JSON 环境变量'

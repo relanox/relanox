@@ -195,7 +195,6 @@ export const channelData = [
     chatExample: 'spaces/AAAAExample',
     senderExample: 'users/123456789',
     defaults: {
-      audience: 'https://relay.example.com/channels/googlechat-main/webhook',
       serviceAccount: {
         env: 'GOOGLE_CHAT_SERVICE_ACCOUNT_JSON'
       }

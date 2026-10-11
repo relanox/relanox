@@ -16,7 +16,6 @@
     {
       "id": "googlechat-main",
       "config": {
-        "audience": "https://relay.example.com/channels/googlechat-main/webhook",
         "serviceAccount": {
           "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
         }
@@ -44,7 +43,7 @@
 
 ## 启用连接
 
-将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`。应用认证 audience 和账号的 `audience` 均填写这一完整地址。发送应用交互前启动 Relanox。Relanox 验证调用者邮箱为 `chat@system.gserviceaccount.com`。
+将顶层 `publicUrl` 设为 `https://relay.example.com`。在 Google Chat 控制台将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`，认证 audience 模式选择 **HTTP endpoint URL**。Relanox 会从 `publicUrl` 和账号 ID 自动推导预期 audience；如果修改了账号名，请同步替换端点路径中的 `googlechat-main`。发送应用交互前启动 Relanox。Relanox 验证调用者邮箱为 `chat@system.gserviceaccount.com`。
 
 ## 发送第一条消息
 
@@ -52,8 +51,8 @@
 
 ## 图片和文件
 
-提问时可直接上传附件到 Chat。接收生成媒体需按[媒体](../media.md)配置 `media.publicBaseUrl`。图片回复显示为卡片，音频、视频和文件显示为带名称的下载按钮。公网媒体地址需让收件者访问，并供 Google 获取图片。
+提问时可直接上传附件到 Chat。接收生成媒体需按[媒体](../media.md)配置 `publicUrl`。图片回复显示为卡片，音频、视频和文件显示为带名称的下载按钮。公网媒体地址需让收件者访问，并供 Google 获取图片。
 
 ## 常见问题
 
-认证错误时，核对 `audience` 与完整端点地址，包括账号 ID 和路径。发送失败时，检查服务账号 JSON、Chat API 和应用是否在空间内。图片或下载不可用时，检查公网媒体地址。需要 Agent 读取文件内容时，将文件直接上传到 Chat。
+认证错误时，检查控制台是否选择 HTTP endpoint URL audience 模式，并核对端点为 `publicUrl` 加 `/channels/<账号 ID>/webhook`。发送失败时，检查服务账号 JSON、Chat API 和应用是否在空间内。图片或下载不可用时，检查公网媒体地址。需要 Agent 读取文件内容时，将文件直接上传到 Chat。

@@ -106,9 +106,9 @@ export const CHANNELS: ChannelDefinition[] = channelData.map((entry) => {
   return {
     id: entry.id,
     name: { en: name[0] ?? entry.id, zh: name[1] ?? entry.id },
-    fields: fieldsFor(entry.defaults as unknown as Record<string, Json>)
-      .filter((field) => field.key !== 'audience')
-      .map(personalizeField),
+    fields: fieldsFor(entry.defaults as unknown as Record<string, Json>).map(
+      personalizeField
+    ),
     chatExample: entry.chatExample,
     senderExample: entry.senderExample,
     webhook: entry.webhook,

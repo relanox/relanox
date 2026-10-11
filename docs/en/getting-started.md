@@ -34,12 +34,12 @@ Copy-Item examples/relanox.sqlite.json relay.json
 
 On Linux/macOS use `cp examples/relanox.sqlite.json relay.json`. Edit `relay.json`:
 
-| Location                                     | Your value                                                                            |
-| -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `relay.accounts[0].allowedSenders`           | Your Telegram user ID as a string, for example `["123456789"]`                        |
-| `relay.bindings[0].chatId`                   | The exact Telegram chat ID as a string                                                |
-| `relay.endpoints[0].config.mcp.allowedHosts` | Your public hostname, for example `["relay.example.com"]`; include a non-default port |
-| `relay.storage.config.filename`              | Your database path; the example uses `relanox.sqlite` in the launch directory         |
+| Location                           | Your value                                                                                    |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- |
+| `relay.accounts[0].allowedSenders` | Your Telegram user ID as a string, for example `["123456789"]`                                |
+| `relay.bindings[0].chatId`         | The exact Telegram chat ID as a string                                                        |
+| `publicUrl`                        | Your public HTTPS origin, for example `https://relay.example.com`; include a non-default port |
+| `relay.storage.config.filename`    | Your database path; the example uses `relanox.sqlite` in the launch directory                 |
 
 Keep `telegram-main` and `grok-main` for the URLs below. Keep `server.host` as `127.0.0.1` for a reverse proxy on the same host; use `0.0.0.0` inside a container.
 

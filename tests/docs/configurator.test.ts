@@ -106,16 +106,15 @@ describe('connection configurator production contracts', () => {
       'grok'
     ])
     expect(config.relay.endpoints[0]?.config.mcp).toEqual({
-      token: { env: 'RELANOX_AGENT_1_MCP_TOKEN' },
-      allowedHosts: ['relay.test.example:8443'],
-      allowedOrigins: []
+      token: { env: 'RELANOX_AGENT_1_MCP_TOKEN' }
     })
     expect(config.relay.endpoints[0]?.config).not.toHaveProperty('callback')
     expect(
       config.relay.accounts.find((entry) => entry.channel === 'googlechat')
-        ?.config.audience
-    ).toBe('https://relay.test.example:8443/channels/googlechat-main/webhook')
-    expect(config.media.publicBaseUrl).toBe('https://relay.test.example:8443')
+        ?.config
+    ).not.toHaveProperty('audience')
+    expect(config.publicUrl).toBe('https://relay.test.example:8443')
+    expect(config).not.toHaveProperty('media')
   })
 
   it('preserves explicit routing and credentials across rename, removal and type changes', () => {

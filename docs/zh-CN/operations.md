@@ -19,7 +19,7 @@ PowerShell 使用 `New-Item -ItemType Directory -Force deploy` 和 `Copy-Item ex
 
 - `server.host`：`0.0.0.0`。
 - `relay.storage.config.filename`：`/data/relanox.sqlite`。
-- `mcp.allowedHosts`：公开主机名，例如 `relay.example.com`。
+- `publicUrl`：公开 HTTPS 地址，例如 `https://relay.example.com`。
 - 自己的发送者 ID 和准确聊天绑定。
 
 在仓库根目录创建受保护的 `.env` 文件，写入配置引用的变量。Telegram/Grok 示例：
@@ -62,7 +62,7 @@ relay.example.com {
 
 替换域名，开放证书签发和 HTTPS 访问所需的 TCP 80/443 端口，并按 Caddy 安装说明配置服务。代理位于另一容器时，需要通过 Docker 网络访问 Relanox 服务。
 
-保留公开 Host 头，使其匹配 `mcp.allowedHosts`。在公开地址下注册渠道 webhook 和 Agent MCP URL。转发业务 HTTP，管理端口保持回环访问。渠道需要公开附件 URL 时，按[收发图片和文件](media.md)配置。
+保留公开 Host 头，使其匹配 `publicUrl` 中的主机名。在公开地址下注册渠道 webhook 和 Agent MCP URL。转发业务 HTTP，管理端口保持回环访问。渠道需要公开附件 URL 时，按[收发图片和文件](media.md)配置。
 
 ## 停止、重启和升级
 

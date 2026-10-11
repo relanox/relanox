@@ -64,14 +64,6 @@ function publicOrigin(host: string): string {
   return host.includes('://') ? host.replace(/\/+$/u, '') : `https://${host}`
 }
 
-function hostForMcp(host: string): string {
-  try {
-    return new URL(publicOrigin(host)).host
-  } catch {
-    return host
-  }
-}
-
 function fieldValue(field: FieldDefinition, value: string): Json {
   if (field.kind === 'env') {
     return { env: value }
@@ -113,10 +105,7 @@ function assignField(
   }
 }
 
-function accountConfig(
-  channel: ChannelState,
-  host: string
-): Record<string, Json> {
+function accountConfig(channel: ChannelState): Record<string, Json> {
   const config: Record<string, Json> = {}
   const definition = CHANNELS.find((entry) => entry.id === channel.channel)
   for (const field of definition?.fields ?? []) {
@@ -126,22 +115,17 @@ function accountConfig(
       fieldValue(field, channel.fields[field.key] ?? '')
     )
   }
-  if (channel.channel === 'googlechat') {
-    config.audience = `${publicOrigin(host)}/channels/googlechat-main/webhook`
-  }
   if (channel.channel === 'slack') {
     config.receiveMode = 'http'
   }
   return config
 }
 
-function endpointConfig(agent: AgentState, host: string): Record<string, Json> {
+function endpointConfig(agent: AgentState): Record<string, Json> {
   const prefix = `RELANOX_${agent.id.replaceAll('-', '_').toUpperCase()}`
 
   const mcp = {
-    token: { env: `${prefix}_MCP_TOKEN` },
-    allowedHosts: [hostForMcp(host)],
-    allowedOrigins: []
+    token: { env: `${prefix}_MCP_TOKEN` }
   }
 
   if (agent.type === 'grok') {
@@ -158,17 +142,18 @@ function endpointConfig(agent: AgentState, host: string): Record<string, Json> {
 export function buildConfig(state: ConfiguratorState): GeneratedConfig {
   const enabled = state.channels.filter((channel) => channel.enabled)
   return {
+    publicUrl: publicOrigin(state.publicHost),
     relay: {
       accounts: enabled.map((channel) => ({
         id: `${channel.channel}-main`,
         channel: channel.channel,
         allowedSenders: splitIds(channel.senderIds),
-        config: accountConfig(channel, state.publicHost)
+        config: accountConfig(channel)
       })),
       endpoints: state.agents.map((agent) => ({
         id: agent.id,
         agent: agent.type,
-        config: endpointConfig(agent, state.publicHost)
+        config: endpointConfig(agent)
       })),
       bindings: enabled.map(bindingFor),
       storage: {
@@ -179,8 +164,7 @@ export function buildConfig(state: ConfiguratorState): GeneratedConfig {
         plugin: 'standard',
         config: {}
       }
-    },
-    media: { publicBaseUrl: publicOrigin(state.publicHost) }
+    }
   }
 }
 
