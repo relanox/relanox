@@ -36,6 +36,11 @@ const headerSchema = z.looseObject({
   tenant_key: id,
   token: id,
 });
+const challengeSchema = z.looseObject({
+  type: z.literal("url_verification"),
+  token: id,
+  challenge: id,
+});
 const eventSchema = z.looseObject({
   schema: z.literal("2.0"),
   header: headerSchema,
@@ -125,11 +130,6 @@ export function createFeishuChannel(
     if (request.method !== "POST") {
       return new Response(null, { status: 405 });
     }
-    const timestamp = request.headers.get("x-lark-request-timestamp");
-    const nonce = request.headers.get("x-lark-request-nonce");
-    if (!fresh(timestamp) || !nonce || nonce.length > 256) {
-      return new Response(null, { status: 401 });
-    }
     let raw: Buffer;
     try {
       raw = await bytes(request);
@@ -137,12 +137,20 @@ export function createFeishuChannel(
       return new Response(null, { status: 413 });
     }
     const encryptKey = credential(config.encryptKey, environment);
-    const signature = createHash("sha256")
-      .update(`${timestamp}${nonce}${encryptKey}`)
-      .update(raw)
-      .digest("hex");
-    if (!equal(signature, request.headers.get("x-lark-signature") ?? "")) {
-      return new Response(null, { status: 401 });
+    const suppliedSignature = request.headers.get("x-lark-signature");
+    if (suppliedSignature !== null) {
+      const timestamp = request.headers.get("x-lark-request-timestamp");
+      const nonce = request.headers.get("x-lark-request-nonce");
+      if (!fresh(timestamp) || !nonce || nonce.length > 256) {
+        return new Response(null, { status: 401 });
+      }
+      const signature = createHash("sha256")
+        .update(`${timestamp}${nonce}${encryptKey}`)
+        .update(raw)
+        .digest("hex");
+      if (!equal(signature, suppliedSignature)) {
+        return new Response(null, { status: 401 });
+      }
     }
     let value: unknown;
     try {
@@ -169,6 +177,10 @@ export function createFeishuChannel(
       return new Response(null, { status: 400 });
     }
 
+    // Registration challenges precede event-signature setup; the handler checks their token.
+    if (suppliedSignature === null && !challengeSchema.safeParse(value).success) {
+      return new Response(null, { status: 401 });
+    }
     return value;
   }
 
@@ -282,13 +294,7 @@ export function createFeishuChannel(
         if (value instanceof Response) {
           return value;
         }
-        const challenge = z
-          .looseObject({
-            type: z.literal("url_verification"),
-            token: id,
-            challenge: id,
-          })
-          .safeParse(value);
+        const challenge = challengeSchema.safeParse(value);
         if (challenge.success) {
           if (!equal(challenge.data.token, credential(config.verificationToken, environment))) {
             return new Response(null, { status: 401 });
