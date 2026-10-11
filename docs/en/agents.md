@@ -39,7 +39,7 @@ The Routine Authorization variable holds exactly the supplied value, including a
 
 ## Connect dot
 
-1. Generate a separate token and supply it as `DOT_MCP_TOKEN`.
+1. Use the configurator's generated authorization password, or generate a random value of at least 32 characters, and supply it as `DOT_MCP_TOKEN`.
 2. Add this entry to `relay.endpoints`:
 
 ```json
@@ -59,7 +59,7 @@ The Routine Authorization variable holds exactly the supplied value, including a
 4. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
 5. Set your conversation binding's `endpointId` to `dot-main` and send a message through that conversation.
 
-dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens expire after 30 days and rotate on use. Registrations and grants persist in your configured database.
+dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens rotate on use, with a 30-day lifetime from the initial authorization. Grants persist in your configured database. Reusing an old refresh token revokes its authorization; changing the configured password and restarting requires reconnecting dot.
 
 `mcp.auth` accepts `bearer`, `path` or `oauth` and defaults to `bearer` for existing configurations. Grok supports `bearer` and `path`; explicit `bearer` uses the clean MCP URL and `Authorization: Bearer <token>`. Relanox supports existing dot Bearer configurations, but the dot platform requires OAuth.
 

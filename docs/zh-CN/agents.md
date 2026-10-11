@@ -39,7 +39,7 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
 
 ## 连接 dot
 
-1. 生成独立 token，提供为 `DOT_MCP_TOKEN`。
+1. 使用配置器生成的授权口令，或自行生成至少 32 个字符的随机值，提供为 `DOT_MCP_TOKEN`。
 2. 在 `relay.endpoints` 添加以下条目：
 
 ```json
@@ -59,7 +59,7 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
 4. 通过连接的 Events 功能开启 `relanox.message_available` 订阅。在连接中开启自动续订，使它持续接收新消息。
 5. 将聊天绑定的 `endpointId` 设为 `dot-main`，然后在该聊天发送消息。
 
-dot OAuth 要求公网 HTTPS `publicUrl`。Relanox 使用 PKCE S256，支持 ChatGPT OAuth 跳转地址 `https://chatgpt.com/connector_platform_oauth_redirect` 和 `https://chatgpt.com/connector/oauth/<id>`，它们与 Events 回调不同。access token 有效期一小时；refresh token 有效期 30 天，使用时轮换。注册与授权保存在配置的数据库中。
+dot OAuth 要求公网 HTTPS `publicUrl`。Relanox 使用 PKCE S256，支持 ChatGPT OAuth 跳转地址 `https://chatgpt.com/connector_platform_oauth_redirect` 和 `https://chatgpt.com/connector/oauth/<id>`，它们与 Events 回调不同。access token 有效期一小时；refresh token 使用时轮换，授权总有效期为首次授权起 30 天。授权保存在配置的数据库中。重用旧 refresh token 会撤销对应授权；修改配置的口令并重启后，需要重新连接 dot。
 
 `mcp.auth` 可选 `bearer`、`path`、`oauth`，省略时默认 `bearer`，兼容旧配置。Grok 支持 `bearer` 和 `path`；显式使用 `bearer` 时填写不带 token 的 MCP URL，并发送 `Authorization: Bearer <token>`。Relanox 仍支持旧 dot Bearer 配置，但 dot 平台要求 OAuth。
 
