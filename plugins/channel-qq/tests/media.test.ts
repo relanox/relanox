@@ -12,7 +12,36 @@ const formats = [
   { kind: "video", mimeType: "video/mp4", fileName: "clip.mp4", fileType: 2 },
   { kind: "file", mimeType: "application/pdf", fileName: "report.pdf", fileType: 4 },
 ] as const;
-type Fault = "missing" | "duplicate" | "length" | "redirect" | "transient";
+type Fault =
+  | "missing"
+  | "duplicate"
+  | "length"
+  | "redirect"
+  | "transient"
+  | "prepare_timeout"
+  | "message_timeout";
+
+function prepareResponse(origin: string, size: number, fault?: Fault) {
+  if (fault === "prepare_timeout") {
+    return { body: { code: 850_027 } };
+  }
+  const blockSize = Math.ceil(size / 2);
+  const parts = [0, 1].map((index) => ({
+    index,
+    presigned_url: `${origin}/signed/${index}?signature=opaque`,
+    block_size: String(Math.min(blockSize, size - index * blockSize)),
+  }));
+  if (fault === "missing") {
+    parts.pop();
+  }
+  if (fault === "duplicate" && parts[1]) {
+    parts[1].index = 0;
+  }
+  if (fault === "length" && parts[1]) {
+    parts[1].block_size = String(blockSize);
+  }
+  return { body: { upload_id: "native-upload", block_size: String(blockSize), parts } };
+}
 
 async function fixture(group = false, bytes = smallBytes, fault?: Fault) {
   vi.stubEnv("QQ_MEDIA_SECRET", "secret");
@@ -32,21 +61,7 @@ async function fixture(group = false, bytes = smallBytes, fault?: Fault) {
         return { body: bytes, headers: { "content-type": "application/octet-stream" } };
       }
       if (request.path === `${base}/upload_prepare`) {
-        const parts = [0, 1].map((index) => ({
-          index,
-          presigned_url: `${remote.http}/signed/${index}?signature=opaque`,
-          block_size: String(Math.min(blockSize, bytes.length - index * blockSize)),
-        }));
-        if (failing && fault === "missing") {
-          parts.pop();
-        }
-        if (failing && fault === "duplicate" && parts[1]) {
-          parts[1].index = 0;
-        }
-        if (failing && fault === "length" && parts[1]) {
-          parts[1].block_size = String(blockSize);
-        }
-        return { body: { upload_id: "native-upload", block_size: String(blockSize), parts } };
+        return prepareResponse(remote.http, bytes.length, failing ? fault : undefined);
       }
       if (request.path.startsWith("/signed/")) {
         if (failing && fault === "redirect") {
@@ -56,6 +71,9 @@ async function fixture(group = false, bytes = smallBytes, fault?: Fault) {
       }
       if (request.path === `${base}/files`) {
         return { body: { file_info: "opaque-file-info", ttl: 60 } };
+      }
+      if (request.path === `${base}/messages` && failing && fault === "message_timeout") {
+        return { body: { code: 850_027 } };
       }
       return { body: { id: "sent-media" } };
     },
@@ -282,7 +300,7 @@ test("QQ uploads beyond direct JSON size limits and hashes exactly the first 100
   });
 });
 
-test.each(["missing", "duplicate", "length", "redirect", "transient"] as const)(
+test.each(["missing", "duplicate", "length", "redirect", "transient", "prepare_timeout"] as const)(
   "QQ %s upload failure sends no message and the same delivery can retry",
   async (fault) => {
     const { remote, plugin, base, recover } = await fixture(false, smallBytes, fault);
@@ -317,3 +335,11 @@ test.each(["missing", "duplicate", "length", "redirect", "transient"] as const)(
     ]);
   },
 );
+
+test("QQ upload retry classification does not change final message error handling", async () => {
+  const { remote, plugin } = await fixture(false, smallBytes, "message_timeout");
+  expect(await plugin.send(outbound(smallBytes, remote.http))).toEqual({
+    status: "rejected",
+    errorCode: "qq_850027",
+  });
+});

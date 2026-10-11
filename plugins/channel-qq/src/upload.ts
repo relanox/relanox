@@ -40,7 +40,7 @@ async function apiRequest(url: string, body: unknown, credential: string, signal
     jsonPostRequest(body, { Authorization: `QQBot ${credential}` }),
     signal,
   );
-  const failure = apiError(raw);
+  const failure = apiError(raw, true);
   if (failure) {
     throw new RemoteError(failure, raw);
   }

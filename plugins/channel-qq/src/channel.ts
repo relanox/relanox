@@ -335,7 +335,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         };
       }
       if (error instanceof RemoteError) {
-        const failure = apiError(error.body);
+        const failure = apiError(error.body, !transmitting);
         if (failure) {
           return failure;
         }
