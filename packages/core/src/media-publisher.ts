@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import type { ChannelMediaHost, StateNamespace, Storage } from '@relanox/sdk'
+import { validatePublicUrl } from '@relanox/sdk'
 import type { Hono } from 'hono'
 import { z } from 'zod'
 import { CoreError } from './errors.js'
@@ -18,57 +19,30 @@ const namespace = (accountId: string): StateNamespace => ({
 
 const keyFor = (requestId: string, id: string): string => `${requestId}/${id}`
 
-function publicOrigin(options: MediaPublisherOptions): string {
-  const url = new URL(options.publicBaseUrl)
-  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-  if (
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    url.pathname !== '/' ||
-    (url.protocol !== 'https:' &&
-      !(url.protocol === 'http:' && loopback && options.allowInsecureLocalhost))
-  ) {
-    throw new CoreError('invalid_media_public_url')
-  }
-  return url.origin
-}
-
 export function validateMediaOptions(input: unknown): MediaPublisherOptions {
   const options = z
     .strictObject({
-      publicBaseUrl: z.string().min(1),
-      urlLifetimeMs: z.number().int().positive().max(604_800_000).optional(),
-      allowInsecureLocalhost: z.boolean().optional()
+      urlLifetimeMs: z.number().int().positive().max(604_800_000).optional()
     })
     .parse(input)
 
-  const result: MediaPublisherOptions = {
-    publicBaseUrl: options.publicBaseUrl,
-    ...(options.urlLifetimeMs === undefined
-      ? {}
-      : { urlLifetimeMs: options.urlLifetimeMs }),
-    ...(options.allowInsecureLocalhost === undefined
-      ? {}
-      : { allowInsecureLocalhost: options.allowInsecureLocalhost })
-  }
-
-  publicOrigin(result)
-  return result
+  return options.urlLifetimeMs === undefined
+    ? {}
+    : { urlLifetimeMs: options.urlLifetimeMs }
 }
 
 export function createMediaPublisher(
   storage: Storage,
   app: Hono,
+  publicUrl: string | undefined,
   options: MediaPublisherOptions | undefined,
   maximum: number
 ): ((accountId: string) => ChannelMediaHost) | undefined {
-  if (!options) {
+  const valid = validateMediaOptions(options ?? {})
+  if (publicUrl === undefined) {
     return undefined
   }
-  const valid = validateMediaOptions(options)
-  const origin = publicOrigin(valid)
+  const origin = validatePublicUrl(publicUrl)
 
   const lifetime = z
     .number()

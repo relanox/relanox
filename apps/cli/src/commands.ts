@@ -1,5 +1,3 @@
-import type { MediaPublisherOptions } from '@relanox/core'
-import type { RelanoxConfig } from '@relanox/sdk'
 import { Command } from 'commander'
 import { z } from 'zod'
 import {
@@ -9,6 +7,7 @@ import {
   withStorage
 } from './admin.js'
 import { readConfig } from './config.js'
+import type { AppConfig } from './config.js'
 import { startRuntime, validateApp } from './runtime.js'
 
 export function printJson(value: unknown): void {
@@ -30,27 +29,7 @@ const numberOption = (
     .transform(Number)
     .pipe(z.number().int().min(min).max(max))
 
-async function configFrom(command: Command): Promise<{
-  relay: RelanoxConfig
-  server: {
-    host: string
-    port: number
-    managementHost: '127.0.0.1' | '::1'
-    managementPort: number
-    workerIntervalMs: number
-    workerStaleMs: number
-    shutdownTimeoutMs: number
-    startupTimeoutMs: number
-  }
-  media?: MediaPublisherOptions | undefined
-  mediaLimits?:
-    | {
-        maxMediaBytes: number
-        maxTotalMediaBytes: number
-        maxAttachments: number
-      }
-    | undefined
-}> {
+async function configFrom(command: Command): Promise<AppConfig> {
   const options = configOptions.parse(command.optsWithGlobals())
   return validateApp(await readConfig(options.config))
 }

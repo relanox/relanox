@@ -71,6 +71,9 @@ export async function startRuntime(input: unknown): Promise<{
       channels,
       agents,
       observe,
+      ...(config.publicUrl === undefined
+        ? {}
+        : { publicUrl: config.publicUrl }),
       ...(config.media ? { media: config.media } : {}),
       ...(config.mediaLimits ? { worker: config.mediaLimits } : {})
     })

@@ -41,8 +41,7 @@ test('assembled Telegram ingress persists before ACK and status projects only op
         agent: 'grok',
         config: {
           mcp: {
-            token: { env: 'CLI_TEST_AGENT_TOKEN' },
-            allowedHosts: ['127.0.0.1:8787']
+            token: { env: 'CLI_TEST_AGENT_TOKEN' }
           },
           routineUrl: { env: 'CLI_TEST_ROUTINE_URL' },
           routineAuthorization: { env: 'CLI_TEST_ROUTINE_AUTH' }
@@ -54,7 +53,7 @@ test('assembled Telegram ingress persists before ACK and status projects only op
     ]
   }
 
-  const config = { ...value.config, relay }
+  const config = { ...value.config, publicUrl: 'https://relay.example', relay }
   await value.save(config)
   vi.stubEnv('CLI_TEST_BOT_TOKEN', '123:valid-token')
   vi.stubEnv('CLI_TEST_WEBHOOK_SECRET', 'valid-webhook-secret')
@@ -258,12 +257,57 @@ test('validate rejects public management addresses before opening storage', asyn
   await expect(access(value.filename)).rejects.toThrow()
 })
 
+test('validate identifies a missing public URL for hosted protocols before opening storage', async () => {
+  const value = await setup()
+  for (const required of [
+    {
+      relay: {
+        ...value.config.relay,
+        endpoints: [
+          {
+            id: 'grok',
+            agent: 'grok',
+            config: {
+              mcp: { token: { env: 'CLI_AGENT_TOKEN' } },
+              routineUrl: { env: 'CLI_ROUTINE_URL' },
+              routineAuthorization: { env: 'CLI_ROUTINE_AUTH' }
+            }
+          }
+        ]
+      }
+    },
+    {
+      relay: {
+        ...value.config.relay,
+        accounts: [
+          {
+            id: 'chat',
+            channel: 'googlechat',
+            config: { serviceAccount: { env: 'CLI_CHAT_SERVICE' } },
+            allowedSenders: ['users/alice']
+          }
+        ]
+      }
+    },
+    { media: { urlLifetimeMs: 1000 } }
+  ]) {
+    await value.save({ ...value.config, ...required })
+    const result = await cli(value.configPath, ['validate'])
+    expect(result.code).toBe(1)
+    expect(JSON.parse(result.stderr)).toEqual({
+      ok: false,
+      errorCode: 'public_url_required'
+    })
+    await expect(access(value.filename)).rejects.toThrow()
+  }
+})
+
 test('validates native media publication and byte limits before opening storage', async () => {
   const value = await setup()
   await value.save({
     ...value.config,
+    publicUrl: 'https://media.example.org',
     media: {
-      publicBaseUrl: 'https://media.example.org',
       urlLifetimeMs: 60_000
     },
     mediaLimits: {
@@ -274,13 +318,24 @@ test('validates native media publication and byte limits before opening storage'
   })
   expect((await cli(value.configPath, ['validate'])).code).toBe(0)
   for (const options of [
-    { media: { publicBaseUrl: 'http://media.example.org' } },
-    { media: { publicBaseUrl: 'https://media.example.org/private' } },
+    { publicUrl: 'http://media.example.org' },
+    { publicUrl: 'https://media.example.org/private' },
+    { publicUrl: 'https://media.example.org:99999' },
+    { publicUrl: 'https://@media.example.org' },
+    { publicUrl: 'http://localhost:8787' },
+    { media: { publicBaseUrl: 'https://media.example.org' } },
     { mediaLimits: { maxMediaBytes: 209_715_201 } },
     { mediaLimits: { maxAttachments: 11 } }
   ]) {
     await value.save({ ...value.config, ...options })
-    expect((await cli(value.configPath, ['validate'])).code).toBe(1)
+    const rejected = await cli(value.configPath, ['validate'])
+    expect(rejected.code).toBe(1)
+    if ('publicUrl' in options) {
+      expect(JSON.parse(rejected.stderr)).toEqual({
+        ok: false,
+        errorCode: 'invalid_public_url'
+      })
+    }
   }
   await expect(access(value.filename)).rejects.toThrow()
 })

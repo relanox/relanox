@@ -22,6 +22,7 @@ export function createCommonHostFactory(
   isAccepting: () => boolean,
   connections: Map<string, 'connected' | 'disconnected' | 'degraded'>,
   httpRoutes: Map<string, HttpRouteOptions>,
+  publicUrl: string | undefined,
   media: MediaPublisherOptions | undefined,
   maximum: number
 ): {
@@ -34,6 +35,7 @@ export function createCommonHostFactory(
   function commonHost(namespace: StateNamespace, prefix: string): CommonHost {
     componentPlugins.set(prefix.slice(1), namespace.pluginId)
     return {
+      ...(publicUrl === undefined ? {} : { publicUrl }),
       observe,
       state: {
         get: async (key) => storage.getState(namespace, textId.parse(key)),
@@ -104,6 +106,12 @@ export function createCommonHostFactory(
 
   return {
     common: commonHost,
-    mediaPublisher: createMediaPublisher(storage, app, media, maximum)
+    mediaPublisher: createMediaPublisher(
+      storage,
+      app,
+      publicUrl,
+      media,
+      maximum
+    )
   }
 }

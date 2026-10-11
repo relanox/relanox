@@ -205,6 +205,7 @@ export async function fixture(
     agentPlugin: AgentPlugin<unknown>
   ): Promise<CoreRuntime> =>
     createCore({
+      publicUrl: 'https://relanox.test',
       config,
       storage,
       channels: new Map([['bot', channel]]),
@@ -313,12 +314,10 @@ export async function fixture(
 
 export function mcp(token = 'AGENT_TEST_TOKEN_0'): {
   token: { env: string }
-  allowedHosts: string[]
   allowedOrigins: never[]
 } {
   return {
     token: { env: token },
-    allowedHosts: ['relanox.test'],
     allowedOrigins: []
   }
 }

@@ -103,6 +103,7 @@ export async function mediaRelay(
   cleanup(async () => agent.stop?.())
 
   const runtime = await createCore({
+    publicUrl: business.base,
     storage,
     channels: new Map([['bot', plugin]]),
     agents: new Map([['grok', agent]]),
@@ -121,8 +122,7 @@ export async function mediaRelay(
           agent: 'grok',
           config: {
             mcp: {
-              token: { env: 'OPEN_MEDIA_MCP_TOKEN' },
-              allowedHosts: [new URL(business.base).host]
+              token: { env: 'OPEN_MEDIA_MCP_TOKEN' }
             },
             routineUrl: { env: 'OPEN_MEDIA_ROUTINE' },
             routineAuthorization: { env: 'OPEN_MEDIA_ROUTINE_AUTH' },

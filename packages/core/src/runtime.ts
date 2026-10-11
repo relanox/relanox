@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { CoreOptions, CoreRuntime } from './types.js'
-import { validateConfig } from './config/index.js'
+import { validateConfig, validatePublicDeployment } from './config/index.js'
 import { jsonSnapshot } from './json.js'
 import { safeObservability } from './observe.js'
 import { createAdministration } from './administration.js'
@@ -12,6 +12,13 @@ import { setupPluginHosts } from './hosts/setup.js'
 /** Composes the relay; listeners, timers, and plugin lifecycle belong to the CLI. */
 export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   const config = validateConfig(options.config)
+
+  const publicUrl = validatePublicDeployment(
+    options.publicUrl,
+    config,
+    options.media !== undefined
+  )
+
   const storage = options.storage
   const observe = safeObservability(options.observe)
   const workerOptions = workerSchema.parse(options.worker ?? {})
@@ -26,7 +33,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   let accepting = true
   const isAccepting = (): boolean => accepting
   await setupPluginHosts({
-    options,
+    options: { ...options, ...(publicUrl === undefined ? {} : { publicUrl }) },
     config,
     worker: workerOptions,
     observe,

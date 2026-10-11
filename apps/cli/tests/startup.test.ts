@@ -33,8 +33,7 @@ function endpoint(): EndpointConfig {
     agent: 'grok',
     config: {
       mcp: {
-        token: { env: 'START_AGENT_TOKEN' },
-        allowedHosts: ['127.0.0.1:8787']
+        token: { env: 'START_AGENT_TOKEN' }
       },
       routineUrl: { env: 'START_ROUTINE_URL' },
       routineAuthorization: { env: 'START_ROUTINE_AUTH' },
@@ -80,6 +79,7 @@ test("accepts native text during another channel's initialization while manageme
   const managementPort = await freeManagementPort()
 
   const config = {
+    publicUrl: 'https://relay.example',
     relay: {
       ...value.config.relay,
       observability: {
@@ -167,6 +167,7 @@ test("accepts native text during another channel's initialization while manageme
 async function recoveredNotification(): Promise<{
   remote: Awaited<ReturnType<typeof routinePeer>>
   config: {
+    publicUrl: string
     relay: {
       endpoints: EndpointConfig[]
       accounts: readonly AccountConfig[]
@@ -219,6 +220,7 @@ async function recoveredNotification(): Promise<{
   })
 
   const config = {
+    publicUrl: 'https://relay.example',
     relay: { ...value.config.relay, endpoints: [agent] },
     server: {
       ...value.config.server,

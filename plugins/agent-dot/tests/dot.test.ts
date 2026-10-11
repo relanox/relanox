@@ -275,8 +275,9 @@ describe('dot MCP Events and tools', () => {
     }
 
     const response = await guard(
-      new Request('http://relanox.test/agents/dot/mcp/endpoint0', init),
-      mcp()
+      new Request('https://relanox.test/agents/dot/mcp/endpoint0', init),
+      mcp(),
+      'https://relanox.test'
     )
 
     if (!(response instanceof Response)) {
@@ -377,7 +378,7 @@ describe('dot MCP Events and tools', () => {
       expect(
         (
           await fx.core.fetch(
-            new Request('http://relanox.test/agents/dot/mcp/endpoint0', {
+            new Request('https://relanox.test/agents/dot/mcp/endpoint0', {
               method: 'POST',
               headers,
               body: '{}'
@@ -389,7 +390,7 @@ describe('dot MCP Events and tools', () => {
     expect(
       (
         await fx.core.fetch(
-          new Request('http://relanox.test/agents/dot/mcp/endpoint0', {
+          new Request('https://relanox.test/agents/dot/mcp/endpoint0', {
             method: 'POST',
             headers: { Authorization: 'Bearer secret-0' },
             body: 'x'.repeat(1_048_577)

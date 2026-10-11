@@ -5,6 +5,7 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
+import { validatePublicUrl } from '@relanox/sdk'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { accessToken } from './client.js'
 import { validateConfig, validateEndpointUrl } from './config.js'
@@ -140,6 +141,10 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     },
     validateConfig,
     async setup(host, account, config) {
+      if (host.publicUrl === undefined) {
+        throw new Error('public_url_required')
+      }
+      const audience = `${validatePublicUrl(host.publicUrl)}/channels/${account.id}/webhook`
       runtime = { host, account, config }
 
       const keys = createRemoteJWKSet(
@@ -162,7 +167,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
           const { payload } = await jwtVerify(authorization.slice(7), keys, {
             algorithms: ['RS256'],
             issuer: 'https://accounts.google.com',
-            audience: config.audience,
+            audience,
             requiredClaims: ['exp', 'iat', 'email', 'email_verified']
           })
 

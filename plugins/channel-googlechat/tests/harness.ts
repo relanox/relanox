@@ -154,7 +154,7 @@ export async function harness(
   sender: string,
   thread?: string,
   filename = ':memory:',
-  publicBaseUrl?: string
+  publicUrl?: string
 ): Promise<{
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
@@ -193,9 +193,7 @@ export async function harness(
   }
 
   const core = await createCore({
-    ...(publicBaseUrl
-      ? { media: { publicBaseUrl, allowInsecureLocalhost: true } }
-      : {}),
+    publicUrl: publicUrl ?? 'https://relay.example',
     storage,
     channels: new Map([['business', plugin]]),
     agents: new Map([['dot', agent]]),

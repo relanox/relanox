@@ -30,6 +30,7 @@ afterEach(async () => {
   vi.unstubAllEnvs()
 })
 const issuer = 'https://accounts.google.com'
+const publicUrl = 'https://relay.example'
 const audience = 'https://relay.example/channels/business/webhook'
 const caller = 'chat@system.gserviceaccount.com'
 
@@ -95,7 +96,6 @@ async function setup(
   remote.respond(200, { name: 'spaces/space/messages/sent' })
 
   const config: Json = {
-    audience,
     serviceAccount: { env: 'CHAT_SERVICE' },
     apiBase: `${remote.base}${baseSuffix}`,
     tokenUrl: `${remote.base}/token`,
@@ -112,7 +112,7 @@ async function setup(
     'users/alice',
     'spaces/space/threads/thread',
     filename,
-    remote.base
+    publicUrl
   )
 
   cleanup.push(local.close)
@@ -421,11 +421,10 @@ describe('native Google Chat', () => {
   it('requires service-account SecretRefs and secure operator endpoints', () => {
     const plugin = createGoogleChatChannel()
     expect(() =>
-      plugin.validateConfig({ audience, serviceAccount: 'credentials' })
+      plugin.validateConfig({ serviceAccount: 'credentials' })
     ).toThrow()
     expect(() =>
       plugin.validateConfig({
-        audience,
         serviceAccount: { env: 'SERVICE' },
         jwksUrl: 'http://127.0.0.1/keys'
       })

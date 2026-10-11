@@ -154,6 +154,7 @@ export async function harness(
   }
 
   const core = await createCore({
+    publicUrl: 'https://relay.example',
     storage,
     channels: new Map([['business', plugin]]),
     agents: new Map([['dot', agent]]),

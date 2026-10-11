@@ -33,6 +33,8 @@ export type HttpRouteOptions = {
 }
 
 export type CommonHost = {
+  /** The validated deployment origin; absent only when no public routes require it. */
+  readonly publicUrl?: string
   readonly observe: Observability
   readonly state: StateStore
   mountHttp(

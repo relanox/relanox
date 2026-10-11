@@ -27,12 +27,11 @@ export type WorkerOptions = {
 }
 
 export type MediaPublisherOptions = {
-  readonly publicBaseUrl: string
   readonly urlLifetimeMs?: number
-  readonly allowInsecureLocalhost?: boolean
 }
 
 export type CoreOptions = {
+  readonly publicUrl?: string
   readonly media?: MediaPublisherOptions
   readonly config: unknown
   readonly storage: Storage
