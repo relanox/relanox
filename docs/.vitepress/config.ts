@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 import { applyLanguagePreference } from './language.js'
 import { navigation } from './navigation.js'
 
-const base = '/relanox/'
+const base = '/'
 
 export default defineConfig({
   title: 'Relanox',

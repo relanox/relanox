@@ -4,6 +4,23 @@
 
 账号安装与远端 Agent 固定指令属于部署前提；传输回执不代表远端执行成功。
 
+## 两种接入方案
+
+两种方案都将已有的托管 Agent 连接到 Relanox 提供的 HTTPS MCP 地址，不调用模型推理 API，也不在本地启动 Agent。远端配置对应 endpoint 的 Bearer 凭据，并遵守“先领取，再执行，最后完成或报告失败”的指令。渠道绑定决定会话交给哪个 endpoint。
+
+|          | Grok                                                                  | dot                                                                 |
+| -------- | --------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 触发方式 | Relanox POST 到指定 Routine webhook                                   | dot 订阅 `relanox.message_available`，Relanox 发送签名 webhook 事件 |
+| 初始内容 | Routine 的 `content` 包含安全请求投影                                 | 事件只携带 `requestId`，Agent 再通过 MCP 读取和领取                 |
+| 远端配置 | 创建 Routine，复制 webhook URL 与完整 Authorization 值，接入 MCP 工具 | 连接 MCP endpoint，建立 Events 订阅，并授权准确的 callback origin   |
+| 回传结果 | `relanox_complete` 或 `relanox_fail`                                  | `relanox_complete` 或 `relanox_fail`                                |
+
+Grok 需要设置 `GROK_ROUTINE_URL`、`GROK_ROUTINE_AUTHORIZATION` 和 `GROK_MCP_TOKEN`，让托管 Agent 连接 `/agents/grok/mcp/<endpointId>`，并在 Routine 中配置下文的领取/完成指令。webhook 返回 2xx 只代表接收，不代表最终回答。
+
+dot 需要配置 `/agents/dot/mcp/<endpointId>` 及 token，授权订阅提供的 callback origin，并建立 Events 订阅。Relanox 完成 callback challenge 验证后才激活订阅；订阅方必须在 `refreshBefore` 前续订，没有有效订阅就无法收到推送通知。
+
+如果远端客户端自己发起 MCP 轮询，两者都可以使用 `dispatchMode: "pull"`；Relanox 不会替远端启动轮询。媒体处理还要求客户端能下载二进制 URL，并通过 PUT 上传生成文件，再携带媒体 ID 完成任务。本地测试验证协议和持久化行为，真实托管账号仍需具备这些工具能力并遵守执行指令。
+
 ## 配置与 HTTP 路由
 
 每个 endpoint 有独立 MCP 路由 `/agents/dot/mcp/<endpointId>` 或 `/agents/grok/mcp/<endpointId>` 和 Bearer 凭据。为不同授权范围使用独立随机凭据。在调用 MCP 或获取限定 Host 前进行常量时间摘要比较。工具参数不能选择 endpoint。

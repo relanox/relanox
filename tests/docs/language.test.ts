@@ -35,10 +35,10 @@ it.each([
 ])(
   'routes the entry for $languages to $destination',
   ({ languages, destination }) => {
-    const { replace } = browser('/relanox/', languages)
-    applyLanguagePreference('/relanox/')
+    const { replace } = browser('/', languages)
+    applyLanguagePreference('/')
     expect(replace).toHaveBeenCalledExactlyOnceWith(
-      `/relanox/${destination}/?source=docs#start`
+      `/${destination}/?source=docs#start`
     )
   }
 )
@@ -50,22 +50,22 @@ it.each([
 ])(
   'respects a supported stored choice: $saved',
   ({ saved, languages, destination }) => {
-    const { replace } = browser('/relanox/index.html', languages, saved)
-    applyLanguagePreference('/relanox/')
+    const { replace } = browser('/index.html', languages, saved)
+    applyLanguagePreference('/')
     expect(replace).toHaveBeenCalledExactlyOnceWith(
-      `/relanox/${destination}/?source=docs#start`
+      `/${destination}/?source=docs#start`
     )
   }
 )
 
 it.each([
   {
-    pathname: '/relanox/en/configuration.html',
+    pathname: '/en/configuration.html',
     locale: 'en',
     languages: ['zh-CN']
   },
   {
-    pathname: '/relanox/zh-CN/channels/qq.html',
+    pathname: '/zh-CN/channels/qq.html',
     locale: 'zh-CN',
     languages: ['en']
   }
@@ -73,42 +73,40 @@ it.each([
   'keeps the explicitly selected page $pathname',
   ({ pathname, locale, languages }) => {
     const { replace, setItem } = browser(pathname, languages)
-    applyLanguagePreference('/relanox/')
+    applyLanguagePreference('/')
     expect(replace).not.toHaveBeenCalled()
     expect(setItem).toHaveBeenCalledExactlyOnceWith(
-      'relanox-docs-language:/relanox/',
+      'relanox-docs-language:/',
       locale
     )
   }
 )
 
 it('continues language detection when storage is unavailable', () => {
-  const { getItem, replace } = browser('/relanox/', ['zh-CN'])
+  const { getItem, replace } = browser('/', ['zh-CN'])
   getItem.mockImplementation(() => {
     throw new Error('Storage disabled')
   })
-  applyLanguagePreference('/relanox/')
-  expect(replace).toHaveBeenCalledExactlyOnceWith(
-    '/relanox/zh-CN/?source=docs#start'
-  )
+  applyLanguagePreference('/')
+  expect(replace).toHaveBeenCalledExactlyOnceWith('/zh-CN/?source=docs#start')
 })
 
 it('keeps explicit navigation usable when persisting the choice fails', () => {
-  const { setItem, replace } = browser('/relanox/en/', ['zh-CN'])
+  const { setItem, replace } = browser('/en/', ['zh-CN'])
   setItem.mockImplementation(() => {
     throw new Error('Storage disabled')
   })
   expect(() => {
-    applyLanguagePreference('/relanox/')
+    applyLanguagePreference('/')
   }).not.toThrow()
   expect(replace).not.toHaveBeenCalled()
 })
 
-it.each(['/elsewhere/', '/relanox/not-found.html'])(
+it.each(['/elsewhere/', '/not-found.html'])(
   'does not redirect unrelated %s',
   (path) => {
     const { replace, setItem } = browser(path, ['zh-CN'])
-    applyLanguagePreference('/relanox/')
+    applyLanguagePreference('/')
     expect(replace).not.toHaveBeenCalled()
     expect(setItem).not.toHaveBeenCalled()
   }

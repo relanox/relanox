@@ -53,6 +53,8 @@ apps/cli/src/plugins.ts 静态目录有 18 个 import 的窄例外，包含十�
 
 ## 文档站维护
 
-使用 `pnpm docs:dev`、`pnpm docs:build` 和 `pnpm docs:preview` 维护 VitePress 站点。docs/en 与 docs/zh-CN 保持对应页面，站内链接留在同一语言。GitHub Pages 在 `/relanox/` 提供静态文件，无法读取 HTTP Accept-Language；根入口读取浏览器 navigator.languages，精确 zh-CN 选择中文，并保存手动语言偏好。明确语言 URL 保持所选语言。
+使用 `pnpm docs:dev`、`pnpm docs:build` 和 `pnpm docs:preview` 维护 VitePress 站点。docs/en 与 docs/zh-CN 保持对应页面，站内链接留在同一语言。GitHub Pages 在 `https://relanox.github.io/` 提供静态文件，无法读取 HTTP Accept-Language；根入口读取浏览器 navigator.languages，精确 zh-CN 选择中文，并保存手动语言偏好。明确语言 URL 保持所选语言。
 
 CSS side-effect import 仅在主题入口使用窄例外。VitePress 内部 Vite 需要 esbuild 0.21.5，它和 workspace esbuild 0.28.2 都使用精确 build-script 允许项；升级站点依赖时保留窄政策。
+
+`relanox/relanox.github.io` 仓库使用自身 GitHub Actions token 构建并发布根站点，每 30 分钟检查本仓库；已发布的源码提交没有变化时跳过构建。维护者也可以手动触发站点仓库的 Documentation 工作流立即发布，无需跨仓库写入凭据。本仓库在文档变化时构建，并在旧项目地址发布逐页跳转，保留查询参数与锚点。

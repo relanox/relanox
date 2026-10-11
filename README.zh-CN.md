@@ -12,13 +12,13 @@ Relanox 是面向 **dot 和 Grok Bot** 的自托管消息网关。它接收文�
 
 使用 Node.js 26 和 pnpm 12.11.2，或通过 Docker Compose 部署。默认存储为 SQLite，也支持 PostgreSQL。
 
-- [安装与快速开始](https://relanox.github.io/relanox/zh-CN/getting-started.html)
-- [配置与命令](https://relanox.github.io/relanox/zh-CN/configuration.html)
-- [媒体传输与平台限制](https://relanox.github.io/relanox/zh-CN/media.html)
-- [部署、备份与恢复](https://relanox.github.io/relanox/zh-CN/operations.html)
-- [开发维护](https://relanox.github.io/relanox/zh-CN/development.html)
+- [安装与快速开始](https://relanox.github.io/zh-CN/getting-started.html)
+- [配置与命令](https://relanox.github.io/zh-CN/configuration.html)
+- [媒体传输与平台限制](https://relanox.github.io/zh-CN/media.html)
+- [部署、备份与恢复](https://relanox.github.io/zh-CN/operations.html)
+- [开发维护](https://relanox.github.io/zh-CN/development.html)
 
-[文档站](https://relanox.github.io/relanox/)提供英文和简体中文，源码位于 [docs](docs/zh-CN/index.md)。
+[文档站](https://relanox.github.io/)提供英文和简体中文，源码位于 [docs](docs/zh-CN/index.md)。
 
 ## 许可证
 
