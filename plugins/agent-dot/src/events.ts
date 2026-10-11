@@ -69,7 +69,7 @@ export function createEventsHandler(
         }
       )
 
-      registerTools(server, scopedHost)
+      registerTools(server, scopedHost, true)
       media.register(server)
       server.server.setRequestHandler(
         'events/list',
