@@ -39,3 +39,10 @@ Scope: WeCom, DingTalk, QQ, Microsoft Teams and Google Chat. Tests use local HTT
 - Google Chat: verified HTTP interaction caller identity and app-authenticated create-message/thread docs. OAuth acquisition now distinguishes definitely-unsent failures from unknown message effects. Frozen service-account email/server survives SQLite reopen, and a fresh private key for the same service account remains valid.
 
 No real account credentials or platform accounts were used. WebSocket session cursors remain process-local where documented; these tests prove local durability/protocol behavior, not platform replay or live-account compatibility. Targets predating frozen identity are intentionally not automatically rebound.
+
+## Teams removed service-origin trust
+
+1. Observable behavior: a target whose frozen service origin is no longer trusted is rejected before OAuth/message traffic, and restoring trust permits sending.
+2. Credible regression: URL trust validation throws outside the send error boundary, causing core to classify a definitely-unsent configuration refusal as unknown.
+3. Existing coverage: incoming untrusted service URLs are tested, but a once-valid persisted target after trust configuration changes is not.
+4. Production seam: none; extend the existing SQLite-reopen case with a different trustedServiceOrigins configuration and inspect actual peer traffic.

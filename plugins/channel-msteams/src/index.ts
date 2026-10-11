@@ -160,7 +160,12 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     ) {
       return { status: "rejected", errorCode: "invalid_target" };
     }
-    const base = serviceUrl(target.serviceUrl, config);
+    let base: URL;
+    try {
+      base = serviceUrl(target.serviceUrl, config);
+    } catch {
+      return { status: "rejected", errorCode: "untrusted_service_origin" };
+    }
     let token: string | SendResult;
     try {
       token = await accessToken(config, input.signal);
