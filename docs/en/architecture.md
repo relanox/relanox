@@ -1,6 +1,6 @@
 # Architecture
 
-Relanox is a resident text gateway. It persists channel input, hands it to an existing dot or Grok Bot, and returns the asynchronous final result to the original conversation. It does not run a model. [Configuration](configuration.md) controls deployment; [Core](reference/core.md) and [SDK](reference/sdk.md) define runtime and persistence contracts.
+Relanox is a resident message gateway. It persists channel text and media, hands them to an existing dot or Grok Bot, and returns the asynchronous final result to the original conversation. It does not run a model. [Configuration](configuration.md) controls deployment; [Core](reference/core.md) and [SDK](reference/sdk.md) define runtime and persistence contracts.
 
 ## Components
 
@@ -20,7 +20,7 @@ Core and plugins depend on SDK. CLI assembles concrete implementations. Channels
 
 ## Durable message flow
 
-The database holds `inbound` requests with frozen snapshots, claim tokens and notification progress; `outbound` final text with chunks, send progress and receipts; and `plugin_state` subscriptions/cursors within plugin namespaces.
+The database holds `inbound` requests with frozen snapshots, claim tokens and notification progress; `outbound` final text/media chunks with send progress and receipts; request-owned `media` bytes and metadata; and `plugin_state` subscriptions/cursors/publication tickets within separate namespaces. Binary bytes cross plugin boundaries in memory and stay outside JSON snapshots. The shared media package owns bounded remote downloads; core owns request authorization, attachment order and public publication.
 
 1. A channel authenticates the event. Core checks sender allowlists and an exact account/chat/thread binding, then commits before acknowledging input. Deduplication uses channel, account and stable platform event ID.
 2. Acceptance freezes the endpoint, credential references and serializable reply target. Binding changes cannot redirect old requests. An agent cannot supply another destination.

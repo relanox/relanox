@@ -10,6 +10,14 @@ ChannelHost is bound by core to its account and rejects mismatching source/targe
 
 Plugin validateConfig throws on invalid unknown input; no Zod type leaks into SDK. HTTP handlers use Web Request/Response. Setup registers handlers but does not listen. Long connection start returns after initialization; stop closes connections. Capabilities declare text size unit and durable idempotency. Core splits final text with these limits before committing outbound. Plugin send receives exactly one persisted chunk and must reuse its idempotencyKey and state. Protocol sequence allocation uses namespaced StateStore CAS before external send; chunk state is reserved for immutable preparation at completion.
 
+## Media contracts
+
+`MediaUpload` carries in-memory bytes with kind, MIME type, filename and optional duration/preview ID. `MediaReference` adds request-owned UUID, byte size and SHA-256; snapshots and results use references. `StoredMedia` pairs the reference with bytes. `ChannelPlugin.capabilities.media` explicitly lists accepted receive/send kinds. `SendInput.media` and optional `preview` are resolved and checked by core, while media chunks have empty text. Channel adapters must preserve native format/permission limits.
+
+`Storage.acceptInbound(snapshot, media)` commits bytes and the inbound snapshot atomically. `Storage.media.put` checks the agent endpoint scope, current claim, upload identity and aggregate budget in one transaction; identical UUID/metadata/bytes replay, changes conflict. `get` is request-scoped. Agent host reads/uploads require the current claim; completion accepts an ordered list of IDs owned by that request. Storage checks that result references and outbound chunks agree, then preserves per-chunk recovery. Cleanup removes eligible bytes/metadata while retaining replay/conflict tombstones.
+
+`ChannelHost.media.publish` optionally issues durable, expiring URLs scoped to its account and request. `mountHttp` can opt into a bounded larger body only with an authorization callback that runs before buffering. Agent binary routes use this facility with signed transfer URLs; ordinary routes retain their normal body cap. See [Media transfer](../media.md).
+
 ## Storage transactions
 
 - acceptInbound uses the tuple channel/account/eventId as a unique key. Replay returns original requestId, even if a caller generates another ID. Pending starts at version 1 with dispatch dueAt = acceptedAt and zero attempts. Records are deep serialized snapshots; caller mutations cannot change them.

@@ -1,6 +1,6 @@
 # 架构
 
-Relanox 是常驻文字消息网关：将渠道输入持久交给已有的 dot 或 Grok Bot，再把异步最终结果发回原会话。它不运行模型。[配置](configuration.md) 控制部署，[Core](reference/core.md) 和 [SDK](reference/sdk.md) 定义运行与持久契约。
+Relanox 是常驻消息网关：将渠道文字和媒体持久交给已有的 dot 或 Grok Bot，再把异步最终结果发回原会话。它不运行模型。[配置](configuration.md) 控制部署，[Core](reference/core.md) 和 [SDK](reference/sdk.md) 定义运行与持久契约。
 
 ## 组件
 
@@ -20,7 +20,7 @@ Core 和插件依赖 SDK，CLI 装配具体实现。渠道和 Agent 只接收限
 
 ## 持久消息流
 
-数据库中，`inbound` 保存请求、冻结快照、领取令牌和通知进度；`outbound` 保存最终文字、分片、发送进度与回执；`plugin_state` 保存命名空间内的订阅与游标。
+数据库中，`inbound` 保存请求、冻结快照、领取令牌和通知进度；`outbound` 保存最终文字/媒体分片、发送进度与回执；`media` 保存请求所属的字节和元数据；`plugin_state` 在独立命名空间内保存订阅、游标与发布凭证。二进制在内存中跨插件边界传递，不进入 JSON 快照。共享 media 包负责有界远程下载，Core 负责请求授权、附件顺序与公开发布。
 
 1. 渠道鉴权事件。Core 检查发送者白名单和精确账号/聊天/线程绑定，提交后才确认接收。去重使用渠道、账号和稳定平台事件 ID。
 2. 接纳时冻结 endpoint、凭据引用和可序列化回复目标。绑定改变不能重定向旧请求；Agent 不能指定其他目标。

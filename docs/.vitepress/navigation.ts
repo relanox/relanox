@@ -35,6 +35,7 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
           page(label("Getting started", "快速开始"), "getting-started"),
           page(label("Configuration & CLI", "配置与命令"), "configuration"),
           page(label("Connect dot / Grok", "连接 dot / Grok"), "agents"),
+          page(label("Media transfer", "媒体传输"), "media"),
           page(label("Operations", "部署与运维"), "operations"),
         ],
       },
