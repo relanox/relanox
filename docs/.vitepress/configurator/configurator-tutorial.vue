@@ -101,17 +101,30 @@ onUnmounted(() => {
       <ol class="tutorial-steps">
         <li>
           <h3>{{ text('Prepare your chat accounts', '准备渠道账号') }}</h3>
-          <p v-for="channel in channels" :key="channel.channel">
+          <p v-for="channel in channels" :key="channel.id">
             <a
               :href="link(`channels/${channel.channel}.html`)"
               target="_blank"
               rel="noopener"
               >{{ channelName(channel.channel) }}</a
             >
-            ·
-            {{ channel.chatId || text('Chat ID not filled', '聊天 ID 待填写') }}
-            <span class="vpi-arrow-right" aria-hidden="true" />
-            {{ agentName(channel.endpointId) }}<br /><span>{{
+            · {{ channel.id }}<br />
+            <span
+              v-for="(chat, index) in channel.chats"
+              :key="chat.id"
+              class="tutorial-chat"
+            >
+              {{
+                chat.chatId ||
+                text(
+                  `Chat ${index + 1} not filled`,
+                  `聊天 ${index + 1} ID 待填写`
+                )
+              }}{{ chat.threadId ? ` / ${chat.threadId}` : '' }}
+              <span class="vpi-arrow-right" aria-hidden="true" />
+              {{ agentName(chat.endpointId) }}
+            </span>
+            <span>{{
               channelDefinition(channel.channel)?.setup[
                 props.chinese ? 'zh' : 'en'
               ]
@@ -144,8 +157,8 @@ onUnmounted(() => {
           <p>
             {{
               text(
-                'This configuration uses SQLite. Keep data/relanox.sqlite on persistent storage. For webhook channels, forward your HTTPS address to 127.0.0.1:8787. Outbound channels need no public callback; cloud Agents still need a reachable MCP address. A loopback address is only reachable on the same machine.',
-                '这份配置使用 SQLite，请持久保存 data/relanox.sqlite。回调渠道需将 HTTPS 地址转发到本机 127.0.0.1:8787。长连接渠道无需公开回调，但云端 Agent 仍需可访问的 MCP 地址；本机地址仅能在同一台机器访问。'
+                'This configuration uses SQLite. Keep data/relanox.sqlite on persistent storage. Forward your public HTTPS address to 127.0.0.1:8787 so dot or Grok can reach MCP. Outbound channels need no additional webhook registration.',
+                '这份配置使用 SQLite，请持久保存 data/relanox.sqlite。将公开 HTTPS 地址转发到本机 127.0.0.1:8787，让 dot 或 Grok 能访问 MCP。长连接渠道无需另行注册 webhook。'
               )
             }}
             <a :href="link('operations.html')" target="_blank" rel="noopener">{{
@@ -223,7 +236,13 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
           >
             <strong>{{ agentName(connection.id) }}</strong>
             <p>{{ text('MCP address', 'MCP 地址') }}</p>
-            <code class="connection-url">{{ connection.mcpUrl }}</code>
+            <code class="connection-url">{{
+              connection.mcpUrl ||
+              text(
+                'Enter your public HTTPS address first.',
+                '请先填写公开 HTTPS 地址。'
+              )
+            }}</code>
             <p>
               {{
                 connection.auth === 'oauth'
@@ -284,7 +303,7 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
           <pre><code>node apps/cli/dist/main.js doctor --config relanox.json --management-url http://127.0.0.1:8788
 node apps/cli/dist/main.js status --config relanox.json</code></pre>
           <p v-for="webhook in webhooks" :key="webhook.id">
-            {{ channelName(webhook.id.replace(/-main$/u, '')) }} ·
+            {{ channelName(webhook.channel) }} · {{ webhook.id }} ·
             {{ text('Platform callback address', '平台回调地址') }}
             <code class="connection-url">{{ webhook.webhookUrl }}</code>
           </p>
