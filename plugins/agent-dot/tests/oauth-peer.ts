@@ -95,6 +95,7 @@ export async function begin(
   const verifier = randomBytes(32).toString('base64url')
   const page = await core.fetch(new Request(authorizationUrl(id, verifier)))
   expect(page.status).toBe(200)
+  expect(page.headers.get('referrer-policy')).toBe('same-origin')
   expect(page.headers.get('content-security-policy')).toContain(
     'https://chatgpt.com'
   )
