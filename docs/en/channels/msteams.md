@@ -40,7 +40,11 @@ Defaults: `issuer` is `https://api.botframework.com`; `jwksUrl` is `https://logi
 
 Inline attachments and personal-chat `application/vnd.microsoft.teams.file.download.info` files download before durable ingestion, including pure-media activities. Inline credentials stay on exact `trustedServiceOrigins`; OneDrive preauthorized downloads receive no bot Authorization. `mediaOrigins` optionally adds exact private download origins. Downloads enforce DNS/byte limits and refuse redirects. Set `supportsFiles:true` in the Teams app manifest.
 
-Images up to 15,000 bytes send as native attachments with persisted bytes in a base64 data URL; larger images use a scoped published URL. Audio/video/files use personal-chat native consent: a durable `application/vnd.microsoft.teams.card.file.consent`, authenticated `fileConsent/invoke`, PUT of original bytes to the accepted OneDrive URL, then `application/vnd.microsoft.teams.card.file.info`. Consent verifies frozen user/conversation/bot identity, persists across restart, and waits without duplicate cards. Decline rejects; an uncertain consent-card post requires operator recovery.
+Images up to 15,000 bytes send as native attachments with persisted bytes in a base64 data URL; larger personal-chat images and audio/video/files use native file consent: a durable `application/vnd.microsoft.teams.card.file.consent`, authenticated `fileConsent/invoke`, PUT of original bytes to the accepted OneDrive URL, then `application/vnd.microsoft.teams.card.file.info`. Consent verifies frozen user/conversation/bot identity, persists across restart, and waits without duplicate cards. Decline rejects; an uncertain consent-card post requires operator recovery.
+
+Large personal-chat images arrive as OneDrive file cards rather than inline image previews and do not require `media.publicBaseUrl`. The app manifest must enable `supportsFiles:true`.
+
+Large personal-chat images arrive as OneDrive file cards rather than inline image previews and do not require `media.publicBaseUrl`. The app manifest must enable `supportsFiles:true`.
 
 Configure exact `trustedUploadOrigins` for the tenant's OneDrive upload infrastructure; default empty rejects untrusted origins. Bot credentials never accompany uploads. Native file consent only supports `personal` chat. Group/channel audio/video/file sends explicitly reject with `file_consent_requires_personal_chat`; they need a separately authorized Graph workflow that this adapter does not enable. Captions are separate text chunks.
 
@@ -48,4 +52,4 @@ Protocol: [Teams native files and inline images](https://learn.microsoft.com/en-
 
 [Media transfer](../media.md)
 
-Images above 15,000 bytes use a scoped published URL instead of a base64 message envelope, requiring top-level `media.publicBaseUrl`. Waiting consent consumes the configured delivery attempt budget; after exhaustion, late consent requires explicit delivery requeue.
+Group/channel images above 15,000 bytes use a scoped published URL instead of a base64 message envelope, requiring top-level `media.publicBaseUrl`. The documented Teams bot file-upload route is personal consent; all-scope Graph file delivery requires additional OneDrive/SharePoint authorization and is outside this adapter. Generic Bot Connector attachment APIs alone do not establish a Teams upload contract. Waiting consent consumes the configured delivery attempt budget; after exhaustion, late consent requires explicit delivery requeue.

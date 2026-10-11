@@ -84,7 +84,7 @@ export async function prepareAttachment(
     return { outcome: { status: "rejected", errorCode: "missing_media" } };
   }
   const { kind, fileName, mimeType, size } = input.media.reference;
-  if (kind === "image") {
+  if (usesImageAttachment(kind, input.media.data.byteLength, personal)) {
     return imageAttachment(input, host);
   }
   if (!personal) {
@@ -184,6 +184,10 @@ export async function prepareAttachment(
       content: { uniqueId: info.uniqueId, fileType: info.fileType },
     },
   };
+}
+
+function usesImageAttachment(kind: string, byteLength: number, personal: boolean): boolean {
+  return kind === "image" && (byteLength <= 15_000 || !personal);
 }
 
 function uploadStatus(status: number): "retryable" | "rejected" {
