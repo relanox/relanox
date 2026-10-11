@@ -1,7 +1,8 @@
 import type { AgentPlugin, DispatchResult } from "@relanox/sdk";
 import { configSchema } from "./config.js";
 import type { GrokConfig } from "./config.js";
-import { project, resolve } from "./mcp.js";
+import { projectAgentRequest } from "./request-payload.js";
+import { resolveAgentSecret } from "./secrets.js";
 
 function classifyReceipt(response: Response): DispatchResult {
   if (response.ok) {
@@ -31,8 +32,8 @@ export const dispatchRoutine: AgentPlugin<GrokConfig>["dispatch"] = async ({ req
   let url: URL;
   let authorization: string;
   try {
-    url = new URL(resolve(config.routineUrl));
-    authorization = resolve(config.routineAuthorization);
+    url = new URL(resolveAgentSecret(config.routineUrl));
+    authorization = resolveAgentSecret(config.routineAuthorization);
   } catch {
     return { status: "rejected", errorCode: "grok_credentials_invalid" };
   }
@@ -46,7 +47,7 @@ export const dispatchRoutine: AgentPlugin<GrokConfig>["dispatch"] = async ({ req
   ) {
     return { status: "rejected", errorCode: "grok_routine_url_invalid" };
   }
-  const content = JSON.stringify(project(request));
+  const content = JSON.stringify(projectAgentRequest(request));
   const body = JSON.stringify({
     content,
     source: "relanox",

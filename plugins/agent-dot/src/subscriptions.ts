@@ -5,7 +5,7 @@ import { Webhook } from "standardwebhooks";
 import { z } from "zod";
 import { CallbackError, callbackUrl, postCallback } from "./callback.js";
 import type { DotConfig } from "./config.js";
-import { equalSecret } from "./mcp.js";
+import { equalSecret } from "./secrets.js";
 import { name, subscriptionSchema } from "./protocol.js";
 import type { Subscription, subscribeParams, unsubscribeParams } from "./protocol.js";
 
@@ -83,9 +83,29 @@ async function verifySubscription(sub: Subscription, config: DotConfig): Promise
     throw callbackProtocolError(error instanceof CallbackError ? error.reason : "challenge_failed");
   }
 }
-export function createSubscriptions(host: AgentHost) {
+export interface SubscriptionReceipt {
+  readonly id: string;
+  readonly refreshBefore: string;
+  readonly cursor: null;
+  readonly truncated: false;
+}
+export interface SubscriptionStore {
+  activeEntries(this: void, endpointId: string): Promise<readonly StateEntry[]>;
+  subscribe(
+    this: void,
+    endpoint: EndpointConfig,
+    config: DotConfig,
+    input: z.infer<typeof subscribeParams>,
+  ): Promise<SubscriptionReceipt>;
+  unsubscribe(
+    this: void,
+    endpoint: EndpointConfig,
+    input: z.infer<typeof unsubscribeParams>,
+  ): Promise<Record<string, never>>;
+}
+export function createSubscriptions(state: AgentHost["state"]): SubscriptionStore {
   async function activeEntries(endpointId: string): Promise<readonly StateEntry[]> {
-    return host.state.list({
+    return state.list({
       prefix: `subscriptions/${endpointId}/`,
       limit: 1000,
     });
@@ -94,7 +114,7 @@ export function createSubscriptions(host: AgentHost) {
     const entries = await activeEntries(owner);
     for (const entry of entries) {
       if ((entry.expiresAt ?? Infinity) <= now) {
-        await host.state.delete(entry.key, entry.version);
+        await state.delete(entry.key, entry.version);
       }
     }
     if (entries.filter((entry) => (entry.expiresAt ?? Infinity) > now).length >= 100) {
@@ -105,12 +125,7 @@ export function createSubscriptions(host: AgentHost) {
     endpoint: EndpointConfig,
     config: DotConfig,
     input: z.infer<typeof subscribeParams>,
-  ): Promise<{
-    id: string;
-    refreshBefore: string;
-    cursor: null;
-    truncated: false;
-  }> {
+  ): Promise<SubscriptionReceipt> {
     const owner = endpoint.id;
     let url: string;
     try {
@@ -120,7 +135,7 @@ export function createSubscriptions(host: AgentHost) {
     }
     const id = identity(owner, url, input.arguments);
     const key = `subscriptions/${owner}/${id}`;
-    const existing = await host.state.get(key);
+    const existing = await state.get(key);
     const old = existing ? subscriptionSchema.parse(existing.value) : undefined;
     const now = Date.now();
     const expiresAt =
@@ -147,7 +162,7 @@ export function createSubscriptions(host: AgentHost) {
     if (!existing) {
       await checkSubscriptionCapacity(owner, now);
     }
-    const mutation = await host.state.compareAndSet({
+    const mutation = await state.compareAndSet({
       key,
       expectedVersion: existing?.version ?? null,
       value: JSON.parse(JSON.stringify(sub)) as Json,
@@ -169,8 +184,8 @@ export function createSubscriptions(host: AgentHost) {
   ): Promise<Record<string, never>> {
     const url = new URL(input.delivery.url).href;
     const key = `subscriptions/${endpoint.id}/${identity(endpoint.id, url, input.arguments)}`;
-    const entry = await host.state.get(key);
-    if (entry && (await host.state.delete(key, entry.version)).status !== "updated") {
+    const entry = await state.get(key);
+    if (entry && (await state.delete(key, entry.version)).status !== "updated") {
       throw new ProtocolError(-32_000, "subscription_conflict");
     }
     return {};

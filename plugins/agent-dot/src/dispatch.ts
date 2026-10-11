@@ -4,12 +4,12 @@ import { configSchema } from "./config.js";
 import type { DotConfig } from "./config.js";
 import { name, subscriptionSchema } from "./protocol.js";
 import { signedHeaders } from "./subscriptions.js";
-import type { createSubscriptions } from "./subscriptions.js";
+import type { SubscriptionStore } from "./subscriptions.js";
 
 export function createDispatch(
-  host: AgentHost,
+  state: AgentHost["state"],
   configured: ReadonlyMap<string, DotConfig>,
-  subscriptionStore: ReturnType<typeof createSubscriptions>,
+  subscriptionStore: SubscriptionStore,
 ): AgentPlugin<DotConfig>["dispatch"] {
   return async ({ request, signal }): Promise<DispatchResult> => {
     const config = configSchema.parse(request.endpoint.config);
@@ -71,7 +71,7 @@ export function createDispatch(
         ) {
           if (response.status === 410) {
             // Cannot delete a concurrently refreshed subscription.
-            await host.state.delete(entry.key, entry.version);
+            await state.delete(entry.key, entry.version);
           }
           merge({
             status: "rejected",

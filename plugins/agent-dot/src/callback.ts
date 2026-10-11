@@ -2,14 +2,8 @@ import { lookup } from "node:dns/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
-import { z } from "zod";
+import type { CallbackConfig } from "./config.js";
 
-export const callbackConfig = z.strictObject({
-  allowedOrigins: z.array(z.url()).min(1).max(100),
-  transport: z.enum(["public-https", "loopback-http"]).default("public-https"),
-  timeoutMs: z.number().int().min(100).max(30_000).default(10_000),
-});
-export type CallbackConfig = z.infer<typeof callbackConfig>;
 export class CallbackError extends Error {
   constructor(
     readonly reason: "forbidden_destination" | "timeout" | "network_error" | "response_too_large",
@@ -93,8 +87,8 @@ export async function postCallback(
   const url = callbackUrl(urlValue, config);
   const hostname = url.hostname.replaceAll(/^\[|\]$/gu, "");
   const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]);
-  let onAbort: (() => void) | undefined;
   async function resolveAddresses() {
+    let onAbort: (() => void) | undefined;
     const aborted = new Promise<never>((_resolve, reject) => {
       onAbort = () => {
         reject(new CallbackError("timeout"));
@@ -124,7 +118,7 @@ export async function postCallback(
       : [{ address: hostname, family: isIP(hostname) }];
   if (
     config.transport === "public-https" &&
-    (addresses.length === 0 || addresses.some((v) => !isPublicAddress(v.address)))
+    (addresses.length === 0 || addresses.some((resolved) => !isPublicAddress(resolved.address)))
   ) {
     throw new CallbackError("forbidden_destination");
   }

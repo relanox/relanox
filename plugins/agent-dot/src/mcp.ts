@@ -1,30 +1,10 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
-import type { InboundSnapshot, ScopedAgentHost, SecretRef } from "@relanox/sdk";
+import type { ScopedAgentHost } from "@relanox/sdk";
 import { z } from "zod";
+import type { McpConfig } from "./config.js";
+import { equalSecret, resolveAgentSecret } from "./secrets.js";
+import { projectAgentRequest } from "./protocol.js";
 
-export const secretRef = z.strictObject({
-  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
-});
-export const mcpConfig = z.strictObject({
-  token: secretRef,
-  allowedHosts: z.array(z.string().min(1).max(255)).min(1),
-  allowedOrigins: z.array(z.url()).default([]),
-  maxBodyBytes: z.number().int().min(1024).max(2_097_152).default(1_048_576),
-  timeoutMs: z.number().int().min(100).max(120_000).default(10_000),
-});
-export type McpConfig = z.infer<typeof mcpConfig>;
-export function resolve(ref: SecretRef): string {
-  const value = process.env[ref.env];
-  if (value === undefined || value.length === 0 || /[\r\n]/u.test(value)) {
-    throw new Error("agent_secret_unavailable");
-  }
-  return value;
-}
-export function equalSecret(a: string, b: string): boolean {
-  const digest = (value: string) => createHash("sha256").update(value).digest();
-  return timingSafeEqual(digest(a), digest(b));
-}
 async function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
   try {
     await reader.cancel();
@@ -46,7 +26,11 @@ export async function guard(request: Request, config: McpConfig): Promise<Reques
   }
   const bearer = /^Bearer (?<token>[^\s]+)$/u.exec(request.headers.get("authorization") ?? "");
   const token = bearer?.groups?.token;
-  if (token === undefined || token.length === 0 || !equalSecret(token, resolve(config.token))) {
+  if (
+    token === undefined ||
+    token.length === 0 ||
+    !equalSecret(token, resolveAgentSecret(config.token))
+  ) {
     return Response.json(
       { error: "unauthorized" },
       {
@@ -105,17 +89,6 @@ const requestSchema = z.strictObject({
   context: z.json(),
   source: z.strictObject({ channel: z.string(), eventId: id }),
 });
-export function project(request: InboundSnapshot) {
-  return {
-    requestId: request.requestId,
-    text: request.text,
-    context: request.context,
-    source: {
-      channel: request.source.channel,
-      eventId: request.source.eventId,
-    },
-  };
-}
 function envelope(value: Record<string, unknown>, isError = false): CallToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(value) }],
@@ -141,7 +114,8 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
       outputSchema: z.strictObject({ requests: z.array(requestSchema) }),
       annotations: annotations(true),
     },
-    async ({ limit }) => envelope({ requests: (await host.listPending(limit)).map(project) }),
+    async ({ limit }) =>
+      envelope({ requests: (await host.listPending(limit)).map(projectAgentRequest) }),
   );
   const claimOutput = z.union([
     z.strictObject({
@@ -164,7 +138,7 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
     async ({ requestId, claimKey }) => {
       const result = await host.claim(requestId, claimKey);
       return result.status === "claimed"
-        ? envelope({ ...result, request: project(result.request) })
+        ? envelope({ ...result, request: projectAgentRequest(result.request) })
         : envelope(result, true);
     },
   );
