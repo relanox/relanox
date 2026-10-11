@@ -6,14 +6,17 @@ Download the configuration and open **Your setup guide**. Keep the guide open wh
 
 ## Connect Grok
 
-1. In the configurator, add a Grok Agent and select it for your chat.
-2. In Grok, choose the Bot that should answer and create a Routine with a webhook trigger. Copy its complete webhook URL and Authorization value.
-3. Open the generated setup guide. Set the environment variables it lists: use the generated MCP password and the Routine values from Grok. Keep the Authorization value exactly as supplied, including its prefix. [Quick start](getting-started.md) explains how to set variables and start Relanox.
-4. Start Relanox with the downloaded configuration and make its public HTTPS address reachable. Follow [Deployment and daily use](operations.md) for HTTPS setup.
-5. Copy the full Grok MCP address from the generated guide into the Bot's MCP connection. Select no additional authentication. Set the Routine to use this Bot.
-6. Send a short message from an allowed sender in the selected chat and check that the answer arrives there.
+Use the Grok Bot desktop app, signed in with your paid Cursor account. Cursor Pro includes Grok Bot usage; the ordinary Grok chat website is a different interface.
 
-Protect the Routine URL, Authorization value and MCP address: they may contain credentials. Copy the generated MCP address as a whole rather than rebuilding it yourself.
+1. In the Relanox configurator, add a Grok Agent and select it for your chat.
+2. In the Grok Bot conversation that should answer, ask: “Create a routine triggered only by a webhook. Process the incoming user message using the instructions provided by the Relanox MCP connection. Do not add a schedule.”
+3. Click the Bot's name, then open the routine under **Details → Routines**. Its **Webhook** section contains **POST to**, **key**, and **header**. Use **POST to** for the Routine URL. For the Routine Authorization environment variable, use `Bearer <key>`: if you copy **header**, remove the leading `Authorization:` label.
+4. Open the generated setup guide, save its MCP password, set the listed environment variables, and start Relanox at your public HTTPS address. See [Quick start](getting-started.md).
+5. In the same Cursor account's dashboard, open **Plugins & MCPs → Add → Custom MCP**. Enter a name, keep **URL** selected, and paste the complete generated Grok MCP address into **Server URL**. Leave **HTTP headers**, **Client ID**, and **Client Secret** empty, then choose **Add MCP**.
+6. In Grok Bot, open **Connect apps → Your plugins** and confirm the connection is ready. It should expose `relanox_send_message` and `relanox_read_media`. The connection is shared by the account; use the Bot whose routine you created.
+7. Send a short message from an allowed sender in the bound chat. Confirm the reply arrives in that chat, not just in the Grok Bot conversation.
+
+There is no single “MCP callback” field: Relanox calls the Routine webhook to wake the Bot; the Bot calls Relanox through the MCP connection to reply. Protect the Routine URL, key and full MCP address.
 
 ## Connect dot
 

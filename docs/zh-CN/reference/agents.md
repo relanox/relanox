@@ -13,8 +13,8 @@
 
 ## 连接 Grok
 
-1. 选择负责回信的 Grok Bot，配置它的 Routine 接受 webhook 触发。
-2. 复制完整 webhook URL 和 Authorization 值，在 Relanox 环境中提供 `RELANOX_AGENT_1_ROUTINE_URL`、`RELANOX_AGENT_1_ROUTINE_AUTHORIZATION`。
+1. 按[连接 Grok](../agents.md#连接-grok)在 Grok Bot 桌面客户端创建仅由 webhook 触发的例行任务。
+2. 在任务详情中复制“POST 到”作为 URL，以 `Bearer <密钥>` 作为 Authorization 值（不要包含 `Authorization:` 字段名），在 Relanox 环境中提供 `RELANOX_AGENT_1_ROUTINE_URL`、`RELANOX_AGENT_1_ROUTINE_AUTHORIZATION`。
 3. 使用配置器生成的 MCP token，或在手动配置时生成随机 token，提供为 `RELANOX_AGENT_1_MCP_TOKEN`。手动配置时，在 `relay.endpoints` 添加：
 
 ```json
@@ -33,11 +33,11 @@
 ```
 
 4. 设置好 `publicUrl` 后重启 Relanox。HTTPS 设置见[部署与备份](../operations.md)。
-5. 添加 MCP 连接，地址为 `https://relay.example.com/agents/grok/mcp/agent-1/<URL编码后的RELANOX_AGENT_1_MCP_TOKEN>`。将末段替换为你的 token，按 URL 路径段编码。选择无需额外认证，不需要 Authorization 请求头。
+5. 添加 MCP 连接，地址为 `https://relay.example.com/agents/grok/mcp/agent-1/<URL编码后的RELANOX_AGENT_1_MCP_TOKEN>`。将末段替换为你的 token，按 URL 路径段编码。在 Cursor 控制台通过 **Plugins & MCPs → Add → Custom MCP** 添加，类型选择 **URL**，HTTP headers 和 OAuth 字段留空。
 6. 把聊天绑定的 `endpointId` 设为 `agent-1`。
 7. 在这个聊天发送短消息，确认收到回信。卡住时用 `status` 查看。
 
-Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 变量保存原始 token。保护这三个变量，Routine URL 也可能包含密钥。
+Routine Authorization 变量保存 `Bearer <密钥>`，不包含 `Authorization:` 字段名；MCP 变量保存原始 token。保护这三个变量，Routine URL 也可能包含密钥。
 
 ## 连接 dot
 
@@ -70,6 +70,10 @@ dot 通过 MCP 订阅时提供回调 URL。Relanox 固定接受原生的 `https:
 回调、MCP 和 Grok Routine 请求的超时固定为 10 秒；MCP 和 Grok Routine 请求体限制为 1 MiB。dot 订阅最长保留 24 小时，签名密钥轮换后保留旧密钥签名 60 秒。
 
 Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默认有效期为一天。已检查的 ChatGPT 自定义 MCP 表单没有 Events 订阅或续订开关；自动订阅及续订尚未通过真实账号端到端验证。`dot_no_active_subscription` 表示 Relanox 没有有效订阅，即使 OAuth 已成功也可能出现。请检查插件连接和运行日志；来信已耗尽重试次数时，按[部署与备份](../operations.md#查找并恢复卡住的消息)恢复。
+
+## 真实账号验证范围
+
+2026 年 10 月 11 日，使用 Windows Grok Bot 0.68.1 和 Cursor Pro 账号，对隔离的 Relanox 实例完成了验证：webhook 触发例行任务，Grok Bot 发现 MCP 工具并调用 `relanox_send_message`，Relanox 将原样测试标识投递到绑定聊天，数据库状态为 `sent`。Telegram 一侧使用本地 HTTP 协议测试端，并非真实 Telegram 账号。这验证了 Grok Routine/MCP 的文字往返，不代表真实渠道账号或附件兼容性已验证。
 
 ## MCP 自带回信说明
 

@@ -78,7 +78,7 @@ Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$($env:TELEGRAM
 
 Telegram 应返回 `ok: true`。共享截图和输出前去掉 token。
 
-从**你的接入教程**复制 Grok MCP 地址，粘贴到 Bot 的 MCP 连接设置，选择无需额外认证。让使用 webhook 触发的 Routine 使用这个 Bot，再核对完整 URL 和 Authorization 与环境变量一致。完整步骤见[连接 Agent](agents.md)。
+按[连接 Grok](agents.md#连接-grok)在 Grok Bot 桌面客户端创建 webhook 例行任务，再通过 Cursor 控制台的 **Plugins & MCPs** 添加教程生成的 MCP 地址。Routine Authorization 填写 `Bearer <密钥>`，不要包含 `Authorization:` 字段名。
 
 修改配置或环境变量后重启 Relanox。
 

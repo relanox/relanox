@@ -13,8 +13,8 @@ Each example below configures a first Agent as `agent-1`. Keep the IDs and envir
 
 ## Connect Grok
 
-1. Select the Grok Bot that should answer messages, and configure its Routine to accept a webhook trigger.
-2. Copy the complete webhook URL and Authorization value. Supply them as `RELANOX_AGENT_1_ROUTINE_URL` and `RELANOX_AGENT_1_ROUTINE_AUTHORIZATION` in Relanox's environment.
+1. Follow [Connect Grok](../agents.md#connect-grok) to create a webhook-only routine in the Grok Bot desktop app.
+2. From the routine details, use **POST to** as the URL and `Bearer <key>` as the Authorization value (omit the `Authorization:` field name). Supply them as `RELANOX_AGENT_1_ROUTINE_URL` and `RELANOX_AGENT_1_ROUTINE_AUTHORIZATION` in Relanox's environment.
 3. Use the configurator’s generated MCP token, or generate a random token for manual setup. Supply it as `RELANOX_AGENT_1_MCP_TOKEN`. For manual setup, add this entry to `relay.endpoints`:
 
 ```json
@@ -33,11 +33,11 @@ Each example below configures a first Agent as `agent-1`. Keep the IDs and envir
 ```
 
 4. Restart Relanox with your `publicUrl` setting. [Operations](../operations.md) covers HTTPS setup.
-5. Add the MCP connection at `https://relay.example.com/agents/grok/mcp/agent-1/<URL-encoded-RELANOX_AGENT_1_MCP_TOKEN>`. Replace the last segment with your token, URL-encoded as a path segment. Select no additional authentication; no Authorization header is required.
+5. Add the MCP connection at `https://relay.example.com/agents/grok/mcp/agent-1/<URL-encoded-RELANOX_AGENT_1_MCP_TOKEN>`. Replace the last segment with your token, URL-encoded as a path segment. In the Cursor dashboard, use **Plugins & MCPs → Add → Custom MCP**, select **URL**, and leave HTTP headers and OAuth fields empty.
 6. Set the conversation binding's `endpointId` to `agent-1`.
 7. Send a short message in that conversation and check the reply. Use `status` if it stalls.
 
-The Routine Authorization variable holds exactly the supplied value, including any prefix. The MCP variable holds the raw token. Protect all three variables; a Routine URL may contain a secret.
+The Routine Authorization variable holds `Bearer <key>`, without the `Authorization:` field name. The MCP variable holds the raw token. Protect all three variables; a Routine URL may contain a secret.
 
 ## Connect dot
 
@@ -70,6 +70,10 @@ dot provides its callback URL when it subscribes through MCP. Relanox accepts th
 Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MiB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds.
 
 Relanox requires an active `relanox.message_available` subscription to notify dot. The default lifetime is one day. The inspected ChatGPT custom MCP form exposes no Events subscription or renewal switch; automatic subscription and renewal have not been verified end to end with a live account. `dot_no_active_subscription` means Relanox has no active subscription, even if OAuth succeeded. Inspect the plugin connection and runtime logs; if the request exhausted retries, use [Operations](../operations.md#find-and-recover-a-stalled-message) to recover it.
+
+## Live validation scope
+
+On October 11, 2026, Grok Bot 0.68.1 on Windows with a Cursor Pro account was tested against an isolated Relanox instance: a webhook started the routine, Grok Bot discovered the MCP tools and called `relanox_send_message`, and Relanox delivered the original test marker to the bound chat with a persisted `sent` status. The Telegram side was a local HTTP protocol peer, not a live Telegram account. This verifies the Grok Routine/MCP text roundtrip; it does not establish live-channel or attachment compatibility.
 
 ## Reply guidance comes with MCP
 
