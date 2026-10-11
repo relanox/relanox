@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { afterEach, expect, it } from 'vitest'
-import { downloadMedia } from '../../packages/media/src/index.js'
+import { downloadMedia } from '../../packages/channel-media/src/index.js'
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {

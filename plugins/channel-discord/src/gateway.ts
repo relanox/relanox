@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import { downloadMedia, mediaKind } from '@relanox/media'
+import { downloadMedia, mediaKind } from '@relanox/channel-media'
 import type { AccountConfig, ChannelHost } from '@relanox/sdk'
 import { WebSocket } from 'ws'
 import type { z } from 'zod'

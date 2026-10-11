@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mediaBlob } from '@relanox/media'
+import { mediaBlob } from '@relanox/channel-media'
 import type { ChannelHost, SendInput } from '@relanox/sdk'
 import type { DiscordConfig } from './config.js'
 import { postJson } from './transport.js'

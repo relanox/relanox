@@ -1,4 +1,4 @@
-import { downloadMedia, mediaBlob, mediaKind } from '@relanox/media'
+import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,

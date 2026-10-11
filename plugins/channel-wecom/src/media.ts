@@ -1,5 +1,5 @@
 import { createDecipheriv } from 'node:crypto'
-import { downloadMedia } from '@relanox/media'
+import { downloadMedia } from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,

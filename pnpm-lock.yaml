@@ -309,7 +309,7 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
 
-  packages/media:
+  packages/channel-media:
     dependencies:
       '@relanox/sdk':
         specifier: workspace:*
@@ -366,9 +366,9 @@ importers:
 
   plugins/channel-dingtalk:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -391,9 +391,9 @@ importers:
 
   plugins/channel-discord:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -413,9 +413,9 @@ importers:
 
   plugins/channel-feishu:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -425,9 +425,9 @@ importers:
 
   plugins/channel-googlechat:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -463,9 +463,9 @@ importers:
 
   plugins/channel-line:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -482,9 +482,9 @@ importers:
 
   plugins/channel-matrix:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -501,9 +501,9 @@ importers:
 
   plugins/channel-mattermost:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -526,9 +526,9 @@ importers:
 
   plugins/channel-msteams:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -548,9 +548,9 @@ importers:
 
   plugins/channel-qq:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -573,9 +573,9 @@ importers:
 
   plugins/channel-signal:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -592,9 +592,9 @@ importers:
 
   plugins/channel-slack:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -611,9 +611,9 @@ importers:
 
   plugins/channel-telegram:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -623,9 +623,9 @@ importers:
 
   plugins/channel-wecom:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -648,9 +648,9 @@ importers:
 
   plugins/channel-whatsapp:
     dependencies:
-      '@relanox/media':
+      '@relanox/channel-media':
         specifier: workspace:*
-        version: link:../../packages/media
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
