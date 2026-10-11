@@ -14,7 +14,7 @@
 
 ## 接入与身份
 
-创建专用机器人账号，授予目标频道读写权限。WebSocket 通过 token authentication_challenge 认证，接收 posted 事件。白名单为用户 ID，绑定频道 ID 和可选根帖子 ID threadId。解码 data.post，忽略自身帖子、空白和系统/非标准类型。
+创建专用机器人账号，授予目标频道读写权限。WebSocket 通过 token authentication_challenge 认证，接收 posted 事件。白名单为用户 ID，绑定频道 ID 和可选根帖子 ID threadId。解码 data.post，忽略自身帖子、没有文本或文件的空消息和系统/非标准类型。
 
 ## 投递与恢复
 
@@ -27,3 +27,11 @@
 ## 账号变更
 
 冻结服务器 URL 和配置的机器人用户 ID。
+
+## 原生媒体
+
+posted 事件的 file_ids 先通过 `GET /api/v4/files/<id>/info` 获取元数据，再使用配置 token 调用 `GET /api/v4/files/<id>` 下载。MIME 元数据区分图片、音频、视频和其他文件；请求固定到配置服务器，拒绝重定向并遵守核心字节限制，不下载消息提供的任意 URL。
+
+输出向 `POST /api/v4/files` 上传包含 files 和 channel_id 的二进制 multipart，再以 file_ids 创建冻结线程帖子。原生预览由服务器按 MIME 生成，该接口不接受 SDK 的独立预览或时长字段。核心保留附件顺序。机器人需要 upload_file/read_channel 权限，并遵守服务器文件大小上限。媒体完整缓冲并持久存储，不支持流式传输。本地 WebSocket、HTTP、SQLite 和 MCP 测试验证字节传输与线程信息，不证明真实账号兼容。
+
+协议来源：[Mattermost 文件 API](https://github.com/mattermost/mattermost/blob/master/api/v4/source/files.yaml)。

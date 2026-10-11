@@ -12,6 +12,7 @@ export const postSchema = z.object({
   user_id: platformIdSchema,
   channel_id: platformIdSchema,
   message: z.string(),
+  file_ids: z.array(platformIdSchema).max(10).default([]),
   root_id: z.string().default(""),
   create_at: z.number().int().nonnegative(),
   type: z.string().default(""),
