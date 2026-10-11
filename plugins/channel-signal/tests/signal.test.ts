@@ -73,6 +73,69 @@ const rpcRequestSchema = z.object({
   }),
 });
 
+it.each([
+  ["SUCCESS", "sent"],
+  ["NETWORK_FAILURE", "unknown"],
+  ["UNREGISTERED_FAILURE", "unknown"],
+  ["IDENTITY_FAILURE", "unknown"],
+  ["RATE_LIMIT_FAILURE", "unknown"],
+  ["INVALID_PRE_KEY_FAILURE", "unknown"],
+] as const)(
+  "persists group recipient %s as %s without replaying partial sends",
+  async (type, status) => {
+    let sends = 0;
+    const peer = await httpPeer(async (request, response) => {
+      if (request.url?.startsWith("/api/v1/events")) {
+        response.writeHead(200, { "Content-Type": "text/event-stream" });
+        frame(response, envelope("alice-uuid", "group question", "GROUP_BASE64="), "group-event");
+        return;
+      }
+      if (request.url === "/api/v1/rpc") {
+        const rpc = rpcRequestSchema.parse(await body(request));
+        sends += 1;
+        json(response, {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          result: {
+            timestamp: 1_800_000_000_999,
+            results: [
+              {
+                recipientAddress: { uuid: "alice-uuid" },
+                groupId: "GROUP_BASE64=",
+                type: "SUCCESS",
+              },
+              { recipientAddress: { uuid: "bob-uuid" }, groupId: "GROUP_BASE64=", type },
+            ],
+          },
+        });
+        return;
+      }
+      json(response, {});
+    });
+    const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
+    const fixture = await harness(
+      plugin,
+      config(peer.base),
+      [{ chatId: "group:GROUP_BASE64=" }],
+      ["alice-uuid"],
+      `${peer.base}/dispatch`,
+    );
+    await plugin.start?.(new AbortController().signal);
+    await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
+    await plugin.stop?.();
+    await fixture.runtime.processDue();
+    const pending = (await fixture.storage.listPending({ endpointIds: ["worker"], limit: 10 }))[0];
+    if (!pending) {
+      throw new Error("Missing group request");
+    }
+    const completed = await fixture.complete(pending.requestId);
+    await fixture.runtime.processDue();
+    expect((await fixture.storage.getOutbound(completed.deliveryId))?.status).toBe(status);
+    await fixture.runtime.processDue();
+    expect(sends).toBe(1);
+  },
+);
+
 it("ingests SSE envelopes and independently sends direct and group replies through the real core", async () => {
   const streams: { account: string | null; authorization: string | undefined }[] = [];
   const rpcs: z.infer<typeof rpcRequestSchema>[] = [];

@@ -194,6 +194,29 @@ export function createMatrixChannel(
     }
     host.connection("disconnected");
   }
+  async function checkEncryption(room: string, signal: AbortSignal): Promise<SendResult | null> {
+    const { base } = configured();
+    try {
+      const encryption = await fetch(
+        `${base}/_matrix/client/v3/rooms/${room}/state/m.room.encryption`,
+        { headers: headers(), redirect: "error", signal },
+      );
+      await encryption.body?.cancel();
+      if (encryption.ok) {
+        return { status: "rejected", errorCode: "encrypted_unsupported" };
+      }
+      if (encryption.status === 404) {
+        return null;
+      }
+      const failure = httpFailure(encryption);
+      return failure.status === "unknown"
+        ? { status: "retryable", errorCode: "encryption_check_failed" }
+        : failure;
+    } catch {
+      // This read cannot send a message, so its transport failures are safe to retry.
+      return { status: "retryable", errorCode: "encryption_check_failed" };
+    }
+  }
   async function send(input: SendInput): Promise<SendResult> {
     const { account, base, config } = configured();
     const destination = targetSchema.safeParse(input.target.data);
@@ -208,18 +231,11 @@ export function createMatrixChannel(
     }
     const room = encodeURIComponent(input.target.chatId);
     const signal = AbortSignal.any([input.signal, AbortSignal.timeout(config.timeoutMs)]);
+    const encryptionFailure = await checkEncryption(room, signal);
+    if (encryptionFailure) {
+      return encryptionFailure;
+    }
     try {
-      const encryption = await fetch(
-        `${base}/_matrix/client/v3/rooms/${room}/state/m.room.encryption`,
-        { headers: headers(), redirect: "error", signal },
-      );
-      await encryption.body?.cancel();
-      if (encryption.ok) {
-        return { status: "rejected", errorCode: "encrypted_unsupported" };
-      }
-      if (encryption.status !== 404) {
-        return httpFailure(encryption);
-      }
       const relation = outboundRelation(input.target);
       const response = await fetch(
         `${base}/_matrix/client/v3/rooms/${room}/send/m.room.message/${encodeURIComponent(input.chunk.idempotencyKey)}`,

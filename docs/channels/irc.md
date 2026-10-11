@@ -22,7 +22,7 @@ By default, messages need an authenticated account tag. Allowlist `account:<acco
 
 A server `msgid` is used for event identity when available. Without it, each received line gets a local unique ID, so reconnect/replay deduplication cannot be guaranteed. Reconnect does not backfill channel history. Threaded replies and edits are not supported.
 
-The plugin limits text chunks to 400 UTF-8 bytes and targets to 90 bytes, preserving the IRC 512-byte line limit including CRLF. CR/LF injection is rejected. A successful send receipt means only `acknowledgement:socket_write`; it does not prove server acceptance or recipient delivery. Disconnect/transport ambiguity stays unknown, and `idempotentSend:false` prevents automatic assumptions of safe replay.
+The plugin limits text chunks to 400 UTF-8 bytes and targets to 90 bytes, preserving the IRC 512-byte line limit including CRLF. Within message text, CRLF, CR and LF are normalized to spaces so multiline agent answers fit one PRIVMSG per persisted chunk. A command-like next line remains literal message text and cannot inject an IRC command. NUL is rejected. A successful send receipt means only `acknowledgement:socket_write`; it does not prove server acceptance or recipient delivery. Disconnect/transport ambiguity stays unknown, and `idempotentSend:false` prevents automatic assumptions of safe replay.
 
 `timeoutMs` defaults to 10,000 and `reconnectMs` to 1,000. TLS is on by default, with normal certificate verification. Plain TCP requires both a loopback server and `allowInsecureLocalhost:true`; there is no option to disable remote certificate checks.
 

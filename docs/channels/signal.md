@@ -17,7 +17,7 @@ Reception uses `/api/v1/events?account=<account>`. SSE `receive` data contains `
 
 The SSE ID is saved after durable ingest and supplied as `Last-Event-ID` on reconnect. signal-cli's event buffer is bounded and in memory (the verified implementation retains 1,000 events); restart or a long outage can lose upstream history. Unknown cursor IDs replay only what the daemon still retains. Core deduplicates stable envelope identities; this is not an unlimited durable upstream queue. Streams reconnect periodically and shutdown cancels active reads.
 
-Delayed send uses `POST /api/v1/rpc`, JSON-RPC method `send`, with configured account, message and either a recipient array or group ID. Success requires a matching RPC ID and result timestamp. Chunks are at most 16,000 UTF-8 bytes. `idempotentSend:false`; ambiguous sends remain unknown. Relanox's database backup does not include signal-cli's external account/session state.
+Delayed send uses `POST /api/v1/rpc`, JSON-RPC method `send`, with configured account, message and either a recipient array or group ID. Success requires a matching RPC ID and result timestamp; when recipient results are supplied, every result must be `SUCCESS`. Partial group failures remain unknown for operator recovery because automatically retrying the group can duplicate successful recipients. Timestamp-only responses remain compatible with older daemon versions. Chunks are at most 16,000 UTF-8 bytes. `idempotentSend:false`; ambiguous sends remain unknown. Relanox's database backup does not include signal-cli's external account/session state.
 
 `timeoutMs` defaults to 10,000, `reconnectMs` to 1,000. Remote URLs require HTTPS and reject embedded credentials, query, fragments and redirects.
 
