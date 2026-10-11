@@ -278,7 +278,9 @@ export class Connection {
     this.socket.send(JSON.stringify(frame));
   }
   setHeartbeat(ms: number, tick: () => void): void {
-    this.clearHeartbeat();
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat);
+    }
     this.heartbeat = setInterval(() => {
       try {
         tick();
