@@ -19,16 +19,12 @@ function config(base: string): {
   userId: string
   accessToken: { env: string }
   allowInsecureLocalhost: boolean
-  syncTimeoutMs: number
-  reconnectMs: number
 } {
   return {
     homeserver: base,
     userId: '@bot:local.test',
     accessToken: { env: 'MATRIX_TOKEN' },
-    allowInsecureLocalhost: true,
-    syncTimeoutMs: 0,
-    reconnectMs: 100
+    allowInsecureLocalhost: true
   }
 }
 

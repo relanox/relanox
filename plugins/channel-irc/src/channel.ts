@@ -1,3 +1,4 @@
+import { requestTimeoutMs, reconnectDelayMs } from './constants.js'
 import { randomUUID } from 'node:crypto'
 import { createConnection } from 'node:net'
 import type { Socket } from 'node:net'
@@ -292,7 +293,7 @@ export function createIrcChannel(
       if (!ready) {
         current.destroy()
       }
-    }, config.timeoutMs)
+    }, requestTimeoutMs)
 
     const offered = new Set<string>()
     let buffer = ''
@@ -356,7 +357,7 @@ export function createIrcChannel(
   }
 
   async function loop(signal: AbortSignal): Promise<void> {
-    const { host, config } = configured()
+    const { host } = configured()
     while (!signal.aborted) {
       try {
         await connect(signal)
@@ -364,7 +365,7 @@ export function createIrcChannel(
         diagnose(host, 'connection_failed')
         host.connection('degraded')
       }
-      await delay(config.reconnectMs, signal)
+      await delay(reconnectDelayMs, signal)
     }
   }
 

@@ -4,13 +4,6 @@ const secretRefSchema = z.strictObject({
   env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u)
 })
 
-const requestTimeoutSchema = z
-  .number()
-  .int()
-  .min(100)
-  .max(120_000)
-  .default(10_000)
-
 export function validateBaseUrl(
   value: string,
   allowInsecureLocalhost: boolean
@@ -35,9 +28,7 @@ const configSchema = z.strictObject({
   serverUrl: z.url(),
   botUserId: platformIdSchema,
   token: secretRefSchema,
-  allowInsecureLocalhost: z.boolean().default(false),
-  timeoutMs: requestTimeoutSchema,
-  reconnectMs: z.number().int().min(100).max(60_000).default(1000)
+  allowInsecureLocalhost: z.boolean().default(false)
 })
 
 export type MattermostConfig = z.infer<typeof configSchema>

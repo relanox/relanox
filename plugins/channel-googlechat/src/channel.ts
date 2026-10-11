@@ -161,13 +161,13 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         try {
           const { payload } = await jwtVerify(authorization.slice(7), keys, {
             algorithms: ['RS256'],
-            issuer: config.issuer,
+            issuer: 'https://accounts.google.com',
             audience: config.audience,
             requiredClaims: ['exp', 'iat', 'email', 'email_verified']
           })
 
           if (
-            payload.email !== config.callerEmail ||
+            payload.email !== 'chat@system.gserviceaccount.com' ||
             payload.email_verified !== true
           ) {
             return new Response(null, { status: 401 })

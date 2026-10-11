@@ -71,7 +71,6 @@ function config(port: number): {
   nick: string
   channels: string[]
   sasl: { username: string; password: { env: string } }
-  reconnectMs: number
 } {
   return {
     server: '127.0.0.1',
@@ -80,8 +79,7 @@ function config(port: number): {
     allowInsecureLocalhost: true,
     nick: 'relay',
     channels: ['#room'],
-    sasl: { username: 'relay', password: { env: 'IRC_SASL' } },
-    reconnectMs: 100
+    sasl: { username: 'relay', password: { env: 'IRC_SASL' } }
   }
 }
 

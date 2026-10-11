@@ -125,8 +125,7 @@ it.each(kinds)(
         serverUrl: peer.base,
         botUserId: 'self-bot',
         token: { env: 'MATTERMOST_TOKEN' },
-        allowInsecureLocalhost: true,
-        reconnectMs: 100
+        allowInsecureLocalhost: true
       },
       [{ chatId: 'channel', threadId: 'root' }],
       ['alice']

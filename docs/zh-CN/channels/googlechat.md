@@ -17,7 +17,6 @@
       "id": "googlechat-main",
       "config": {
         "audience": "https://relay.example.com/channels/googlechat-main/webhook",
-        "callerEmail": "chat@system.gserviceaccount.com",
         "serviceAccount": {
           "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
         }
@@ -45,7 +44,7 @@
 
 ## 启用连接
 
-将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`。应用认证 audience 和账号的 `audience` 均填写这一完整地址。发送应用交互前启动 Relanox。默认调用者邮箱为 `chat@system.gserviceaccount.com`。
+将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`。应用认证 audience 和账号的 `audience` 均填写这一完整地址。发送应用交互前启动 Relanox。Relanox 验证调用者邮箱为 `chat@system.gserviceaccount.com`。
 
 ## 发送第一条消息
 

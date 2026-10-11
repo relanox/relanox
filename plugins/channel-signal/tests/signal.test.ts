@@ -18,15 +18,13 @@ function config(base: string): {
   selfUuid: string
   authorization: { env: string }
   allowInsecureLocalhost: boolean
-  reconnectMs: number
 } {
   return {
     serviceUrl: base,
     account: '+10000000001',
     selfUuid: 'bot-uuid',
     authorization: { env: 'SIGNAL_PROXY_AUTH' },
-    allowInsecureLocalhost: true,
-    reconnectMs: 100
+    allowInsecureLocalhost: true
   }
 }
 

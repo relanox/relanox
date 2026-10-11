@@ -19,14 +19,12 @@ function config(base: string): {
   botUserId: string
   token: { env: string }
   allowInsecureLocalhost: boolean
-  reconnectMs: number
 } {
   return {
     serverUrl: base,
     botUserId: 'self-bot',
     token: { env: 'MATTERMOST_TOKEN' },
-    allowInsecureLocalhost: true,
-    reconnectMs: 100
+    allowInsecureLocalhost: true
   }
 }
 

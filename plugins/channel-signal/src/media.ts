@@ -1,3 +1,4 @@
+import { requestTimeoutMs } from './constants.js'
 import { mediaKind } from '@relanox/channel-media'
 import type { ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
 import { z } from 'zod'
@@ -36,7 +37,7 @@ export async function receiveAttachments(
     const response = await fetch(`${base}/api/v1/rpc`, {
       method: 'POST',
       redirect: 'error',
-      signal: AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',

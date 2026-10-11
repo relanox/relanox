@@ -1,3 +1,4 @@
+import { requestTimeoutMs, reconnectDelayMs } from './constants.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -133,7 +134,7 @@ export function createMattermostChannel(
     const token = secret(config.token, environment)
 
     const current = new WebSocket(url, {
-      handshakeTimeout: config.timeoutMs,
+      handshakeTimeout: requestTimeoutMs,
       maxPayload: 2_097_152,
       followRedirects: false
     })
@@ -147,7 +148,7 @@ export function createMattermostChannel(
     const authTimeout = setTimeout(() => {
       diagnose(host, 'authentication_timeout')
       current.terminate()
-    }, config.timeoutMs)
+    }, requestTimeoutMs)
 
     const heartbeat = setInterval(() => {
       if (current.readyState !== WebSocket.OPEN) {
@@ -236,7 +237,7 @@ export function createMattermostChannel(
   }
 
   async function loop(signal: AbortSignal): Promise<void> {
-    const { host, config } = configured()
+    const { host } = configured()
     while (!signal.aborted) {
       try {
         await connect(signal)
@@ -244,7 +245,7 @@ export function createMattermostChannel(
         host.connection('degraded')
         diagnose(host, 'connection_failed')
       }
-      await delay(config.reconnectMs, signal)
+      await delay(reconnectDelayMs, signal)
     }
   }
 
@@ -263,7 +264,7 @@ export function createMattermostChannel(
     try {
       const signal = AbortSignal.any([
         input.signal,
-        AbortSignal.timeout(config.timeoutMs)
+        AbortSignal.timeout(requestTimeoutMs)
       ])
 
       const authorization = `Bearer ${secret(config.token, environment)}`

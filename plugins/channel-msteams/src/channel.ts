@@ -188,7 +188,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
         try {
           const verified = await jwtVerify(authorization.slice(7), keys, {
             algorithms: ['RS256'],
-            issuer: config.issuer,
+            issuer: 'https://api.botframework.com',
             audience: config.appId,
             requiredClaims: ['exp', 'nbf']
           })

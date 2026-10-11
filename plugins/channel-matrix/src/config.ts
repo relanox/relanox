@@ -4,13 +4,6 @@ const secretRefSchema = z.strictObject({
   env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u)
 })
 
-const requestTimeoutSchema = z
-  .number()
-  .int()
-  .min(100)
-  .max(120_000)
-  .default(10_000)
-
 export function validateBaseUrl(
   value: string,
   allowInsecureLocalhost: boolean
@@ -35,10 +28,7 @@ const configSchema = z.strictObject({
   homeserver: z.url(),
   userId: platformIdSchema,
   accessToken: secretRefSchema,
-  allowInsecureLocalhost: z.boolean().default(false),
-  timeoutMs: requestTimeoutSchema,
-  syncTimeoutMs: z.number().int().min(0).max(60_000).default(30_000),
-  reconnectMs: z.number().int().min(100).max(60_000).default(1000)
+  allowInsecureLocalhost: z.boolean().default(false)
 })
 
 export type MatrixConfig = z.infer<typeof configSchema>
