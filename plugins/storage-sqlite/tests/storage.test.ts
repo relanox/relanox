@@ -13,15 +13,14 @@ import {
 import { createSqliteStorage } from '../src/index.js'
 
 storageContract('SQLite shared storage contract', async () =>
-  createSqliteStorage({ filename: ':memory:', busyTimeoutMs: 5000 })
+  createSqliteStorage({ filename: ':memory:' })
 )
 
 it('initializes idempotently and persists messages and leases across independent connections and restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'relanox-sqlite-'))
   const filename = join(dir, 'relay.db')
 
-  const open = (): Storage =>
-    createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+  const open = (): Storage => createSqliteStorage({ filename })
 
   let a = open()
   let b: ReturnType<typeof open> | undefined
@@ -93,5 +92,5 @@ it('initializes idempotently and persists messages and leases across independent
 })
 
 mediaContract('SQLite media durability', async () =>
-  createSqliteStorage({ filename: ':memory:', busyTimeoutMs: 5000 })
+  createSqliteStorage({ filename: ':memory:' })
 )

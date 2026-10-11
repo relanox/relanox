@@ -218,8 +218,7 @@ export async function harness(
   const filename = options.filename ?? (await databaseFile())
 
   const storage: Storage = createSqliteStorage({
-    filename,
-    busyTimeoutMs: 5000
+    filename
   })
 
   await storage.initialize()

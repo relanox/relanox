@@ -4,7 +4,7 @@ import { validateConfig, validatePublicDeployment } from './config/index.js'
 import { jsonSnapshot } from './json.js'
 import { safeObservability } from './observe.js'
 import { createAdministration } from './administration.js'
-import { workerSchema } from './worker/options.js'
+import { workerDefaults, workerSchema } from './worker/options.js'
 import { createWorker } from './worker/runtime.js'
 import { createHttpHandler, createHttpRoutes } from './http.js'
 import { setupPluginHosts } from './hosts/setup.js'
@@ -21,7 +21,12 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
 
   const storage = options.storage
   const observe = safeObservability(options.observe)
-  const workerOptions = workerSchema.parse(options.worker ?? {})
+
+  const workerOptions = {
+    ...workerDefaults,
+    ...workerSchema.parse(options.worker ?? {})
+  }
+
   const app = new Hono()
   const httpRoutes = createHttpRoutes()
 

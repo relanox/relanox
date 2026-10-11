@@ -33,10 +33,10 @@ export function openDatabase(
   const pool = new Pool({
     connectionString,
     max: config.maxConnections,
-    connectionTimeoutMillis: config.connectionTimeoutMs,
-    idleTimeoutMillis: config.idleTimeoutMs,
-    statement_timeout: config.statementTimeoutMs,
-    options: `-c search_path=${config.schema} -c idle_in_transaction_session_timeout=${config.statementTimeoutMs}`
+    connectionTimeoutMillis: 5000,
+    idleTimeoutMillis: 30_000,
+    statement_timeout: 10_000,
+    options: `-c search_path=${config.schema} -c idle_in_transaction_session_timeout=10000`
   })
 
   // An idle socket failure must not become an unhandled EventEmitter error.

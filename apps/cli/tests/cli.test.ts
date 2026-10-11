@@ -83,7 +83,8 @@ test('assembled Telegram ingress persists before ACK and status projects only op
   expect(response.status).toBe(204)
   await expect
     .poll(
-      async () => (await runtime.core.status()).requests[0]?.dispatch.status
+      async () => (await runtime.core.status()).requests[0]?.dispatch.status,
+      { timeout: 5000 }
     )
     .toBe('rejected')
   const plain = await cli(value.configPath, ['status'])
@@ -218,8 +219,6 @@ async function setup(): Promise<{
     server: {
       port: number
       managementPort: number
-      workerIntervalMs: number
-      workerStaleMs: number
     }
   }
   save(this: void, input?: unknown): Promise<void>
@@ -390,7 +389,7 @@ test('real listeners isolate management endpoints and release both ports on shut
       ...value.config.relay,
       observability: {
         plugin: 'standard',
-        config: { logs: false, metrics: true, processMetrics: false }
+        config: { logs: false, metrics: true }
       }
     }
   }

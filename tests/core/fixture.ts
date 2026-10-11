@@ -30,7 +30,7 @@ export async function mediaFixture(
 }> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-core-media-'))
   const filename = join(directory, 'relay.sqlite')
-  let storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+  let storage = createSqliteStorage({ filename })
 
   const close = async (): Promise<void> => {
     await storage.close()
@@ -127,7 +127,6 @@ export async function mediaFixture(
         channels: new Map([['bot', channel]]),
         agents: new Map([['grok', agent]]),
         worker: {
-          maxHttpBodyBytes: 8,
           maxMediaBytes: 16,
           maxTotalMediaBytes: 24,
           maxAttachments: 2
@@ -148,7 +147,7 @@ export async function mediaFixture(
       sent,
       async restart(): Promise<CoreRuntime> {
         await storage.close()
-        storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+        storage = createSqliteStorage({ filename })
         await storage.initialize()
         return assemble()
       }

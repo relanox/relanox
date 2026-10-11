@@ -75,9 +75,7 @@ async function setup(
   const plugin = createDiscordChannel(environment)
   const recorded = recorder(onIngest)
 
-  const db =
-    storage ??
-    createSqliteStorage({ filename: ':memory:', busyTimeoutMs: 5000 })
+  const db = storage ?? createSqliteStorage({ filename: ':memory:' })
 
   await db.initialize()
   if (!storage) {
@@ -442,7 +440,7 @@ describe('discord native Gateway and REST', () => {
     const remote = await gateway()
     const directory = await mkdtemp(join(tmpdir(), 'relanox-discord-'))
     const filename = join(directory, 'state.db')
-    let db = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+    let db = createSqliteStorage({ filename })
     let active: Awaited<ReturnType<typeof setup>> | undefined
     cleanup.unshift(async () => {
       await active?.plugin.stop?.()
@@ -506,7 +504,7 @@ describe('discord native Gateway and REST', () => {
       .toMatchObject({ session_id: 'durable-session', seq: 2 })
     await active.plugin.stop?.()
     await db.close()
-    db = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+    db = createSqliteStorage({ filename })
     active = await setup(undefined, remote.url, undefined, db)
     await active.plugin.start?.(new AbortController().signal)
     await expect

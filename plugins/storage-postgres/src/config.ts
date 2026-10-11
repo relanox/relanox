@@ -9,10 +9,7 @@ export const configSchema = z
       .string()
       .regex(/^[a-z_][a-z0-9_]{0,62}$/u)
       .default('public'),
-    maxConnections: z.number().int().min(1).max(100).default(10),
-    connectionTimeoutMs: z.number().int().min(1).max(300_000).default(5000),
-    idleTimeoutMs: z.number().int().min(1).max(300_000).default(30_000),
-    statementTimeoutMs: z.number().int().min(1).max(300_000).default(10_000)
+    maxConnections: z.number().int().min(1).max(100).default(10)
   })
   .strict()
 

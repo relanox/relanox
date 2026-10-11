@@ -149,7 +149,7 @@ export async function fixture(
   let currentPlugin = plugin
   const directory = await mkdtemp(join(tmpdir(), 'relanox-agent-'))
   const filename = join(directory, 'state.sqlite')
-  let storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+  let storage = createSqliteStorage({ filename })
   await storage.initialize()
   let channelHost: ChannelHost | undefined
   const sent: unknown[] = []
@@ -291,7 +291,7 @@ export async function fixture(
     async reopen(next: AgentPlugin<unknown>): Promise<void> {
       await currentPlugin.stop?.()
       await storage.close()
-      storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+      storage = createSqliteStorage({ filename })
       core = await build(next)
       currentPlugin = next
     },

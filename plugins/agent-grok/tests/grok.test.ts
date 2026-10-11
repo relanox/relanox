@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { fixture, mcp, parseWire, peer } from '../../agent-dot/tests/fixture.js'
 import { createGrokAgentPlugin } from '../src/index.js'
 import { guard } from '@relanox/agent-mcp'
+import { redirectRoutine } from './routine-peer.js'
 
 const cleanups: (() => Promise<void>)[] = []
 const stringValue: unknown = expect.any(String)
@@ -26,6 +27,7 @@ afterEach(async () => {
   ]) {
     delete process.env[name]
   }
+  vi.unstubAllEnvs()
 })
 
 async function setup(
@@ -38,13 +40,13 @@ async function setup(
 }> {
   const receiver = await peer(() => ({ status, headers }))
   cleanups.push(receiver.close)
-  process.env.GROK_TEST_URL = `${receiver.origin}/user-supplied-routine`
+  redirectRoutine(receiver.origin)
+  process.env.GROK_TEST_URL = 'https://routine.test/user-supplied-routine'
 
   const config = {
     mcp: mcp(),
     routineUrl: { env: 'GROK_TEST_URL' },
-    routineAuthorization: { env: 'GROK_TEST_AUTH' },
-    routineTransport: 'loopback-http'
+    routineAuthorization: { env: 'GROK_TEST_AUTH' }
   }
 
   const plugin = createGrokAgentPlugin()
@@ -308,21 +310,11 @@ describe('grok configured Routine and scoped MCP', () => {
     if (!request) {
       throw new Error('missing_request')
     }
+    vi.stubEnv('GROK_TEST_URL', `${receiver.origin}/private`)
     expect(
-      await fx.agent.dispatch({
-        request: {
-          ...request,
-          endpoint: {
-            ...request.endpoint,
-            config: {
-              ...(request.endpoint.config as object),
-              routineTransport: 'https'
-            }
-          }
-        },
-        signal: new AbortController().signal
-      })
+      await fx.agent.dispatch({ request, signal: new AbortController().signal })
     ).toEqual({ status: 'rejected', errorCode: 'grok_routine_url_invalid' })
+    vi.stubEnv('GROK_TEST_URL', 'https://routine.test/user-supplied-routine')
     expect(
       await fx.agent.dispatch({
         request: { ...request, text: 'x'.repeat(1_048_576) },

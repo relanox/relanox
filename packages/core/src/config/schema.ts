@@ -53,8 +53,10 @@ export const configShapeSchema = z.strictObject({
     plugin: z.enum(['sqlite', 'postgres']),
     config: z.json()
   }),
-  observability: z.strictObject({
-    plugin: z.enum(['standard', 'none']),
-    config: z.json()
-  })
+  observability: z
+    .strictObject({
+      plugin: z.enum(['standard', 'none']),
+      config: z.json()
+    })
+    .prefault({ plugin: 'standard', config: {} })
 })

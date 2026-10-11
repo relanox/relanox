@@ -11,19 +11,9 @@ import type {
 } from '@relanox/sdk'
 
 export type WorkerOptions = {
-  readonly batchSize?: number
-  readonly batchDurationMs?: number
-  readonly callTimeoutMs?: number
-  readonly leaseMs?: number
-  readonly maxAttempts?: number
-  readonly retryBaseMs?: number
-  readonly retryMaxMs?: number
-  readonly maxTextBytes?: number
   readonly maxMediaBytes?: number
   readonly maxTotalMediaBytes?: number
   readonly maxAttachments?: number
-  readonly maxContextBytes?: number
-  readonly maxHttpBodyBytes?: number
 }
 
 export type MediaPublisherOptions = {

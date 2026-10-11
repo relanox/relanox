@@ -7,7 +7,7 @@ import { encodeDurableRecord } from '@relanox/storage-support'
 /** Owns the connection and atomic transaction boundary for every storage operation. */
 export function openDatabase(config: SqliteConfig): DatabaseContext {
   const db = new Database(config.filename)
-  db.pragma(`busy_timeout = ${config.busyTimeoutMs}`)
+  db.pragma('busy_timeout = 5000')
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   const transaction = <T>(fn: () => T): T => db.transaction(fn).immediate()

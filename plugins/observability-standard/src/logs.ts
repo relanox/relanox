@@ -122,11 +122,7 @@ export function createLogs(
   destination: Writable,
   dropped: () => void
 ): LogRuntime {
-  const writer = new BoundedLogWriter(
-    destination,
-    config.logBufferBytes,
-    dropped
-  )
+  const writer = new BoundedLogWriter(destination, 65_536, dropped)
 
   const logger = pino(
     {

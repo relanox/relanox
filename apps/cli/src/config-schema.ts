@@ -36,8 +36,6 @@ export const appConfigSchema = z
         port: port.default(8787),
         managementHost: z.enum(['127.0.0.1', '::1']).default('127.0.0.1'),
         managementPort: port.default(8788),
-        workerIntervalMs: z.number().int().min(10).max(60_000).default(1000),
-        workerStaleMs: z.number().int().min(100).max(600_000).default(60_000),
         shutdownTimeoutMs: z
           .number()
           .int()
@@ -48,18 +46,12 @@ export const appConfigSchema = z
       })
       .prefault({})
   })
-  .superRefine((value, ctx) => {
+  .superRefine((value) => {
     validatePublicDeployment(
       value.publicUrl,
       value.relay,
       value.media !== undefined
     )
-    if (value.server.workerStaleMs <= value.server.workerIntervalMs) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Worker stale limit must exceed interval'
-      })
-    }
   })
 
 export type AppConfig = z.infer<typeof appConfigSchema>

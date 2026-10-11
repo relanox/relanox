@@ -178,7 +178,7 @@ export async function harness(
   }>
   close(this: void): Promise<void>
 }> {
-  const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+  const storage = createSqliteStorage({ filename })
   await storage.initialize()
   let host: AgentHost | undefined
   const dispatches: string[] = []

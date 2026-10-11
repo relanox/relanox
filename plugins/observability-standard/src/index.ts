@@ -88,7 +88,7 @@ export function createStandardObservability(
           }
           await runWithLifecycleDeadline(
             signal,
-            config.lifecycleTimeoutMs,
+            3000,
             () => {
               dropped.inc({ signal: 'traces' })
             },
@@ -111,7 +111,7 @@ export function createStandardObservability(
 
             await runWithLifecycleDeadline(
               signal,
-              config.lifecycleTimeoutMs,
+              3000,
               () => {
                 dropped.inc({ signal: 'traces' })
               },

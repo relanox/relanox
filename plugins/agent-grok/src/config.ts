@@ -4,8 +4,7 @@ import { z } from 'zod'
 export const configSchema = z.strictObject({
   mcp: mcpConfig,
   routineUrl: secretRef,
-  routineAuthorization: secretRef,
-  routineTransport: z.enum(['https', 'loopback-http']).default('https')
+  routineAuthorization: secretRef
 })
 
 export type GrokConfig = z.infer<typeof configSchema>

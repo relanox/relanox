@@ -18,8 +18,6 @@ export async function fixture(): Promise<{
     server: {
       port: number
       managementPort: number
-      workerIntervalMs: number
-      workerStaleMs: number
     }
   }
   save(this: void, input?: unknown): Promise<void>
@@ -40,9 +38,7 @@ export async function fixture(): Promise<{
     relay,
     server: {
       port: 0,
-      managementPort: 0,
-      workerIntervalMs: 20,
-      workerStaleMs: 1000
+      managementPort: 0
     }
   }
 
