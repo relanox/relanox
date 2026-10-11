@@ -8,7 +8,7 @@ Relanox 是一个开源、自托管的消息网关。它把渠道文字交给你
 
 ## 开始使用
 
-需要 Node.js 24 和 pnpm 10.33.4。仓库提供常驻 CLI 和 Docker/Compose 部署。
+需要 Node.js 26 和 pnpm 12.11.2。仓库提供常驻 CLI 和 Docker/Compose 部署。
 
 ```sh
 pnpm install --frozen-lockfile
