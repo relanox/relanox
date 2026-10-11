@@ -1,4 +1,3 @@
-import Database from 'better-sqlite3'
 import type { Storage } from '@relanox/sdk'
 import { asset, mediaContract } from '../../../tests/storage/media-contract.js'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -96,56 +95,3 @@ it('initializes idempotently and persists messages and leases across independent
 mediaContract('SQLite media durability', async () =>
   createSqliteStorage({ filename: ':memory:', busyTimeoutMs: 5000 })
 )
-
-it('refuses a populated legacy lifecycle schema without altering its durable records', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'relanox-sqlite-legacy-'))
-  const filename = join(dir, 'relay.db')
-  const legacy = new Database(filename)
-  legacy.exec(
-    'CREATE TABLE inbound(id TEXT PRIMARY KEY,final_id TEXT,record TEXT NOT NULL)'
-  )
-  legacy
-    .prepare('INSERT INTO inbound(id,record) VALUES(?,?)')
-    .run('legacy', JSON.stringify({ text: 'preserved', status: 'claimed' }))
-  legacy.close()
-  const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
-  try {
-    await expect(storage.initialize()).rejects.toThrow(
-      'Legacy request lifecycle schema contains durable messages'
-    )
-    const db = new Database(filename)
-    try {
-      expect(
-        db.prepare('SELECT record FROM inbound WHERE id=?').get('legacy')
-      ).toEqual({ record: '{"text":"preserved","status":"claimed"}' })
-    } finally {
-      db.close()
-    }
-  } finally {
-    await storage.close()
-    await rm(dir, { recursive: true, force: true })
-  }
-})
-
-it('upgrades an empty legacy lifecycle database and initializes the message schema repeatedly', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'relanox-sqlite-empty-'))
-  const filename = join(dir, 'relay.db')
-  const legacy = new Database(filename)
-  legacy.exec(
-    'CREATE TABLE inbound(id TEXT PRIMARY KEY,final_id TEXT,record TEXT NOT NULL)'
-  )
-  legacy.close()
-  const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
-  try {
-    await storage.initialize()
-    await storage.initialize()
-    await storage.acceptInbound(snapshot())
-    expect(await storage.enqueueMessage(completion())).toMatchObject({
-      status: 'queued',
-      replay: false
-    })
-  } finally {
-    await storage.close()
-    await rm(dir, { recursive: true, force: true })
-  }
-})

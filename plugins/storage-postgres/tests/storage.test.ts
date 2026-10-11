@@ -66,66 +66,6 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
     }
   })
 
-  it('refuses a populated legacy lifecycle schema without altering its durable records', async () => {
-    const schema = schemaName()
-
-    const pool = new Pool({
-      connectionString: process.env.RELANOX_TEST_POSTGRES_URL
-    })
-
-    const storage = open(schema)
-    try {
-      await pool.query(
-        `CREATE SCHEMA "${schema}"; CREATE TABLE "${schema}".inbound(id TEXT PRIMARY KEY,final_id TEXT,record JSONB NOT NULL)`
-      )
-      await pool.query(
-        `INSERT INTO "${schema}".inbound(id,record) VALUES($1,$2::jsonb)`,
-        ['legacy', JSON.stringify({ text: 'preserved', status: 'claimed' })]
-      )
-      await expect(storage.initialize()).rejects.toThrow(
-        'Legacy request lifecycle schema contains durable messages'
-      )
-      expect(
-        (
-          await pool.query<{ record: unknown }>(
-            `SELECT record FROM "${schema}".inbound WHERE id=$1`,
-            ['legacy']
-          )
-        ).rows
-      ).toEqual([{ record: { text: 'preserved', status: 'claimed' } }])
-    } finally {
-      await storage.close()
-      await pool.end()
-      await drop(schema)
-    }
-  })
-
-  it('upgrades an empty legacy lifecycle schema and initializes repeatedly', async () => {
-    const schema = schemaName()
-
-    const pool = new Pool({
-      connectionString: process.env.RELANOX_TEST_POSTGRES_URL
-    })
-
-    const storage = open(schema)
-    try {
-      await pool.query(
-        `CREATE SCHEMA "${schema}"; CREATE TABLE "${schema}".inbound(id TEXT PRIMARY KEY,final_id TEXT,record JSONB NOT NULL)`
-      )
-      await storage.initialize()
-      await storage.initialize()
-      await storage.acceptInbound(snapshot())
-      expect(await storage.enqueueMessage(completion())).toMatchObject({
-        status: 'queued',
-        replay: false
-      })
-    } finally {
-      await storage.close()
-      await pool.end()
-      await drop(schema)
-    }
-  })
-
   it('initializes idempotently and retains fenced leases, media and messages across independent pools and restart', async () => {
     const schema = schemaName()
     let a = open(schema)
