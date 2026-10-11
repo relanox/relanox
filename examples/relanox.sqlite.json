@@ -24,7 +24,8 @@
           "mcp": {
             "token": {
               "env": "GROK_MCP_TOKEN"
-            }
+            },
+            "auth": "path"
           },
           "routineUrl": {
             "env": "GROK_ROUTINE_URL"

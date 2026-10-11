@@ -99,8 +99,8 @@ Telegram 应返回 `ok: true`。共享截图和输出前去掉 token。
 
 为 Grok Bot 添加 MCP 连接：
 
-- URL：`https://relay.example.com/agents/grok/mcp/grok-main`。
-- 认证：使用 `GROK_MCP_TOKEN` 的 Bearer 认证。token 输入框填原始 token；Authorization 头输入框填 `Bearer <token>`。
+- URL：`https://relay.example.com/agents/grok/mcp/grok-main/<URL编码后的GROK_MCP_TOKEN>`。
+- 认证：无需额外认证。将 URL 最后一段替换为按路径段编码的 token；示例使用 `mcp.auth: "path"`。
 
 设置 Routine 使用这个 bot。Relanox 通过 MCP 连接提供回信说明，无需单独配置回信 prompt。详细步骤见[连接 Agent](agents.md)。检查 Routine URL 和 Authorization 与环境变量一致。更改配置或部署环境后重启 Relanox。
 

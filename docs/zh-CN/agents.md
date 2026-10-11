@@ -1,6 +1,6 @@
 # 连接 Agent
 
-连接已有的 dot 或 Grok Bot，让它接收渠道消息并回信。每个 Agent 连接有自己的 HTTPS MCP 地址和 token；Relanox 还需要通过 Grok Routine webhook 或 dot Events 订阅通知它。
+连接已有的 dot 或 Grok Bot，让它接收渠道消息并回信。每个 Agent 连接有自己的 HTTPS MCP 地址：Grok 使用 URL 中的 token，dot 使用 OAuth；Relanox 还需要通过 Grok Routine webhook 或 dot Events 订阅通知它。
 
 | Agent | 需要设置                                              |
 | ----- | ----------------------------------------------------- |
@@ -21,6 +21,7 @@
   "agent": "grok",
   "config": {
     "mcp": {
+      "auth": "path",
       "token": { "env": "GROK_MCP_TOKEN" }
     },
     "routineUrl": { "env": "GROK_ROUTINE_URL" },
@@ -30,7 +31,7 @@
 ```
 
 4. 设置好 `publicUrl` 后重启 Relanox。HTTPS 设置见[部署与备份](operations.md)。
-5. 为 bot 添加 MCP 连接，地址为 `https://relay.example.com/agents/grok/mcp/grok-main`，使用 Bearer 认证。token 输入框填原始 `GROK_MCP_TOKEN`；Authorization 头输入框填 `Bearer <token>`。
+5. 添加 MCP 连接，地址为 `https://relay.example.com/agents/grok/mcp/grok-main/<URL编码后的GROK_MCP_TOKEN>`。将末段替换为你的 token，按 URL 路径段编码。选择无需额外认证，不需要 Authorization 请求头。
 6. 把聊天绑定的 `endpointId` 设为 `grok-main`。
 7. 在这个聊天发送短消息，确认收到回信。卡住时用 `status` 查看。
 
@@ -47,15 +48,20 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
   "agent": "dot",
   "config": {
     "mcp": {
+      "auth": "oauth",
       "token": { "env": "DOT_MCP_TOKEN" }
     }
   }
 }
 ```
 
-3. 重启 Relanox，让 dot 连接 `https://relay.example.com/agents/dot/mcp/dot-main`，使用 `DOT_MCP_TOKEN` 的 Bearer 认证。
+3. 重启 Relanox，让 dot 通过 OAuth 连接 `https://relay.example.com/agents/dot/mcp/dot-main`。如需选择注册方式，选择 **Dynamic Client Registration (DCR，动态客户端注册)**。自动发现后，在 Relanox 授权页面输入 `DOT_MCP_TOKEN` 作为密码并允许访问。这个值不作为固定 Bearer access token 使用。
 4. 通过连接的 Events 功能开启 `relanox.message_available` 订阅。在连接中开启自动续订，使它持续接收新消息。
 5. 将聊天绑定的 `endpointId` 设为 `dot-main`，然后在该聊天发送消息。
+
+dot OAuth 要求公网 HTTPS `publicUrl`。Relanox 使用 PKCE S256，支持 ChatGPT OAuth 跳转地址 `https://chatgpt.com/connector_platform_oauth_redirect` 和 `https://chatgpt.com/connector/oauth/<id>`，它们与 Events 回调不同。access token 有效期一小时；refresh token 有效期 30 天，使用时轮换。注册与授权保存在配置的数据库中。
+
+`mcp.auth` 可选 `bearer`、`path`、`oauth`，省略时默认 `bearer`，兼容旧配置。Grok 支持 `bearer` 和 `path`；显式使用 `bearer` 时填写不带 token 的 MCP URL，并发送 `Authorization: Bearer <token>`。Relanox 仍支持旧 dot Bearer 配置，但 dot 平台要求 OAuth。
 
 dot 通过 MCP 订阅时提供回调 URL。Relanox 固定接受原生的 `https://connectors.api.openai.com` 来源，并在投递前检查 DNS 解析结果为公网地址。配置文件中无需也不能填写 `callback`。
 

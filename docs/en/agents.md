@@ -1,6 +1,6 @@
 # Connect an agent
 
-Connect your existing dot or Grok Bot to receive channel messages and send replies. Each Agent connection has an HTTPS MCP address and token. Relanox also needs a way to notify it: a Grok Routine webhook or a dot Events subscription.
+Connect your existing dot or Grok Bot to receive channel messages and send replies. Each Agent connection has an HTTPS MCP address: Grok uses a token in its URL, and dot uses OAuth. Relanox also needs a way to notify it: a Grok Routine webhook or a dot Events subscription.
 
 | Agent | Setup                                                                      |
 | ----- | -------------------------------------------------------------------------- |
@@ -21,6 +21,7 @@ Set top-level `publicUrl` to your public HTTPS address once, for example `https:
   "agent": "grok",
   "config": {
     "mcp": {
+      "auth": "path",
       "token": { "env": "GROK_MCP_TOKEN" }
     },
     "routineUrl": { "env": "GROK_ROUTINE_URL" },
@@ -30,7 +31,7 @@ Set top-level `publicUrl` to your public HTTPS address once, for example `https:
 ```
 
 4. Restart Relanox with your `publicUrl` setting. [Operations](operations.md) covers HTTPS setup.
-5. Add the bot's MCP connection at `https://relay.example.com/agents/grok/mcp/grok-main` with Bearer authentication. Enter the raw `GROK_MCP_TOKEN` in a token field, or `Bearer <token>` in an Authorization header field.
+5. Add the MCP connection at `https://relay.example.com/agents/grok/mcp/grok-main/<URL-encoded-GROK_MCP_TOKEN>`. Replace the last segment with your token, URL-encoded as a path segment. Select no additional authentication; no Authorization header is required.
 6. Set the conversation binding's `endpointId` to `grok-main`.
 7. Send a short message in that conversation and check the reply. Use `status` if it stalls.
 
@@ -47,15 +48,20 @@ The Routine Authorization variable holds exactly the supplied value, including a
   "agent": "dot",
   "config": {
     "mcp": {
+      "auth": "oauth",
       "token": { "env": "DOT_MCP_TOKEN" }
     }
   }
 }
 ```
 
-3. Restart Relanox and connect dot to `https://relay.example.com/agents/dot/mcp/dot-main` with Bearer authentication using `DOT_MCP_TOKEN`.
+3. Restart Relanox and connect dot to `https://relay.example.com/agents/dot/mcp/dot-main` using OAuth. If asked, select **Dynamic Client Registration (DCR)**. Discovery is automatic. Enter `DOT_MCP_TOKEN` as the password on the Relanox consent page, then allow access. It is not a static Bearer access token.
 4. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
 5. Set your conversation binding's `endpointId` to `dot-main` and send a message through that conversation.
+
+dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens expire after 30 days and rotate on use. Registrations and grants persist in your configured database.
+
+`mcp.auth` accepts `bearer`, `path` or `oauth` and defaults to `bearer` for existing configurations. Grok supports `bearer` and `path`; explicit `bearer` uses the clean MCP URL and `Authorization: Bearer <token>`. Relanox supports existing dot Bearer configurations, but the dot platform requires OAuth.
 
 dot provides its callback URL when it subscribes through MCP. Relanox accepts the native `https://connectors.api.openai.com` origin and checks that DNS resolves to public addresses before delivery. There is no `callback` configuration section.
 

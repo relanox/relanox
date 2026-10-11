@@ -64,6 +64,8 @@ Replace the domain, make TCP ports 80/443 reachable for certificate issuance and
 
 Preserve the public Host header to match the host in `publicUrl`. Register channel webhook and Agent MCP URLs under the public address. Forward business HTTP and retain management on loopback. [Media transfer](media.md) describes public attachment URLs when your channel needs them.
 
+Grok MCP URLs contain the secret token. Do not share them; disable access logging for `/agents/grok/mcp/` paths or strip their token segment in your reverse proxy logs.
+
 ## Stop, restart and upgrade
 
 ```sh

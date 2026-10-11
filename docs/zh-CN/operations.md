@@ -64,6 +64,8 @@ relay.example.com {
 
 保留公开 Host 头，使其匹配 `publicUrl` 中的主机名。在公开地址下注册渠道 webhook 和 Agent MCP URL。转发业务 HTTP，管理端口保持回环访问。渠道需要公开附件 URL 时，按[收发图片和文件](media.md)配置。
 
+Grok MCP URL 含有密钥 token，请勿分享；在反向代理中关闭 `/agents/grok/mcp/` 路径的访问日志，或移除日志中的 token 路径段。
+
 ## 停止、重启和升级
 
 ```sh

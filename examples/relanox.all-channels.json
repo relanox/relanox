@@ -208,7 +208,8 @@
           "mcp": {
             "token": {
               "env": "DOT_MCP_TOKEN"
-            }
+            },
+            "auth": "oauth"
           }
         }
       },
@@ -219,7 +220,8 @@
           "mcp": {
             "token": {
               "env": "GROK_MCP_TOKEN"
-            }
+            },
+            "auth": "path"
           },
           "routineUrl": {
             "env": "GROK_ROUTINE_URL"
