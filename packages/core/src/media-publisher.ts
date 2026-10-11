@@ -16,7 +16,7 @@ const namespace = (accountId: string): StateNamespace => ({
   ownerId: accountId
 })
 
-const keyFor = (requestId: string, id: string) => `${requestId}/${id}`
+const keyFor = (requestId: string, id: string): string => `${requestId}/${id}`
 
 function publicOrigin(options: MediaPublisherOptions): string {
   const url = new URL(options.publicBaseUrl)

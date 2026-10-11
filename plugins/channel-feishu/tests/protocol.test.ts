@@ -1,3 +1,4 @@
+import type { HttpHandler, ChannelHost, IngestInput } from '@relanox/sdk'
 import { createCipheriv, createHash } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createFeishuChannel } from '../src/index.js'
@@ -69,7 +70,27 @@ async function setup(
   apiBaseUrl = 'https://open.feishu.cn',
   onIngest?: Parameters<typeof recorder>[0],
   overrides: Record<string, unknown> = {}
-) {
+): Promise<{
+  target: {
+    data: {
+      apiBaseUrl: string
+      tenantKey: string
+      appId: string
+      botId: string
+    }
+    channel: 'feishu'
+    accountId: string
+    chatId: string
+    threadId: string
+    replyToId: string
+  }
+  handler: NonNullable<ReturnType<(key: string) => HttpHandler | undefined>>
+  host: ChannelHost
+  received: IngestInput[]
+  handlers: Map<string, HttpHandler>
+  connections: string[]
+  plugin: ReturnType<typeof createFeishuChannel>
+}> {
   const plugin = createFeishuChannel(environment)
   const recorded = recorder(onIngest)
   await plugin.setup(
@@ -102,7 +123,7 @@ function request(
   encrypted = false,
   forged = false,
   timestamp = String(Math.floor(Date.now() / 1000))
-) {
+): Request {
   let body = JSON.stringify(value)
   if (encrypted) {
     const iv = Buffer.from('00112233445566778899aabbccddeeff', 'hex')

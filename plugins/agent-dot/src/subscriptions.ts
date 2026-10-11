@@ -113,14 +113,14 @@ async function verifySubscription(
   }
 }
 
-export interface SubscriptionReceipt {
+export type SubscriptionReceipt = {
   readonly id: string
   readonly refreshBefore: string
   readonly cursor: null
   readonly truncated: false
 }
 
-export interface SubscriptionStore {
+export type SubscriptionStore = {
   activeEntries(this: void, endpointId: string): Promise<readonly StateEntry[]>
   subscribe(
     this: void,

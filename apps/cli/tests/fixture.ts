@@ -6,10 +6,24 @@ import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { deadline } from '../src/deadline.js'
 import { noopObservability } from '@relanox/sdk'
-import type { RelanoxConfig } from '@relanox/sdk'
+import type { RelanoxConfig, Storage } from '@relanox/sdk'
 import { sqliteStoragePlugin } from '@relanox/storage-sqlite'
 
-export async function fixture() {
+export async function fixture(): Promise<{
+  directory: string
+  filename: string
+  configPath: string
+  config: {
+    relay: RelanoxConfig
+    server: {
+      port: number
+      managementPort: number
+      workerIntervalMs: number
+      workerStaleMs: number
+    }
+  }
+  save(this: void, input?: unknown): Promise<void>
+}> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-cli-'))
   const filename = join(directory, 'relay.sqlite')
   const configPath = join(directory, 'relay.json')
@@ -32,14 +46,17 @@ export async function fixture() {
     }
   }
 
-  const save = async (input: unknown = config) =>
+  const save = async (input: unknown = config): Promise<void> =>
     writeFile(configPath, JSON.stringify(input))
 
   await save()
   return { directory, filename, configPath, config, save }
 }
 
-export function cli(path: string, args: readonly string[]) {
+export async function cli(
+  path: string,
+  args: readonly string[]
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const entry = fileURLToPath(new URL('../dist/main.js', import.meta.url))
   return new Promise<{ code: number | null; stdout: string; stderr: string }>(
     (resolve, reject) => {
@@ -67,14 +84,17 @@ export function cli(path: string, args: readonly string[]) {
   )
 }
 
-export function storage(filename: string) {
+export async function storage(filename: string): Promise<Storage> {
   return sqliteStoragePlugin.setup(
     sqliteStoragePlugin.validateConfig({ filename }),
     noopObservability
   )
 }
 
-export async function runCli(path: string) {
+export async function runCli(path: string): Promise<{
+  managementUrl: string
+  stop(this: void): Promise<void>
+}> {
   const entry = fileURLToPath(new URL('../dist/main.js', import.meta.url))
 
   const child = spawn(process.execPath, [entry, 'run', '--config', path], {
@@ -113,7 +133,7 @@ export async function runCli(path: string) {
     })
   })
 
-  async function stop() {
+  async function stop(): Promise<void> {
     child.kill()
     await deadline(closed, 5000)
   }

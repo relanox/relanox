@@ -42,13 +42,18 @@ export function createFeishuChannel(
   let config: FeishuConfig
   let token: { value: string; until: number; secretDigest: string } | undefined
 
-  const base = () =>
+  const base = (): string =>
     config.apiBaseUrl ??
     (config.domain === 'lark'
       ? 'https://open.larksuite.com'
       : 'https://open.feishu.cn')
 
-  const identity = () => ({
+  const identity = (): {
+    tenantKey: string
+    appId: string
+    botId: string
+    apiBaseUrl: string
+  } => ({
     tenantKey: config.tenantKey,
     appId: config.appId,
     botId: config.botOpenId,

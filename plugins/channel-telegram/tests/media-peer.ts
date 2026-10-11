@@ -5,14 +5,14 @@ import type {
   ServerResponse
 } from 'node:http'
 
-export interface MediaTraffic {
+export type MediaTraffic = {
   readonly method: string
   readonly path: string
   readonly headers: IncomingHttpHeaders
   readonly data: Uint8Array
 }
 
-export interface MediaReply {
+export type MediaReply = {
   readonly status?: number
   readonly json?: unknown
   readonly data?: Uint8Array
@@ -20,10 +20,19 @@ export interface MediaReply {
   readonly drop?: boolean
 }
 
-export async function mediaPeer(reply: (traffic: MediaTraffic) => MediaReply) {
+export async function mediaPeer(
+  reply: (traffic: MediaTraffic) => MediaReply
+): Promise<{
+  origin: string
+  traffic: MediaTraffic[]
+  close(this: void): Promise<void>
+}> {
   const traffic: MediaTraffic[] = []
 
-  async function receive(request: IncomingMessage, response: ServerResponse) {
+  async function receive(
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> {
     const chunks: Uint8Array[] = []
     for await (const part of request) {
       const value: unknown = part
@@ -67,7 +76,7 @@ export async function mediaPeer(reply: (traffic: MediaTraffic) => MediaReply) {
   return {
     origin: `http://127.0.0.1:${address.port}`,
     traffic,
-    close: () =>
+    close: async () =>
       new Promise<void>((resolve, reject) => {
         server.closeAllConnections()
         server.close((error) => {
@@ -85,7 +94,7 @@ export function trafficJson(traffic: MediaTraffic): unknown {
   return JSON.parse(new TextDecoder().decode(traffic.data))
 }
 
-export function multipart(traffic: MediaTraffic): Promise<FormData> {
+export async function multipart(traffic: MediaTraffic): Promise<FormData> {
   return new Request('http://peer.local/', {
     method: 'POST',
     headers: { 'content-type': String(traffic.headers['content-type']) },

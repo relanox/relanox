@@ -21,7 +21,11 @@ export async function mediaRuntime(
   config: Json,
   chatId: string,
   threadId?: string
-) {
+): Promise<{
+  start(this: void): Promise<MediaRuntime>
+  client(this: void, runtime: MediaRuntime): Promise<Client>
+  routine: Awaited<ReturnType<typeof mediaPeer>>
+}> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-native-media-'))
   cleanups.push(async () => rm(directory, { recursive: true, force: true }))
   const routine = await mediaPeer(() => ({ json: {} }))
@@ -82,13 +86,13 @@ export async function mediaRuntime(
       : {})
   })
 
-  const start = async () => {
+  const start = async (): Promise<MediaRuntime> => {
     const runtime = await startRuntime(app)
     cleanups.push(runtime.stop)
     return runtime
   }
 
-  const client = async (runtime: MediaRuntime) => {
+  const client = async (runtime: MediaRuntime): Promise<Client> => {
     const connected = new Client(
       { name: 'native-media-wire', version: '1.0.0' },
       { versionNegotiation: { mode: { pin: '2026-07-28' } } }
@@ -128,13 +132,30 @@ export const mediaRequestSchema = z.looseObject({
   )
 })
 
-export async function claimMedia(client: Client) {
-  const pending = z
-    .object({ requests: z.array(mediaRequestSchema) })
-    .parse(
-      (await client.callTool({ name: 'relanox_list_pending', arguments: {} }))
-        .structuredContent
-    )
+export async function claimMedia(client: Client): Promise<{
+  request: {
+    [x: string]: unknown
+    requestId: string
+    text: string
+    attachments: {
+      [x: string]: unknown
+      id: string
+      kind: string
+      mimeType: string
+      fileName: string
+      size: number
+    }[]
+  }
+  claimToken: string
+}> {
+  const pending = z.object({ requests: z.array(mediaRequestSchema) }).parse(
+    (
+      await client.callTool({
+        name: 'relanox_list_pending',
+        arguments: {}
+      })
+    ).structuredContent
+  )
 
   const request = pending.requests[0]
   if (!request) {
@@ -162,7 +183,7 @@ export async function mediaUrl(
   mediaId: string,
   method: 'GET' | 'PUT',
   metadata?: Json
-) {
+): Promise<string> {
   const result = await client.callTool({
     name: 'relanox_media_transfer',
     arguments: {

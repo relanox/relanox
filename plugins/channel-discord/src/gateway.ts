@@ -16,7 +16,7 @@ import {
 import { frameText, waitForStop } from './socket.js'
 import { credential, ingest, jsonResponse } from './transport.js'
 
-export interface DiscordGateway {
+export type DiscordGateway = {
   start(signal: AbortSignal): Promise<void>
   stop(): Promise<void>
 }
@@ -35,12 +35,12 @@ export function createDiscordGateway(
   let session: Session | undefined
   let fatal = false
 
-  const identity = () => ({
+  const identity = (): { botId: string; apiBaseUrl: string } => ({
     botId: config.botUserId,
     apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, '')
   })
 
-  async function persist() {
+  async function persist(): Promise<void> {
     if (!session) {
       return
     }
@@ -57,7 +57,7 @@ export function createDiscordGateway(
     }
   }
 
-  async function clearSession() {
+  async function clearSession(): Promise<void> {
     session = undefined
     const previous = await host.state.get('gateway-session')
     if (previous) {
@@ -103,7 +103,7 @@ export function createDiscordGateway(
     return { chatId: channel.parent_id, threadId: message.channel_id }
   }
 
-  async function connect(signal: AbortSignal) {
+  async function connect(signal: AbortSignal): Promise<void> {
     const botToken = credential(config.botToken, environment)
 
     const url = new URL(
@@ -131,13 +131,13 @@ export function createDiscordGateway(
     let chain = Promise.resolve()
     let sequence = session?.seq ?? null
 
-    const send = (value: unknown) => {
+    const send = (value: unknown): void => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(value))
       }
     }
 
-    const beat = () => {
+    const beat = (): void => {
       if (!acknowledged) {
         ws.terminate()
         return
@@ -147,7 +147,7 @@ export function createDiscordGateway(
       heartbeat = setTimeout(beat, interval)
     }
 
-    const abort = () => {
+    const abort = (): void => {
       ws.terminate()
     }
 
@@ -231,7 +231,7 @@ export function createDiscordGateway(
           return
         }
         if (packet.op === 9) {
-          const invalidate = async () => {
+          const invalidate = async (): Promise<void> => {
             if (packet.d !== true) {
               await clearSession()
             }
@@ -251,7 +251,7 @@ export function createDiscordGateway(
           return
         }
 
-        const consume = async () => {
+        const consume = async (): Promise<void> => {
           if (failed || signal.aborted) {
             return
           }
@@ -363,7 +363,7 @@ export function createDiscordGateway(
     await chain
   }
 
-  async function run(signal: AbortSignal) {
+  async function run(signal: AbortSignal): Promise<void> {
     const saved = await host.state.get('gateway-session')
     const parsed = sessionSchema.safeParse(saved?.value)
     session = undefined

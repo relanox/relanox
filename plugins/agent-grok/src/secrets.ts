@@ -10,6 +10,8 @@ export function resolveAgentSecret(ref: SecretRef): string {
 }
 
 export function equalSecret(a: string, b: string): boolean {
-  const digest = (value: string) => createHash('sha256').update(value).digest()
+  const digest = (value: string): Buffer<ArrayBuffer> =>
+    createHash('sha256').update(value).digest()
+
   return timingSafeEqual(digest(a), digest(b))
 }

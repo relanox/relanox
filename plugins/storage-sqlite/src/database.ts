@@ -25,7 +25,7 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
     return row ? decodeDurableRecord(row.record) : undefined
   }
 
-  const saveInbound = (record: InboundRecord) =>
+  const saveInbound = (record: InboundRecord): Database.RunResult =>
     db
       .prepare('UPDATE inbound SET status=?, version=?, record=? WHERE id=?')
       .run(
@@ -35,7 +35,7 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
         record.snapshot.requestId
       )
 
-  const saveOutbound = (record: OutboundRecord) =>
+  const saveOutbound = (record: OutboundRecord): Database.RunResult =>
     db
       .prepare('UPDATE outbound SET status=?, version=?, record=? WHERE id=?')
       .run(
@@ -77,7 +77,7 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
   }
 }
 
-export interface DatabaseContext {
+export type DatabaseContext = {
   db: Database.Database
   transaction<T>(this: void, fn: () => T): T
   readInbound(this: void, id: string): InboundRecord | undefined

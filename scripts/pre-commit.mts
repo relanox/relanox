@@ -7,7 +7,7 @@ function run(
   command: string,
   args: readonly string[],
   options: Omit<SpawnSyncOptionsWithStringEncoding, 'encoding'> = {}
-) {
+): string {
   const result = spawnSync(command, args, {
     stdio: 'inherit',
     ...options,

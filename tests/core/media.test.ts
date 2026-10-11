@@ -270,10 +270,10 @@ it('authenticates media routes before reading and preserves ordinary body limits
 
     const body = new ReadableStream<Uint8Array>(
       {
-        pull() {
+        pull(): void {
           reads++
         },
-        cancel() {
+        cancel(): void {
           cancelled = true
         }
       },
@@ -292,7 +292,7 @@ it('authenticates media routes before reading and preserves ordinary body limits
     expect(reads).toBe(0)
     expect(cancelled).toBe(true)
 
-    const request = (path: string, length: number) =>
+    const request = (path: string, length: number): Request =>
       new Request(`http://localhost/agents/grok/${path}`, {
         method: 'PUT',
         headers: { authorization: 'Bearer test' },
@@ -380,7 +380,19 @@ it.each(['count', 'bytes'])(
       const accepted = budget === 'count' ? 3 : 2
       const size = budget === 'count' ? 3 : 16
 
-      const upload = (uploadId: string) => ({
+      const upload = (
+        uploadId: string
+      ): {
+        requestId: string
+        claimToken: string
+        uploadId: string
+        media: {
+          kind: 'file'
+          mimeType: string
+          fileName: string
+          data: Uint8Array<ArrayBuffer>
+        }
+      } => ({
         requestId: receipt.requestId,
         claimToken: claim.claimToken,
         uploadId,

@@ -6,7 +6,7 @@ import { createSignalChannel } from '../../channel-signal/src/index.js'
 import { createMatrixChannel } from '../src/index.js'
 import { harness, httpPeer, json } from './harness.js'
 
-interface OriginCase {
+type OriginCase = {
   readonly name: string
   plugin(): ChannelPlugin<unknown>
   config(base: string): Json

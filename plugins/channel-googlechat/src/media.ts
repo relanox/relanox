@@ -54,7 +54,34 @@ export async function downloadAttachments(
   return attachments
 }
 
-export async function mediaCards(input: SendInput, host: ChannelHost) {
+export async function mediaCards(
+  input: SendInput,
+  host: ChannelHost
+): Promise<
+  | {
+      cardId: string
+      card: {
+        sections: {
+          widgets: (
+            | {
+                image: { imageUrl: string; altText: string }
+                buttonList?: never
+              }
+            | {
+                buttonList: {
+                  buttons: {
+                    text: string
+                    onClick: { openLink: { url: string } }
+                  }[]
+                }
+                image?: never
+              }
+          )[]
+        }[]
+      }
+    }[]
+  | undefined
+> {
   let cardsV2
   if (input.chunk.media) {
     if (!input.media || !host.media) {

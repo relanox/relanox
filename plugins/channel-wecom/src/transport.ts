@@ -73,7 +73,7 @@ export class JsonSocketConnection {
     this.attempts = 0
     this.controller = new AbortController()
     this.signal = AbortSignal.any([signal, this.controller.signal])
-    this.abortListener = () => {
+    this.abortListener = (): void => {
       void this.stop()
     }
     this.signal.addEventListener('abort', this.abortListener, { once: true })
@@ -153,14 +153,14 @@ export class JsonSocketConnection {
       this.schedule()
     })
     await new Promise<void>((resolve, reject) => {
-      const abort = () => {
+      const abort = (): void => {
         socket.terminate()
         reject(new Error('aborted'))
       }
 
       this.signal.addEventListener('abort', abort, { once: true })
 
-      const cleanup = () => {
+      const cleanup = (): void => {
         this.signal.removeEventListener('abort', abort)
       }
 

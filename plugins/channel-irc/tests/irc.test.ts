@@ -12,7 +12,9 @@ import {
 } from '../../channel-matrix/tests/harness.js'
 import { createIrcChannel } from '../src/index.js'
 
-async function tcpPeer(onLine: (line: string, socket: Socket) => void) {
+async function tcpPeer(
+  onLine: (line: string, socket: Socket) => void
+): Promise<{ port: number; lines: string[]; sockets: Socket[] }> {
   const lines: string[] = []
   const sockets: Socket[] = []
 
@@ -61,7 +63,16 @@ async function tcpPeer(onLine: (line: string, socket: Socket) => void) {
   return { port: address.port, lines, sockets }
 }
 
-function config(port: number) {
+function config(port: number): {
+  server: string
+  port: number
+  tls: boolean
+  allowInsecureLocalhost: boolean
+  nick: string
+  channels: string[]
+  sasl: { username: string; password: { env: string } }
+  reconnectMs: number
+} {
   return {
     server: '127.0.0.1',
     port,

@@ -34,7 +34,7 @@ import {
   sendFailure
 } from './transport.js'
 
-interface ReplyAllocation {
+type ReplyAllocation = {
   mode: 'passive' | 'proactive'
   seq: number
 }
@@ -55,21 +55,19 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   let awaitingHeartbeat = false
   let dispatchQueue = Promise.resolve()
   let dispatchSocket: WebSocket | undefined
-  const api = (path: string) => `${config.apiBase.replace(/\/$/u, '')}${path}`
+
+  const api = (path: string): string =>
+    `${config.apiBase.replace(/\/$/u, '')}${path}`
 
   async function getAccessToken(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret)
-    if (
-      token &&
-      token.credential === credential &&
-      token.expiresAt > Date.now()
-    ) {
+    if (token?.credential === credential && token.expiresAt > Date.now()) {
       return token.value
     }
     if (tokenFlight) {
       return tokenFlight
     }
-    tokenFlight = (async () => {
+    tokenFlight = (async (): Promise<string> => {
       const raw = await httpJson(
         api('/app/getAppAccessToken'),
         jsonPostRequest({ appId: config.appId, clientSecret: credential }),
@@ -98,7 +96,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     }
   }
 
-  const heartbeat = () => {
+  const heartbeat = (): void => {
     if (awaitingHeartbeat) {
       connection.socket?.terminate()
       return
@@ -249,7 +247,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
           dispatchQueue = dispatchQueue.catch(() => {})
         }
         // A failed dispatch poisons this socket queue: no later cursor may skip it.
-        const task = dispatchQueue.then(() => dispatch(frame))
+        const task = dispatchQueue.then(async () => dispatch(frame))
         dispatchQueue = task
         await task
       }
@@ -475,8 +473,8 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         config.maxReconnectAttempts
       )
     },
-    start: (signal) => connection.start(signal),
-    stop: () => connection.stop(),
+    start: async (signal) => connection.start(signal),
+    stop: async () => connection.stop(),
     async send(input: SendInput): Promise<SendResult> {
       const target = targetSchema.safeParse(input.target.data)
       if (

@@ -1,4 +1,4 @@
-export interface IrcMessage {
+export type IrcMessage = {
   readonly tags: Readonly<Record<string, string>>
   readonly prefix?: string
   readonly command: string

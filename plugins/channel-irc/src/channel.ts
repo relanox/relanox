@@ -25,7 +25,10 @@ const authenticationFailures = new Set([
   'ERROR'
 ])
 
-function incomingText(message: IrcMessage, ownNick: string) {
+function incomingText(
+  message: IrcMessage,
+  ownNick: string
+): { sender: string; destination: string; text: string } | null {
   const sender = message.prefix?.split('!')[0]
   const destination = message.params[0]
   const text = message.params[1]
@@ -58,7 +61,11 @@ export function createIrcChannel(
   let ready = false
   let nick = ''
 
-  function configured() {
+  function configured(): {
+    host: ChannelHost
+    account: AccountConfig
+    config: IrcConfig
+  } {
     if (!runtime) {
       throw new Error('not_setup')
     }
@@ -275,7 +282,7 @@ export function createIrcChannel(
     socket = current
     current.setEncoding('utf8')
     current.setTimeout(120_000, () => current.destroy())
-    const abort = () => current.destroy()
+    const abort = (): Socket => current.destroy()
     signal.addEventListener('abort', abort, { once: true })
     if (signal.aborted) {
       abort()
@@ -292,14 +299,14 @@ export function createIrcChannel(
     let queued = 0
     let pending = Promise.resolve()
 
-    const queueLine = (line: string) => {
+    const queueLine = (line: string): void => {
       if (queued >= 100) {
         current.destroy()
         return
       }
       queued += 1
       pending = pending
-        .then(() => handle(current, parseMessage(line), offered))
+        .then(async () => handle(current, parseMessage(line), offered))
         .catch(() => {
           diagnose(host, 'receive_failed')
           current.destroy()
@@ -390,7 +397,7 @@ export function createIrcChannel(
       }
     }
     return new Promise<SendResult>((resolve) => {
-      const unknown = () => {
+      const unknown = (): void => {
         resolve({ status: 'unknown', errorCode: 'send_outcome_unknown' })
       }
 

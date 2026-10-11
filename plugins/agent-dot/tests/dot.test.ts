@@ -21,13 +21,13 @@ afterEach(async () => {
     cleanups
       .splice(0)
       .toReversed()
-      .map((cleanup) => cleanup())
+      .map(async (cleanup) => cleanup())
   )
   delete process.env.AGENT_TEST_TOKEN_0
   delete process.env.AGENT_TEST_TOKEN_1
 })
 
-function verify(traffic: Traffic | undefined, secret = signingKey) {
+function verify(traffic: Traffic | undefined, secret = signingKey): void {
   if (traffic === undefined) {
     throw new Error('missing_callback_traffic')
   }
@@ -59,7 +59,19 @@ const callbackBody = z.looseObject({
   challenge: z.string().optional()
 })
 
-function subscribe(url: string, secret = signingKey, ttlMs = 1000) {
+function subscribe(
+  url: string,
+  secret = signingKey,
+  ttlMs = 1000
+): {
+  method: string
+  params: {
+    name: string
+    arguments: Record<string, never>
+    delivery: { mode: string; url: string; secret: string }
+    ttlMs: number
+  }
+} {
   return {
     method: 'events/subscribe',
     params: {
@@ -79,7 +91,12 @@ async function setup(
     })
   }),
   two = false
-) {
+): Promise<{
+  receiver: Awaited<ReturnType<typeof peer>>
+  plugin: ReturnType<typeof createDotAgentPlugin>
+  fx: Awaited<ReturnType<typeof fixture>>
+  url: string
+}> {
   const receiver = await peer(reply)
   cleanups.push(receiver.close)
 
@@ -102,7 +119,7 @@ async function setup(
     two ? [config, { ...config, mcp: mcp('AGENT_TEST_TOKEN_1') }] : [config]
   )
 
-  cleanups.push(() => fx.close())
+  cleanups.push(async () => fx.close())
   return { receiver, plugin, fx, url: `${receiver.origin}/callback` }
 }
 

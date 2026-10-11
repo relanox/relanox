@@ -5,7 +5,7 @@ import { channelConfig, httpIngress, nativeTargets } from './media-events.js'
 import type { PrimaryChannel } from './media-events.js'
 import { mediaPeer, multipart, trafficJson, formJson } from './media-peer.js'
 import { discordPeer } from '../../channel-discord/tests/media-peer.js'
-import type { MediaTraffic } from './media-peer.js'
+import type { MediaReply, MediaTraffic } from './media-peer.js'
 import { claimMedia, mediaRuntime, mediaUrl } from './media-runtime.js'
 import type { Cleanup } from './media-runtime.js'
 
@@ -61,7 +61,7 @@ function nativeReply(
   traffic: MediaTraffic,
   origin: string,
   mimeType: string
-) {
+): MediaReply {
   if (traffic.method === 'GET') {
     return { data: inputBytes, mimeType }
   }
@@ -140,7 +140,7 @@ async function assertNativeOutput(
   traffic: MediaTraffic[],
   kind: MediaKind,
   expected: Uint8Array
-) {
+): Promise<void> {
   const effect = firstEffect(traffic, channel)
   if (!effect) {
     throw new Error('missing_native_effect')

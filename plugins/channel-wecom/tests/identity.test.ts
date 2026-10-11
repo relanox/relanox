@@ -1,3 +1,5 @@
+import type WebSocket from 'ws'
+import type { HttpRequest } from './test-support.js'
 import type { ChannelPlugin, Json, SendInput } from '@relanox/sdk'
 import { expect, test, vi } from 'vitest'
 import { z } from 'zod'
@@ -26,7 +28,13 @@ function pluginFor(kind: Kind): ChannelPlugin<unknown> {
   }
 }
 
-async function nativePeer(kind: Kind) {
+async function nativePeer(kind: Kind): Promise<{
+  requests: HttpRequest[]
+  frames: unknown[]
+  sockets: WebSocket[]
+  http: string
+  ws: string
+}> {
   let address = ''
 
   const remote = await peer(

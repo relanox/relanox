@@ -1,3 +1,4 @@
+import type { Server } from 'ws'
 import type { SendInput } from '@relanox/sdk'
 import { expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
@@ -13,7 +14,13 @@ import {
 } from '../../channel-matrix/tests/harness.js'
 import { createMattermostChannel } from '../src/index.js'
 
-function config(base: string) {
+function config(base: string): {
+  serverUrl: string
+  botUserId: string
+  token: { env: string }
+  allowInsecureLocalhost: boolean
+  reconnectMs: number
+} {
   return {
     serverUrl: base,
     botUserId: 'self-bot',
@@ -28,7 +35,7 @@ function posted(
   userId = 'alice',
   channelId = 'channel',
   rootId = 'root'
-) {
+): { event: string; data: { post: string }; seq: number } {
   return {
     event: 'posted',
     data: {
@@ -63,7 +70,7 @@ function sendInput(base: string): SendInput {
   }
 }
 
-function sockets(peer: Awaited<ReturnType<typeof httpPeer>>) {
+function sockets(peer: Awaited<ReturnType<typeof httpPeer>>): Server {
   const server = new WebSocketServer({
     server: peer.server,
     path: '/api/v4/websocket'

@@ -1,8 +1,15 @@
+import type { CoreRuntime } from '../../../packages/core/src/index.js'
 import { createHmac } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Json, SendInput } from '@relanox/sdk'
+import type {
+  Json,
+  SendInput,
+  Storage,
+  InboundSnapshot,
+  OutboundRecord
+} from '@relanox/sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createLineChannel } from '../src/index.js'
@@ -24,7 +31,7 @@ const config = (base: string): Json => ({
   allowLoopback: true
 })
 
-function webhook(text = 'hello', destination = 'bot', sender = 'user') {
+function webhook(text = 'hello', destination = 'bot', sender = 'user'): string {
   return JSON.stringify({
     destination,
     events: [
@@ -40,7 +47,7 @@ function webhook(text = 'hello', destination = 'bot', sender = 'user') {
   })
 }
 
-function incoming(body: string, signature?: string) {
+function incoming(body: string, signature?: string): Request {
   const expected = createHmac('sha256', 'secret').update(body).digest('base64')
   return new Request('http://local/channels/business/webhook', {
     method: 'POST',
@@ -49,7 +56,21 @@ function incoming(body: string, signature?: string) {
   })
 }
 
-async function setup(filename?: string) {
+async function setup(filename?: string): Promise<{
+  core: CoreRuntime
+  storage: Storage
+  dispatches: string[]
+  complete(
+    this: void,
+    text?: string
+  ): Promise<{
+    request: InboundSnapshot
+    delivery: OutboundRecord | undefined
+  }>
+  close(this: void): Promise<void>
+  remote: Awaited<ReturnType<typeof peer>>
+  plugin: ReturnType<typeof createLineChannel>
+}> {
   vi.stubEnv('LINE_SECRET', 'secret')
   vi.stubEnv('LINE_TOKEN', 'token')
   const remote = await peer()

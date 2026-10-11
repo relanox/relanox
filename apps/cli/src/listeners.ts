@@ -7,7 +7,7 @@ import type { ObservabilityRuntime } from '@relanox/sdk'
 function nodeServer(
   options: ServerOptions,
   listener: ReturnType<typeof getRequestListener>
-) {
+): Server {
   return createServer(options, (request, response) => {
     void listener(request, response).catch(() => {
       response.destroy()
@@ -29,7 +29,7 @@ function nativeRequest(request: Request): Request {
   return new Request(request.url, init)
 }
 
-export function listen(
+export async function listen(
   server: Server,
   port: number,
   host: string
@@ -52,7 +52,7 @@ export function listen(
   })
 }
 
-export function closeServer(server: Server): Promise<void> {
+export async function closeServer(server: Server): Promise<void> {
   return new Promise((resolve) => {
     server.close(() => {
       resolve()
@@ -66,10 +66,13 @@ export function createListeners(
   observability: ObservabilityRuntime,
   live: () => boolean,
   workerHealthy: () => boolean
-) {
+): {
+  business: ReturnType<typeof nodeServer>
+  management: ReturnType<typeof nodeServer>
+} {
   const business = nodeServer(
     { requestTimeout: 15_000, headersTimeout: 10_000, maxHeaderSize: 16_384 },
-    getRequestListener((request) => core.fetch(nativeRequest(request)), {
+    getRequestListener(async (request) => core.fetch(nativeRequest(request)), {
       overrideGlobalObjects: false,
       errorHandler: () => new Response(null, { status: 500 })
     })

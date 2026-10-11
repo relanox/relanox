@@ -15,7 +15,7 @@ export function createTelegramChannel(
   let account: AccountConfig
   let config: TelegramConfig
 
-  const identity = () => ({
+  const identity = (): { botId: string; apiBaseUrl: string } => ({
     botId: credential(config.botToken, environment).split(':')[0] ?? '',
     apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, '')
   })

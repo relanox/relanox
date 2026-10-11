@@ -1,7 +1,15 @@
+import type { CoreRuntime } from '../../../packages/core/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Json, SendInput } from '@relanox/sdk'
+import type {
+  Json,
+  SendInput,
+  Storage,
+  ScopedAgentHost,
+  InboundSnapshot,
+  OutboundRecord
+} from '@relanox/sdk'
 import {
   exportJWK,
   exportPKCS8,
@@ -37,7 +45,40 @@ const body = JSON.stringify({
   }
 })
 
-async function setup(filename = ':memory:', baseSuffix = '') {
+async function setup(
+  filename = ':memory:',
+  baseSuffix = ''
+): Promise<{
+  core: CoreRuntime
+  storage: Storage
+  dispatches: string[]
+  principal(this: void): ScopedAgentHost
+  complete(
+    this: void,
+    text?: string
+  ): Promise<{
+    request: InboundSnapshot
+    delivery: OutboundRecord | undefined
+  }>
+  close(this: void): Promise<void>
+  remote: Awaited<ReturnType<typeof peer>>
+  keys: Awaited<ReturnType<typeof generateKeyPair>>
+  config: Readonly<Record<string, Json>>
+  plugin: ReturnType<typeof createGoogleChatChannel>
+  incoming(
+    this: void,
+    overrides?: Parameters<
+      (overrides?: {
+        iss?: string
+        aud?: string
+        email?: string
+        verified?: boolean
+        exp?: string
+      }) => Promise<string>
+    >[0],
+    data?: string
+  ): Promise<Request>
+}> {
   const remote = await peer()
   cleanup.push(remote.close)
   const keys = await generateKeyPair('RS256', { extractable: true })
@@ -84,7 +125,7 @@ async function setup(filename = ':memory:', baseSuffix = '') {
       verified?: boolean
       exp?: string
     } = {}
-  ) {
+  ): Promise<string> {
     return new SignJWT({
       email: overrides.email ?? caller,
       email_verified: overrides.verified ?? true
@@ -100,7 +141,7 @@ async function setup(filename = ':memory:', baseSuffix = '') {
   async function incoming(
     overrides?: Parameters<typeof token>[0],
     data = body
-  ) {
+  ): Promise<Request> {
     return new Request('http://local/channels/business/webhook', {
       method: 'POST',
       headers: { authorization: `Bearer ${await token(overrides)}` },
@@ -218,7 +259,7 @@ describe('native Google Chat', () => {
     'rejects frozen targets after %s changes across SQLite reopen',
     async (change) => {
       const directory = await mkdtemp(join(tmpdir(), 'relanox-chat-identity-'))
-      cleanup.push(() => rm(directory, { recursive: true, force: true }))
+      cleanup.push(async () => rm(directory, { recursive: true, force: true }))
       const filename = join(directory, 'state.db')
       const local = await setup(filename)
       expect((await local.core.fetch(await local.incoming())).status).toBe(200)

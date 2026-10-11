@@ -91,7 +91,31 @@ export function telegramMessage(
   size: number,
   mimeType: string,
   caption = ''
-) {
+): {
+  update_id: number
+  message:
+    | {
+        photo: {
+          file_id: string
+          file_size: number
+          file_name: string
+          mime_type: string
+          duration: number
+        }[]
+        caption?: string
+        message_id: number
+        message_thread_id: number
+        from: { id: number; is_bot: boolean }
+        chat: { id: number; type: string }
+      }
+    | {
+        caption?: string
+        message_id: number
+        message_thread_id: number
+        from: { id: number; is_bot: boolean }
+        chat: { id: number; type: string }
+      }
+} {
   const file = {
     file_id: 'native-file',
     file_size: size,
@@ -117,7 +141,36 @@ export function telegramMessage(
   }
 }
 
-function feishuContent(kind: MediaKind, caption: string) {
+function feishuContent(
+  kind: MediaKind,
+  caption: string
+):
+  | {
+      zh_cn: {
+        content: (
+          | { tag: string; text: string; image_key?: never }
+          | { tag: string; image_key: string; text?: never }
+        )[][]
+      }
+      image_key?: never
+      file_key?: never
+      file_name?: never
+      duration?: never
+    }
+  | {
+      image_key: string
+      zh_cn?: never
+      file_key?: never
+      file_name?: never
+      duration?: never
+    }
+  | {
+      file_key: string
+      file_name: string
+      duration: number
+      zh_cn?: never
+      image_key?: never
+    } {
   if (caption) {
     return {
       zh_cn: {
@@ -144,7 +197,7 @@ export async function httpIngress(
   size: number,
   mimeType: string,
   caption = ''
-) {
+): Promise<Response> {
   let value: unknown
   let path = '/webhook'
 

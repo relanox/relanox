@@ -6,6 +6,7 @@
   },
   "include": [
     "vitest.config.ts",
+    "oxlint.config.ts",
     "tests/**/*.ts",
     "packages/**/*.test.ts",
     "plugins/**/*.test.ts",

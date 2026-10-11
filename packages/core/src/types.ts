@@ -10,7 +10,7 @@ import type {
   MutationResult
 } from '@relanox/sdk'
 
-export interface WorkerOptions {
+export type WorkerOptions = {
   readonly batchSize?: number
   readonly batchDurationMs?: number
   readonly callTimeoutMs?: number
@@ -27,13 +27,13 @@ export interface WorkerOptions {
   readonly maxHttpBodyBytes?: number
 }
 
-export interface MediaPublisherOptions {
+export type MediaPublisherOptions = {
   readonly publicBaseUrl: string
   readonly urlLifetimeMs?: number
   readonly allowInsecureLocalhost?: boolean
 }
 
-export interface CoreOptions {
+export type CoreOptions = {
   readonly media?: MediaPublisherOptions
   readonly config: unknown
   readonly storage: Storage
@@ -43,7 +43,7 @@ export interface CoreOptions {
   readonly worker?: WorkerOptions
 }
 
-export interface CoreRuntime {
+export type CoreRuntime = {
   readonly config: RelanoxConfig
   fetch(request: Request): Promise<Response>
   processDue(): Promise<{

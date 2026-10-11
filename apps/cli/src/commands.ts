@@ -1,3 +1,5 @@
+import type { MediaPublisherOptions } from '@relanox/core'
+import type { RelanoxConfig } from '@relanox/sdk'
 import { Command } from 'commander'
 import { z } from 'zod'
 import {
@@ -15,14 +17,40 @@ export function printJson(value: unknown): void {
 
 const configOptions = z.object({ config: z.string().min(1) })
 
-const numberOption = (min: number, max: number) =>
+const numberOption = (
+  min: number,
+  max: number
+): z.ZodPipe<
+  z.ZodPipe<z.ZodString, z.ZodTransform<number, string>>,
+  z.ZodNumber
+> =>
   z
     .string()
     .regex(/^\d+$/u)
     .transform(Number)
     .pipe(z.number().int().min(min).max(max))
 
-async function configFrom(command: Command) {
+async function configFrom(command: Command): Promise<{
+  relay: RelanoxConfig
+  server: {
+    host: string
+    port: number
+    managementHost: '127.0.0.1' | '::1'
+    managementPort: number
+    workerIntervalMs: number
+    workerStaleMs: number
+    shutdownTimeoutMs: number
+    startupTimeoutMs: number
+  }
+  media?: MediaPublisherOptions | undefined
+  mediaLimits?:
+    | {
+        maxMediaBytes: number
+        maxTotalMediaBytes: number
+        maxAttachments: number
+      }
+    | undefined
+}> {
   const options = configOptions.parse(command.optsWithGlobals())
   return validateApp(await readConfig(options.config))
 }
@@ -31,11 +59,11 @@ async function run(command: Command): Promise<void> {
   const config = await configFrom(command)
   let requested = false
 
-  let signalShutdown = () => {
+  let signalShutdown = (): void => {
     requested = true
   }
 
-  const onSignal = () => {
+  const onSignal = (): void => {
     signalShutdown()
   }
 
@@ -106,7 +134,7 @@ function addStatus(program: Command): void {
       }
 
       printJson(
-        await withStorage(config, (storage) =>
+        await withStorage(config, async (storage) =>
           readStatus(storage, filter, options.includeContent)
         )
       )
@@ -139,7 +167,7 @@ function addRecovery(program: Command): void {
         })
         .parse(command.opts())
 
-      const result = await withStorage(config, (storage) =>
+      const result = await withStorage(config, async (storage) =>
         storage.requeue({ ...options, now: Date.now() })
       )
 
@@ -165,7 +193,9 @@ function addRecovery(program: Command): void {
         })
         .parse(command.opts())
 
-      printJson(await withStorage(config, (storage) => storage.cleanup(input)))
+      printJson(
+        await withStorage(config, async (storage) => storage.cleanup(input))
+      )
     })
 }
 
@@ -209,7 +239,10 @@ export function createProgram(): Command {
         .object({ managementUrl: z.url().optional() })
         .parse(command.opts())
 
-      const health = await withStorage(config, (storage) => storage.health())
+      const health = await withStorage(config, async (storage) =>
+        storage.health()
+      )
+
       const missing = missingSecrets(config)
 
       const running =

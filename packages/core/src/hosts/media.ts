@@ -23,8 +23,7 @@ export function authorizedRequest(
   token: string
 ): request is InboundRecord {
   return (
-    request !== undefined &&
-    request.snapshot.endpoint.agent === agent &&
+    request?.snapshot.endpoint.agent === agent &&
     scope.includes(request.snapshot.endpoint.id) &&
     request.claim?.token === token &&
     (request.status === 'claimed' || request.status === 'completed')
@@ -128,8 +127,7 @@ export async function readPreview(
   mediaId.parse(id)
   const preview = await storage.media?.get(requestId, id)
   if (
-    !preview ||
-    preview.reference.kind !== 'image' ||
+    preview?.reference.kind !== 'image' ||
     preview.reference.previewMediaId !== undefined
   ) {
     throw new CoreError('invalid_media_preview')

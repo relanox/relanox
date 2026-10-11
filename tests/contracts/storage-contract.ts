@@ -1,3 +1,5 @@
+import type { DueWork } from '../../packages/sdk/src/storage.js'
+import type { ClaimResult } from '../../packages/sdk/src/messages.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type {
   CompleteInput,
@@ -67,7 +69,10 @@ export const completion = (
   }
 })
 
-export function storageContract(name: string, open: () => Promise<Storage>) {
+export function storageContract(
+  name: string,
+  open: () => Promise<Storage>
+): void {
   describe(name, () => {
     let s: Storage
     beforeEach(async () => {
@@ -78,7 +83,11 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       await s.close()
     })
 
-    const claim = (id = 'r1', key = 'try', token = 'token') =>
+    const claim = async (
+      id = 'r1',
+      key = 'try',
+      token = 'token'
+    ): Promise<ClaimResult> =>
       s.claimRequest({
         requestId: id,
         agent: 'grok',
@@ -88,7 +97,10 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         now: 105
       })
 
-    const due = (now = 110, safeRetryAccountIds: string[] = []) =>
+    const due = async (
+      now = 110,
+      safeRetryAccountIds: string[] = []
+    ): Promise<readonly DueWork[]> =>
       s.takeDue({
         now,
         leaseMs: 10,

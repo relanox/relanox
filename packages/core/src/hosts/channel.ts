@@ -18,7 +18,7 @@ import { ingestSchema, boundedText } from '../validation.js'
 import { inboundMedia } from '../media.js'
 import { createOperationTracer } from './tracing.js'
 
-interface ChannelHostOptions {
+type ChannelHostOptions = {
   readonly mediaPublisher?: ChannelMediaHost
   readonly account: AccountConfig
   readonly bindings: ReadonlyMap<string, Binding>
@@ -105,7 +105,7 @@ export function createChannelHost({
 
       const receipt = await traced(
         'ingest',
-        (trace) =>
+        async (trace) =>
           storage.acceptInbound(
             jsonSnapshot({
               ...message,

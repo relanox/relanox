@@ -12,7 +12,7 @@ async function execute(
   directory: string,
   command: string,
   args: readonly string[]
-) {
+): Promise<{ code: number | null; output: string }> {
   return new Promise<{ code: number | null; output: string }>(
     (resolve, reject) => {
       const child = spawn(command, args, {
@@ -40,11 +40,14 @@ async function execute(
   )
 }
 
-function git(directory: string, args: readonly string[]) {
+async function git(
+  directory: string,
+  args: readonly string[]
+): Promise<{ code: number | null; output: string }> {
   return execute(directory, 'git', args)
 }
 
-async function stage(directory: string) {
+async function stage(directory: string): Promise<void> {
   expect((await git(directory, ['add', '.'])).code).toBe(0)
 }
 
@@ -68,7 +71,7 @@ it('enforces format, declaration spacing and type-aware lint on real commits wit
   ).toBe(0)
   for (const file of [
     '.githooks',
-    '.oxlintrc.json',
+    'oxlint.config.ts',
     '.prettierrc.json',
     '.prettierignore',
     'scripts',
@@ -156,9 +159,33 @@ it('enforces format, declaration spacing and type-aware lint on real commits wit
     'Promise.resolve(42)\n'
   )
 
+  await writeFile(
+    path.join(folder, 'sample.ts'),
+    'export interface Input {\n  value: number\n}\n'
+  )
+  await stage(folder)
+
+  const interfaceStyle = await git(folder, [
+    'commit',
+    '-m',
+    'test: interface style'
+  ])
+
+  expect(interfaceStyle.code).not.toBe(0)
+  expect(interfaceStyle.output).toContain('consistent-type-definitions')
+
+  await writeFile(
+    path.join(folder, 'sample.ts'),
+    'export function answer() {\n  return 42\n}\n'
+  )
+  await stage(folder)
+  const returnStyle = await git(folder, ['commit', '-m', 'test: return style'])
+  expect(returnStyle.code).not.toBe(0)
+  expect(returnStyle.output).toContain('explicit-function-return-type')
+
   const adjacentDeclarations = [
     '/** Input contract. */',
-    'export interface Input {',
+    'export type Input = {',
     '  value: number',
     '}',
     '/** Return the input value. */',
@@ -166,7 +193,7 @@ it('enforces format, declaration spacing and type-aware lint on real commits wit
     '  return input.value',
     '}',
     '// Output contract.',
-    'export interface Output {',
+    'export type Output = {',
     '  value: number',
     '}',
     '/** Build an output value. */',
@@ -237,7 +264,7 @@ it('enforces format, declaration spacing and type-aware lint on real commits wit
     '}\n\n/** Return the input value. */\nexport function read'
   )
   expect(spacedDeclarations).toContain(
-    '}\n\n// Output contract.\nexport interface Output'
+    '}\n\n// Output contract.\nexport type Output'
   )
   expect(spacedDeclarations).toContain(
     '}\n\n/** Build an output value. */\nexport function output'

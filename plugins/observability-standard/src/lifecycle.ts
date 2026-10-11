@@ -9,7 +9,7 @@ export async function runWithLifecycleDeadline(
   }
   const controller = new AbortController()
 
-  const abort = () => {
+  const abort = (): void => {
     controller.abort()
   }
 
@@ -18,7 +18,7 @@ export async function runWithLifecycleDeadline(
   try {
     await Promise.race([
       Promise.resolve()
-        .then(() => operation(controller.signal))
+        .then(async () => operation(controller.signal))
         .catch(() => {
           dropped()
         }),

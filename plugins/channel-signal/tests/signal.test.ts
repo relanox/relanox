@@ -12,7 +12,14 @@ import {
 } from '../../channel-matrix/tests/harness.js'
 import { createSignalChannel } from '../src/index.js'
 
-function config(base: string) {
+function config(base: string): {
+  serviceUrl: string
+  account: string
+  selfUuid: string
+  authorization: { env: string }
+  allowInsecureLocalhost: boolean
+  reconnectMs: number
+} {
   return {
     serviceUrl: base,
     account: '+10000000001',
@@ -28,7 +35,19 @@ function envelope(
   text: string,
   groupId?: string,
   account = '+10000000001'
-) {
+): {
+  account: string
+  envelope: {
+    source: string
+    sourceUuid: string
+    timestamp: number
+    dataMessage: {
+      groupInfo?: { groupId: string }
+      timestamp: number
+      message: string
+    }
+  }
+} {
   return {
     account,
     envelope: {
@@ -403,7 +422,7 @@ it('preserves Last-Event-ID when valid ingest fails in real storage and replays 
     response.writeHead(200, { 'Content-Type': 'text/event-stream' })
     response.flushHeaders()
 
-    const send = () => {
+    const send = (): void => {
       frame(response, envelope('alice-uuid', 'recover me'), 'new-cursor')
     }
 

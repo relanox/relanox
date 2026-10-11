@@ -83,7 +83,7 @@ export async function acceptConsent(
   }
 }
 
-export interface PreparedAttachment {
+export type PreparedAttachment = {
   readonly attachment?: Json
   readonly outcome?: SendResult
   readonly consentKey?: string

@@ -2,11 +2,16 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ChannelHost, Storage } from '@relanox/sdk'
+import type {
+  ChannelHost,
+  Storage,
+  IngestInput,
+  HttpHandler
+} from '@relanox/sdk'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
-import type { RawData } from 'ws'
+import type { RawData, Server } from 'ws'
 import { createDiscordChannel } from '../src/index.js'
 import { peer, recorder, sendInput } from './peer.js'
 
@@ -52,7 +57,21 @@ async function setup(
   onIngest?: Parameters<typeof recorder>[0],
   storage?: Storage,
   overrides: Record<string, unknown> = {}
-) {
+): Promise<{
+  target: {
+    data: { apiBaseUrl: string; botId: string }
+    channel: 'discord'
+    accountId: string
+    chatId: string
+    replyToId: string
+  }
+  host: ChannelHost
+  received: IngestInput[]
+  handlers: Map<string, HttpHandler>
+  connections: string[]
+  plugin: ReturnType<typeof createDiscordChannel>
+  db: Storage
+}> {
   const plugin = createDiscordChannel(environment)
   const recorded = recorder(onIngest)
 
@@ -62,17 +81,17 @@ async function setup(
 
   await db.initialize()
   if (!storage) {
-    cleanup.push(() => db.close())
+    cleanup.push(async () => db.close())
   }
   const namespace = { pluginId: 'channel-discord', ownerId: 'dc' }
 
   const host: ChannelHost = {
     ...recorded.host,
     state: {
-      get: (key) => db.getState(namespace, key),
-      list: (input) => db.listState(namespace, input),
-      compareAndSet: (input) => db.compareAndSetState(namespace, input),
-      delete: (key, version) => db.deleteState(namespace, key, version)
+      get: async (key) => db.getState(namespace, key),
+      list: async (input) => db.listState(namespace, input),
+      compareAndSet: async (input) => db.compareAndSetState(namespace, input),
+      delete: async (key, version) => db.deleteState(namespace, key, version)
     }
   }
 
@@ -97,7 +116,10 @@ async function setup(
   }
 }
 
-async function gateway() {
+async function gateway(): Promise<{
+  wss: Server
+  url: string
+}> {
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await new Promise<void>((resolve) => {
     wss.once('listening', resolve)

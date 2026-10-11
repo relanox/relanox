@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'node:http'
 import { resolveMediaAddress } from './address.js'
 import { MediaDownloadError } from './errors.js'
 
-export interface DownloadMediaOptions {
+export type DownloadMediaOptions = {
   readonly maxBytes: number
   readonly signal: AbortSignal
   /** Exact origins derived from administrator-configured API endpoints, never message data. */
@@ -14,12 +14,15 @@ export interface DownloadMediaOptions {
   readonly headers?: Readonly<Record<string, string>>
 }
 
-export interface DownloadedMedia {
+export type DownloadedMedia = {
   readonly data: Uint8Array
   readonly mimeType: string
 }
 
-function validateUrl(value: string, options: DownloadMediaOptions) {
+function validateUrl(
+  value: string,
+  options: DownloadMediaOptions
+): { url: URL; trusted: boolean } {
   const url = new URL(value)
   const trusted = options.trustedOrigins?.includes(url.origin) === true
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)

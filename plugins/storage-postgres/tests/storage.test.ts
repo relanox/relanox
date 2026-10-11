@@ -1,6 +1,6 @@
 import { asset, mediaContract } from '../../../tests/storage/media-contract.js'
 import { randomUUID } from 'node:crypto'
-import type { Storage } from '@relanox/sdk'
+import type { Storage, ClaimResult, DueWork } from '@relanox/sdk'
 import { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import {
@@ -12,7 +12,9 @@ import {
 import { createPostgresStorage, postgresStoragePlugin } from '../src/index.js'
 
 const enabled = Boolean(process.env.RELANOX_TEST_POSTGRES_URL)
-const schemaName = () => `relanox_test_${randomUUID().replaceAll('-', '')}`
+
+const schemaName = (): string =>
+  `relanox_test_${randomUUID().replaceAll('-', '')}`
 
 const open = (schema: string): Storage =>
   createPostgresStorage({
@@ -20,7 +22,7 @@ const open = (schema: string): Storage =>
     schema
   })
 
-async function drop(schema: string) {
+async function drop(schema: string): Promise<void> {
   const connectionString = process.env.RELANOX_TEST_POSTGRES_URL
   if (!connectionString) {
     throw new Error('Test PostgreSQL URL required')
@@ -39,7 +41,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
     const storage = open(schema)
     return {
       ...storage,
-      async close() {
+      async close(): Promise<void> {
         try {
           await storage.close()
         } finally {
@@ -54,7 +56,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
     const storage = open(schema)
     return {
       ...storage,
-      async close() {
+      async close(): Promise<void> {
         try {
           await storage.close()
         } finally {
@@ -182,7 +184,11 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       const firstId = required(receipts[0]).requestId
       await a.acceptInbound(snapshot('r2', 101))
 
-      const claim = (s: Storage, id: string, token: string) =>
+      const claim = async (
+        s: Storage,
+        id: string,
+        token: string
+      ): Promise<ClaimResult> =>
         s.claimRequest({
           requestId: id,
           agent: 'grok',
@@ -538,7 +544,10 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       })
       await a.completeAndEnqueue(completion())
 
-      const due = (s: Storage, now: number) =>
+      const due = async (
+        s: Storage,
+        now: number
+      ): Promise<readonly DueWork[]> =>
         s.takeDue({
           now,
           leaseMs: 10,

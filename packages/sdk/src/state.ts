@@ -1,19 +1,19 @@
 import type { Json, EpochMs } from './values.js'
 import type { MutationResult } from './messages.js'
 
-export interface StateNamespace {
+export type StateNamespace = {
   readonly pluginId: string
   readonly ownerId: string
 }
 
-export interface StateEntry {
+export type StateEntry = {
   readonly key: string
   readonly value: Json
   readonly version: number
   readonly expiresAt?: EpochMs
 }
 
-export interface StateStore {
+export type StateStore = {
   get(key: string): Promise<StateEntry | undefined>
   list(input: {
     readonly prefix?: string

@@ -9,7 +9,7 @@ export type MetricLabels = Readonly<
   >
 >
 
-export interface LogFields {
+export type LogFields = {
   readonly plugin?: string
   readonly requestId?: string
   readonly deliveryId?: string
@@ -19,12 +19,12 @@ export interface LogFields {
   readonly operation?: string
 }
 
-export interface Span {
+export type Span = {
   readonly context?: TraceContext
   end(outcome?: 'ok' | 'error'): void
 }
 
-export interface Observability {
+export type Observability = {
   log(
     level: 'debug' | 'info' | 'warn' | 'error',
     event: string,

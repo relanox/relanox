@@ -38,7 +38,7 @@ it.each(['before', 'during'])(
       }
 
       const body = new ReadableStream<Uint8Array>({
-        cancel() {
+        cancel(): void {
           cancelled = true
         }
       })
@@ -158,7 +158,15 @@ function plugins(
   dispatch = vi
     .fn<AgentPlugin['dispatch']>()
     .mockResolvedValue({ status: 'accepted' })
-) {
+): {
+  channel: ChannelPlugin
+  grok: AgentPlugin
+  dot: AgentPlugin
+  channels: Map<string, ChannelPlugin>
+  agents: Map<'dot' | 'grok', AgentPlugin>
+  readonly channelHost: ChannelHost
+  readonly agentHost: AgentHost
+} {
   let channelHost: ChannelHost | undefined
   let agentHost: AgentHost | undefined
 
@@ -330,7 +338,7 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
             traceparent:
               '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
           },
-          end() {}
+          end(): void {}
         }
       }
     },
@@ -551,7 +559,7 @@ it("binds mutations to the principal agent and rejects a reused endpoint's forei
 it('validates every endpoint before registering any traffic and keeps setup config separate', async () => {
   const p = plugins()
   const setup = vi.spyOn(p.channel, 'setup')
-  p.dot.validateConfig = () => {
+  p.dot.validateConfig = (): never => {
     throw new Error('invalid endpoint')
   }
   await expect(
@@ -563,7 +571,7 @@ it('validates every endpoint before registering any traffic and keeps setup conf
     })
   ).rejects.toThrow('invalid endpoint')
   expect(setup).not.toHaveBeenCalled()
-  p.dot.validateConfig = (value) => value as never
+  p.dot.validateConfig = (value): never => value as never
   const agentSetup = vi.spyOn(p.grok, 'setup')
   await createCore({
     config,

@@ -23,7 +23,7 @@ External protocol peers may record real HTTP/socket traffic, but must not implem
 
 ## Commits
 
-Use Prettier with the shared `prettier-config-standard` configuration and type-aware Oxlint through the root scripts. Follow `docs/en/development.md`. Run `pnpm format`, `pnpm lint`, `pnpm typecheck`, and relevant Vitest checks before committing. Documentation changes also require `pnpm docs:build`. The tracked pre-commit hook must pass; never use `--no-verify` or disable rules just to integrate work. Keep complexity <=20 and nesting <=4; split meaningful operations instead of dense nested expressions. New test folders must have a discoverable tsconfig so type-aware linting uses real types. Prettier is the only formatter; do not add a second formatter layer.
+Use Prettier with the shared `prettier-config-standard` configuration and type-aware Oxlint with `@metamask/oxlint-config-typescript` through the root scripts. Follow `docs/en/development.md`. Run `pnpm format`, `pnpm lint`, `pnpm typecheck`, and relevant Vitest checks before committing. Documentation changes also require `pnpm docs:build`. The tracked pre-commit hook must pass; never use `--no-verify` or disable rules just to integrate work. Keep complexity <=20 and nesting <=4; split meaningful operations instead of dense nested expressions. New test folders must have a discoverable tsconfig so type-aware linting uses real types. Prettier is the only formatter; do not add a second formatter layer.
 
 Keep declarations and class methods separated by the blank lines enforced by Oxlint. Use `pnpm lint:fix` followed by `pnpm format` to repair spacing; Prettier alone does not insert declaration separators. Preserve comments and JSDoc with their declarations.
 

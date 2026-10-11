@@ -6,7 +6,11 @@ export function createWorker(
   core: CoreRuntime,
   intervalMs: number,
   observe: Observability
-) {
+): {
+  start(this: void): void
+  healthy(this: void, staleMs: number): boolean
+  stop(this: void): Promise<void>
+} {
   let timer: ReturnType<typeof setTimeout> | undefined
   let working = Promise.resolve()
   let started = false
@@ -14,7 +18,7 @@ export function createWorker(
   let failed = false
   let lastSuccess = 0
 
-  const tick = async () => {
+  const tick = async (): Promise<void> => {
     try {
       await core.processDue()
       lastSuccess = Date.now()
@@ -40,14 +44,14 @@ export function createWorker(
   }
 
   return {
-    start() {
+    start(): void {
       if (started || stopping) {
         return
       }
       started = true
       working = tick()
     },
-    healthy(staleMs: number) {
+    healthy(staleMs: number): boolean {
       return (
         !stopping &&
         !failed &&
@@ -55,7 +59,7 @@ export function createWorker(
         Date.now() - lastSuccess <= staleMs
       )
     },
-    stop() {
+    async stop(): Promise<void> {
       stopping = true
       clearTimeout(timer)
       return working

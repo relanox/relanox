@@ -1,7 +1,15 @@
+import type { CoreRuntime } from '../../../packages/core/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Json, SendInput } from '@relanox/sdk'
+import type {
+  Json,
+  SendInput,
+  Storage,
+  ScopedAgentHost,
+  InboundSnapshot,
+  OutboundRecord
+} from '@relanox/sdk'
 import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -21,7 +29,45 @@ async function setup(
   endorsements = ['msteams'],
   filename = ':memory:',
   publicBaseUrl?: string
-) {
+): Promise<{
+  core: CoreRuntime
+  storage: Storage
+  dispatches: string[]
+  principal(this: void): ScopedAgentHost
+  complete(
+    this: void,
+    text?: string
+  ): Promise<{
+    request: InboundSnapshot
+    delivery: OutboundRecord | undefined
+  }>
+  close(this: void): Promise<void>
+  remote: Awaited<ReturnType<typeof peer>>
+  config: Readonly<Record<string, Json>>
+  plugin: ReturnType<typeof createTeamsChannel>
+  activity: {
+    type: string
+    id: string
+    channelId: string
+    serviceUrl: string
+    text: string
+    from: { id: string }
+    recipient: { id: string }
+    conversation: { id: string; tenantId: string }
+    channelData: { tenant: { id: string } }
+    replyToId: string
+  }
+  incoming(
+    this: void,
+    claims?: {
+      iss?: string
+      aud?: string
+      serviceurl?: string
+      exp?: string
+    },
+    body?: unknown
+  ): Promise<Request>
+}> {
   vi.stubEnv('TEAMS_SECRET', 'app-secret')
   const remote = await peer()
   cleanup.push(remote.close)
@@ -80,7 +126,7 @@ async function setup(
       exp?: string
     } = {},
     body: unknown = activity
-  ) {
+  ): Promise<Request> {
     const token = await new SignJWT({
       serviceurl: claims.serviceurl ?? activity.serviceUrl
     })
@@ -232,7 +278,7 @@ describe('native Microsoft Teams', () => {
     'rejects frozen targets after %s changes across SQLite reopen',
     async (change) => {
       const directory = await mkdtemp(join(tmpdir(), 'relanox-teams-identity-'))
-      cleanup.push(() => rm(directory, { recursive: true, force: true }))
+      cleanup.push(async () => rm(directory, { recursive: true, force: true }))
       const filename = join(directory, 'state.db')
       const local = await setup(['msteams'], filename)
       expect((await local.core.fetch(await local.incoming())).status).toBe(200)
@@ -497,7 +543,7 @@ it.each([
   'Teams uploads $fileName through persistent personal consent without public media hosting',
   async ({ fileName, mimeType, fileType, bytes }) => {
     const directory = await mkdtemp(join(tmpdir(), 'relanox-teams-media-'))
-    cleanup.push(() => rm(directory, { recursive: true, force: true }))
+    cleanup.push(async () => rm(directory, { recursive: true, force: true }))
     const filename = join(directory, 'state.db')
     const local = await setup(['msteams'], filename)
     local.remote.route('/file', bytes, { 'content-type': mimeType })

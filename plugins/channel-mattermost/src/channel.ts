@@ -28,7 +28,12 @@ import {
   targetSchema
 } from './schemas.js'
 
-function decodeFrame(bytes: RawData) {
+function decodeFrame(bytes: RawData): {
+  event?: string | undefined
+  data?: Record<string, unknown> | undefined
+  seq_reply?: number | undefined
+  status?: string | undefined
+} {
   let buffer: Buffer
   if (Array.isArray(bytes)) {
     buffer = Buffer.concat(bytes)
@@ -56,7 +61,12 @@ export function createMattermostChannel(
   let controller: AbortController | undefined
   let socket: WebSocket | undefined
 
-  function configured() {
+  function configured(): {
+    host: ChannelHost
+    account: AccountConfig
+    config: MattermostConfig
+    base: string
+  } {
     if (!runtime) {
       throw new Error('not_setup')
     }
@@ -150,7 +160,7 @@ export function createMattermostChannel(
       current.ping()
     }, 10_000)
 
-    const abort = () => {
+    const abort = (): void => {
       current.terminate()
     }
 
@@ -199,7 +209,7 @@ export function createMattermostChannel(
       }
       queued += 1
       pending = pending
-        .then(() => processFrame(decodeFrame(bytes)))
+        .then(async () => processFrame(decodeFrame(bytes)))
         .catch(() => {
           diagnose(host, 'receive_failed')
           host.connection('degraded')

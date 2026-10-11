@@ -45,12 +45,12 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
     const id = randomUUID()
     signal.throwIfAborted()
     return new Promise((resolve, reject) => {
-      const fail = () => {
+      const fail = (): void => {
         cleanup()
         reject(new Error('request_uncertain'))
       }
 
-      const cleanup = () => {
+      const cleanup = (): void => {
         clearTimeout(timer)
         signal.removeEventListener('abort', fail)
         pending.delete(id)
@@ -210,7 +210,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
               return
             }
             awaiting = true
-            void (async () => {
+            void (async (): Promise<void> => {
               try {
                 const response = await request(
                   'ping',
@@ -239,8 +239,8 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
         config.maxReconnectAttempts
       )
     },
-    start: (signal) => connection.start(signal),
-    stop: () => connection.stop(),
+    start: async (signal) => connection.start(signal),
+    stop: async () => connection.stop(),
     async send(input: SendInput): Promise<SendResult> {
       const target = targetSchema.safeParse(input.target.data)
       if (

@@ -10,7 +10,7 @@ import type { Observability, Span, TraceContext } from '@relanox/sdk'
 import type { StandardConfig } from './config.js'
 import { allowedVocabularyValue, operations, safeFields } from './fields.js'
 
-export interface TracingRuntime {
+export type TracingRuntime = {
   readonly provider: NodeTracerProvider | undefined
   readonly span: Observability['span']
 }

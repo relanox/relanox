@@ -8,7 +8,7 @@ const database = new DatabaseSync(filename)
 database.exec('BEGIN IMMEDIATE')
 let released = false
 
-function release() {
+function release(): void {
   if (released) {
     return
   }

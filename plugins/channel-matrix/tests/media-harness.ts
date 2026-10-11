@@ -24,7 +24,29 @@ export async function mediaRelay(
   chats: readonly { chatId: string; threadId?: string }[],
   allowedSenders: readonly string[],
   maxMediaBytes = 1024
-) {
+): Promise<{
+  storage: ReturnType<typeof createSqliteStorage>
+  runtime: Awaited<ReturnType<typeof createCore>>
+  businessUrl: string
+  client: Client
+  turn(
+    this: void,
+    requestId: string,
+    uploads?: readonly MediaUpload[]
+  ): Promise<{
+    inbound: {
+      reference: {
+        id: string
+        kind: string
+        mimeType: string
+        fileName: string
+        durationMs?: number | undefined
+      }
+      data: Uint8Array<ArrayBuffer>
+    }[]
+    deliveryId: string
+  }>
+}> {
   const storage = createSqliteStorage({
     filename: await databaseFile(),
     busyTimeoutMs: 5000
@@ -121,7 +143,22 @@ export async function mediaRelay(
     )
   )
 
-  async function turn(requestId: string, uploads?: readonly MediaUpload[]) {
+  async function turn(
+    requestId: string,
+    uploads?: readonly MediaUpload[]
+  ): Promise<{
+    inbound: {
+      reference: {
+        id: string
+        kind: string
+        mimeType: string
+        fileName: string
+        durationMs?: number | undefined
+      }
+      data: Uint8Array<ArrayBuffer>
+    }[]
+    deliveryId: string
+  }> {
     const claim = z
       .object({
         status: z.literal('claimed'),

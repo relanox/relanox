@@ -1,3 +1,4 @@
+import type { LookupAddress } from 'node:dns'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import { MediaDownloadError } from './errors.js'
@@ -62,11 +63,11 @@ export async function resolveMediaAddress(
   hostname: string,
   trusted: boolean,
   signal: AbortSignal
-) {
+): Promise<LookupAddress> {
   let onAbort: (() => void) | undefined
 
   const aborted = new Promise<never>((_resolve, reject) => {
-    onAbort = () => {
+    onAbort = (): void => {
       reject(new MediaDownloadError('media_timeout'))
     }
     if (signal.aborted) {

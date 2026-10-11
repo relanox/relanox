@@ -53,21 +53,19 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
     { value: string; expiresAt: number; credential: string } | undefined
 
   let tokenFlight: Promise<string> | undefined
-  const api = (path: string) => `${config.apiBase.replace(/\/$/u, '')}${path}`
+
+  const api = (path: string): string =>
+    `${config.apiBase.replace(/\/$/u, '')}${path}`
 
   async function getAccessToken(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret)
-    if (
-      token &&
-      token.credential === credential &&
-      token.expiresAt > Date.now()
-    ) {
+    if (token?.credential === credential && token.expiresAt > Date.now()) {
       return token.value
     }
     if (tokenFlight) {
       return tokenFlight
     }
-    tokenFlight = (async () => {
+    tokenFlight = (async (): Promise<string> => {
       const body = tokenSchema.parse(
         await httpJson(
           api('/v1.0/oauth2/accessToken'),
@@ -93,7 +91,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
   async function receive(raw: unknown): Promise<void> {
     const frame = streamSchema.parse(raw)
 
-    const ack = (code: number, data: string) => {
+    const ack = (code: number, data: string): void => {
       connection.send({
         code,
         headers: {
@@ -265,8 +263,8 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         config.maxReconnectAttempts
       )
     },
-    start: (signal) => connection.start(signal),
-    stop: () => connection.stop(),
+    start: async (signal) => connection.start(signal),
+    stop: async () => connection.stop(),
     async send(input: SendInput): Promise<SendResult> {
       const target = targetSchema.safeParse(input.target.data)
       if (

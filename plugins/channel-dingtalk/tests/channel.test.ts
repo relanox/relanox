@@ -21,7 +21,15 @@ const message = {
   sessionWebhookExpiredTime: 1
 }
 
-const robotFrame = (messageId: string, body: unknown) => ({
+const robotFrame = (
+  messageId: string,
+  body: unknown
+): {
+  specVersion: string
+  type: string
+  headers: { topic: string; messageId: string; contentType: string }
+  data: string
+} => ({
   specVersion: '1.0',
   type: 'CALLBACK',
   headers: {

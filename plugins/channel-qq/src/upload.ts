@@ -34,7 +34,7 @@ const formats: Readonly<Record<string, readonly string[]>> = {
   video: ['video/mp4']
 }
 
-const digest = (algorithm: string, bytes: Uint8Array) =>
+const digest = (algorithm: string, bytes: Uint8Array): string =>
   createHash(algorithm).update(bytes).digest('hex')
 
 async function apiRequest(
@@ -42,7 +42,7 @@ async function apiRequest(
   body: unknown,
   credential: string,
   signal: AbortSignal
-) {
+): Promise<unknown> {
   const raw = await httpJson(
     url,
     jsonPostRequest(body, { Authorization: `QQBot ${credential}` }),
@@ -60,7 +60,7 @@ function validateParts(
   prepared: z.infer<typeof preparedSchema>,
   size: number,
   config: QqConfig
-) {
+): { index: number; block_size: number; offset: number; url: string }[] {
   const parts = prepared.parts.toSorted(
     (left, right) => left.index - right.index
   )

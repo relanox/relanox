@@ -149,7 +149,7 @@ export function openDatabase(
     client: PoolClient,
     record: InboundRecord,
     expectedVersion = record.version - 1
-  ) => {
+  ): Promise<void> => {
     const changed = await client.query(
       'UPDATE inbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5',
       [
@@ -170,7 +170,7 @@ export function openDatabase(
     client: PoolClient,
     record: OutboundRecord,
     expectedVersion = record.version - 1
-  ) => {
+  ): Promise<void> => {
     const changed = await client.query(
       'UPDATE outbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5',
       [
@@ -187,7 +187,10 @@ export function openDatabase(
     }
   }
 
-  const isEndpointHead = async (client: PoolClient, record: InboundRecord) =>
+  const isEndpointHead = async (
+    client: PoolClient,
+    record: InboundRecord
+  ): Promise<boolean> =>
     (
       await query(
         client,
@@ -229,7 +232,7 @@ export function openDatabase(
   }
 }
 
-export interface DatabaseContext {
+export type DatabaseContext = {
   readonly config: PostgresConfig
   readonly pool: Pool
   query<T extends QueryResultRow>(

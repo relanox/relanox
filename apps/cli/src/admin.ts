@@ -2,7 +2,11 @@ import type {
   InboundRecord,
   OutboundRecord,
   StatusFilter,
-  Storage
+  Storage,
+  RequestStatus,
+  AttemptStatus,
+  DeliveryStatus,
+  StorageStats
 } from '@relanox/sdk'
 import type { AppConfig } from './config.js'
 import { deadline } from './deadline.js'
@@ -20,7 +24,25 @@ export async function withStorage<T>(
   }
 }
 
-function requestSummary(record: InboundRecord, content: boolean) {
+function requestSummary(
+  record: InboundRecord,
+  content: boolean
+): {
+  text?: string
+  resultText?: string | undefined
+  requestId: string
+  endpointId: string
+  accountId: string
+  status: RequestStatus
+  version: number
+  acceptedAt: number
+  dispatch: {
+    status: AttemptStatus
+    attempts: number
+    dueAt: number
+  }
+  redactedAt: number | undefined
+} {
   return {
     requestId: record.snapshot.requestId,
     endpointId: record.snapshot.endpoint.id,
@@ -40,7 +62,20 @@ function requestSummary(record: InboundRecord, content: boolean) {
   }
 }
 
-function deliverySummary(record: OutboundRecord, content: boolean) {
+function deliverySummary(
+  record: OutboundRecord,
+  content: boolean
+): {
+  text?: string
+  deliveryId: string
+  requestId: string
+  status: DeliveryStatus
+  version: number
+  currentChunk: number
+  chunkCount: number
+  attempts: number
+  dueAt: number
+} {
   return {
     deliveryId: record.deliveryId,
     requestId: record.requestId,
@@ -60,7 +95,36 @@ export async function readStatus(
   storage: Storage,
   filter: StatusFilter,
   content: boolean
-) {
+): Promise<{
+  stats: StorageStats
+  requests: {
+    text?: string
+    resultText?: string | undefined
+    requestId: string
+    endpointId: string
+    accountId: string
+    status: RequestStatus
+    version: number
+    acceptedAt: number
+    dispatch: {
+      status: AttemptStatus
+      attempts: number
+      dueAt: number
+    }
+    redactedAt: number | undefined
+  }[]
+  deliveries: {
+    text?: string
+    deliveryId: string
+    requestId: string
+    status: DeliveryStatus
+    version: number
+    currentChunk: number
+    chunkCount: number
+    attempts: number
+    dueAt: number
+  }[]
+}> {
   await requireHealthy(storage)
 
   const [stats, requests, deliveries] = await Promise.all([
@@ -106,7 +170,10 @@ export function missingSecrets(config: AppConfig): string[] {
   return [...missing].toSorted()
 }
 
-export async function probeManagement(input: string, timeoutMs: number) {
+export async function probeManagement(
+  input: string,
+  timeoutMs: number
+): Promise<{ ready: boolean }> {
   const url = new URL(input)
   if (
     url.protocol !== 'http:' ||

@@ -10,19 +10,28 @@ import type {
   RelanoxConfig,
   SendInput
 } from '../../packages/sdk/src/index.js'
-import type { CoreOptions } from '../../packages/core/src/types.js'
+import type { CoreOptions, CoreRuntime } from '../../packages/core/src/types.js'
 import { createCore } from '../../packages/core/src/index.js'
 import { createSqliteStorage } from '../../plugins/storage-sqlite/src/index.js'
 
 export async function mediaFixture(
   sendKinds: readonly MediaKind[] = ['image', 'file'],
   media?: CoreOptions['media']
-) {
+): Promise<{
+  storage: ReturnType<typeof createSqliteStorage>
+  filename: ReturnType<typeof join>
+  close(this: void): Promise<void>
+  runtime: CoreRuntime
+  channel: ChannelHost
+  agent: AgentHost
+  sent: SendInput[]
+  restart(this: void): Promise<CoreRuntime>
+}> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-core-media-'))
   const filename = join(directory, 'relay.sqlite')
   let storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
 
-  const close = async () => {
+  const close = async (): Promise<void> => {
     await storage.close()
     await rm(directory, { recursive: true, force: true })
   }
@@ -108,7 +117,7 @@ export async function mediaFixture(
   }
 
   try {
-    const assemble = () =>
+    const assemble = async (): Promise<CoreRuntime> =>
       createCore({
         ...(media ? { media } : {}),
         config,
@@ -135,7 +144,7 @@ export async function mediaFixture(
       channel: requireHost<ChannelHost>(channelHost),
       agent: requireHost<AgentHost>(agentHost),
       sent,
-      async restart() {
+      async restart(): Promise<CoreRuntime> {
         await storage.close()
         storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
         await storage.initialize()

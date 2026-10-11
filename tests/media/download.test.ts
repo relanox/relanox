@@ -12,7 +12,15 @@ afterEach(async () => {
 
 async function peer(
   handler: (request: IncomingMessage, response: ServerResponse) => void
-) {
+): Promise<{
+  origin: string
+  options: {
+    trustedOrigins: string[]
+    allowInsecureLocalhost: boolean
+    maxBytes: number
+    signal: AbortSignal
+  }
+}> {
   const server = createServer(handler)
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve)

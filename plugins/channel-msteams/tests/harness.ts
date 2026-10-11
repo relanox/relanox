@@ -11,17 +11,39 @@ import type {
   AgentPlugin,
   ChannelPlugin,
   Json,
-  ScopedAgentHost
+  ScopedAgentHost,
+  InboundSnapshot,
+  OutboundRecord
 } from '@relanox/sdk'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
 
-export interface Traffic {
+export type Traffic = {
   path: string
   body: string
   headers: IncomingHttpHeaders
 }
 
-export async function peer() {
+export async function peer(): Promise<{
+  base: string
+  traffic: Traffic[]
+  disconnectOnce(this: void, path: string): void
+  route(
+    this: void,
+    path: string,
+    body: Json | Uint8Array,
+    routeHeaders?: Record<string, string>,
+    code?: number
+  ): void
+  respond(
+    this: void,
+    code: number,
+    body: Json,
+    responseHeaders?: Record<string, string>
+  ): void
+  token(this: void, code: number, body: Json): void
+  keys(this: void, value: Json): void
+  close(this: void): Promise<void>
+}> {
   const traffic: Traffic[] = []
   const disconnects = new Set<string>()
 
@@ -92,7 +114,7 @@ export async function peer() {
   return {
     base: `http://127.0.0.1:${address.port}`,
     traffic,
-    disconnectOnce(path: string) {
+    disconnectOnce(path: string): void {
       disconnects.add(path)
     },
     route(
@@ -100,26 +122,26 @@ export async function peer() {
       body: Json | Uint8Array,
       routeHeaders: Record<string, string> = {},
       code = 200
-    ) {
+    ): void {
       routes.set(path, { status: code, body, headers: routeHeaders })
     },
     respond(
       code: number,
       body: Json,
       responseHeaders: Record<string, string> = {}
-    ) {
+    ): void {
       status = code
       output = body
       headers = responseHeaders
     },
-    token(code: number, body: Json) {
+    token(code: number, body: Json): void {
       tokenStatus = code
       tokenBody = body
     },
-    keys(value: Json) {
+    keys(value: Json): void {
       jwks = value
     },
-    async close() {
+    async close(): Promise<void> {
       server.closeAllConnections()
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -142,7 +164,20 @@ export async function harness(
   thread?: string,
   filename = ':memory:',
   publicBaseUrl?: string
-) {
+): Promise<{
+  core: Awaited<ReturnType<typeof createCore>>
+  storage: ReturnType<typeof createSqliteStorage>
+  dispatches: string[]
+  principal(this: void): ScopedAgentHost
+  complete(
+    this: void,
+    text?: string
+  ): Promise<{
+    request: InboundSnapshot
+    delivery: OutboundRecord | undefined
+  }>
+  close(this: void): Promise<void>
+}> {
   const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
   await storage.initialize()
   let host: AgentHost | undefined
@@ -205,7 +240,10 @@ export async function harness(
     return host.forPrincipal({ subject: 'local-agent', endpointIds: ['agent'] })
   }
 
-  async function complete(text = 'answer') {
+  async function complete(text = 'answer'): Promise<{
+    request: InboundSnapshot
+    delivery: OutboundRecord | undefined
+  }> {
     await core.processDue()
     const scoped = principal()
     const pending = await scoped.listPending(10)
@@ -241,7 +279,7 @@ export async function harness(
     dispatches,
     principal,
     complete,
-    async close() {
+    async close(): Promise<void> {
       await storage.close()
     }
   }

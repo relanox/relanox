@@ -53,7 +53,7 @@ export function createDotAgentPlugin(): AgentPlugin<DotConfig> {
       return dispatch(input)
     },
     async stop() {
-      await Promise.all(handlers.map((handler) => handler.close()))
+      await Promise.all(handlers.map(async (handler) => handler.close()))
     }
   }
 }

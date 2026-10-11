@@ -1,3 +1,4 @@
+import type { LookupAddress } from 'node:dns'
 import { lookup } from 'node:dns/promises'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
@@ -110,11 +111,11 @@ export async function postCallback(
   const hostname = url.hostname.replaceAll(/^\[|\]$/gu, '')
   const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)])
 
-  async function resolveAddresses() {
+  async function resolveAddresses(): Promise<LookupAddress[]> {
     let onAbort: (() => void) | undefined
 
     const aborted = new Promise<never>((_resolve, reject) => {
-      onAbort = () => {
+      onAbort = (): void => {
         reject(new CallbackError('timeout'))
       }
       if (bound.aborted) {

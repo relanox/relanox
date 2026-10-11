@@ -9,14 +9,11 @@ import type { MetricLabels, Observability } from '@relanox/sdk'
 import type { StandardConfig } from './config.js'
 import { labelNames, metricDefinitions, safeLabels } from './fields.js'
 
-export interface MetricsRuntime extends Pick<
-  Observability,
-  'count' | 'record'
-> {
+export type MetricsRuntime = {
   readonly registry: Registry
   readonly dropped: Counter<string>
   metrics(this: void, request: Request): Promise<Response>
-}
+} & Pick<Observability, 'count' | 'record'>
 
 export function createMetrics(config: StandardConfig): MetricsRuntime {
   const registry = new Registry()

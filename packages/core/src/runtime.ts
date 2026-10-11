@@ -24,7 +24,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   >()
 
   let accepting = true
-  const isAccepting = () => accepting
+  const isAccepting = (): boolean => accepting
   await setupPluginHosts({
     options,
     config,
@@ -49,7 +49,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   return {
     config: jsonSnapshot(config),
     fetch: createHttpHandler(app, workerOptions, observe, httpRoutes),
-    processDue: () => worker.processDue(),
+    processDue: async () => worker.processDue(),
     ...administration,
     async readiness() {
       const status = await administration.health()

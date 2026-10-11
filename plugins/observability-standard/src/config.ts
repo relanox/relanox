@@ -1,4 +1,4 @@
-export interface StandardConfig {
+export type StandardConfig = {
   readonly logs: boolean
   readonly level: 'debug' | 'info' | 'warn' | 'error'
   readonly metrics: boolean

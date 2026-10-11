@@ -3,7 +3,8 @@ import type {
   ChannelHost,
   MediaUpload,
   SendInput,
-  SendResult
+  SendResult,
+  SendReceipt
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { MatrixConfig } from './config.js'
@@ -133,7 +134,38 @@ export async function messageContent(
   base: string,
   headers: Readonly<Record<string, string>>,
   signal: AbortSignal
-) {
+): Promise<
+  | {
+      readonly status: 'sent'
+      readonly receipt: SendReceipt
+    }
+  | {
+      readonly status: 'retryable'
+      readonly errorCode: string
+      readonly retryAfterMs?: number
+    }
+  | { readonly status: 'rejected' | 'unknown'; readonly errorCode: string }
+  | {
+      msgtype: string
+      body: string
+      filename?: never
+      url?: never
+      info?: never
+    }
+  | {
+      msgtype: string
+      body: string
+      filename: string
+      url: string
+      info: {
+        thumbnail_url?: string
+        thumbnail_info?: { mimetype: string; size: number }
+        duration?: number
+        mimetype: string
+        size: number
+      }
+    }
+> {
   if (!input.media) {
     return { msgtype: 'm.text', body: input.chunk.text }
   }

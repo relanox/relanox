@@ -32,7 +32,12 @@ export const requestSchema = z.strictObject({
   })
 })
 
-export function dispatched(traffic: Traffic) {
+export function dispatched(traffic: Traffic): {
+  requestId: string
+  text: string
+  context: z.core.util.JSONType
+  source: { channel: 'telegram'; eventId: string }
+} {
   return requestSchema.parse(
     JSON.parse(routineSchema.parse(JSON.parse(traffic.body)).content)
   )
@@ -41,14 +46,27 @@ export function dispatched(traffic: Traffic) {
 export async function fixture(
   cleanups: Cleanup[],
   sendReply?: (traffic: Traffic, index: number) => PeerReply
-) {
+): Promise<{
+  config: ReturnType<typeof validateApp>
+  routine: Awaited<ReturnType<typeof peer>>
+  telegram: Awaited<ReturnType<typeof peer>>
+  start(this: void, input?: AppConfig): Promise<Runtime>
+  client(
+    this: void,
+    runtime: Runtime,
+    endpointId: 'alpha' | 'beta'
+  ): Promise<Client>
+}> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-e2e-'))
   cleanups.push(async () => rm(directory, { recursive: true, force: true }))
   const routine = await peer(() => ({ status: 200 }))
   cleanups.push(routine.close)
 
   const telegram = await peer(
-    sendReply ?? (() => ({ body: { ok: true, result: { message_id: 700 } } }))
+    sendReply ??
+      ((): { body: { ok: boolean; result: { message_id: number } } } => ({
+        body: { ok: true, result: { message_id: 700 } }
+      }))
   )
 
   cleanups.push(telegram.close)
@@ -61,7 +79,20 @@ export async function fixture(
   vi.stubEnv('E2E_ROUTINE_BETA_URL', `${routine.origin}/beta`)
   vi.stubEnv('E2E_ROUTINE_AUTH', 'Bearer routine-secret')
 
-  const endpoint = (id: 'alpha' | 'beta') => ({
+  const endpoint = (
+    id: 'alpha' | 'beta'
+  ): {
+    id: 'alpha' | 'beta'
+    agent: string
+    dispatchMode: string
+    config: {
+      mcp: { token: { env: string }; allowedHosts: string[] }
+      routineUrl: { env: string }
+      routineAuthorization: { env: string }
+      routineTransport: string
+      timeoutMs: number
+    }
+  } => ({
     id,
     agent: 'grok',
     dispatchMode: 'push',
@@ -124,13 +155,16 @@ export async function fixture(
     await storage.close()
   }
 
-  const start = async (input: AppConfig = config) => {
+  const start = async (input: AppConfig = config): Promise<Runtime> => {
     const runtime = await startRuntime(input)
     cleanups.push(runtime.stop)
     return runtime
   }
 
-  const client = async (runtime: Runtime, endpointId: 'alpha' | 'beta') => {
+  const client = async (
+    runtime: Runtime,
+    endpointId: 'alpha' | 'beta'
+  ): Promise<Client> => {
     const connected = new Client(
       { name: 'relanox-wire-e2e', version: '1.0.0' },
       { versionNegotiation: { mode: { pin: '2026-07-28' } } }
@@ -157,12 +191,12 @@ export async function fixture(
   return { config, routine, telegram, start, client }
 }
 
-export function ingest(
+export async function ingest(
   runtime: Runtime,
   eventId = 1,
   chatId = 101,
   text = '中文\nhello 🌍'
-) {
+): Promise<Response> {
   return fetch(`${runtime.businessUrl}/channels/bot/webhook`, {
     method: 'POST',
     headers: {
@@ -187,7 +221,17 @@ export async function claim(
   client: Client,
   requestId: string,
   claimKey: string
-) {
+): Promise<{
+  status: 'claimed'
+  request: {
+    requestId: string
+    text: string
+    context: z.core.util.JSONType
+    source: { channel: 'telegram'; eventId: string }
+  }
+  claimToken: string
+  replay: boolean
+}> {
   const result = await client.callTool({
     name: 'relanox_claim',
     arguments: { requestId, claimKey }
@@ -208,7 +252,7 @@ export async function complete(
   requestId: string,
   claimToken: string,
   text = '最终 answer 🌍'
-) {
+): Promise<{ status: 'completed'; deliveryId: string; replay: boolean }> {
   const result = await client.callTool({
     name: 'relanox_complete',
     arguments: {

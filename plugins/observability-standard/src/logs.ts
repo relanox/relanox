@@ -91,7 +91,7 @@ export class BoundedLogWriter {
       return
     }
     await new Promise<void>((resolve) => {
-      const done = () => {
+      const done = (): void => {
         this.waiters.delete(done)
         signal.removeEventListener('abort', done)
         resolve()
@@ -112,7 +112,7 @@ export class BoundedLogWriter {
   }
 }
 
-export interface LogRuntime {
+export type LogRuntime = {
   readonly writer: BoundedLogWriter
   readonly log: Observability['log']
 }

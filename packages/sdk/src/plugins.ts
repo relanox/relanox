@@ -24,13 +24,13 @@ import type { AgentMediaHost, ChannelMediaHost, MediaKind } from './media.js'
 
 export type HttpHandler = (request: Request) => Promise<Response>
 
-export interface HttpRouteOptions {
+export type HttpRouteOptions = {
   readonly maxBodyBytes: number
   /** Reject unauthorized transfers before core reads a potentially large binary body. */
   authorize(request: Request): Promise<Response | undefined>
 }
 
-export interface CommonHost {
+export type CommonHost = {
   readonly observe: Observability
   readonly state: StateStore
   mountHttp(
@@ -45,19 +45,19 @@ export interface CommonHost {
 }
 
 /** Core binds this host to a single validated account; plugins cannot choose the account scope. */
-export interface ChannelHost extends CommonHost {
+export type ChannelHost = {
   readonly maxMediaBytes?: number
   readonly media?: ChannelMediaHost
   ingest(input: IngestInput): Promise<IngestReceipt>
-}
+} & CommonHost
 
-export interface AgentPrincipal {
+export type AgentPrincipal = {
   readonly subject: string
   readonly endpointIds: readonly string[]
 }
 
 /** Principal comes only from verified protocol authentication. Core intersects it with this plugin's configured endpoints. */
-export interface ScopedAgentHost {
+export type ScopedAgentHost = {
   readonly media?: AgentMediaHost
   listPending(limit: number): Promise<readonly InboundSnapshot[]>
   claim(requestId: string, claimKey: string): Promise<ClaimResult>
@@ -76,22 +76,22 @@ export interface ScopedAgentHost {
   }): Promise<MutationResult>
 }
 
-export interface AgentHost extends CommonHost {
+export type AgentHost = {
   forPrincipal(principal: AgentPrincipal): ScopedAgentHost
-}
+} & CommonHost
 
-export interface PluginMetadata {
+export type PluginMetadata = {
   readonly id: string
   readonly sdkMajor: typeof SDK_MAJOR
   readonly runtime: 'node'
 }
 
-export interface Lifecycle {
+export type Lifecycle = {
   start?(signal: AbortSignal): Promise<void>
   stop?(): Promise<void>
 }
 
-export interface ChannelPlugin<C = Json> extends PluginMetadata, Lifecycle {
+export type ChannelPlugin<C = Json> = {
   readonly kind: 'channel'
   readonly channel: ChannelId
   readonly capabilities: {
@@ -108,9 +108,10 @@ export interface ChannelPlugin<C = Json> extends PluginMetadata, Lifecycle {
   validateConfig(config: unknown): C
   setup(host: ChannelHost, account: AccountConfig, config: C): Promise<void>
   send(input: SendInput): Promise<SendResult>
-}
+} & PluginMetadata &
+  Lifecycle
 
-export interface AgentPlugin<C = Json> extends PluginMetadata, Lifecycle {
+export type AgentPlugin<C = Json> = {
   readonly kind: 'agent'
   readonly agent: AgentId
   validateConfig(config: unknown): C
@@ -120,23 +121,24 @@ export interface AgentPlugin<C = Json> extends PluginMetadata, Lifecycle {
     config: C
   ): Promise<void>
   dispatch(input: DispatchInput): Promise<DispatchResult>
-}
+} & PluginMetadata &
+  Lifecycle
 
-export interface StoragePlugin<C = Json> extends PluginMetadata {
+export type StoragePlugin<C = Json> = {
   readonly kind: 'storage'
   validateConfig(config: unknown): C
   setup(config: C, observe: Observability): Promise<Storage>
-}
+} & PluginMetadata
 
-export interface ObservabilityRuntime {
+export type ObservabilityRuntime = {
   readonly observe: Observability
   readonly metrics?: HttpHandler
   flush(signal: AbortSignal): Promise<void>
   shutdown(signal: AbortSignal): Promise<void>
 }
 
-export interface ObservabilityPlugin<C = Json> extends PluginMetadata {
+export type ObservabilityPlugin<C = Json> = {
   readonly kind: 'observability'
   validateConfig(config: unknown): C
   setup(config: C): Promise<ObservabilityRuntime>
-}
+} & PluginMetadata

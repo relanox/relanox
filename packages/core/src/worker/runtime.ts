@@ -21,7 +21,10 @@ export function createWorker(
   worker: WorkerConfig,
   observe: Observability,
   isAccepting: () => boolean
-) {
+): {
+  hasError(this: void): boolean
+  processDue(this: void): Promise<{ processed: number; conflicts: number }>
+} {
   const storage = options.storage
   let busy = false
   let workerError = false
@@ -105,7 +108,7 @@ export function createWorker(
   function applyRetryBudget<T extends DispatchResult | SendResult>(
     outcome: T,
     attempts: number
-  ) {
+  ): T | { status: 'rejected'; errorCode: string } {
     return retryBudgetExhausted(outcome, attempts, worker.maxAttempts)
       ? { status: 'rejected' as const, errorCode: 'retry_budget_exhausted' }
       : outcome
@@ -121,7 +124,7 @@ export function createWorker(
           ? { status: 'rejected' as const, errorCode: 'retry_budget_exhausted' }
           : await invoke(
               'dispatch',
-              (signal) =>
+              (signal): Promise<DispatchResult> | undefined =>
                 options.agents.get(request.endpoint.agent)?.dispatch({
                   request: jsonSnapshot(request),
                   signal
@@ -149,7 +152,7 @@ export function createWorker(
         ? { status: 'rejected' as const, errorCode: 'retry_budget_exhausted' }
         : await invoke(
             'send',
-            (signal) =>
+            async (signal) =>
               sendChunk(
                 storage,
                 options.channels.get(record.target.accountId),
@@ -184,7 +187,7 @@ export function createWorker(
 
   return {
     hasError: () => workerError,
-    async processDue() {
+    async processDue(): Promise<{ processed: number; conflicts: number }> {
       if (busy) {
         return { processed: 0, conflicts: 0 }
       }
