@@ -6,6 +6,7 @@ import type {
   Storage,
   AgentMediaHost,
   MediaUpload,
+  MediaReference,
   StoredMedia
 } from '@relanox/sdk'
 import { CoreError } from '../errors.js'
@@ -41,6 +42,50 @@ export function createAgentMedia(
     maxBytes: worker.maxMediaBytes,
     maxTotalBytes: worker.maxTotalMediaBytes,
     maxAttachments: worker.maxAttachments,
+    async authorize(input) {
+      textId.parse(input.requestId)
+      return authorizedRequest(
+        await storage.getInbound(input.requestId),
+        agent,
+        scope
+      )
+    },
+    async upload(input): Promise<MediaReference | undefined> {
+      textId.parse(input.requestId)
+      mediaId.parse(input.mediaId)
+      if (
+        !authorizedRequest(
+          await storage.getInbound(input.requestId),
+          agent,
+          scope
+        )
+      ) {
+        return undefined
+      }
+      if (!storage.media) {
+        throw new CoreError('media_storage_missing')
+      }
+
+      const result = await storage.media.put({
+        requestId: input.requestId,
+        agent,
+        endpointIds: scope,
+        media: storeUpload(input.upload, input.mediaId, worker.maxMediaBytes),
+        maxBytes: worker.maxMediaBytes,
+        maxCount: worker.maxAttachments * 2,
+        maxTotalBytes: worker.maxTotalMediaBytes * 2
+      })
+
+      if (result.status === 'unauthorized') {
+        return undefined
+      }
+      if (result.status !== 'stored') {
+        throw new CoreError(
+          result.status === 'conflict' ? 'media_conflict' : result.status
+        )
+      }
+      return result.reference
+    },
     async read(input): Promise<StoredMedia | undefined> {
       textId.parse(input.requestId)
       mediaId.parse(input.mediaId)

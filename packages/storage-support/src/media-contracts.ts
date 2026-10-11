@@ -3,7 +3,9 @@ import type {
   MediaReference,
   StoredMedia,
   InboundSnapshot,
-  EnqueueMessageInput
+  EnqueueMessageInput,
+  PutMediaInput,
+  PutMediaResult
 } from '@relanox/sdk'
 import { encodeDurableRecord, equalDurableValues } from './record-codec.js'
 
@@ -47,6 +49,56 @@ export const sameReference = (
   left: MediaReference,
   right: MediaReference
 ): boolean => equalDurableValues(left, right)
+
+/** Storage calls this inside the request lock, using metadata and SQL byte totals. */
+export function validateStagedMedia(
+  input: PutMediaInput,
+  previous: MediaReference | undefined,
+  preview: MediaReference | undefined,
+  count: number,
+  bytes: number
+): PutMediaResult {
+  const asset = input.media
+  if (!validMedia(asset)) {
+    return { status: 'conflict' }
+  }
+  if (previous) {
+    return sameReference(previous, asset.reference)
+      ? { status: 'stored', reference: previous }
+      : { status: 'conflict' }
+  }
+  if (
+    !Number.isSafeInteger(input.maxBytes) ||
+    input.maxBytes < 1 ||
+    asset.data.byteLength < 1 ||
+    asset.data.byteLength > input.maxBytes
+  ) {
+    return { status: 'media_too_large' }
+  }
+  if (
+    asset.reference.previewMediaId !== undefined &&
+    (preview?.kind !== 'image' ||
+      preview.previewMediaId !== undefined ||
+      preview.id === asset.reference.id)
+  ) {
+    return { status: 'invalid_media_preview' }
+  }
+  if (
+    !Number.isSafeInteger(input.maxCount) ||
+    input.maxCount < 0 ||
+    count + 1 > input.maxCount
+  ) {
+    return { status: 'too_many_attachments' }
+  }
+  if (
+    !Number.isSafeInteger(input.maxTotalBytes) ||
+    input.maxTotalBytes < 0 ||
+    bytes + asset.data.byteLength > input.maxTotalBytes
+  ) {
+    return { status: 'media_total_too_large' }
+  }
+  return { status: 'stored', reference: asset.reference }
+}
 
 export function withinMediaBudget(
   input: EnqueueMessageInput,

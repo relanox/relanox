@@ -58,6 +58,164 @@ export function mediaContract(
   open: () => Promise<Storage>
 ): void {
   describe(name, () => {
+    it('stages immutable request-owned assets, rejects foreign ownership and serializes cumulative upload budgets', async () => {
+      const s = await open()
+      try {
+        await s.initialize()
+        const incoming = asset('incoming', [7])
+        await s.acceptInbound(
+          { ...snapshot(), attachments: [incoming.reference] },
+          [incoming]
+        )
+        const media = required(s.media)
+
+        const input = {
+          requestId: 'r1',
+          agent: 'grok' as const,
+          endpointIds: ['ep'],
+          media: asset('staged'),
+          maxBytes: 3,
+          maxCount: 3,
+          maxTotalBytes: 5
+        }
+
+        for (const change of [
+          { requestId: 'missing' },
+          { agent: 'dot' as const },
+          { endpointIds: ['foreign'] }
+        ]) {
+          expect(await media.put({ ...input, ...change })).toEqual({
+            status: 'unauthorized'
+          })
+        }
+        expect(await media.get('r1', 'staged')).toBeUndefined()
+        expect(await media.put(input)).toEqual({
+          status: 'stored',
+          reference: input.media.reference
+        })
+        expect(
+          await media.put({ ...input, maxCount: 0, maxTotalBytes: 0 })
+        ).toEqual({ status: 'stored', reference: input.media.reference })
+        expect(
+          await media.put({ ...input, media: asset('staged', [1]) })
+        ).toEqual({ status: 'conflict' })
+        expect(
+          await media.put({
+            ...input,
+            media: {
+              ...input.media,
+              reference: { ...input.media.reference, fileName: 'changed.png' }
+            }
+          })
+        ).toEqual({ status: 'conflict' })
+
+        const raced = await Promise.all(
+          ['one', 'two'].map(async (id) =>
+            media.put({ ...input, media: asset(id, [1]) })
+          )
+        )
+
+        expect(
+          raced.filter((result) => result.status === 'stored')
+        ).toHaveLength(1)
+        expect(
+          raced.filter((result) => result.status === 'too_many_attachments')
+        ).toHaveLength(1)
+        expect(
+          await media.put({
+            ...input,
+            maxCount: 4,
+            media: asset('overflow', [1])
+          })
+        ).toEqual({ status: 'media_total_too_large' })
+        expect(
+          await media.put({
+            ...input,
+            maxCount: 4,
+            maxTotalBytes: 10,
+            media: asset('large', [1, 2, 3, 4])
+          })
+        ).toEqual({ status: 'media_too_large' })
+        expect(await media.get('r1', 'overflow')).toBeUndefined()
+        expect(await media.get('r1', 'large')).toBeUndefined()
+        expect(await media.get('r1', 'staged')).toEqual(input.media)
+        await s.acceptInbound(snapshot('r2', 101))
+        expect(await media.put({ ...input, requestId: 'r2' })).toEqual({
+          status: 'conflict'
+        })
+      } finally {
+        await s.close()
+      }
+    })
+
+    it('requires available request-owned image previews and removes staged bytes on redaction', async () => {
+      const s = await open()
+      try {
+        await s.initialize()
+        await s.acceptInbound(snapshot())
+        const media = required(s.media)
+        const preview = asset('preview')
+
+        const video = {
+          ...asset('video'),
+          reference: {
+            ...asset('video').reference,
+            kind: 'video' as const,
+            mimeType: 'video/mp4',
+            previewMediaId: 'preview'
+          }
+        }
+
+        const input = {
+          requestId: 'r1',
+          agent: 'grok' as const,
+          endpointIds: ['ep'],
+          media: video,
+          maxBytes: 3,
+          maxCount: 3,
+          maxTotalBytes: 9
+        }
+
+        expect(await media.put(input)).toEqual({
+          status: 'invalid_media_preview'
+        })
+        expect(await media.get('r1', 'video')).toBeUndefined()
+        expect(await media.put({ ...input, media: preview })).toMatchObject({
+          status: 'stored'
+        })
+        expect(await media.put(input)).toMatchObject({ status: 'stored' })
+
+        const work = required(
+          (
+            await s.takeDue({
+              now: 100,
+              leaseMs: 20,
+              limit: 1,
+              leaseOwner: 'worker',
+              safeRetryAccountIds: []
+            })
+          )[0]
+        )
+
+        await s.settleAttempt({
+          kind: 'dispatch',
+          id: 'r1',
+          lease: work.lease,
+          outcome: { status: 'accepted' },
+          now: 101,
+          nextDueAt: 101
+        })
+        expect(await s.cleanup({ before: 200, limit: 10 })).toEqual({
+          redacted: 1
+        })
+        expect(await media.get('r1', 'preview')).toBeUndefined()
+        expect(await media.get('r1', 'video')).toBeUndefined()
+        expect(await media.put(input)).toEqual({ status: 'unauthorized' })
+      } finally {
+        await s.close()
+      }
+    })
+
     it('commits input bytes with snapshots, deduplicates without orphan assets and rejects invalid metadata atomically', async () => {
       const s = await open()
       try {

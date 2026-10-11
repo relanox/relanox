@@ -1,3 +1,5 @@
+import type { AgentId } from './config.js'
+
 export type MediaKind = 'image' | 'audio' | 'video' | 'file'
 
 /** Binary data crosses a plugin boundary only in memory, never in JSON snapshots. */
@@ -40,15 +42,46 @@ export type StoredMedia = {
   readonly data: Uint8Array
 }
 
-/** Bytes are published only as part of atomic message acceptance or enqueue. */
+export type PutMediaInput = {
+  readonly requestId: string
+  readonly agent: AgentId
+  readonly endpointIds: readonly string[]
+  readonly media: StoredMedia
+  readonly maxBytes: number
+  readonly maxCount: number
+  readonly maxTotalBytes: number
+}
+
+export type PutMediaResult =
+  | { readonly status: 'stored'; readonly reference: MediaReference }
+  | {
+      readonly status:
+        | 'unauthorized'
+        | 'conflict'
+        | 'invalid_media_preview'
+        | 'media_too_large'
+        | 'too_many_attachments'
+        | 'media_total_too_large'
+    }
+
+/** Request-owned bytes are committed atomically with authorization and budgets. */
 export type MediaStorage = {
   get(requestId: string, mediaId: string): Promise<StoredMedia | undefined>
+  put(input: PutMediaInput): Promise<PutMediaResult>
 }
 
 export type AgentMediaHost = {
   readonly maxBytes: number
   readonly maxTotalBytes: number
   readonly maxAttachments: number
+  /** Check ownership for upload ticket issuance without loading media bytes. */
+  authorize(input: { readonly requestId: string }): Promise<boolean>
+  /** An immutable request-owned ID may be retried with identical metadata and bytes. */
+  upload(input: {
+    readonly requestId: string
+    readonly mediaId: string
+    readonly upload: MediaUpload
+  }): Promise<MediaReference | undefined>
   read(input: {
     readonly requestId: string
     readonly mediaId: string
