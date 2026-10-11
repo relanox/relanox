@@ -4,44 +4,23 @@ Use a dedicated IRC nickname to answer text in channels and private messages.
 
 ## Prepare your account
 
-Choose a TLS IRC server with authenticated account tags and register the relay’s nickname/account. Save its SASL password as `IRC_SASL_PASSWORD`. Obtain permission to join and speak in the selected channels. If the network needs a separate server password, add `password: {"env":"IRC_SERVER_PASSWORD"}`.
+Choose a TLS IRC server with authenticated account tags and register the relay’s nickname/account. Save its SASL password as `IRC_SASL_PASSWORD`. Obtain permission to join and speak in the selected channels. If the network needs a separate server password, fill in the server password variable name.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **IRC**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "irc-main",
-      "config": {
-        "server": "irc.example.com",
-        "port": 6697,
-        "tls": true,
-        "nick": "relanox",
-        "sasl": {
-          "username": "relanox",
-          "password": {
-            "env": "IRC_SASL_PASSWORD"
-          }
-        }
-      },
-      "channel": "irc",
-      "allowedSenders": ["account:alice"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "irc-main",
-      "chatId": "#support",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field                 | What to enter                      |
+| ---------------------------------- | ---------------------------------- |
+| IRC server hostname                | Replace example: `irc.example.com` |
+| TLS port                           | Initial value: `6697`              |
+| Bot nickname                       | Replace example: `relanox`         |
+| SASL account name                  | Replace example: `relanox`         |
+| SASL password environment variable | Variable name: `IRC_SASL_PASSWORD` |
 
-Use `account:<account-name>` for allowed senders: this is the user’s authenticated network account, available in account-tagged messages or the network’s account information. Bind the exact configured channel name as `chatId`. Private bindings use `dm:<folded-nick>` with IRC’s RFC1459 nickname normalization (lowercase plus `[]\^` normalized to `{}|~`). For example, Alice becomes `dm:alice`.
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#irc).
+
+Use `account:<account-name>` for allowed senders: this is the user’s authenticated network account, available in account-tagged messages or the network’s account information. Bind the exact configured channel name as **Chat ID**. Private bindings use `dm:<folded-nick>` with IRC’s RFC1459 nickname normalization (lowercase plus `[]\^` normalized to `{}|~`). For example, Alice becomes `dm:alice`.
 
 ## Enable the connection
 
@@ -57,4 +36,4 @@ Use IRC for text questions. To ask about an image or file, choose a channel with
 
 ## Troubleshooting
 
-If a message is filtered, confirm that your IRC client is logged into its network account and the server sends account tags. For networks using nicknames, an administrator can explicitly enable `allowNickFallback:true` and allow `nick:<folded-nick>`; use this only when nickname ownership is acceptable for your access policy. Check SASL credentials and channel access if the relay cannot join.
+If a message is filtered, confirm that your IRC client is logged into its network account and the server sends account tags. Check SASL credentials and channel access if the relay cannot join.

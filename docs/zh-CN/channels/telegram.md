@@ -6,7 +6,16 @@
 
 在 @BotFather 创建机器人，将 Token 保存到 `TELEGRAM_BOT_TOKEN`。用字母、数字、`_` 和 `-` 生成回调密钥，保存到 `TELEGRAM_WEBHOOK_SECRET`。需要群聊时把机器人加入群组，并为 Relanox 准备公网 HTTPS 地址。
 
-## 添加配置
+## 在配置器中填写
+
+打开[连接配置器](../configuration.md)，选择 **Telegram**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
+
+| 配置器字段           | 填写内容                          |
+| -------------------- | --------------------------------- |
+| 机器人令牌环境变量   | 变量名：`TELEGRAM_BOT_TOKEN`      |
+| Webhook 密钥环境变量 | 变量名：`TELEGRAM_WEBHOOK_SECRET` |
+
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#telegram)。
 
 注册 webhook 前，先向机器人私聊发送“你好”，在已设置 `TELEGRAM_BOT_TOKEN` 的 PowerShell 中执行下方命令。输出中的 `result[].message.from.id` 为用户 ID，`result[].message.chat.id` 为会话 ID。群组或话题 ID 也可通过在其中发送测试消息，再查看对应事件取得。此步骤适合新建机器人；已有机器人需先移除原 webhook 才能使用 `getUpdates`，请先与其维护者协调变更。
 
@@ -15,38 +24,7 @@ Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdate
   ConvertTo-Json -Depth 12
 ```
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
-
-```json
-{
-  "accounts": [
-    {
-      "id": "telegram-main",
-      "channel": "telegram",
-      "allowedSenders": ["123456789"],
-      "config": {
-        "botToken": {
-          "env": "TELEGRAM_BOT_TOKEN"
-        },
-        "webhookSecret": {
-          "env": "TELEGRAM_WEBHOOK_SECRET"
-        }
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "telegram-main",
-      "chatId": "123456789",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
-
-允许发送者填写消息中的十进制 `from.id`，会话绑定填写 `chat.id`，二者可从机器人收到的消息事件取得。私聊的会话 ID 通常等于你的用户 ID。群组 ID 可能为负数，保留负号。论坛话题还需将 `message_thread_id` 转为字符串填入绑定的 `threadId`。
-
-会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
+允许发送者填写消息中的十进制 `from.id`，会话绑定填写 `chat.id`，二者可从机器人收到的消息事件取得。私聊的会话 ID 通常等于你的用户 ID。群组 ID 可能为负数，保留负号。论坛话题还需将 `message_thread_id` 转为字符串填入绑定的 「话题 / 线程 ID」。
 
 ## 启用连接
 

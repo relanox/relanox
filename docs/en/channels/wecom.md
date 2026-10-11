@@ -6,65 +6,40 @@ Use a WeCom intelligent robot in direct and group conversations.
 
 Create and enable an intelligent robot with long-connection access. Record its bot ID and save its secret as `WECOM_BOT_SECRET`. Give the intended members access to it and add it to the group you want to use. Run one Relanox process for this robot.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **WeCom**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "wecom-main",
-      "channel": "wecom",
-      "allowedSenders": ["staff-userid"],
-      "config": {
-        "botId": "intelligent-robot-id",
-        "secret": {
-          "env": "WECOM_BOT_SECRET"
-        }
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "wecom-main",
-      "chatId": "staff-userid",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field              | What to enter                           |
+| ------------------------------- | --------------------------------------- |
+| Bot ID                          | Replace example: `intelligent-robot-id` |
+| Bot secret environment variable | Variable name: `WECOM_BOT_SECRET`       |
+
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#wecom).
 
 ## Discover user and group IDs
 
-For first-time setup, save a draft `relanox.json` containing your WeCom entry in `relay.accounts`, with the real `botId` and secret environment reference. You can leave `allowedSenders` empty and bindings unfinished during discovery. Set `WECOM_BOT_SECRET` in the terminal environment. Agent credentials and database setup are not needed for this command.
+Fill in the bot ID and secret variable name in the configurator, then download the draft as `relanox.json`. Leave allowed users and chat IDs empty for now. Set `WECOM_BOT_SECRET` in the terminal where you run the command.
 
 Stop any service using the same robot before discovery: WeCom replaces its previous connection when another process connects. Run:
 
 ```sh
-relanox discover --config relanox.json --account wecom-main --timeout 120
+node apps/cli/dist/main.js discover --config relanox.json --account wecom-main --timeout 120
 ```
 
-Wait for the terminal's `discovery_connected` event, then send a message directly to the robot, or mention it in the target group. The terminal prints a JSON line for each distinct conversation and sender:
+Wait for `discovery_connected` in the terminal, then send a direct message to the robot or mention it in the target group. The terminal shows the conversation and sender IDs.
 
-```json
-{
-  "ok": true,
-  "event": "conversation",
-  "accountId": "wecom-main",
-  "channel": "wecom",
-  "chatId": "group-chatid",
-  "senderId": "staff-userid"
-}
+A direct chat uses the member userid; a group uses the authenticated callback's `chatid`. Ask each intended member to send a message if you need their userid. Use these IDs rather than display names.
+
+Put the returned `senderId` in **Allowed user IDs** and `chatId` in **Chat ID** in the configurator. Finish the remaining fields and download the configuration again. Discovery stops after 120 seconds; Ctrl+C stops it early. Validate the finished configuration, then start the service again:
+
+```sh
+node apps/cli/dist/main.js validate --config relanox.json
 ```
-
-Copy `senderId` into `allowedSenders` and `chatId` into the binding. A direct chat uses the member userid; a group uses the authenticated callback's `chatid`. Ask each intended member to send a message if you need their userid. Use these IDs rather than display names.
-
-Discovery supports WeCom only. It stops after 120 seconds by default; `--timeout` accepts 1–600 seconds, and Ctrl+C stops it early. It prints only account, conversation and sender IDs, with no message text, media URLs or credentials. It does not download attachments, save messages or dispatch to an Agent. The normal service still requires configured bindings and sender allowlists. Finish the configuration, run `relanox validate --config relanox.json`, then start the service again.
 
 ## Enable the connection
 
-Start Relanox to connect automatically to `wss://openws.work.weixin.qq.com`. Keep the process running.
+Start Relanox to connect automatically to the robot. Keep the process running.
 
 ## Send your first message
 

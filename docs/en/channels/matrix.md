@@ -4,40 +4,20 @@ Use a dedicated Matrix account in unencrypted rooms and threads.
 
 ## Prepare your account
 
-Create a dedicated account/device on your homeserver and obtain its access token. Save it as `MATRIX_ACCESS_TOKEN`; Relanox discovers the account’s user ID at startup. Invite the account into each room and let it join. Give it permission to send messages and upload files.
+Create a dedicated account/device on your homeserver and obtain its access token. Save it as `MATRIX_ACCESS_TOKEN`; Invite the account into each room and let it join. Give it permission to send messages and upload files.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **Matrix**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "matrix-main",
-      "config": {
-        "homeserver": "https://matrix.example.com",
-        "accessToken": {
-          "env": "MATRIX_ACCESS_TOKEN"
-        }
-      },
-      "channel": "matrix",
-      "allowedSenders": ["@alice:example.com"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "matrix-main",
-      "chatId": "!support:example.com",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field                | What to enter                                 |
+| --------------------------------- | --------------------------------------------- |
+| Homeserver URL                    | Replace example: `https://matrix.example.com` |
+| Access token environment variable | Variable name: `MATRIX_ACCESS_TOKEN`          |
 
-Use exact Matrix user IDs such as `@alice:example.com` for allowed senders. Copy the internal room ID, such as `!support:example.com`, from room information or a room event for `chatId`. A room alias like `#support:example.com` is different from the room ID. For a thread, use the original `m.thread` root event ID as `threadId`.
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#matrix).
 
-Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
+Use exact Matrix user IDs such as `@alice:example.com` for allowed senders. Copy the internal room ID, such as `!support:example.com`, from room information or a room event for **Chat ID**. A room alias like `#support:example.com` is different from the room ID. For a thread, use the original `m.thread` root event ID as **Thread ID**.
 
 ## Enable the connection
 

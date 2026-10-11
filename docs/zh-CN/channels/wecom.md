@@ -6,65 +6,40 @@
 
 创建并启用可使用长连接的智能机器人，记录 Bot ID，将密钥保存到 `WECOM_BOT_SECRET`。向所需成员开放机器人，并将它加入目标群组。同一个机器人运行一个 Relanox 进程。
 
-## 添加配置
+## 在配置器中填写
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
+打开[连接配置器](../configuration.md)，选择 **企业微信**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-```json
-{
-  "accounts": [
-    {
-      "id": "wecom-main",
-      "channel": "wecom",
-      "allowedSenders": ["staff-userid"],
-      "config": {
-        "botId": "intelligent-robot-id",
-        "secret": {
-          "env": "WECOM_BOT_SECRET"
-        }
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "wecom-main",
-      "chatId": "staff-userid",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| 配置器字段         | 填写内容                         |
+| ------------------ | -------------------------------- |
+| 机器人 ID          | 替换示例：`intelligent-robot-id` |
+| 机器人密钥环境变量 | 变量名：`WECOM_BOT_SECRET`       |
+
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#wecom)。
 
 ## 发现用户和群组 ID
 
-首次配置时，先将企业微信条目保存到 `relanox.json` 草稿的 `relay.accounts`，填写真实 `botId` 和密钥环境变量引用。发现期间可以将 `allowedSenders` 留空、暂不完成绑定。在终端环境中设置 `WECOM_BOT_SECRET`；此命令不需要 Agent 凭据或数据库配置。
+先在配置器中填写机器人 ID 和密钥变量名，下载当前草稿为 `relanox.json`。允许用户和聊天 ID 暂时留空。在运行命令的终端设置 `WECOM_BOT_SECRET`。
 
 开始前先停止使用同一机器人的服务：企业微信会在新进程连接时替换原有连接。运行：
 
 ```sh
-relanox discover --config relanox.json --account wecom-main --timeout 120
+node apps/cli/dist/main.js discover --config relanox.json --account wecom-main --timeout 120
 ```
 
-等待终端显示 `discovery_connected` 事件，再向机器人发送私聊消息，或在目标群中 @ 机器人。终端会为每个不同的会话和发送者打印一行 JSON：
+等待终端显示 `discovery_connected`，再向机器人发送私聊消息，或在目标群中 @ 机器人。终端会显示会话和发送者 ID。
 
-```json
-{
-  "ok": true,
-  "event": "conversation",
-  "accountId": "wecom-main",
-  "channel": "wecom",
-  "chatId": "group-chatid",
-  "senderId": "staff-userid"
-}
+私聊使用成员 userid，群聊使用已认证回调中的 `chatid`。需要其他成员的 userid 时，让相应成员各发送一条消息。使用这些 ID，而非显示名称。
+
+将输出的 `senderId` 填入配置器的「允许使用的用户 ID」，`chatId` 填入「聊天 ID」。完成其他信息并重新下载配置。命令 120 秒后退出，也可按 Ctrl+C 提前停止。验证配置后重新启动服务：
+
+```sh
+node apps/cli/dist/main.js validate --config relanox.json
 ```
-
-将 `senderId` 填入 `allowedSenders`，将 `chatId` 填入绑定。私聊使用成员 userid，群聊使用已认证回调中的 `chatid`。需要其他成员的 userid 时，让相应成员各发送一条消息。使用这些 ID，而非显示名称。
-
-发现命令目前只支持企业微信，默认 120 秒后停止；`--timeout` 接受 1–600 秒，也可按 Ctrl+C 提前停止。终端只显示账号、会话与发送者 ID，不包含消息正文、媒体 URL 或凭据。命令不下载附件、不保存消息，也不向 Agent 派发。正常服务仍要求完成绑定与发送者允许列表。补全配置后运行 `relanox validate --config relanox.json`，再启动服务。
 
 ## 启用连接
 
-启动 Relanox 后会自动连接 `wss://openws.work.weixin.qq.com`。保持进程运行。
+启动 Relanox 后会自动连接机器人。保持进程运行。
 
 ## 发送第一条消息
 

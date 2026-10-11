@@ -4,47 +4,25 @@ Answer customers through a WhatsApp Business Cloud API phone number.
 
 ## Prepare your account
 
-Create a Meta app with WhatsApp Business Platform access and register a business phone number. Record the phone number ID and Business Account ID. Obtain an access token with `whatsapp_business_messaging` and access to that phone/business. Save the app secret and choose a verification token. Relanox uses Graph API `v25.0`; the supported API version is managed by Relanox releases.
+Create a Meta app with WhatsApp Business Platform access and register a business phone number. Record the phone number ID and Business Account ID. Obtain an access token with `whatsapp_business_messaging` and access to that phone/business. Save the app secret and choose a verification token.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **WhatsApp**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "whatsapp-main",
-      "config": {
-        "phoneNumberId": "your_phone_number_id",
-        "businessAccountId": "your_whatsapp_business_account_id",
-        "appSecret": {
-          "env": "WHATSAPP_APP_SECRET"
-        },
-        "verifyToken": {
-          "env": "WHATSAPP_VERIFY_TOKEN"
-        },
-        "accessToken": {
-          "env": "WHATSAPP_ACCESS_TOKEN"
-        }
-      },
-      "channel": "whatsapp",
-      "allowedSenders": ["15551234567"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "whatsapp-main",
-      "chatId": "15551234567",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field                      | What to enter                                        |
+| --------------------------------------- | ---------------------------------------------------- |
+| Phone number ID                         | Replace example: `your_phone_number_id`              |
+| Business account ID                     | Replace example: `your_whatsapp_business_account_id` |
+| Application secret environment variable | Variable name: `WHATSAPP_APP_SECRET`                 |
+| Verification token environment variable | Variable name: `WHATSAPP_VERIFY_TOKEN`               |
+| Access token environment variable       | Variable name: `WHATSAPP_ACCESS_TOKEN`               |
+
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#whatsapp).
 
 Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-Use the incoming message’s `from` value for both `allowedSenders` and `chatId`, for example `15551234567`. Copy the exact digits from the business message event. Use the platform’s phone number ID in `phoneNumberId`, rather than the visible phone number.
+Use the incoming message’s `from` value for both **Allowed user IDs** and **Chat ID**, for example `15551234567`. Copy the exact digits from the business message event. Use the platform’s phone number ID in `phoneNumberId`, rather than the visible phone number.
 
 ## Enable the connection
 

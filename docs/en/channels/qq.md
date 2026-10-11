@@ -6,45 +6,27 @@ Use an official QQ robot in private conversations and groups that mention the bo
 
 Create and enable a robot on the QQ bot platform. Save its app ID and client secret, and obtain `GROUP_AND_C2C_EVENT` permission. Make the robot available to your test or production users and groups according to the app’s release status.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **QQ robot**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "qq-main",
-      "channel": "qq",
-      "allowedSenders": ["user-openid", "group-member-openid"],
-      "config": {
-        "appId": "123456789",
-        "clientSecret": {
-          "env": "QQ_CLIENT_SECRET"
-        },
-        "allowProactive": false
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "qq-main",
-      "chatId": "user-openid",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field                 | What to enter                     |
+| ---------------------------------- | --------------------------------- |
+| Application ID                     | Replace example: `123456789`      |
+| Client secret environment variable | Variable name: `QQ_CLIENT_SECRET` |
+| Allow proactive messages           | Initial value: `false`            |
+
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#qq).
 
 Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-For private messages, both the allowed sender and binding `chatId` use `author.user_openid`. For groups, use `author.member_openid` in the sender allowlist and `group_openid` as `chatId`. Obtain these from robot message events; they are platform OpenIDs, separate from visible QQ numbers.
+For private messages, both the allowed sender and binding **Chat ID** use `author.user_openid`. For groups, use `author.member_openid` in the sender allowlist and `group_openid` as **Chat ID**. Obtain these from robot message events; they are platform OpenIDs, separate from visible QQ numbers.
 
-QQ uses the production environment by default. For the sandbox, add `"environment": "sandbox"` to the account configuration. Relanox selects the native API and token endpoints automatically.
+QQ uses production by default; select sandbox in the configurator for a test account.
 
 ## Enable the connection
 
-Relanox connects automatically over WebSocket when it starts. Keep it running with outbound access to QQ’s API and gateway. The example uses replies to incoming messages; keep `allowProactive` false for this setup.
+Relanox connects automatically over WebSocket when it starts. Keep it running with outbound access to QQ’s API and gateway. Keep **Allow proactive messages** disabled when replying to incoming messages.
 
 ## Send your first message
 
@@ -56,4 +38,4 @@ Send native images, audio, videos and files. Generated replies use QQ attachment
 
 ## Troubleshooting
 
-If the gateway refuses connection, check robot release status, app credentials and event permission. If a group message is missing, mention the bot and verify the group/member OpenIDs. If a delayed answer exceeds the reply window, send a new question. Enable `allowProactive:true` only after obtaining the platform permission and the recipient’s receiving preference.
+If the gateway refuses connection, check robot release status, app credentials and event permission. If a group message is missing, mention the bot and verify the group/member OpenIDs. If a delayed answer exceeds the reply window, send a new question. Enable **Allow proactive messages** only after obtaining the platform permission and the recipient’s receiving preference.

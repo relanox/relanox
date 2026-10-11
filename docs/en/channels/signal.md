@@ -6,41 +6,23 @@ Use a dedicated Signal account through a separately managed signal-cli daemon.
 
 Install signal-cli, register or link the Signal account, and start its HTTP JSON-RPC/SSE daemon. Record the account number. Back up signal-cli’s account/session data alongside your Relanox database. For remote access, place the daemon behind an authenticated HTTPS proxy; save the complete Authorization header value as `SIGNAL_BRIDGE_AUTHORIZATION`.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **Signal**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "signal-main",
-      "config": {
-        "serviceUrl": "https://signal-bridge.example.com",
-        "account": "+15551234567",
-        "authorization": {
-          "env": "SIGNAL_BRIDGE_AUTHORIZATION"
-        }
-      },
-      "channel": "signal",
-      "allowedSenders": ["11111111-1111-4111-8111-111111111111"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "signal-main",
-      "chatId": "direct:11111111-1111-4111-8111-111111111111",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field                 | What to enter                                        |
+| ---------------------------------- | ---------------------------------------------------- |
+| Signal bridge URL                  | Replace example: `https://signal-bridge.example.com` |
+| Registered account phone number    | Replace example: `+15551234567`                      |
+| Authorization environment variable | Variable name: `SIGNAL_BRIDGE_AUTHORIZATION`         |
 
-To discover a sender, send a test message and have the daemon administrator inspect its `/api/v1/events?account=<account>` event stream. Use the received envelope’s `sourceUuid` as the allowed sender when available; otherwise use its number/source identifier. Bind a direct conversation as `direct:<sender>` and a group as `group:<groupId>`. Get the group ID from the daemon’s group information or received envelope. Relanox filters self-messages by account number. If your daemon sends self-messages identified only by UUID, optionally set `selfUuid` to that account’s UUID for the same filtering.
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#signal).
+
+To discover a sender, send a test message and have the daemon administrator inspect its `/api/v1/events?account=<account>` event stream. Use the received envelope’s `sourceUuid` as the allowed sender when available; otherwise use its number/source identifier. Bind a direct conversation as `direct:<sender>` and a group as `group:<groupId>`. Get the group ID from the daemon’s group information or received envelope.
 
 ## Enable the connection
 
-Set `serviceUrl` to the daemon/proxy’s base URL and `account` to its registered account number. Relanox connects automatically when started. For a daemon on the same machine, use an HTTP loopback URL and add `allowInsecureLocalhost:true`; remove `authorization` if that local daemon does not require it.
+Set **Signal bridge URL** to the daemon/proxy’s base URL and **Registered account phone number** to its registered number. Relanox connects automatically when started.
 
 ## Send your first message
 
