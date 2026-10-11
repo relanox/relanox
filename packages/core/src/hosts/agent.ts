@@ -9,11 +9,12 @@ import type {
   EndpointConfig,
   InboundRecord,
   Observability,
+  ReplyTarget,
   ScopedAgentHost,
   Storage,
   StoredMedia
 } from '@relanox/sdk'
-import { chunkText } from '../chunk.js'
+import { splitMarkdown, textLength } from '@relanox/markdown'
 import { CoreError } from '../errors.js'
 import { jsonSnapshot } from '../json.js'
 import { textId, boundedText } from '../validation.js'
@@ -37,7 +38,8 @@ function chunksFor(
   plugin: ChannelPlugin<unknown>,
   deliveryId: string,
   text: string,
-  media: readonly StoredMedia[]
+  media: readonly StoredMedia[],
+  target: ReplyTarget
 ): readonly DeliveryChunk[] {
   if (
     media.length > (plugin.capabilities.maxAttachmentsPerMessage ?? Infinity) ||
@@ -48,13 +50,20 @@ function chunksFor(
     throw new CoreError('media_not_supported')
   }
 
+  if (
+    textLength(text, plugin.capabilities.lengthUnit) >
+    (plugin.capabilities.maxTextLengthPerMessage ?? Infinity)
+  ) {
+    throw new CoreError('reply_exceeds_channel_limit')
+  }
+
   const chunks: DeliveryChunk[] = (
     text
-      ? chunkText(
-          text,
-          plugin.capabilities.maxTextLength,
-          plugin.capabilities.lengthUnit
-        )
+      ? (plugin.splitText?.(text, target) ??
+        splitMarkdown(text, {
+          maxLength: plugin.capabilities.maxTextLength,
+          unit: plugin.capabilities.lengthUnit
+        }))
       : []
   ).map((part, index) => ({
     text: part,
@@ -128,7 +137,13 @@ async function enqueue(
           requestId: input.replyTo,
           messageId,
           target: jsonSnapshot(request.snapshot.target),
-          chunks: chunksFor(plugin, deliveryId, input.text, media.attachments),
+          chunks: chunksFor(
+            plugin,
+            deliveryId,
+            input.text,
+            media.attachments,
+            request.snapshot.target
+          ),
           currentChunk: 0,
           receipts: [],
           status: 'pending',

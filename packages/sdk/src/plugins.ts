@@ -12,6 +12,7 @@ import type {
   DispatchResult,
   SendResult,
   SendInput,
+  ReplyTarget,
   DispatchInput
 } from './messages.js'
 import type { StateStore } from './state.js'
@@ -103,6 +104,8 @@ export type ChannelPlugin<C = Json> = {
     readonly receive: true
     readonly transport: 'http' | 'connection' | 'both'
     readonly maxTextLength: number
+    /** Aggregate source Markdown limit using lengthUnit, checked before enqueue. */
+    readonly maxTextLengthPerMessage?: number
     readonly lengthUnit: 'utf16' | 'codepoint' | 'utf8'
     readonly idempotentSend: boolean
     /** Reject oversized replies before sending when a platform limits per-message calls. */
@@ -114,6 +117,8 @@ export type ChannelPlugin<C = Json> = {
     }
   }
   validateConfig(config: unknown): C
+  /** Split Markdown against rendered platform limits, retaining complete formatting. */
+  splitText?(markdown: string, target: ReplyTarget): readonly string[]
   setup(host: ChannelHost, account: AccountConfig, config: C): Promise<void>
   send(input: SendInput): Promise<SendResult>
 } & PluginMetadata &
