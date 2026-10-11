@@ -484,6 +484,7 @@ User setup: [Connect WeCom intelligent robot](../channels/wecom.md).
       "channel": "wecom",
       "allowedSenders": ["staff-userid"],
       "config": {
+        "mode": "websocket",
         "botId": "intelligent-robot-id",
         "secret": {
           "env": "WECOM_BOT_SECRET"
@@ -500,6 +501,19 @@ User setup: [Connect WeCom intelligent robot](../channels/wecom.md).
   ]
 }
 ```
+
+Omitting `mode` keeps the existing WebSocket configuration valid. For HTTP callback mode, replace the account `config` above with:
+
+```json
+{
+  "mode": "webhook",
+  "botId": "intelligent-robot-id",
+  "token": { "env": "WECOM_TOKEN" },
+  "encodingAESKey": { "env": "WECOM_ENCODING_AES_KEY" }
+}
+```
+
+Register `/channels/{accountId}/webhook` on your public HTTPS origin. Relanox supports one text reply per incoming message, within one hour, and limits the reply to 2,048 UTF-8 bytes before Markdown escaping. Longer replies are rejected before enqueueing; media replies are unavailable. The WebSocket discovery command below does not apply to callback accounts. For platform details, see [WeCom active replies](https://developer.work.weixin.qq.com/document/path/101138).
 
 ### Protocol and command details
 

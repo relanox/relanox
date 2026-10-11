@@ -52,7 +52,7 @@ docker compose exec relanox node dist/main.js doctor --config /config/relanox.js
 docker compose exec relanox node dist/main.js status --config /config/relanox.json --limit 100
 ```
 
-获取企业微信聊天和发送者 ID 时，先停止使用同一个 bot 的运行进程，提供 `WECOM_BOT_SECRET`，再运行下方发现命令。绑定未完成或 Agent 凭据未填写的配置也可使用。向 bot 发送消息，命令只输出 ID，不修改配置。详见[企业微信](channels/wecom.md)。
+获取企业微信 WebSocket 模式的聊天和发送者 ID 时，先停止使用同一个 bot 的运行进程，提供 `WECOM_BOT_SECRET`，再运行下方发现命令。绑定未完成或 Agent 凭据未填写的配置也可使用。向 bot 发送消息，命令只输出 ID，不修改配置。详见[企业微信](channels/wecom.md)。
 
 ```sh
 node apps/cli/dist/main.js discover --config relanox.json --account wecom-main --timeout 120

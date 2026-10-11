@@ -4,11 +4,11 @@ Use a WeCom intelligent robot in direct and group conversations.
 
 ## Prepare your account
 
-Create and enable an intelligent robot with long-connection access. Record its bot ID and save its secret as `WECOM_BOT_SECRET`. Give the intended members access to it and add it to the group you want to use. Run one Relanox process for this robot.
+Create and enable an intelligent robot. Choose WebSocket (long connection) or HTTP callback access in its platform settings. For WebSocket, record its bot ID and save its secret as `WECOM_BOT_SECRET`. For HTTP callback, record its bot ID, Token and EncodingAESKey; save the latter two as `WECOM_TOKEN` and `WECOM_ENCODING_AES_KEY`. Give the intended members access to it and add it to the group you want to use. Run one Relanox process for this robot.
 
 ## Fill in the configurator
 
-Open the [connection configurator](../connect.md), select **WeCom**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
+Open the [connection configurator](../connect.md), select **WeCom**, choose the matching **Connection mode** (`websocket` or `webhook`), and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
 | Configurator field | What to enter                                  |
 | ------------------ | ---------------------------------------------- |
@@ -16,7 +16,9 @@ Open the [connection configurator](../connect.md), select **WeCom**, and enter t
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#wecom).
 
-## Discover user and group IDs
+## Discover user and group IDs with WebSocket
+
+The discovery command requires WebSocket mode. For HTTP callback mode, obtain the member userid from your enterprise directory and the chat ID from the platform callback event.
 
 Fill in the bot ID in the configurator and keep the default credential variable name, then download the draft as `relanox.json`. Leave allowed users and chat IDs empty for now. Set `WECOM_BOT_SECRET` in the terminal where you run the command.
 
@@ -40,7 +42,11 @@ node apps/cli/dist/main.js validate --config relanox.json
 
 ## Enable the connection
 
-Start Relanox to connect automatically to the robot. Keep the process running.
+In WebSocket mode, start Relanox to connect automatically to the robot. Keep the process running.
+
+For HTTP callback mode, start Relanox behind your public HTTPS address, then enter the generated callback URL in the robot settings: `https://your-host/channels/wecom-main/webhook`. Replace `wecom-main` with your account ID. Use the same Token and EncodingAESKey as the service environment, and save the platform settings after URL verification succeeds.
+
+Both modes require a public HTTPS address for dot or Grok MCP access.
 
 ## Send your first message
 
@@ -48,10 +54,14 @@ Send “Hello” directly to the robot. In a bound group, mention the robot with
 
 ## Images and files
 
-Send images, videos, files or mixed text/image messages. Voice input supplies its recognized text to the agent. Media downloads expire after five minutes, so keep Relanox online when sending them. Replies can include PNG/JPEG/GIF images and MP4 video up to 10 MiB, AMR audio up to 2 MiB, and files up to 20 MiB, subject to the relay limit.
+WebSocket mode accepts images, videos, files or mixed text/image messages. Voice input supplies its recognized text to the agent. Media downloads expire after five minutes, so keep Relanox online when sending them. Replies can include PNG/JPEG/GIF images and MP4 video up to 10 MiB, AMR audio up to 2 MiB, and files up to 20 MiB, subject to the relay limit.
+
+HTTP callback mode accepts text, images, videos, files, mixed text/image messages and voice transcription. Send one final text reply per incoming message, within one hour. Keep it within 2,048 UTF-8 bytes; longer replies are rejected as a whole. The first reply consumes the callback reply destination, so do not send a progress update before the final answer. Image, audio, video and file replies are unavailable in this mode.
 
 ## Troubleshooting
 
 For a replaced connection, stop the other process using the same bot, then restart this instance. For missing group questions, check bot membership and mention it. If credentials changed, update the environment of the running service and restart it.
 
 If discovery prints no conversation, verify the Bot ID and secret, check member access and group membership, then send another message while discovery is running. A discovery timeout alone does not confirm successful platform authentication.
+
+For callback URL verification failures, check public HTTPS reachability, the account ID in the URL, and the Token and EncodingAESKey values.

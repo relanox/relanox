@@ -183,8 +183,8 @@ Connection timing and fixed platform identities are now managed internally. If a
 | Slack, Discord                                                    | `reconnectDelayMs`                                  |
 | IRC, Matrix, Mattermost, Signal                                   | `reconnectMs`                                       |
 | Matrix                                                            | `syncTimeoutMs`                                     |
-| DingTalk, WeCom, QQ                                               | `maxReconnectAttempts`                              |
-| WeCom                                                             | `heartbeatMs`                                       |
+| DingTalk, WeCom WebSocket, QQ                                     | `maxReconnectAttempts`                              |
+| WeCom WebSocket                                                   | `heartbeatMs`                                       |
 | QQ                                                                | `transport`                                         |
 | Discord                                                           | `intents`                                           |
 | Google Chat                                                       | `callerEmail`, `issuer`                             |

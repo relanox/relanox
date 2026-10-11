@@ -10,7 +10,7 @@ For a first installation, you can follow the Telegram example in the [quick star
 | [Discord](discord.md)                  | Discord bot and message permissions             |
 | [Slack](slack.md)                      | Slack app and workspace authorization           |
 | [Feishu / Lark](feishu.md)             | An internal app and an event subscription URL   |
-| [WeCom](wecom.md)                      | Intelligent robot ID and secret                 |
+| [WeCom](wecom.md)                      | Intelligent robot ID; secret or callback keys   |
 | [DingTalk](dingtalk.md)                | App robot and Stream credentials                |
 | [QQ](qq.md)                            | QQ bot App ID and secret                        |
 | [Microsoft Teams](msteams.md)          | Azure bot, Teams app and tenant details         |

@@ -4,6 +4,7 @@ import { useConfigurator } from './use-configurator.js'
 import ConfiguratorTutorial from './configurator-tutorial.vue'
 import PlatformLogo from './platform-logo.vue'
 import ChatFields from './chat-fields.vue'
+import { accountFields } from './channels.js'
 
 const {
   text,
@@ -385,9 +386,9 @@ async function showDetails(): Promise<void> {
                   }}
                 </p>
                 <div
-                  v-for="field in definition(
-                    activeChannel.channel
-                  )?.fields.filter((entry) => entry.kind !== 'env')"
+                  v-for="field in accountFields(activeChannel).filter(
+                    (entry) => entry.kind !== 'env'
+                  )"
                   :key="field.key"
                   class="extra-field"
                 >
@@ -430,9 +431,9 @@ async function showDetails(): Promise<void> {
                     <span>{{ text('Usually unchanged', '通常无需修改') }}</span>
                   </summary>
                   <div
-                    v-for="field in definition(
-                      activeChannel.channel
-                    )?.fields.filter((entry) => entry.kind === 'env')"
+                    v-for="field in accountFields(activeChannel).filter(
+                      (entry) => entry.kind === 'env'
+                    )"
                     :key="field.key"
                     class="extra-field"
                   >

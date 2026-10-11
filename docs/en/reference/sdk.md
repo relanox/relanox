@@ -16,6 +16,8 @@ A channel integration receives platform events and sends replies. An agent integ
 4. Implement sending for one prepared message part at a time. Preserve its send identity across retries, report the platform receipt on success, and distinguish a known temporary failure from an uncertain result.
 5. Register any webhook handlers through the host. The application owns listening addresses and mounts channel routes under `/channels/<accountId>`.
 
+For channels with a limited reply budget, declare `capabilities.maxChunksPerMessage`. Core rejects a reply that would exceed that number of text chunks before saving it for delivery. WeCom HTTP callback uses `1` because its reply URL accepts one reply; keep this separate from the per-chunk text limit.
+
 Each configured account gets its own channel instance. Keep credentials out of message context, reply destinations and logs. If the platform needs connection state or sequence numbers, use the host's state store so that restarting does not lose them.
 
 Core supplies `host.boundChatIds` from this account's bindings. Connection channels can use it to subscribe to configured conversations; IRC uses it to join channels without a separate channel list. Use `host.publicUrl` for your deployment's public address.

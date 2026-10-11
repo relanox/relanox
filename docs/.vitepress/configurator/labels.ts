@@ -14,6 +14,11 @@ export const fieldLabels: Record<string, [string, string]> = {
   encryptKey: ['Encryption key environment variable', '加密密钥环境变量'],
   tenantKey: ['Tenant key', '租户标识'],
   domain: ['Platform domain (feishu or lark)', '平台域（feishu 或 lark）'],
+  mode: ['Connection mode', '连接模式'],
+  encodingAESKey: [
+    'EncodingAESKey environment variable',
+    'EncodingAESKey 环境变量'
+  ],
   botId: ['Bot ID', '机器人 ID'],
   secret: ['Bot secret environment variable', '机器人密钥环境变量'],
   clientId: ['Client ID', '客户端 ID'],
@@ -69,8 +74,8 @@ export const channelSetup: Record<string, [string, string]> = {
     '创建飞书/Lark 机器人应用并配置加密事件订阅，用户使用 open ID，会话使用 chat ID。'
   ],
   wecom: [
-    'Create an intelligent robot and obtain its bot ID and secret. Connect through the native WebSocket service; use platform sender and chat IDs.',
-    '创建智能机器人并获取 bot ID 和密钥，通过原生 WebSocket 服务连接，填写平台发送者和会话 ID。'
+    'Create an intelligent robot and obtain its bot ID. Choose WebSocket with a secret, or HTTP callback with Token and EncodingAESKey; use platform sender and chat IDs.',
+    '创建智能机器人并获取 bot ID，选择使用密钥的 WebSocket，或使用 Token 和 EncodingAESKey 的 HTTP 回调，填写平台发送者和会话 ID。'
   ],
   dingtalk: [
     'Create a DingTalk app with Stream delivery and obtain the client ID and robot code. Copy the exact opaque sender and conversation IDs from events.',

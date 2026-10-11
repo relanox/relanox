@@ -49,6 +49,45 @@ function completedState(): ReturnType<typeof createState> {
 }
 
 describe('connection configurator production contracts', () => {
+  it('exports only selected WeCom mode credentials and validates both exports through production', () => {
+    const state = completedState()
+
+    const wecom = required(
+      state.channels.find((channel) => channel.channel === 'wecom')
+    )
+
+    for (const channel of state.channels) {
+      channel.enabled = channel === wecom
+    }
+    wecom.fields.mode = 'webhook'
+    expect(buildConfig(state).relay.accounts[0]?.config).toEqual({
+      mode: 'webhook',
+      botId: wecom.fields.botId,
+      token: { env: 'WECOM_TOKEN' },
+      encodingAESKey: { env: 'WECOM_ENCODING_AES_KEY' }
+    })
+    expect(() => validateApp(buildConfig(state))).not.toThrow()
+    expect(webhookDetails(state)).toEqual([
+      {
+        id: wecom.id,
+        channel: 'wecom',
+        webhookUrl: `https://relay.test.example:8443/channels/${wecom.id}/webhook`
+      }
+    ])
+    expect(environmentNames(buildConfig(state))).not.toContain(
+      'WECOM_BOT_SECRET'
+    )
+    wecom.fields.mode = 'websocket'
+    expect(buildConfig(state).relay.accounts[0]?.config).toEqual({
+      mode: 'websocket',
+      botId: wecom.fields.botId,
+      secret: { env: 'WECOM_BOT_SECRET' }
+    })
+    expect(() => validateApp(buildConfig(state))).not.toThrow()
+    expect(webhookDetails(state)).toEqual([])
+    expect(environmentNames(buildConfig(state))).not.toContain('WECOM_TOKEN')
+  })
+
   it('keeps SSR drafts credential-free and uses edited browser passwords in connection instructions only', () => {
     const state = createState()
     expect(state.agents[0]?.mcpToken).toBe('')
