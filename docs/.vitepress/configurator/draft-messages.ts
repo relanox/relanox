@@ -11,6 +11,10 @@ const messages: Record<string, Localized> = {
     en: 'Enter an HTTPS address or a local HTTP address (127.0.0.1 or [::1]), without a path.',
     zh: '填写 HTTPS 地址或本机 HTTP 地址（127.0.0.1 或 [::1]），不包含路径。'
   },
+  oauthPublicHost: {
+    en: 'dot OAuth requires a public HTTPS address for authorization.',
+    zh: 'dot OAuth 授权需要公开 HTTPS 地址。'
+  },
   publicHostRequired: {
     en: 'The selected webhook channels require a public HTTPS address.',
     zh: '所选回调渠道需要填写公开 HTTPS 地址。'
@@ -18,6 +22,10 @@ const messages: Record<string, Localized> = {
   channelRequired: {
     en: 'Choose at least one channel.',
     zh: '至少选择一个渠道。'
+  },
+  mcpToken: {
+    en: 'Use at least 32 letters, digits, underscores or hyphens for the MCP password.',
+    zh: 'MCP 密码至少包含 32 个字母、数字、下划线或连字符。'
   },
   agentRequired: { en: 'Add an Agent.', zh: '添加一个 Agent。' },
   agentName: { en: 'Enter a name.', zh: '填写名称。' },

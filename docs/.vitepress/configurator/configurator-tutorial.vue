@@ -3,16 +3,34 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { CHANNELS } from './channels.js'
 import { webhookDetails } from './model.js'
-import type { ChannelDefinition, ConfiguratorState } from './types.js'
+import type {
+  ChannelDefinition,
+  ConfiguratorState,
+  ConnectionDetails
+} from './types.js'
 import type { DraftIssue } from './model.js'
 
 const props = defineProps<{
   state: ConfiguratorState
   variables: string[]
-  connections: { id: string; mcpUrl: string; tokenEnv: string }[]
+  connections: ConnectionDetails[]
   issues: DraftIssue[]
   chinese: boolean
 }>()
+
+const clipboardStatus = ref('')
+
+async function copyToken(token: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(token)
+    clipboardStatus.value = text('Password copied.', '密码已复制。')
+  } catch {
+    clipboardStatus.value = text(
+      'Copy failed. Select and copy the password.',
+      '复制失败，请选择并复制密码。'
+    )
+  }
+}
 
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement>()
@@ -63,6 +81,7 @@ onUnmounted(() => {
       </button>
     </header>
     <div class="tutorial-body">
+      <p v-if="clipboardStatus" role="status">{{ clipboardStatus }}</p>
       <p v-if="issues.length" class="tutorial-notice">
         {{
           text(
@@ -141,8 +160,30 @@ onUnmounted(() => {
           <p>
             {{
               text(
-                'Supply the actual values in your server or shell environment before starting. Use independent random MCP tokens for each Agent; Routine values come from Grok.',
-                '启动前，在服务器或终端环境中设置实际值。每个 Agent 的 MCP token 使用独立随机值，Routine 凭据从 Grok 获取。'
+                'Supply the actual values in your server or shell environment before starting. Use the generated MCP passwords shown below; Routine values come from Grok.',
+                '启动前，在服务器或终端环境中设置实际值。MCP 密码使用下方生成的值，Routine 凭据从 Grok 获取。'
+              )
+            }}
+          </p>
+          <div
+            v-for="connection in connections"
+            :key="connection.id"
+            class="tutorial-agent"
+          >
+            <code>{{ connection.tokenEnv }}</code>
+            <code class="connection-url">{{ connection.token }}</code>
+            <button
+              class="connection-button"
+              @click="copyToken(connection.token)"
+            >
+              {{ text('Copy password', '复制密码') }}
+            </button>
+          </div>
+          <p>
+            {{
+              text(
+                'These passwords stay in this browser session. Save them securely before closing or reloading the page. JSON contains only environment variable names.',
+                '这些密码仅保留在当前页面中。关闭或刷新前请妥善保存；JSON 只包含环境变量名称。'
               )
             }}
           </p>
@@ -184,8 +225,17 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
             <p>{{ text('MCP address', 'MCP 地址') }}</p>
             <code class="connection-url">{{ connection.mcpUrl }}</code>
             <p>
-              {{ text('Bearer token: the value of', 'Bearer token：使用变量') }}
-              <code>{{ connection.tokenEnv }}</code> {{ text('', '的值。') }}
+              {{
+                connection.auth === 'oauth'
+                  ? text(
+                      'Choose OAuth and dynamic client registration in dot, then enter the generated password on the Relanox authorization page and approve access.',
+                      '在 dot 选择 OAuth 与动态客户端注册，随后在 Relanox 授权页面输入生成的密码并确认授权。'
+                    )
+                  : text(
+                      'Paste the complete MCP address into Grok. Its path authenticates this connection; no custom headers are needed.',
+                      '将完整 MCP 地址粘贴到 Grok，路径中的密码用于认证，无需自定义请求头。'
+                    )
+              }}
             </p>
             <p>
               {{

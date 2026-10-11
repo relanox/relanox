@@ -7,6 +7,7 @@ import {
   connectionDetails,
   createState,
   environmentNames,
+  generateMcpToken,
   removeAgent,
   validateDraft,
   webhookDetails
@@ -15,6 +16,9 @@ import {
 function completedState(): ReturnType<typeof createState> {
   const state = createState()
   state.publicHost = 'relay.test.example:8443'
+  for (const agent of state.agents) {
+    agent.mcpToken = generateMcpToken()
+  }
   for (const channel of state.channels) {
     const definition = CHANNELS.find((entry) => entry.id === channel.channel)
     channel.enabled = true
@@ -30,6 +34,63 @@ function completedState(): ReturnType<typeof createState> {
 }
 
 describe('connection configurator production contracts', () => {
+  it('keeps SSR drafts credential-free and uses edited browser passwords in connection instructions only', () => {
+    const state = createState()
+    expect(state.agents[0]?.mcpToken).toBe('')
+    expect(validateDraft(state)).toContainEqual({
+      code: 'mcpToken',
+      target: 'agent-1'
+    })
+    const agent = state.agents[0]
+    if (!agent) {
+      throw new Error('Agent missing')
+    }
+    agent.mcpToken = generateMcpToken()
+    expect(agent.mcpToken).toMatch(/^[a-f0-9]{64}$/u)
+    agent.mcpToken = 'edited_password_01234567890123456789'
+    agent.type = 'grok'
+    expect(connectionDetails(state)[0]).toEqual({
+      id: 'agent-1',
+      mcpUrl:
+        'http://127.0.0.1:8787/agents/grok/mcp/agent-1/edited_password_01234567890123456789',
+      tokenEnv: 'RELANOX_AGENT_1_MCP_TOKEN',
+      token: 'edited_password_01234567890123456789',
+      auth: 'path'
+    })
+    expect(buildConfig(state).relay.endpoints[0]?.config.mcp).toEqual({
+      token: { env: 'RELANOX_AGENT_1_MCP_TOKEN' },
+      auth: 'path'
+    })
+    expect(JSON.stringify(buildConfig(state))).not.toContain(agent.mcpToken)
+    agent.type = 'dot'
+    expect(connectionDetails(state)[0]?.mcpUrl).toBe(
+      'http://127.0.0.1:8787/agents/dot/mcp/agent-1'
+    )
+    expect(buildConfig(state).relay.endpoints[0]?.config.mcp).toEqual({
+      token: { env: 'RELANOX_AGENT_1_MCP_TOKEN' },
+      auth: 'oauth'
+    })
+    agent.mcpToken = 'invalid/password'
+    expect(validateDraft(state)).toContainEqual({
+      code: 'mcpToken',
+      target: 'agent-1'
+    })
+  })
+
+  it('requires HTTPS for dot OAuth even with an outbound channel', () => {
+    const state = completedState()
+    state.publicHost = ''
+    for (const channel of state.channels) {
+      channel.enabled = channel.channel === 'discord'
+    }
+    expect(validateDraft(state)).toContainEqual({
+      code: 'oauthPublicHost',
+      target: 'publicHost'
+    })
+    state.publicHost = 'https://relay.test.example'
+    expect(validateDraft(state)).toEqual([])
+  })
+
   it('requires the application ID even after sender and conversation IDs are supplied', () => {
     const state = createState()
     state.publicHost = 'relay.test.example'
@@ -75,6 +136,11 @@ describe('connection configurator production contracts', () => {
     (channelId, requiresHttps) => {
       const state = completedState()
       state.publicHost = ''
+      const agent = state.agents[0]
+      if (!agent) {
+        throw new Error('Agent missing')
+      }
+      agent.type = 'grok'
       for (const channel of state.channels) {
         channel.enabled = channel.channel === channelId
       }
@@ -88,7 +154,7 @@ describe('connection configurator production contracts', () => {
         const config = buildConfig(state)
         expect(validateApp(config).publicUrl).toBe('http://127.0.0.1:8787')
         expect(connectionDetails(state)[0]?.mcpUrl).toBe(
-          'http://127.0.0.1:8787/agents/dot/mcp/agent-1'
+          `http://127.0.0.1:8787/agents/grok/mcp/agent-1/${agent.mcpToken}`
         )
         expect(webhookDetails(state)).toEqual([])
       }
@@ -100,6 +166,11 @@ describe('connection configurator production contracts', () => {
     for (const channel of state.channels) {
       channel.enabled = channel.channel === 'discord'
     }
+    const agent = state.agents[0]
+    if (!agent) {
+      throw new Error('Agent missing')
+    }
+    agent.type = 'grok'
     state.publicHost = 'http://[::1]:8787'
     expect(validateDraft(state)).toEqual([])
     expect(validateApp(buildConfig(state)).publicUrl).toBe('http://[::1]:8787')
@@ -175,7 +246,9 @@ describe('connection configurator production contracts', () => {
 
   it('generates all fifteen native accounts accepted by the production validator', () => {
     const state = completedState()
-    addAgent(state).type = 'grok'
+    const grok = addAgent(state)
+    grok.type = 'grok'
+    grok.mcpToken = generateMcpToken()
     const config = buildConfig(state)
     expect(validateDraft(state)).toEqual([])
     expect(validateApp(config).relay.accounts).toHaveLength(15)
@@ -184,7 +257,8 @@ describe('connection configurator production contracts', () => {
       'grok'
     ])
     expect(config.relay.endpoints[0]?.config.mcp).toEqual({
-      token: { env: 'RELANOX_AGENT_1_MCP_TOKEN' }
+      token: { env: 'RELANOX_AGENT_1_MCP_TOKEN' },
+      auth: 'oauth'
     })
     expect(config.relay.endpoints[0]?.config).not.toHaveProperty('callback')
     expect(
@@ -231,7 +305,9 @@ describe('connection configurator production contracts', () => {
     expect(connectionDetails(state)[1]).toEqual({
       id: 'agent-2',
       mcpUrl: 'https://relay.test.example:8443/agents/dot/mcp/agent-2',
-      tokenEnv: 'RELANOX_AGENT_2_MCP_TOKEN'
+      tokenEnv: 'RELANOX_AGENT_2_MCP_TOKEN',
+      token: '',
+      auth: 'oauth'
     })
     removeAgent(state, second.id)
     expect(validateDraft(state)).toContainEqual({

@@ -17,6 +17,7 @@ const {
   feedback,
   selected,
   httpsChannels,
+  hasOAuth,
   lines,
   issues,
   issueMessages,
@@ -26,6 +27,7 @@ const {
   definition,
   channelName,
   visibleChannels,
+  regenerateToken,
   appendAgent,
   deleteAgent,
   copy,
@@ -162,6 +164,36 @@ async function showDetails(): Promise<void> {
                     <option value="grok">Grok</option>
                   </select>
                 </div>
+                <label :for="`${agent.id}-token`">{{
+                  text('MCP password', 'MCP 密码')
+                }}</label>
+                <input
+                  :id="`${agent.id}-token`"
+                  v-model="agent.mcpToken"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  :aria-describedby="`${agent.id}-token-hint`"
+                />
+                <button
+                  class="connection-link"
+                  @click="regenerateToken(agent.id)"
+                >
+                  {{ text('Generate new password', '重新生成密码') }}
+                </button>
+                <p :id="`${agent.id}-token-hint`" class="field-hint">
+                  {{
+                    agent.type === 'dot'
+                      ? text(
+                          'Select OAuth in dot. Enter this password on the Relanox authorization page.',
+                          '在 dot 选择 OAuth，在 Relanox 授权页面输入此密码。'
+                        )
+                      : text(
+                          'The MCP address includes this password. Paste the full address into Grok.',
+                          'MCP 地址包含此密码，将完整地址粘贴到 Grok。'
+                        )
+                  }}
+                </p>
               </div>
               <button class="connection-link add-agent" @click="appendAgent">
                 <span class="vpi-plus" aria-hidden="true" />{{
@@ -233,7 +265,7 @@ async function showDetails(): Promise<void> {
                 </li>
               </ul>
               <label for="public-host">{{
-                httpsChannels.length
+                httpsChannels.length || hasOAuth
                   ? text(
                       'Public HTTPS address (required)',
                       '公开 HTTPS 地址（必填）'
@@ -244,25 +276,30 @@ async function showDetails(): Promise<void> {
                 id="public-host"
                 v-model="state.publicHost"
                 :placeholder="
-                  httpsChannels.length
+                  httpsChannels.length || hasOAuth
                     ? 'https://relay.example.com'
                     : 'http://127.0.0.1:8787'
                 "
-                :required="httpsChannels.length > 0"
+                :required="httpsChannels.length > 0 || hasOAuth"
                 aria-describedby="public-host-hint"
                 autocomplete="off"
               />
               <p id="public-host-hint" class="field-hint">
                 {{
-                  httpsChannels.length
+                  hasOAuth
                     ? text(
-                        `${httpsChannels.join(', ')} needs HTTPS webhook delivery. Enter the address pointing to your Relanox server.`,
-                        `${httpsChannels.join('、')} 需要 HTTPS 回调地址，请填写指向 Relanox 服务的地址。`
+                        'dot OAuth needs a public HTTPS address pointing to your Relanox server.',
+                        'dot OAuth 需要指向 Relanox 服务的公开 HTTPS 地址。'
                       )
-                    : text(
-                        'These channels connect outward and do not need an HTTPS callback. Leave blank for http://127.0.0.1:8787; your Agent must still be able to reach the MCP address.',
-                        '所选渠道主动连接平台，无需 HTTPS 回调。留空使用 http://127.0.0.1:8787；Agent 仍需能够访问 MCP 地址。'
-                      )
+                    : httpsChannels.length
+                      ? text(
+                          `${httpsChannels.join(', ')} needs HTTPS webhook delivery. Enter the address pointing to your Relanox server.`,
+                          `${httpsChannels.join('、')} 需要 HTTPS 回调地址，请填写指向 Relanox 服务的地址。`
+                        )
+                      : text(
+                          'These channels connect outward and do not need an HTTPS callback. Leave blank for http://127.0.0.1:8787; your Agent must still be able to reach the MCP address.',
+                          '所选渠道主动连接平台，无需 HTTPS 回调。留空使用 http://127.0.0.1:8787；Agent 仍需能够访问 MCP 地址。'
+                        )
                 }}
               </p>
               <template v-if="activeChannel">
@@ -373,8 +410,8 @@ async function showDetails(): Promise<void> {
               <p class="field-hint">
                 {{
                   text(
-                    'Credentials use environment variables. Set their values on your server; this page needs no secrets.',
-                    '凭据使用环境变量，在服务器上设置其值即可，这里无需填写密钥。'
+                    'Channel credentials use environment variables. Set their values on your server. Copy the generated MCP passwords from the setup guide.',
+                    '渠道凭据使用环境变量，请在服务器上设置其值。生成的 MCP 密码可从接入教程复制。'
                   )
                 }}
               </p>
