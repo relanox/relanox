@@ -12,7 +12,14 @@ export function createStateOperations(
       return (
         await query<{ record: StateEntry }>(
           pool,
-          "SELECT record FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3 AND record!='null'::jsonb",
+          `
+            SELECT record
+            FROM plugin_state
+            WHERE plugin=$1
+              AND owner=$2
+              AND key=$3
+              AND record!='null'::jsonb
+          `,
           [ns.pluginId, ns.ownerId, key],
         )
       )[0]?.record;
@@ -32,7 +39,13 @@ export function createStateOperations(
       return (
         await query<{ record: StateEntry }>(
           pool,
-          `SELECT record FROM plugin_state WHERE ${where.join(" AND ")} ORDER BY key LIMIT $${params.length}`,
+          `
+            SELECT record
+            FROM plugin_state
+            WHERE ${where.join(" AND ")}
+            ORDER BY key
+            LIMIT $${params.length}
+          `,
           params,
         )
       ).map((r) => r.record);
@@ -42,7 +55,13 @@ export function createStateOperations(
         const old = (
           await query<{ version: number; active: boolean }>(
             client,
-            "SELECT version,record!='null'::jsonb AS active FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3",
+            `
+              SELECT version,record!='null'::jsonb AS active
+              FROM plugin_state
+              WHERE plugin=$1
+                AND owner=$2
+                AND key=$3
+            `,
             [ns.pluginId, ns.ownerId, input.key],
           )
         )[0];
@@ -71,12 +90,25 @@ export function createStateOperations(
         const changed = !old
           ? await query(
               client,
-              "INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING RETURNING version",
+              `
+                INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record)
+                VALUES($1,$2,$3,$4,$5,$6::jsonb)
+                ON CONFLICT DO NOTHING
+                RETURNING version
+              `,
               params,
             )
           : await query(
               client,
-              "UPDATE plugin_state SET version=$4,expires_at=$5,record=$6::jsonb WHERE plugin=$1 AND owner=$2 AND key=$3 AND version=$7 RETURNING version",
+              `
+                UPDATE plugin_state
+                SET version=$4,expires_at=$5,record=$6::jsonb
+                WHERE plugin=$1
+                  AND owner=$2
+                  AND key=$3
+                  AND version=$7
+                RETURNING version
+              `,
               [...params, old.version],
             );
         return changed.length > 0 ? { status: "updated", version } : { status: "conflict" };
@@ -87,7 +119,14 @@ export function createStateOperations(
         const old = (
           await query<{ version: number }>(
             client,
-            "SELECT version FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3 AND record!='null'::jsonb",
+            `
+              SELECT version
+              FROM plugin_state
+              WHERE plugin=$1
+                AND owner=$2
+                AND key=$3
+                AND record!='null'::jsonb
+            `,
             [ns.pluginId, ns.ownerId, key],
           )
         )[0];
@@ -98,7 +137,14 @@ export function createStateOperations(
           return { status: "conflict" };
         }
         await client.query(
-          "UPDATE plugin_state SET record='null'::jsonb,expires_at=NULL,version=version+1 WHERE plugin=$1 AND owner=$2 AND key=$3 AND version=$4",
+          `
+            UPDATE plugin_state
+            SET record='null'::jsonb,expires_at=NULL,version=version+1
+            WHERE plugin=$1
+              AND owner=$2
+              AND key=$3
+              AND version=$4
+          `,
           [ns.pluginId, ns.ownerId, key, version],
         );
         return { status: "updated", version: version + 1 };

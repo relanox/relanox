@@ -7,7 +7,7 @@ import { encode } from "./record-codec.js";
 
 /** Owns the connection and atomic transaction boundary for every storage operation. */
 export function openDatabase(configuration: z.input<typeof configSchema>, observe: Observability) {
-  const code = (error: unknown): string | undefined =>
+  const extractDatabaseErrorCode = (error: unknown): string | undefined =>
     error !== null && typeof error === "object" && "code" in error && typeof error.code === "string"
       ? error.code
       : undefined;
@@ -68,7 +68,11 @@ export function openDatabase(configuration: z.input<typeof configSchema>, observ
           } catch {
             discard = true;
           }
-          if (!discard && attempt < 7 && ["40001", "40P01"].includes(code(error) ?? "")) {
+          if (
+            !discard &&
+            attempt < 7 &&
+            ["40001", "40P01"].includes(extractDatabaseErrorCode(error) ?? "")
+          ) {
             continue;
           }
           throw error;
@@ -93,14 +97,14 @@ export function openDatabase(configuration: z.input<typeof configSchema>, observ
       }
     }
   };
-  const inbound = async (
+  const readInbound = async (
     client: Pool | PoolClient,
     id: string,
   ): Promise<InboundRecord | undefined> =>
     (
       await query<{ record: InboundRecord }>(client, "SELECT record FROM inbound WHERE id=$1", [id])
     )[0]?.record;
-  const outbound = async (
+  const readOutbound = async (
     client: Pool | PoolClient,
     id: string,
   ): Promise<OutboundRecord | undefined> =>
@@ -111,12 +115,12 @@ export function openDatabase(configuration: z.input<typeof configSchema>, observ
     )[0]?.record;
   const saveInbound = async (
     client: PoolClient,
-    r: InboundRecord,
-    expectedVersion = r.version - 1,
+    record: InboundRecord,
+    expectedVersion = record.version - 1,
   ) => {
     const changed = await client.query(
       "UPDATE inbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5",
-      [r.status, r.version, encode(r), r.snapshot.requestId, expectedVersion],
+      [record.status, record.version, encode(record), record.snapshot.requestId, expectedVersion],
     );
     if (changed.rowCount !== 1) {
       throw new Error("Inbound version conflict");
@@ -124,29 +128,42 @@ export function openDatabase(configuration: z.input<typeof configSchema>, observ
   };
   const saveOutbound = async (
     client: PoolClient,
-    r: OutboundRecord,
-    expectedVersion = r.version - 1,
+    record: OutboundRecord,
+    expectedVersion = record.version - 1,
   ) => {
     const changed = await client.query(
       "UPDATE outbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5",
-      [r.status, r.version, encode(r), r.deliveryId, expectedVersion],
+      [record.status, record.version, encode(record), record.deliveryId, expectedVersion],
     );
     if (changed.rowCount !== 1) {
       throw new Error("Outbound version conflict");
     }
   };
-  const isEndpointHead = async (client: PoolClient, r: InboundRecord) =>
+  const isEndpointHead = async (client: PoolClient, record: InboundRecord) =>
     (
       await query(
         client,
-        "SELECT id FROM inbound WHERE endpoint=$1 AND id<>$3 AND status IN ('pending','claimed') AND (status='claimed' OR record#>'{dispatch,lease}' IS NOT NULL OR (record#>>'{dispatch,attempts}')::int>0 OR record#>>'{dispatch,status}' IN ('unknown','rejected') OR (NOT $4 AND (accepted_at,id)<($2,$3))) LIMIT 1",
+        `
+          SELECT id
+          FROM inbound
+          WHERE endpoint=$1
+            AND id<>$3
+            AND status IN ('pending','claimed')
+            AND (status='claimed'
+              OR record#>'{dispatch,lease}' IS NOT NULL
+              OR (record#>>'{dispatch,attempts}')::int>0
+              OR record#>>'{dispatch,status}' IN ('unknown','rejected')
+              OR (NOT $4
+                AND (accepted_at,id)<($2,$3)))
+          LIMIT 1
+        `,
         [
-          r.snapshot.endpoint.id,
-          r.snapshot.acceptedAt,
-          r.snapshot.requestId,
-          Boolean(r.dispatch.lease) ||
-            r.dispatch.attempts > 0 ||
-            ["unknown", "rejected"].includes(r.dispatch.status),
+          record.snapshot.endpoint.id,
+          record.snapshot.acceptedAt,
+          record.snapshot.requestId,
+          Boolean(record.dispatch.lease) ||
+            record.dispatch.attempts > 0 ||
+            ["unknown", "rejected"].includes(record.dispatch.status),
         ],
       )
     ).length === 0;
@@ -155,8 +172,8 @@ export function openDatabase(configuration: z.input<typeof configSchema>, observ
     pool,
     query,
     transaction,
-    inbound,
-    outbound,
+    readInbound,
+    readOutbound,
     saveInbound,
     saveOutbound,
     isEndpointHead,
