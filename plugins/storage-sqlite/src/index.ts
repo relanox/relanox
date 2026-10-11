@@ -119,7 +119,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async migrate() {
       transaction(() => {
         db.exec(
-          `CREATE TABLE IF NOT EXISTS migration_metadata(version INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS inbound(id TEXT PRIMARY KEY,channel TEXT NOT NULL,account TEXT NOT NULL,event TEXT NOT NULL,endpoint TEXT NOT NULL,accepted_at INTEGER NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,final_id TEXT UNIQUE,final_digest TEXT,record TEXT NOT NULL,UNIQUE(channel,account,event)); CREATE INDEX IF NOT EXISTS inbound_fifo ON inbound(endpoint,accepted_at,id); CREATE TABLE IF NOT EXISTS outbound(id TEXT PRIMARY KEY,request_id TEXT NOT NULL UNIQUE REFERENCES inbound(id),result_id TEXT NOT NULL UNIQUE,status TEXT NOT NULL,version INTEGER NOT NULL,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS plugin_state(plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT NOT NULL,version INTEGER NOT NULL,expires_at INTEGER,record TEXT NOT NULL,PRIMARY KEY(plugin,owner,key)); INSERT OR IGNORE INTO migration_metadata(version) VALUES(1);`,
+          `CREATE TABLE IF NOT EXISTS migration_metadata(version INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS inbound(id TEXT PRIMARY KEY,channel TEXT NOT NULL,account TEXT NOT NULL,event TEXT NOT NULL,endpoint TEXT NOT NULL,accepted_at INTEGER NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,final_id TEXT UNIQUE,final_digest TEXT,record TEXT NOT NULL,UNIQUE(channel,account,event)); CREATE INDEX IF NOT EXISTS inbound_fifo ON inbound(endpoint,accepted_at,id); CREATE TABLE IF NOT EXISTS outbound(id TEXT PRIMARY KEY,request_id TEXT NOT NULL UNIQUE REFERENCES inbound(id),result_id TEXT NOT NULL UNIQUE,status TEXT NOT NULL,version INTEGER NOT NULL,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS plugin_state(plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT NOT NULL,version INTEGER NOT NULL,expires_at INTEGER,record TEXT NOT NULL,PRIMARY KEY(plugin,owner,key)); INSERT OR IGNORE INTO migration_metadata(version) VALUES(1),(2);`,
         );
       });
     },
@@ -131,7 +131,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
         db.prepare("SELECT id,record,final_digest FROM inbound LIMIT 0").all();
         db.prepare("SELECT id,record FROM outbound LIMIT 0").all();
         db.prepare("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0").all();
-        return r.version === 1 ? { ok: true } : { ok: false, errorCode: "migration_required" };
+        return r.version === 2 ? { ok: true } : { ok: false, errorCode: "migration_required" };
       } catch {
         return { ok: false, errorCode: "migration_required" };
       }
@@ -509,12 +509,14 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     },
     async getState(ns, key) {
       const row = db
-        .prepare("SELECT record FROM plugin_state WHERE plugin=? AND owner=? AND key=?")
+        .prepare(
+          "SELECT record FROM plugin_state WHERE plugin=? AND owner=? AND key=? AND record!='null'",
+        )
         .get(ns.pluginId, ns.ownerId, key) as { record: string } | undefined;
       return row ? decode<StateEntry>(row.record) : undefined;
     },
     async listState(ns, input) {
-      const where = ["plugin=?", "owner=?"];
+      const where = ["plugin=?", "owner=?", "record!='null'"];
       const params: (string | number)[] = [ns.pluginId, ns.ownerId];
       if (input.prefix !== undefined) {
         where.push("substr(key,1,?)=?");
@@ -535,10 +537,15 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async compareAndSetState(ns, input) {
       return transaction(() => {
         const old = db
-          .prepare("SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=?")
-          .get(ns.pluginId, ns.ownerId, input.key) as { version: number } | undefined;
+          .prepare("SELECT version,record FROM plugin_state WHERE plugin=? AND owner=? AND key=?")
+          .get(ns.pluginId, ns.ownerId, input.key) as
+          | { version: number; record: string }
+          | undefined;
+        const active = old?.record !== undefined && old.record !== "null";
         if (
-          input.expectedVersion === null ? Boolean(old) : old?.version !== input.expectedVersion
+          input.expectedVersion === null
+            ? active
+            : !active || old?.version !== input.expectedVersion
         ) {
           return { status: "conflict" };
         }
@@ -558,7 +565,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     async deleteState(ns, key, version) {
       return transaction(() => {
         const old = db
-          .prepare("SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=?")
+          .prepare(
+            "SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=? AND record!='null'",
+          )
           .get(ns.pluginId, ns.ownerId, key) as { version: number } | undefined;
         if (!old) {
           return { status: "not_found" };
@@ -566,11 +575,9 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
         if (old.version !== version) {
           return { status: "conflict" };
         }
-        db.prepare("DELETE FROM plugin_state WHERE plugin=? AND owner=? AND key=?").run(
-          ns.pluginId,
-          ns.ownerId,
-          key,
-        );
+        db.prepare(
+          "UPDATE plugin_state SET record='null',expires_at=NULL,version=version+1 WHERE plugin=? AND owner=? AND key=?",
+        ).run(ns.pluginId, ns.ownerId, key);
         return { status: "updated", version: version + 1 };
       });
     },

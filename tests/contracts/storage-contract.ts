@@ -423,6 +423,38 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       expect((await s.getStats()).unknown).toBe(1);
     });
 
+    it("fences stale state mutations across delete and recreate without hiding null values", async () => {
+      const ns = { pluginId: "dot", ownerId: "ep" };
+      const initial = await s.compareAndSetState(ns, {
+        key: "subscription",
+        expectedVersion: null,
+        value: "old-secret",
+      });
+      expect(initial).toEqual({ status: "updated", version: 1 });
+      expect(await s.deleteState(ns, "subscription", 1)).toEqual({ status: "updated", version: 2 });
+      expect(await s.getState(ns, "subscription")).toBeUndefined();
+      expect(await s.listState(ns, { limit: 10 })).toEqual([]);
+      expect(await s.deleteState(ns, "subscription", 2)).toEqual({ status: "not_found" });
+      expect(
+        await s.compareAndSetState(ns, { key: "subscription", expectedVersion: 2, value: "stale" }),
+      ).toEqual({ status: "conflict" });
+      expect(
+        await s.compareAndSetState(ns, { key: "subscription", expectedVersion: null, value: null }),
+      ).toEqual({ status: "updated", version: 3 });
+      expect(await s.deleteState(ns, "subscription", 1)).toEqual({ status: "conflict" });
+      expect(
+        await s.compareAndSetState(ns, { key: "subscription", expectedVersion: 1, value: "stale" }),
+      ).toEqual({ status: "conflict" });
+      expect(await s.getState(ns, "subscription")).toEqual({
+        key: "subscription",
+        value: null,
+        version: 3,
+      });
+      expect(await s.listState(ns, { prefix: "sub", limit: 10 })).toEqual([
+        { key: "subscription", value: null, version: 3 },
+      ]);
+    });
+
     it("uses namespaced state CAS and database admin aggregates", async () => {
       const ns = { pluginId: "dot", ownerId: "a" };
       expect(

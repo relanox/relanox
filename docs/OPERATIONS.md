@@ -18,6 +18,8 @@ The management listener stays on container `127.0.0.1:8788`; it is not published
 
 An unmigrated database prevents startup. Startup does not perform migrations. Stop the running relay before upgrades, take a backup, rebuild, migrate explicitly, then start and verify readiness. Compose allows 20 seconds for shutdown against the CLI's default 15-second shutdown budget. Increase both together if needed. `docker compose down` preserves the named volume; `down --volumes` deletes it.
 
+The current database format is version 2. Migrating from version 1 preserves existing records and enables permanent version fences for deleted plugin state keys. Stop all older processes before migration; older binaries cannot use this format. To roll back the binary, restore the pre-upgrade database backup as well.
+
 ## Storage and recovery
 
 SQLite uses WAL. For an offline backup, stop Relanox cleanly and copy the entire data directory, including any remaining WAL/SHM files. Do not copy only the main file while writes are active. For PostgreSQL, use the server's consistent backup tooling and preserve the configured schema. Restore into a separate test instance first; never run two restored copies against the same live channel credentials while assessing recovery.
