@@ -18,10 +18,15 @@ import type { Observability } from "./observability.js";
 import type { AgentMediaHost, MediaKind } from "./media.js";
 
 export type HttpHandler = (request: Request) => Promise<Response>;
+export interface HttpRouteOptions {
+  readonly maxBodyBytes: number;
+  /** Reject unauthorized transfers before core reads a potentially large binary body. */
+  authorize(request: Request): Promise<Response | undefined>;
+}
 export interface CommonHost {
   readonly observe: Observability;
   readonly state: StateStore;
-  mountHttp(path: string, handler: HttpHandler): void;
+  mountHttp(path: string, handler: HttpHandler, options?: HttpRouteOptions): void;
   connection(status: "connected" | "disconnected" | "degraded", errorCode?: string): void;
 }
 /** Core binds this host to a single validated account; plugins cannot choose the account scope. */
