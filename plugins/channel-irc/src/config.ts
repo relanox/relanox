@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { secretSchema, timeoutSchema } from "./protocol.js";
+
+const secretRefSchema = z.strictObject({
+  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
+});
+
+const requestTimeoutSchema = z.number().int().min(100).max(120_000).default(10_000);
 
 export const nicknameSchema = z
   .string()
@@ -19,7 +24,7 @@ const configSchema = z.strictObject({
   allowInsecureLocalhost: z.boolean().default(false),
   nick: nicknameSchema,
   channels: z.array(channelSchema).max(100).default([]),
-  password: secretSchema.optional(),
+  password: secretRefSchema.optional(),
   sasl: z
     .strictObject({
       username: z
@@ -27,11 +32,11 @@ const configSchema = z.strictObject({
         .min(1)
         .max(128)
         .regex(/^[^\0\r\n]+$/u),
-      password: secretSchema,
+      password: secretRefSchema,
     })
     .optional(),
   allowNickFallback: z.boolean().default(false),
-  timeoutMs: timeoutSchema,
+  timeoutMs: requestTimeoutSchema,
   reconnectMs: z.number().int().min(100).max(60_000).default(1000),
 });
 export type IrcConfig = z.infer<typeof configSchema>;

@@ -7,19 +7,10 @@ import type {
   SendResult,
 } from "@relanox/sdk";
 import type { z } from "zod";
-import { validateConfig } from "./config.js";
+import { validateConfig, validateEndpointUrl } from "./config.js";
 import type { LineConfig } from "./config.js";
 import { receiveEvent } from "./inbound.js";
-import {
-  endpoint,
-  failure,
-  parseBody,
-  rawBody,
-  request,
-  secret,
-  signed,
-  unavailable,
-} from "./io.js";
+import { failure, parseBody, rawBody, request, secret, signed, unavailable } from "./io.js";
 import { webhookSchema, targetSchema, retrySchema, receiptSchema } from "./schemas.js";
 
 async function retryIdentity(host: ChannelHost, key: string): Promise<z.infer<typeof retrySchema>> {
@@ -67,7 +58,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
     }
     try {
       const response = await request(
-        endpoint(`${config.apiBase}/v2/bot/message/push`, config.allowLoopback),
+        validateEndpointUrl(`${config.apiBase}/v2/bot/message/push`, config.allowLoopback),
         {
           method: "POST",
           headers: {

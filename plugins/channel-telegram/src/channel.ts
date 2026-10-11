@@ -4,7 +4,7 @@ import { sendOutcome } from "./client.js";
 import { validateConfig } from "./config.js";
 import type { TelegramConfig } from "./config.js";
 import { targetSchema, updateSchema } from "./schemas.js";
-import { bytes, credential, equal, ingest, post } from "./transport.js";
+import { bytes, credential, equal, ingest, postJson } from "./transport.js";
 
 /** One factory instance per configured account. Credentials are resolved only at use. */
 export function createTelegramChannel(
@@ -126,7 +126,7 @@ export function createTelegramChannel(
         if (!/^\d+:[A-Za-z0-9_-]+$/u.test(token)) {
           return { status: "rejected", errorCode: "invalid_bot_token" };
         }
-        const response = await post(
+        const response = await postJson(
           `${config.apiBaseUrl.replace(/\/$/u, "")}/bot${token}/sendMessage`,
           {},
           {

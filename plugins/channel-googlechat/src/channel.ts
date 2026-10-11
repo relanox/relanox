@@ -1,10 +1,10 @@
 import type { AccountConfig, ChannelPlugin, SendInput, SendResult } from "@relanox/sdk";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { accessToken } from "./client.js";
-import { validateConfig } from "./config.js";
+import { validateConfig, validateEndpointUrl } from "./config.js";
 import type { GoogleChatConfig } from "./config.js";
 import { receive } from "./inbound.js";
-import { endpoint, failure, parseBody, rawBody, request, secret, unavailable } from "./io.js";
+import { failure, parseBody, rawBody, request, secret, unavailable } from "./io.js";
 import { serviceSchema, eventSchema, targetSchema, receiptSchema } from "./schemas.js";
 
 export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
@@ -50,7 +50,10 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       return token;
     }
     try {
-      const url = endpoint(`${config.apiBase}/v1/${target.space}/messages`, config.allowLoopback);
+      const url = validateEndpointUrl(
+        `${config.apiBase}/v1/${target.space}/messages`,
+        config.allowLoopback,
+      );
       if (target.thread) {
         url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_OR_FAIL");
       }
@@ -93,7 +96,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     validateConfig,
     async setup(host, account, config) {
       runtime = { account, config };
-      const keys = createRemoteJWKSet(endpoint(config.jwksUrl, config.allowLoopback), {
+      const keys = createRemoteJWKSet(validateEndpointUrl(config.jwksUrl, config.allowLoopback), {
         timeoutDuration: 5000,
         cacheMaxAge: 3_600_000,
       });

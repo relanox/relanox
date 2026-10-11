@@ -1,31 +1,36 @@
 import { z } from "zod";
-import { identifier } from "./io.js";
+import { platformIdSchema } from "./config.js";
 
-const identitySchema = z.object({ id: identifier });
+const identitySchema = z.object({ id: platformIdSchema });
 export const activitySchema = z.object({
   type: z.string(),
-  id: identifier.optional(),
+  id: platformIdSchema.optional(),
   channelId: z.string(),
   serviceUrl: z.url(),
   text: z.string().optional(),
   from: identitySchema,
   recipient: identitySchema,
-  conversation: z.object({ id: identifier, tenantId: identifier.optional() }),
-  channelData: z.object({ tenant: z.object({ id: identifier }) }),
-  replyToId: identifier.optional(),
+  conversation: z.object({ id: platformIdSchema, tenantId: platformIdSchema.optional() }),
+  channelData: z.object({ tenant: z.object({ id: platformIdSchema }) }),
+  replyToId: platformIdSchema.optional(),
 });
 export const targetSchema = z.strictObject({
-  appId: identifier,
+  appId: platformIdSchema,
   serviceUrl: z.url(),
-  conversationId: identifier,
-  tenantId: identifier,
-  botId: identifier,
-  userId: identifier,
-  replyToId: identifier.optional(),
+  conversationId: platformIdSchema,
+  tenantId: platformIdSchema,
+  botId: platformIdSchema,
+  userId: platformIdSchema,
+  replyToId: platformIdSchema.optional(),
 });
 export const keysSchema = z.object({
   keys: z.array(
-    z.object({ kid: identifier.optional(), endorsements: z.array(z.string()).optional() }),
+    z.object({ kid: platformIdSchema.optional(), endorsements: z.array(z.string()).optional() }),
   ),
 });
-export const receiptSchema = z.object({ id: identifier });
+export const receiptSchema = z.object({ id: platformIdSchema });
+
+export const oauthTokenResponseSchema = z.object({
+  access_token: z.string().min(1),
+  token_type: z.string().optional(),
+});

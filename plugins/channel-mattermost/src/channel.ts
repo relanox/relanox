@@ -7,20 +7,17 @@ import type {
 } from "@relanox/sdk";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
-import { z } from "zod";
-import { validateConfig, identifier } from "./config.js";
+import type { z } from "zod";
+import { validateConfig, validateBaseUrl } from "./config.js";
 import type { MattermostConfig } from "./config.js";
+import { delay, diagnose, httpFailure, ingest, readJson, secret, stopTask } from "./protocol.js";
 import {
-  delay,
-  diagnose,
-  httpFailure,
-  ingest,
-  readJson,
-  secret,
-  trustedBase,
-  stopTask,
-} from "./protocol.js";
-import { frameSchema, postSchema, targetSchema } from "./schemas.js";
+  sendResponseSchema,
+  postedEventSchema,
+  frameSchema,
+  postSchema,
+  targetSchema,
+} from "./schemas.js";
 
 function decodeFrame(bytes: RawData) {
   let buffer: Buffer;
@@ -53,7 +50,7 @@ export function createMattermostChannel(
     if (frame.event !== "posted") {
       return;
     }
-    const encoded = z.object({ post: z.string().max(1_048_576) }).parse(frame.data);
+    const encoded = postedEventSchema.parse(frame.data);
     const post = postSchema.parse(JSON.parse(encoded.post) as unknown);
     if (post.user_id === config.botUserId) {
       return;
@@ -213,7 +210,7 @@ export function createMattermostChannel(
         await response.body?.cancel();
         return httpFailure(response);
       }
-      const post = z.object({ id: identifier }).parse(await readJson(response));
+      const post = sendResponseSchema.parse(await readJson(response));
       return { status: "sent", receipt: { platformMessageId: post.id } };
     } catch {
       return { status: "unknown", errorCode: "send_outcome_unknown" };
@@ -241,7 +238,7 @@ export function createMattermostChannel(
         host,
         account,
         config,
-        base: trustedBase(config.serverUrl, config.allowInsecureLocalhost),
+        base: validateBaseUrl(config.serverUrl, config.allowInsecureLocalhost),
       };
     },
     async start(signal) {

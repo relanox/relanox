@@ -2,14 +2,6 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { ChannelHost, IngestInput, SecretRef, SendResult } from "@relanox/sdk";
 import { z } from "zod";
 
-export const secret = z.strictObject({
-  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
-});
-export const id = z.string().min(1).max(256);
-export const transportOptions = {
-  allowInsecureLoopback: z.boolean().default(false),
-  timeoutMs: z.number().int().min(100).max(60_000).default(10_000),
-};
 export function credential(ref: SecretRef, environment: NodeJS.ProcessEnv): string {
   const value = environment[ref.env];
   if (!value || /[\r\n]/u.test(value)) {
@@ -22,30 +14,6 @@ export function equal(a: string, b: string): boolean {
     createHash("sha256").update(a).digest(),
     createHash("sha256").update(b).digest(),
   );
-}
-export function address(value: string, insecure: boolean, socket = false): string {
-  const url = new URL(value);
-  if (
-    url.username ||
-    url.password ||
-    url.href.includes("#") ||
-    (!socket && url.href.includes("?"))
-  ) {
-    throw new Error("invalid_transport_url");
-  }
-  const secure = socket ? "wss:" : "https:";
-  const local = socket ? "ws:" : "http:";
-  if (
-    url.protocol !== secure &&
-    !(
-      insecure &&
-      url.protocol === local &&
-      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-    )
-  ) {
-    throw new Error("insecure_transport_url");
-  }
-  return url.toString();
 }
 async function readBounded(
   body: ReadableStream<Uint8Array> | null,
@@ -80,7 +48,7 @@ export function bytes(request: Request, max = 1_048_576): Promise<Buffer> {
 export async function jsonResponse(response: Response): Promise<unknown> {
   return JSON.parse((await readBounded(response.body)).toString("utf8"));
 }
-export async function post(
+export async function postJson(
   url: string,
   headers: Record<string, string>,
   body: unknown,

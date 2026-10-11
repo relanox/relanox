@@ -1,32 +1,35 @@
 import { z } from "zod";
-import { identifier } from "./config.js";
+import { platformIdSchema } from "./config.js";
 
 const messageSchema = z.object({
   timestamp: z.number().int().nonnegative(),
   message: z.string().nullable().optional(),
-  groupInfo: z.object({ groupId: identifier }).nullable().optional(),
+  groupInfo: z.object({ groupId: platformIdSchema }).nullable().optional(),
   viewOnce: z.boolean().nullable().optional(),
 });
 const envelopeSchema = z.object({
-  source: identifier.nullable().optional(),
-  sourceNumber: identifier.nullable().optional(),
-  sourceUuid: identifier.nullable().optional(),
+  source: platformIdSchema.nullable().optional(),
+  sourceNumber: platformIdSchema.nullable().optional(),
+  sourceUuid: platformIdSchema.nullable().optional(),
   timestamp: z.number().int().nonnegative(),
   dataMessage: messageSchema.nullable().optional(),
 });
-export const receiveSchema = z.object({ envelope: envelopeSchema, account: identifier.optional() });
+export const receiveSchema = z.object({
+  envelope: envelopeSchema,
+  account: platformIdSchema.optional(),
+});
 export const targetSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("direct"),
-    recipient: identifier,
+    recipient: platformIdSchema,
     serviceUrl: z.string(),
-    account: identifier,
+    account: platformIdSchema,
   }),
   z.strictObject({
     kind: z.literal("group"),
-    groupId: identifier,
+    groupId: platformIdSchema,
     serviceUrl: z.string(),
-    account: identifier,
+    account: platformIdSchema,
   }),
 ]);
 export const rpcSchema = z.object({
@@ -43,3 +46,8 @@ export const rpcSchema = z.object({
     .optional(),
   error: z.object({ code: z.number().int() }).optional(),
 });
+
+export const eventCursorSchema = z
+  .string()
+  .max(1024)
+  .regex(/^[^\r\n\0]*$/u);

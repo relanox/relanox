@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { identifier } from "./config.js";
+import { platformIdSchema } from "./config.js";
 
 export const frameSchema = z.object({
   event: z.string().optional(),
@@ -8,13 +8,17 @@ export const frameSchema = z.object({
   status: z.string().optional(),
 });
 export const postSchema = z.object({
-  id: identifier,
-  user_id: identifier,
-  channel_id: identifier,
+  id: platformIdSchema,
+  user_id: platformIdSchema,
+  channel_id: platformIdSchema,
   message: z.string(),
   root_id: z.string().default(""),
   create_at: z.number().int().nonnegative(),
   type: z.string().default(""),
 });
 
-export const targetSchema = z.strictObject({ serverUrl: z.string(), botUserId: identifier });
+export const targetSchema = z.strictObject({ serverUrl: z.string(), botUserId: platformIdSchema });
+
+export const postedEventSchema = z.object({ post: z.string().max(1_048_576) });
+
+export const sendResponseSchema = z.object({ id: platformIdSchema });

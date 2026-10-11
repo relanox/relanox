@@ -2,8 +2,6 @@ import { setTimeout as pause } from "node:timers/promises";
 import type { ChannelHost, IngestInput, SendResult, SecretRef } from "@relanox/sdk";
 import { z } from "zod";
 
-export const secretSchema = z.strictObject({ env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u) });
-export const timeoutSchema = z.number().int().min(100).max(120_000).default(10_000);
 export function secret(
   ref: SecretRef,
   environment: Readonly<Record<string, string | undefined>>,
@@ -13,19 +11,6 @@ export function secret(
     throw new Error("invalid_secret");
   }
   return value;
-}
-export function trustedBase(value: string, allowInsecureLocalhost: boolean): string {
-  const url = new URL(value);
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (
-    url.username ||
-    url.password ||
-    /[?#]/u.test(url.href) ||
-    (url.protocol !== "https:" && !(url.protocol === "http:" && local && allowInsecureLocalhost))
-  ) {
-    throw new Error("invalid_base_url");
-  }
-  return url.href.replace(/\/$/u, "");
 }
 export async function readJson(response: Response): Promise<unknown> {
   if (!response.body) {

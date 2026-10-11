@@ -1,25 +1,30 @@
 import { z } from "zod";
-import { identifier } from "./io.js";
+import { platformIdSchema } from "./config.js";
 
 export const eventSchema = z.object({
   type: z.string(),
-  webhookEventId: identifier.optional(),
+  webhookEventId: platformIdSchema.optional(),
   timestamp: z.number().int().nonnegative().optional(),
   source: z
     .object({
       type: z.enum(["user", "group", "room"]),
-      userId: identifier.optional(),
-      groupId: identifier.optional(),
-      roomId: identifier.optional(),
+      userId: platformIdSchema.optional(),
+      groupId: platformIdSchema.optional(),
+      roomId: platformIdSchema.optional(),
     })
     .optional(),
-  message: z.object({ id: identifier, type: z.string(), text: z.string().optional() }).optional(),
+  message: z
+    .object({ id: platformIdSchema, type: z.string(), text: z.string().optional() })
+    .optional(),
 });
-export const webhookSchema = z.object({ destination: identifier, events: z.array(eventSchema) });
+export const webhookSchema = z.object({
+  destination: platformIdSchema,
+  events: z.array(eventSchema),
+});
 export const targetSchema = z.strictObject({
-  destination: identifier,
+  destination: platformIdSchema,
   sourceType: z.enum(["user", "group", "room"]),
-  botId: identifier,
+  botId: platformIdSchema,
   apiBaseUrl: z.string(),
 });
 export const retrySchema = z.strictObject({
@@ -27,5 +32,5 @@ export const retrySchema = z.strictObject({
   startedAt: z.number().int().nonnegative(),
 });
 export const receiptSchema = z.object({
-  sentMessages: z.array(z.object({ id: identifier })).optional(),
+  sentMessages: z.array(z.object({ id: platformIdSchema })).optional(),
 });

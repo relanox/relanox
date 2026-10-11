@@ -1,8 +1,9 @@
 import type { SendResult } from "@relanox/sdk";
 import { importPKCS8, SignJWT } from "jose";
 import type { GoogleChatConfig } from "./config.js";
-import { endpoint, failure, oauthResponse, request, secret } from "./io.js";
-import { serviceSchema } from "./schemas.js";
+import { validateEndpointUrl } from "./config.js";
+import { failure, request, secret } from "./io.js";
+import { oauthTokenResponseSchema, serviceSchema } from "./schemas.js";
 
 export async function accessToken(
   config: GoogleChatConfig,
@@ -18,7 +19,7 @@ export async function accessToken(
     .setExpirationTime("1h")
     .sign(key);
   const response = await request(
-    endpoint(config.tokenUrl, config.allowLoopback),
+    validateEndpointUrl(config.tokenUrl, config.allowLoopback),
     {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -34,5 +35,5 @@ export async function accessToken(
       ? { status: "retryable", errorCode: "oauth_unavailable" }
       : failure(response);
   }
-  return oauthResponse.parse(await response.json()).access_token;
+  return oauthTokenResponseSchema.parse(await response.json()).access_token;
 }
