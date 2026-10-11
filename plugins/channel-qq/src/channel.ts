@@ -5,10 +5,15 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
-import { z } from "zod";
-import { configSchema } from "./config.js";
+import type { WebSocket } from "ws";
+import type { z } from "zod";
+import { configSchema, validateTransportUrl } from "./config.js";
 import type { QqConfig } from "./config.js";
 import {
+  sendResponseSchema,
+  gatewayResponseSchema,
+  helloEventSchema,
+  readyEventSchema,
   frameSchema,
   messageSchema,
   targetSchema,
@@ -17,15 +22,19 @@ import {
   errorSchema,
 } from "./schemas.js";
 import {
-  Connection,
-  checkedUrl,
+  JsonSocketConnection,
   httpJson,
   ingestText,
-  post,
+  jsonPostRequest,
   RemoteError,
   secret,
   sendFailure,
 } from "./transport.js";
+
+interface ReplyAllocation {
+  mode: "passive" | "proactive";
+  seq: number;
+}
 
 function apiError(raw: unknown): SendResult | undefined {
   const error = errorSchema.safeParse(raw);
@@ -46,7 +55,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   let host: ChannelHost;
   let account: AccountConfig;
   let config: QqConfig;
-  let connection: Connection;
+  let connection: JsonSocketConnection;
   let token: { value: string; credential: string; expiresAt: number } | undefined;
   let tokenFlight: Promise<string> | undefined;
   let session: string | undefined;
@@ -54,9 +63,9 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   let ready = false;
   let awaitingHeartbeat = false;
   let dispatchQueue = Promise.resolve();
-  let dispatchSocket: Connection["socket"];
+  let dispatchSocket: WebSocket | undefined;
   const api = (path: string) => `${config.apiBase.replace(/\/$/u, "")}${path}`;
-  async function access(signal: AbortSignal): Promise<string> {
+  async function getAccessToken(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret);
     if (token && token.credential === credential && token.expiresAt > Date.now()) {
       return token.value;
@@ -67,7 +76,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     tokenFlight = (async () => {
       const raw = await httpJson(
         api("/app/getAppAccessToken"),
-        post({ appId: config.appId, clientSecret: credential }),
+        jsonPostRequest({ appId: config.appId, clientSecret: credential }),
         signal,
       );
       const error = errorSchema.safeParse(raw);
@@ -147,7 +156,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   }
   async function dispatch(frame: z.infer<typeof frameSchema>): Promise<void> {
     if (frame.t === "READY") {
-      const body = z.object({ session_id: z.string().min(1) }).parse(frame.d);
+      const body = readyEventSchema.parse(frame.d);
       session = body.session_id;
       ready = true;
       connection.ready();
@@ -169,12 +178,8 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     const frame = frameSchema.parse(raw);
     switch (frame.op) {
       case 10: {
-        const body = z
-          .object({
-            heartbeat_interval: z.number().int().min(1000).max(300_000),
-          })
-          .parse(frame.d);
-        const value = await access(connection.signal);
+        const body = helloEventSchema.parse(frame.d);
+        const value = await getAccessToken(connection.signal);
         connection.send(
           session && seq !== null
             ? {
@@ -228,10 +233,10 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       }
     }
   }
-  async function allocate(
+  async function allocateReplySequence(
     input: SendInput,
     target: z.infer<typeof targetSchema>,
-  ): Promise<{ mode: "passive" | "proactive"; seq: number } | SendResult> {
+  ): Promise<ReplyAllocation | SendResult> {
     const key = `reply:${JSON.stringify([target.type, input.target.chatId, target.msgId])}`;
     const max = target.type === "c2c" ? 4 : 5;
     const windowMs = target.type === "c2c" ? 3_600_000 : 300_000;
@@ -242,7 +247,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         ? allocationSchema.parse(entry.value)
         : {
             next: 1,
-            allocations: {} as Record<string, { mode: "passive" | "proactive"; seq: number }>,
+            allocations: {} as Record<string, ReplyAllocation>,
           };
       const existing = Object.hasOwn(state.allocations, input.chunk.idempotencyKey)
         ? state.allocations[input.chunk.idempotencyKey]
@@ -307,17 +312,17 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       host = nextHost;
       account = nextAccount;
       config = configSchema.parse(nextConfig);
-      connection = new Connection(
+      connection = new JsonSocketConnection(
         host,
         async (signal) => {
-          const value = await access(signal);
+          const value = await getAccessToken(signal);
           const raw = await httpJson(
             api("/gateway"),
             { headers: { Authorization: `QQBot ${value}` } },
             signal,
           );
-          const body = z.object({ url: z.url() }).parse(raw);
-          return checkedUrl(body.url, true, config.allowInsecureLoopback);
+          const body = gatewayResponseSchema.parse(raw);
+          return validateTransportUrl(body.url, true, config.allowInsecureLoopback);
         },
         async () => {},
         receive,
@@ -362,9 +367,9 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       ) {
         return { status: "rejected", errorCode: "target_identity_changed" };
       }
-      let allocation: Awaited<ReturnType<typeof allocate>>;
+      let allocation: ReplyAllocation | SendResult;
       try {
-        allocation = await allocate(input, target.data);
+        allocation = await allocateReplySequence(input, target.data);
       } catch {
         return { status: "retryable", errorCode: "sequence_unavailable" };
       }
@@ -373,7 +378,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       }
       let credential: string;
       try {
-        credential = await access(input.signal);
+        credential = await getAccessToken(input.signal);
       } catch (error) {
         if (error instanceof RemoteError && error.result.status !== "unknown") {
           return error.result;
@@ -385,7 +390,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
           api(
             `/v2/${target.data.type === "c2c" ? "users" : "groups"}/${encodeURIComponent(input.target.chatId)}/messages`,
           ),
-          post(
+          jsonPostRequest(
             {
               content: input.chunk.text,
               msg_type: 0,
@@ -401,7 +406,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         if (failure) {
           return failure;
         }
-        const response = z.object({ id: z.string().min(1) }).parse(raw);
+        const response = sendResponseSchema.parse(raw);
         return { status: "sent", receipt: { platformMessageId: response.id } };
       } catch (error) {
         if (error instanceof RemoteError && error.result.errorCode === "http_401") {

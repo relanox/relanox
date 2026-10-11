@@ -1,11 +1,30 @@
 import { z } from "zod";
-import { endpoint, identifier, secretRef } from "./io.js";
+
+const secretRefSchema = z.strictObject({
+  env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
+});
+
+export const platformIdSchema = z.string().min(1).max(1024);
+
+export function validateEndpointUrl(value: string, allowLoopback: boolean): URL {
+  const url = new URL(value);
+  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+  if (
+    url.username ||
+    url.password ||
+    url.hash ||
+    (url.protocol !== "https:" && !(allowLoopback && loopback && url.protocol === "http:"))
+  ) {
+    throw new Error("unsafe_endpoint");
+  }
+  return url;
+}
 
 const configSchema = z.strictObject({
-  appId: identifier,
-  botId: identifier,
-  tenantId: identifier,
-  appSecret: secretRef,
+  appId: platformIdSchema,
+  botId: platformIdSchema,
+  tenantId: platformIdSchema,
+  appSecret: secretRefSchema,
   trustedServiceOrigins: z.array(z.url()).min(1),
   issuer: z.string().default("https://api.botframework.com"),
   jwksUrl: z.url().default("https://login.botframework.com/v1/.well-known/keys"),
@@ -17,7 +36,7 @@ export type TeamsConfig = z.infer<typeof configSchema>;
 export function validateConfig(value: unknown): TeamsConfig {
   const config = configSchema.parse(value);
   for (const url of [config.tokenUrl, config.jwksUrl, ...config.trustedServiceOrigins]) {
-    endpoint(url, config.allowLoopback);
+    validateEndpointUrl(url, config.allowLoopback);
   }
   if (config.trustedServiceOrigins.some((origin) => new URL(origin).origin !== origin)) {
     throw new Error("service_origins_must_be_origins");

@@ -2,8 +2,6 @@ import { setTimeout as pause } from "node:timers/promises";
 import type { ChannelHost, IngestInput, SecretRef } from "@relanox/sdk";
 import { z } from "zod";
 
-export const secretSchema = z.strictObject({ env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u) });
-export const timeoutSchema = z.number().int().min(100).max(120_000).default(10_000);
 export function secret(
   ref: SecretRef,
   environment: Readonly<Record<string, string | undefined>>,

@@ -1,19 +1,27 @@
 import { createDecipheriv, createHash } from "node:crypto";
 import type { AccountConfig, ChannelHost, ChannelPlugin, SendResult } from "@relanox/sdk";
-import { z } from "zod";
+import type { z } from "zod";
 import { validateConfig } from "./config.js";
 import type { FeishuConfig } from "./config.js";
-import { targetSchema, challengeSchema, eventSchema, messageSchema, apiSchema } from "./schemas.js";
+import {
+  textContentSchema,
+  encryptedEventSchema,
+  tenantTokenResponseSchema,
+  targetSchema,
+  challengeSchema,
+  eventSchema,
+  messageSchema,
+  apiSchema,
+} from "./schemas.js";
 import {
   bytes,
   credential,
   equal,
   failure,
   fresh,
-  id,
   ingest,
   jsonResponse,
-  post,
+  postJson,
 } from "./transport.js";
 
 export function createFeishuChannel(
@@ -38,7 +46,7 @@ export function createFeishuChannel(
     if (token && token.until > Date.now() && token.secretDigest === secretDigest) {
       return token.value;
     }
-    const response = await post(
+    const response = await postJson(
       `${base().replace(/\/$/u, "")}/open-apis/auth/v3/tenant_access_token/internal`,
       {},
       { app_id: config.appId, app_secret: appSecret },
@@ -50,13 +58,7 @@ export function createFeishuChannel(
         ? { status: "retryable", errorCode: "tenant_token_unavailable" }
         : failure(response);
     }
-    const parsed = z
-      .looseObject({
-        code: z.number().int(),
-        tenant_access_token: id.optional(),
-        expire: z.number().positive().optional(),
-      })
-      .safeParse(await jsonResponse(response));
+    const parsed = tenantTokenResponseSchema.safeParse(await jsonResponse(response));
     if (!parsed.success) {
       return { status: "retryable", errorCode: "tenant_token_unavailable" };
     }
@@ -102,7 +104,7 @@ export function createFeishuChannel(
     let value: unknown;
     try {
       value = JSON.parse(raw.toString("utf8"));
-      const encrypted = z.object({ encrypt: z.string().min(1).max(1_048_576) }).safeParse(value);
+      const encrypted = encryptedEventSchema.safeParse(value);
       if (encrypted.success) {
         if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encrypted.data.encrypt)) {
           throw new Error("invalid_encryption");
@@ -173,9 +175,7 @@ export function createFeishuChannel(
     }
     let text: string;
     try {
-      text = z
-        .looseObject({ text: z.string().min(1).max(1_048_576) })
-        .parse(JSON.parse(message.content)).text;
+      text = textContentSchema.parse(JSON.parse(message.content)).text;
     } catch {
       return new Response(null, { status: 400 });
     }
@@ -275,7 +275,7 @@ export function createFeishuChannel(
       }
       try {
         const reply = input.target.replyToId;
-        const response = await post(
+        const response = await postJson(
           `${base().replace(/\/$/u, "")}/open-apis/im/v1/messages${reply ? `/${encodeURIComponent(reply)}/reply` : "?receive_id_type=chat_id"}`,
           { authorization: `Bearer ${access}` },
           {

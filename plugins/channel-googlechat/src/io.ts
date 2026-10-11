@@ -1,45 +1,12 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ChannelHost, IngestInput, SecretRef, SendResult } from "@relanox/sdk";
 import { z } from "zod";
 
-export const secretRef = z.strictObject({ env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u) });
-export const identifier = z.string().min(1).max(1024);
 export function secret(ref: SecretRef): string {
   const value = process.env[ref.env];
   if (!value) {
     throw new Error("missing_credential");
   }
   return value;
-}
-/** Only operator-configured endpoints are permitted; HTTP needs explicit loopback opt-in. */
-export function endpoint(value: string, allowLoopback: boolean): URL {
-  const url = new URL(value);
-  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
-  if (
-    url.username ||
-    url.password ||
-    url.hash ||
-    (url.protocol !== "https:" && !(allowLoopback && loopback && url.protocol === "http:"))
-  ) {
-    throw new Error("unsafe_endpoint");
-  }
-  return url;
-}
-export function signed(
-  body: Uint8Array,
-  header: string | null,
-  key: string,
-  encoding: "hex" | "base64",
-  prefix = "",
-): boolean {
-  if (!header?.startsWith(prefix)) {
-    return false;
-  }
-  const supplied = header.slice(prefix.length);
-  const expected = createHmac("sha256", key).update(body).digest(encoding);
-  const left = Buffer.from(supplied);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
 }
 export async function rawBody(incoming: Request): Promise<Uint8Array> {
   const bytes = new Uint8Array(await incoming.arrayBuffer());
@@ -87,7 +54,3 @@ export function failure(response: Response): SendResult {
 export function unavailable(): SendResult {
   return { status: "unknown", errorCode: "transport_or_response_unknown" };
 }
-export const oauthResponse = z.object({
-  access_token: z.string().min(1),
-  token_type: z.string().optional(),
-});

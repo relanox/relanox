@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { identifier } from "./io.js";
+import { platformIdSchema } from "./config.js";
 
 export const serviceSchema = z.object({
   type: z.literal("service_account"),
@@ -9,10 +9,10 @@ export const serviceSchema = z.object({
 const spaceId = z.string().regex(/^spaces\/[A-Za-z0-9_-]+$/u);
 const threadId = z.string().regex(/^spaces\/[A-Za-z0-9_-]+\/threads\/[A-Za-z0-9_-]+$/u);
 const messageSchema = z.object({
-  name: identifier,
+  name: platformIdSchema,
   text: z.string().optional(),
   argumentText: z.string().optional(),
-  sender: z.object({ name: identifier, type: z.string().optional() }),
+  sender: z.object({ name: platformIdSchema, type: z.string().optional() }),
   thread: z.object({ name: threadId }).optional(),
 });
 export const eventSchema = z.object({
@@ -25,4 +25,9 @@ export const targetSchema = z.strictObject({
   thread: threadId.optional(),
   scope: z.strictObject({ clientEmail: z.email(), apiBase: z.url() }),
 });
-export const receiptSchema = z.object({ name: identifier });
+export const receiptSchema = z.object({ name: platformIdSchema });
+
+export const oauthTokenResponseSchema = z.object({
+  access_token: z.string().min(1),
+  token_type: z.string().optional(),
+});

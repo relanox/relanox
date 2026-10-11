@@ -39,3 +39,5 @@ export const sendResponse = z.object({
   invalidStaffIdList: z.array(z.string()).optional(),
   flowControlledStaffIdList: z.array(z.string()).optional(),
 });
+
+export const streamOpenResponseSchema = z.object({ endpoint: z.url(), ticket: z.string().min(1) });

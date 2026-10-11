@@ -6,11 +6,11 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
-import { z } from "zod";
-import { configSchema } from "./config.js";
+import type { z } from "zod";
+import { configSchema, validateTransportUrl } from "./config.js";
 import type { WeComConfig } from "./config.js";
-import { frameSchema, messageSchema, targetSchema } from "./schemas.js";
-import { Connection, ingestText, checkedUrl, secret } from "./transport.js";
+import { frameSchema, messageSchema, targetSchema, botEventSchema } from "./schemas.js";
+import { JsonSocketConnection, ingestText, secret } from "./transport.js";
 
 type Frame = z.infer<typeof frameSchema>;
 
@@ -18,7 +18,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
   let host: ChannelHost;
   let account: AccountConfig;
   let config: WeComConfig;
-  let connection: Connection;
+  let connection: JsonSocketConnection;
   let authenticated = false;
   const pending = new Map<string, { resolve(frame: Frame): void; reject(): void }>();
   async function request(cmd: string, body: unknown, signal: AbortSignal): Promise<Frame> {
@@ -61,9 +61,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       return;
     }
     if (frame.cmd === "aibot_event_callback") {
-      const event = z
-        .object({ aibotid: z.string(), event: z.object({ eventtype: z.string() }) })
-        .parse(frame.body);
+      const event = botEventSchema.parse(frame.body);
       if (event.aibotid === config.botId && event.event.eventtype === "disconnected_event") {
         await connection.stop();
         host.connection("degraded", "bot_connection_replaced");
@@ -131,9 +129,9 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       host = nextHost;
       account = nextAccount;
       config = configSchema.parse(nextConfig);
-      connection = new Connection(
+      connection = new JsonSocketConnection(
         host,
-        async () => checkedUrl(config.wsUrl, true, config.allowInsecureLoopback),
+        async () => validateTransportUrl(config.wsUrl, true, config.allowInsecureLoopback),
         async () => {
           const result = await request(
             "aibot_subscribe",

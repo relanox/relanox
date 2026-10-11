@@ -16,7 +16,6 @@ export function wireText(data: RawData): string {
   return Buffer.from(data).toString("utf8");
 }
 
-export const secretRef = z.object({ env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u) }).strict();
 export function secret(ref: { env: string }): string {
   const value = process.env[ref.env];
   if (!value) {
@@ -37,25 +36,6 @@ export async function ingestText(host: ChannelHost, input: IngestInput): Promise
     }
     host.observe.log("info", "channel_input_discarded", { errorCode: rejection.data.code });
   }
-}
-export function checkedUrl(value: string, websocket: boolean, allowLoopback: boolean): string {
-  const url = new URL(value);
-  const secure = websocket ? "wss:" : "https:";
-  const local = websocket ? "ws:" : "http:";
-  if (
-    url.username ||
-    url.password ||
-    url.hash ||
-    (url.protocol !== secure &&
-      !(
-        allowLoopback &&
-        url.protocol === local &&
-        ["127.0.0.1", "[::1]", "localhost"].includes(url.hostname)
-      ))
-  ) {
-    throw new Error("insecure_transport_url");
-  }
-  return url.toString();
 }
 export async function httpJson(
   url: string,
@@ -112,7 +92,10 @@ export async function httpJson(
   }
   return body;
 }
-export const post = (body: unknown, headers: Record<string, string> = {}): RequestInit => ({
+export const jsonPostRequest = (
+  body: unknown,
+  headers: Record<string, string> = {},
+): RequestInit => ({
   method: "POST",
   headers: {
     "content-type": "application/json",
@@ -127,7 +110,7 @@ export const sendFailure = (error: unknown): SendResult =>
     : { status: "unknown", errorCode: "transport_uncertain" };
 
 /** Each account owns exactly one socket. Initialization is short; recovery uses bounded delays. */
-export class Connection {
+export class JsonSocketConnection {
   socket: WebSocket | undefined;
   signal: AbortSignal = AbortSignal.abort();
   private abortListener: (() => void) | undefined;

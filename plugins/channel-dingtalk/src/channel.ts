@@ -5,17 +5,23 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
-import { z } from "zod";
-import { configSchema } from "./config.js";
+import type { z } from "zod";
+import { configSchema, validateTransportUrl } from "./config.js";
 import type { DingTalkConfig } from "./config.js";
-import { streamSchema, messageSchema, tokenSchema, targetSchema, sendResponse } from "./schemas.js";
+import {
+  streamOpenResponseSchema,
+  streamSchema,
+  messageSchema,
+  tokenSchema,
+  targetSchema,
+  sendResponse,
+} from "./schemas.js";
 import type { scopeSchema } from "./schemas.js";
 import {
-  Connection,
-  checkedUrl,
+  JsonSocketConnection,
   httpJson,
   ingestText,
-  post,
+  jsonPostRequest,
   RemoteError,
   secret,
   sendFailure,
@@ -35,11 +41,11 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
   let host: ChannelHost;
   let account: AccountConfig;
   let config: DingTalkConfig;
-  let connection: Connection;
+  let connection: JsonSocketConnection;
   let token: { value: string; expiresAt: number; credential: string } | undefined;
   let tokenFlight: Promise<string> | undefined;
   const api = (path: string) => `${config.apiBase.replace(/\/$/u, "")}${path}`;
-  async function access(signal: AbortSignal): Promise<string> {
+  async function getAccessToken(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret);
     if (token && token.credential === credential && token.expiresAt > Date.now()) {
       return token.value;
@@ -51,7 +57,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       const body = tokenSchema.parse(
         await httpJson(
           api("/v1.0/oauth2/accessToken"),
-          post({ appKey: config.clientId, appSecret: credential }),
+          jsonPostRequest({ appKey: config.clientId, appSecret: credential }),
           signal,
         ),
       );
@@ -163,13 +169,13 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       host = nextHost;
       account = nextAccount;
       config = configSchema.parse(nextConfig);
-      connection = new Connection(
+      connection = new JsonSocketConnection(
         host,
         async (signal) => {
-          const body = z.object({ endpoint: z.url(), ticket: z.string().min(1) }).parse(
+          const body = streamOpenResponseSchema.parse(
             await httpJson(
               api("/v1.0/gateway/connections/open"),
-              post({
+              jsonPostRequest({
                 clientId: config.clientId,
                 clientSecret: secret(config.clientSecret),
                 ua: "relanox-node/0.1.0",
@@ -178,7 +184,9 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
               signal,
             ),
           );
-          const url = new URL(checkedUrl(body.endpoint, true, config.allowInsecureLoopback));
+          const url = new URL(
+            validateTransportUrl(body.endpoint, true, config.allowInsecureLoopback),
+          );
           url.searchParams.set("ticket", body.ticket);
           return url.toString();
         },
@@ -224,7 +232,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       }
       let credential: string;
       try {
-        credential = await access(input.signal);
+        credential = await getAccessToken(input.signal);
       } catch (error) {
         if (error instanceof RemoteError && error.result.status !== "unknown") {
           return error.result;
@@ -239,7 +247,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
                 ? "/v1.0/robot/groupMessages/send"
                 : "/v1.0/robot/oToMessages/batchSend",
             ),
-            post(
+            jsonPostRequest(
               {
                 robotCode: config.robotCode,
                 ...(data.type === "group"

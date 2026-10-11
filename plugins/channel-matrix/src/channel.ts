@@ -5,20 +5,11 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
-import { z } from "zod";
-import { validateConfig, identifier } from "./config.js";
+import type { z } from "zod";
+import { validateConfig, platformIdSchema, validateBaseUrl } from "./config.js";
 import type { MatrixConfig } from "./config.js";
-import {
-  delay,
-  diagnose,
-  httpFailure,
-  ingest,
-  readJson,
-  secret,
-  trustedBase,
-  stopTask,
-} from "./protocol.js";
-import { syncSchema, textSchema, targetSchema } from "./schemas.js";
+import { delay, diagnose, httpFailure, ingest, readJson, secret, stopTask } from "./protocol.js";
+import { sendResponseSchema, syncSchema, textSchema, targetSchema } from "./schemas.js";
 import type { eventSchema } from "./schemas.js";
 
 function outboundRelation(target: SendInput["target"]) {
@@ -97,7 +88,7 @@ export function createMatrixChannel(
   async function synchronize(signal: AbortSignal): Promise<void> {
     const { host, base, config } = configured();
     const checkpoint = await host.state.get("sync");
-    const since = checkpoint ? identifier.parse(checkpoint.value) : undefined;
+    const since = checkpoint ? platformIdSchema.parse(checkpoint.value) : undefined;
     const url = new URL(`${base}/_matrix/client/v3/sync`);
     url.searchParams.set("timeout", String(config.syncTimeoutMs));
     if (since) {
@@ -217,7 +208,7 @@ export function createMatrixChannel(
         await response.body?.cancel();
         return httpFailure(response);
       }
-      const result = z.object({ event_id: identifier }).parse(await readJson(response));
+      const result = sendResponseSchema.parse(await readJson(response));
       return { status: "sent", receipt: { platformMessageId: result.event_id } };
     } catch {
       return { status: "unknown", errorCode: "send_outcome_unknown" };
@@ -245,7 +236,7 @@ export function createMatrixChannel(
         host,
         account,
         config,
-        base: trustedBase(config.homeserver, config.allowInsecureLocalhost),
+        base: validateBaseUrl(config.homeserver, config.allowInsecureLocalhost),
       };
     },
     async start(signal) {

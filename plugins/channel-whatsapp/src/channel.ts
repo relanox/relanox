@@ -6,19 +6,9 @@ import type {
   SendResult,
 } from "@relanox/sdk";
 import { z } from "zod";
-import { validateConfig } from "./config.js";
+import { validateConfig, validateEndpointUrl } from "./config.js";
 import type { WhatsAppConfig } from "./config.js";
-import {
-  endpoint,
-  failure,
-  ingest,
-  parseBody,
-  rawBody,
-  request,
-  secret,
-  signed,
-  unavailable,
-} from "./io.js";
+import { failure, ingest, parseBody, rawBody, request, secret, signed, unavailable } from "./io.js";
 import { webhookSchema, targetSchema, responseSchema } from "./schemas.js";
 import type { messageSchema } from "./schemas.js";
 
@@ -139,7 +129,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
     }
     try {
       const response = await request(
-        endpoint(
+        validateEndpointUrl(
           `${config.apiBase}/${config.apiVersion}/${encodeURIComponent(target.phoneNumberId)}/messages`,
           config.allowLoopback,
         ),

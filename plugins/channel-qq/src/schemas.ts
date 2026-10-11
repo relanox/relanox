@@ -47,3 +47,13 @@ export const allocationSchema = z.object({
   ),
 });
 export const errorSchema = z.object({ code: z.number().int() });
+
+export const readyEventSchema = z.object({ session_id: z.string().min(1) });
+
+export const helloEventSchema = z.object({
+  heartbeat_interval: z.number().int().min(1000).max(300_000),
+});
+
+export const gatewayResponseSchema = z.object({ url: z.url() });
+
+export const sendResponseSchema = z.object({ id: z.string().min(1) });

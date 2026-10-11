@@ -1,10 +1,10 @@
 import type { AccountConfig, ChannelPlugin, SendInput, SendResult } from "@relanox/sdk";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { accessToken, serviceUrl } from "./client.js";
-import { validateConfig } from "./config.js";
+import { validateConfig, validateEndpointUrl } from "./config.js";
 import type { TeamsConfig } from "./config.js";
 import { receive } from "./inbound.js";
-import { endpoint, failure, parseBody, rawBody, request, unavailable } from "./io.js";
+import { failure, parseBody, rawBody, request, unavailable } from "./io.js";
 import { activitySchema, targetSchema, keysSchema, receiptSchema } from "./schemas.js";
 
 export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
@@ -96,7 +96,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     validateConfig,
     async setup(host, account, config) {
       runtime = { account, config };
-      const keys = createRemoteJWKSet(endpoint(config.jwksUrl, config.allowLoopback), {
+      const keys = createRemoteJWKSet(validateEndpointUrl(config.jwksUrl, config.allowLoopback), {
         timeoutDuration: 5000,
         cacheMaxAge: 3_600_000,
       });

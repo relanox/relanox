@@ -2,22 +2,27 @@ import { createHmac } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import type { AccountConfig, ChannelHost, ChannelPlugin } from "@relanox/sdk";
 import { WebSocket } from "ws";
-import { z } from "zod";
-import { validateConfig } from "./config.js";
+import type { z } from "zod";
+import { validateConfig, validateTransportUrl } from "./config.js";
 import type { SlackConfig } from "./config.js";
-import { targetSchema, envelopeSchema, messageSchema } from "./schemas.js";
+import {
+  sendResponseSchema,
+  socketFrameSchema,
+  socketOpenResponseSchema,
+  targetSchema,
+  envelopeSchema,
+  messageSchema,
+} from "./schemas.js";
 import { frameText, waitForStop } from "./socket.js";
 import {
-  address,
   bytes,
   credential,
   equal,
   failure,
   fresh,
-  id,
   ingest,
   jsonResponse,
-  post,
+  postJson,
 } from "./transport.js";
 
 export function createSlackChannel(
@@ -96,20 +101,18 @@ export function createSlackChannel(
     if (config.receiveMode !== "socket") {
       return;
     }
-    const response = await post(
+    const response = await postJson(
       `${config.apiBaseUrl.replace(/\/$/u, "")}/apps.connections.open`,
       { authorization: `Bearer ${credential(config.appToken, environment)}` },
       {},
       signal,
       config.timeoutMs,
     );
-    const result = z
-      .looseObject({ ok: z.boolean(), url: z.string().optional() })
-      .parse(await jsonResponse(response));
+    const result = socketOpenResponseSchema.parse(await jsonResponse(response));
     if (!response.ok || !result.ok || !result.url) {
       throw new Error("socket_open_failed");
     }
-    const ws = new WebSocket(address(result.url, config.allowInsecureLoopback, true), {
+    const ws = new WebSocket(validateTransportUrl(result.url, config.allowInsecureLoopback, true), {
       maxPayload: 1_048_576,
       handshakeTimeout: config.timeoutMs,
     });
@@ -150,21 +153,15 @@ export function createSlackChannel(
         resolve();
       });
       ws.on("message", (raw) => {
-        const parsed = z
-          .looseObject({
-            type: z.string(),
-            envelope_id: id.optional(),
-            payload: z.unknown().optional(),
-          })
-          .safeParse(
-            ((): unknown => {
-              try {
-                return JSON.parse(frameText(raw));
-              } catch {
-                return null;
-              }
-            })(),
-          );
+        const parsed = socketFrameSchema.safeParse(
+          ((): unknown => {
+            try {
+              return JSON.parse(frameText(raw));
+            } catch {
+              return null;
+            }
+          })(),
+        );
         if (!parsed.success) {
           ws.terminate();
           return;
@@ -338,7 +335,7 @@ export function createSlackChannel(
         return { status: "rejected", errorCode: "invalid_target" };
       }
       try {
-        const response = await post(
+        const response = await postJson(
           `${config.apiBaseUrl.replace(/\/$/u, "")}/chat.postMessage`,
           {
             authorization: `Bearer ${credential(config.botToken, environment)}`,
@@ -361,13 +358,7 @@ export function createSlackChannel(
         if (!response.ok) {
           return failure(response);
         }
-        const parsed = z
-          .looseObject({
-            ok: z.boolean(),
-            ts: id.optional(),
-            error: z.string().optional(),
-          })
-          .safeParse(await jsonResponse(response));
+        const parsed = sendResponseSchema.safeParse(await jsonResponse(response));
         if (!parsed.success) {
           return { status: "unknown", errorCode: "invalid_platform_response" };
         }

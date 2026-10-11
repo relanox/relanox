@@ -5,20 +5,10 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
-import { z } from "zod";
-import { validateConfig } from "./config.js";
+import { validateConfig, validateBaseUrl } from "./config.js";
 import type { SignalConfig } from "./config.js";
-import {
-  delay,
-  diagnose,
-  httpFailure,
-  ingest,
-  readJson,
-  secret,
-  trustedBase,
-  stopTask,
-} from "./protocol.js";
-import { receiveSchema, targetSchema, rpcSchema } from "./schemas.js";
+import { delay, diagnose, httpFailure, ingest, readJson, secret, stopTask } from "./protocol.js";
+import { eventCursorSchema, receiveSchema, targetSchema, rpcSchema } from "./schemas.js";
 import { consumeEvents } from "./stream.js";
 
 export function createSignalChannel(
@@ -93,13 +83,7 @@ export function createSignalChannel(
     const checkpoint = await host.state.get("events");
     const url = new URL(`${base}/api/v1/events`);
     url.searchParams.set("account", config.account);
-    const lastId = checkpoint
-      ? z
-          .string()
-          .max(1024)
-          .regex(/^[^\r\n\0]*$/u)
-          .parse(checkpoint.value)
-      : undefined;
+    const lastId = checkpoint ? eventCursorSchema.parse(checkpoint.value) : undefined;
     // Periodically reconnect even silent/half-open streams; the daemon's bounded replay is explicit.
     const response = await fetch(url, {
       redirect: "error",
@@ -207,7 +191,7 @@ export function createSignalChannel(
         host,
         account,
         config,
-        base: trustedBase(config.serviceUrl, config.allowInsecureLocalhost),
+        base: validateBaseUrl(config.serviceUrl, config.allowInsecureLocalhost),
       };
     },
     async start(signal) {

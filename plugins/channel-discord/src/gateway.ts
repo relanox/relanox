@@ -1,11 +1,24 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { AccountConfig, ChannelHost } from "@relanox/sdk";
 import { WebSocket } from "ws";
-import { z } from "zod";
+import type { z } from "zod";
 import type { DiscordConfig } from "./config.js";
-import { packetSchema, sessionSchema, readySchema, messageSchema } from "./schemas.js";
+import { validateTransportUrl } from "./config.js";
+import {
+  channelInfoSchema,
+  helloEventSchema,
+  packetSchema,
+  sessionSchema,
+  readySchema,
+  messageSchema,
+} from "./schemas.js";
 import { frameText, waitForStop } from "./socket.js";
-import { address, credential, id, ingest, jsonResponse } from "./transport.js";
+import { credential, ingest, jsonResponse } from "./transport.js";
+
+export interface DiscordGateway {
+  start(signal: AbortSignal): Promise<void>;
+  stop(): Promise<void>;
+}
 
 type Session = z.infer<typeof sessionSchema>;
 
@@ -14,7 +27,7 @@ export function createDiscordGateway(
   host: ChannelHost,
   account: AccountConfig,
   environment: NodeJS.ProcessEnv,
-) {
+): DiscordGateway {
   let controller: AbortController | undefined;
   let task: Promise<void> | undefined;
   let socket: WebSocket | undefined;
@@ -63,9 +76,7 @@ export function createDiscordGateway(
     if (!response.ok) {
       throw new Error("channel_lookup_failed");
     }
-    const channel = z
-      .looseObject({ id, type: z.number().int(), parent_id: id.nullable().optional() })
-      .parse(await jsonResponse(response));
+    const channel = channelInfoSchema.parse(await jsonResponse(response));
     if (channel.id !== message.channel_id) {
       throw new Error("channel_lookup_mismatch");
     }
@@ -80,7 +91,11 @@ export function createDiscordGateway(
   async function connect(signal: AbortSignal) {
     const botToken = credential(config.botToken, environment);
     const url = new URL(
-      address(session?.resume_gateway_url ?? config.gatewayUrl, config.allowInsecureLoopback, true),
+      validateTransportUrl(
+        session?.resume_gateway_url ?? config.gatewayUrl,
+        config.allowInsecureLoopback,
+        true,
+      ),
     );
     url.searchParams.set("v", "10");
     url.searchParams.set("encoding", "json");
@@ -147,11 +162,7 @@ export function createDiscordGateway(
           return;
         }
         if (packet.op === 10) {
-          const hello = z
-            .object({
-              heartbeat_interval: z.number().int().min(10).max(300_000),
-            })
-            .safeParse(packet.d);
+          const hello = helloEventSchema.safeParse(packet.d);
           if (!hello.success || interval) {
             ws.terminate();
             return;
@@ -225,7 +236,7 @@ export function createDiscordGateway(
               fatal = true;
               throw new Error("bot_identity_mismatch");
             }
-            address(ready.resume_gateway_url, config.allowInsecureLoopback, true);
+            validateTransportUrl(ready.resume_gateway_url, config.allowInsecureLoopback, true);
             session = {
               session_id: ready.session_id,
               resume_gateway_url: ready.resume_gateway_url,

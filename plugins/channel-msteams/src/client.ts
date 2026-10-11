@@ -1,13 +1,15 @@
 import type { SendResult } from "@relanox/sdk";
 import type { TeamsConfig } from "./config.js";
-import { endpoint, failure, oauthResponse, request, secret } from "./io.js";
+import { validateEndpointUrl } from "./config.js";
+import { failure, request, secret } from "./io.js";
+import { oauthTokenResponseSchema } from "./schemas.js";
 
 export async function accessToken(
   config: TeamsConfig,
   signal: AbortSignal,
 ): Promise<string | SendResult> {
   const response = await request(
-    endpoint(config.tokenUrl, config.allowLoopback),
+    validateEndpointUrl(config.tokenUrl, config.allowLoopback),
     {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -25,11 +27,11 @@ export async function accessToken(
       ? { status: "retryable", errorCode: "oauth_unavailable" }
       : failure(response);
   }
-  return oauthResponse.parse(await response.json()).access_token;
+  return oauthTokenResponseSchema.parse(await response.json()).access_token;
 }
 
 export function serviceUrl(value: string, config: TeamsConfig): URL {
-  const url = endpoint(value, config.allowLoopback);
+  const url = validateEndpointUrl(value, config.allowLoopback);
   if (/[?#]/u.test(url.href) || !config.trustedServiceOrigins.includes(url.origin)) {
     throw new Error("untrusted_service_origin");
   }
