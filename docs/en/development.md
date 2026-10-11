@@ -1,60 +1,77 @@
-# Development
+# Contributing
 
-Use Node 26.11.1 and the exact pnpm version in `packageManager`. Install dependencies, then build before checking types or running type-aware lint: workspace exports resolve compiled declaration files.
+This guide helps you prepare a change, run the checks and submit it for review. For account setup and running the service, start with [Quick start](getting-started.md).
+
+## Set up a checkout
+
+Use Node 26.11.1 and pnpm 12.11.2, as specified in `package.json`. Create a branch and a separate worktree under `.worktree/` for each implementation task. For example, from an existing checkout:
 
 ```sh
+git worktree add .worktree/my-change -b my-change
+cd .worktree/my-change
 pnpm install --frozen-lockfile
 pnpm build
 pnpm check
 ```
 
-`pnpm check` runs formatting, Oxlint, type checking and Vitest. For real PostgreSQL coverage, provide `RELANOX_TEST_POSTGRES_URL` pointing to a disposable database whose user can create/drop schemas. The PostgreSQL suite uses isolated schemas and removes them. Without this variable, that suite is skipped; Linux CI supplies PostgreSQL 18.6, while Windows CI runs SQLite and the local protocol suites. No production database or live channel credentials are needed.
+Build before type checking or linting: workspace packages use compiled declarations. `pnpm check` runs formatting checks, lint, type checking and Vitest. Installation also sets up the tracked pre-commit hook.
 
-```sh
-# POSIX shell; use $env:RELANOX_TEST_POSTGRES_URL in PowerShell.
-RELANOX_TEST_POSTGRES_URL=postgresql://relanox:password@127.0.0.1:5432/relanox_test pnpm test
+## Make a focused change
+
+Read [How messages reach your Agent](architecture.md) and the guide for the integration you are changing. For SDK work, read [Build an integration](reference/sdk.md) and inspect the exported types. Keep each change focused on an observable behavior.
+
+Keep secrets as environment references and out of saved messages, logs and tool responses. Validate configuration without opening connections. Use the scoped plugin hosts for message and state operations. Preserve comments alongside the code they explain.
+
+If you update dependencies, keep versions exact, update the lockfile, review install scripts and licenses, and refresh shipped notices when production dependencies change. Review narrow exceptions in `pnpm-workspace.yaml` rather than disabling the shared install policy.
+
+## Choose tests that catch a real regression
+
+Use Vitest. Before adding or changing a test, explain in the pull request:
+
+- What behavior does the test protect?
+- What credible regression would make it fail?
+- Why does existing coverage not catch that regression?
+- Does it require a production interface that no production caller uses?
+
+Use real storage for recovery tests. Local HTTP or socket peers can model the external platform's responses, but must not implement Relanox's routing, permissions, persistence or retries. Test public behavior rather than private code structure. New test directories need a discoverable TypeScript configuration for type-aware linting.
+
+For PostgreSQL tests, set `RELANOX_TEST_POSTGRES_URL` to a disposable database whose user can create and drop schemas. The suite uses isolated schemas and removes them. Without this setting, PostgreSQL tests are skipped. In PowerShell:
+
+```powershell
+$env:RELANOX_TEST_POSTGRES_URL = 'postgresql://relanox:password@127.0.0.1:5432/relanox_test'
+pnpm test
 ```
 
-For the image contract, first build `docker build -t relanox:test .`, then run Vitest with `RELANOX_TEST_CONTAINER_IMAGE=relanox:test`. It executes the final production image, automatic schema initialization, readiness and restart. CI builds and loads the image with Buildx before running this suite. Local skips are not evidence that a database or image passed.
+To test the production container, build `docker build -t relanox:test .`, set `RELANOX_TEST_CONTAINER_IMAGE=relanox:test` in your shell, then run `pnpm test`. This checks the built image's startup, readiness and restart behavior.
 
-CI runs independent build/quality, Linux/Windows test, and production container jobs on pushes to master, pull requests and manual dispatch. Every job installs the frozen lockfile; package-store and container-layer caches accelerate installation without replacing verification. The container job also validates Compose. Actions and base/service images are pinned to immutable commits or digests; Dependabot proposes GitHub Actions and Docker updates weekly. The workflow uses a read-only repository token, does not retain checkout credentials and cancels superseded runs on the same branch or pull request. Images are built for verification only, with no registry credentials or publication step.
+## Format and verify
 
-## Boundaries
+Use the root scripts and shared configuration. Prettier formats the code; Oxlint also fixes required spacing between declarations and class methods.
 
-Component ownership is described in [Architecture](architecture.md). Read [SDK](reference/sdk.md), [Core](reference/core.md) and the selected protocol document before changing these boundaries. A channel account has its own plugin instance and state namespace. An agent has one instance per kind, with per-endpoint authentication scopes. Environment-backed secrets are resolved at use; do not put resolved credentials into durable targets, snapshots, logs or tool results.
+```sh
+pnpm lint:fix
+pnpm format
+pnpm lint
+pnpm typecheck
+pnpm test
+```
 
-## Changes and tests
+Keep complexity at most 20 and nesting at most four levels. Split meaningful operations when needed. Do not bypass lint rules or the pre-commit hook to land a change.
 
-Implementation tasks use a new branch/worktree under `.worktree/`. Assigned agents stay within their worktree and file scope and commit their work. The root task reviews, integrates to master, pushes and removes completed worktrees. Preserve other tasks' checkouts; dependent tasks start after prerequisite commits land.
+## Update the documentation
 
-Inspect recent commit messages before each commit, match the existing style, and keep commits coherent. `prepare` installs the tracked pre-commit hook. Run `pnpm format` explicitly; the hook checks without silently modifying the index and rejects partially staged files.
+Keep English and Simplified Chinese pages aligned, and link within the reader's chosen language. Explain setup, expected results and troubleshooting in terms useful to the person using the feature.
 
-Test observable behavior and credible regressions. Explain the behavior protected, the failure it catches, and why existing coverage is insufficient, and whether it requires a seam without a production caller in the pull request; do not create per-task test reports or production seams used only by tests. Use real storage and external HTTP/socket peers; peers may implement external protocol responses, never Relanox routing, authorization or persistence. A full relay test must exercise production ingress, agent authentication/message sending and outbound transport, not stitch together mocked business functions.
+```sh
+pnpm docs:dev
+pnpm docs:build
+pnpm docs:preview
+```
 
-Keep package dependencies exact, update the lockfile, inspect install scripts and license metadata, and refresh production notices when the runtime graph changes. No reference checkout is shipped. New protocol behavior must have a verified primary source and explicit limits in its channel documentation. Do not claim live-account compatibility from local tests.
+Run `pnpm docs:build` before committing documentation changes. The public site is [relanox.github.io](https://relanox.github.io/). Its deployment repository checks for source updates every 30 minutes; maintainers can trigger its Documentation workflow for an immediate update.
 
-Dependency age and allowed install-script policies are defined in `pnpm-workspace.yaml`. Review any narrow exception with its dependency update; keep the global policy enabled.
+## Commit and submit
 
-## Code quality and source organization
+Before every commit, inspect `git log --oneline -20` and follow the recent commit style. Run formatting, lint, type checking and relevant Vitest checks before committing; include the documentation build for documentation changes. Stage a coherent change and let the tracked hook pass. Keep secrets, reference clones, worktrees and build output out of commits.
 
-Prettier uses `prettier-config-standard` directly for JavaScript Standard Style formatting: two-space indentation, an 80-column print width, single quotes, no optional semicolons and no trailing commas. This shared configuration does not enable the full Standard ESLint rule set. Type-aware Oxlint loads `@metamask/oxlint-config-typescript` in `oxlint.config.ts`. Its shared rules govern type aliases, type exports, explicit function return types, type assertions, arrays and Promise usage. Existing project rules remain layered on top, including the documented parameter-property and strict-boolean policies. Use the root scripts and configuration; do not add another formatter or bypass the tracked hook. CI builds workspace declarations first, then runs the same checks. New test directories need a discoverable TypeScript configuration.
-
-Oxlint also enforces blank lines around function, class, interface, type and enum declarations, multiline exports and variable declarations, after imports, and between class methods. These spacing rules run through Oxlint's JavaScript plugin support. Prettier preserves declaration spacing but does not insert the required blank lines. Run `pnpm lint:fix` followed by `pnpm format` to apply spacing and formatting; `pnpm lint` and the pre-commit hook reject missing spacing. No separate ESLint command is needed.
-
-- Keep configuration schemas below runtime modules in the import graph. Validation must not resolve secrets, open resources or initialize live state.
-- Organize modules by responsibility. Keep transactions and connection state machines under one owner; file length alone is not a reason to split them.
-- Keep SDK contracts explicit and import concrete siblings rather than a package's own public entrypoint. Preserve discriminated work/result types through settlement.
-- Use descriptive names and format SQL so parameters, predicates and version fences can be reviewed together.
-- Complexity is limited to 20 and nesting to four levels. Unsafe types, unhandled promises and unused suppressions fail the lint gate. Refactoring should use existing API and protocol tests, not assertions about private structure.
-
-The static CLI catalog in `apps/cli/src/plugins.ts` has an explicit import limit of 18 for fifteen channels, two agents and the SDK contract; other files retain the default limit of ten. Other scoped rule exceptions are defined in `oxlint.config.ts`, including test method references and synchronous tooling subprocesses. Do not disable a rule merely to pass a check; justify any narrow policy change in the pull request.
-
-Document the current behavior, configuration and maintenance requirements. Keep task status, review reports, test-run results and dependency registry snapshots out of the repository; use pull requests and CI for change-specific evidence. Dependency versions and resolution belong in package manifests and the lockfile.
-
-## Documentation site
-
-Use `pnpm docs:dev`, `pnpm docs:build` and `pnpm docs:preview` to maintain the VitePress site. Keep matching pages under `docs/en/` and `docs/zh-CN/`, and keep internal links within the selected language. GitHub Pages serves static files at `https://relanox.github.io/`; it cannot inspect HTTP Accept-Language. The root entry uses browser navigator.languages, selecting Chinese for exact zh-CN, and stores a manual language preference. Explicit language URLs stay on their selected language.
-
-The CSS side-effect import is narrowly allowed only in the theme entrypoint. VitePress's internal Vite uses esbuild 0.21.5; it and the workspace esbuild 0.28.2 have exact allowed build-script entries. Preserve narrow policies when updating the site dependencies.
-
-The `relanox/relanox.github.io` repository builds and deploys the root site with its own GitHub Actions token. It checks this repository every 30 minutes and skips builds when the published source commit is unchanged; maintainers can trigger its Documentation workflow manually for immediate publication. No cross-repository write credential is stored. This repository builds documentation on changes and publishes per-page redirects at the old project URLs, preserving query strings and fragments.
+Use the pull request to explain the resulting behavior, test rationale and validation. Keep change-specific status reports out of the repository. Record real-account validation separately from local protocol tests. CI checks build quality, Linux and Windows tests, and the production container.

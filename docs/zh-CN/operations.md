@@ -1,42 +1,183 @@
-# 运维
+# 部署与备份
 
-Relanox 以一个常驻 Node 26 进程运行，使用一个权威 SQLite 或 PostgreSQL 数据库。升级前备份配置和数据库。
+在服务器持续运行 Relanox，让数据库跨重启保留，并为业务 HTTP 配置 HTTPS。[快速开始](getting-started.md)介绍账号接入，本页介绍部署和维护。
 
-## 容器部署
+## 使用 Docker Compose 启动
 
-Dockerfile 构建 workspace，只部署 CLI 生产依赖，以 UID 1000 运行，并使用可写 `/data` volume。构建与运行阶段使用固定 digest 的 Node 26.11.1 Debian 镜像。SQLite 原生二进制随安装包提供；构建上下文排除宿主 node_modules 和参考仓库。
+安装支持 Compose 的 Docker，克隆仓库，在根目录准备文件：
 
-1. 将 `.env.example` 复制为 `.env`，将 `deploy/empty.example.json` 复制为 `deploy/relanox.json`。
-2. 按 [配置](configuration.md) 填入所选账号、endpoint 和绑定，在 `.env` 设置凭据。空配置只检查安装，不能转发消息。
-3. 运行 `docker compose build`，再运行 `docker compose run --rm relanox validate --config /config/relanox.json`。
-4. 运行 `docker compose up -d`，通过 `docker compose ps` 和 `docker compose logs --tail 100` 检查。
+```sh
+git clone https://github.com/relanox/relanox.git
+cd relanox
+mkdir -p deploy
+cp examples/relanox.sqlite.json deploy/relanox.json
+```
 
-Compose 将业务 HTTP 发布到宿主 `127.0.0.1:8787`。反向代理提供公开 HTTPS，只转发所选插件文档中的 `/channels/<account>/...` 和 `/agents/<kind>/...` 路由。长连接插件需要出站网络。代理日志不要记录正文、Authorization 或密钥查询参数。
+PowerShell 使用 `New-Item -ItemType Directory -Force deploy` 和 `Copy-Item examples/relanox.sqlite.json deploy/relanox.json`。
 
-管理 listener 保持容器 `127.0.0.1:8788`，不发布端口。镜像健康检查请求 `/health/ready`；修改端口时同步修改 healthcheck。`/health/live` 表达进程接收状态，`/health/ready` 还检查存储与工作循环新鲜度，渠道连接单独通过指标表达；启用 standard 观测时 `/metrics` 提供 Prometheus 指标。在同一网络命名空间抓取，例如共享服务网络的 sidecar，或通过显式鉴权的本地代理。管理端点不要公开。
+按[修改配置](configuration.md)编辑 `deploy/relanox.json`。随仓库提供的 Compose 文件需要：
 
-启动自动创建消息模型表和索引。更新时停止网关、备份、重建、启动并检查就绪。Compose 允许 20 秒关闭，对应 CLI 默认 15 秒预算；需要更多时间时一起增大。`docker compose down` 保留命名 volume；`down --volumes` 会删除数据。
+- `server.host`：`0.0.0.0`。
+- `relay.storage.config.filename`：`/data/relanox.sqlite`。
+- `mcp.allowedHosts`：公开主机名，例如 `relay.example.com`。
+- 自己的发送者 ID 和准确聊天绑定。
 
-## 备份与恢复
+在仓库根目录创建受保护的 `.env` 文件，写入配置引用的变量。Telegram/Grok 示例：
 
-SQLite 使用 WAL。离线备份先正常停止 Relanox，再复制整个数据目录，包括残留 WAL/SHM 文件。写入中不能只复制主文件。PostgreSQL 使用服务端一致性备份工具并保留配置 schema。先在独立测试实例验证恢复；评估恢复时不能让两个副本同时使用相同真实渠道凭据。
+```dotenv
+TELEGRAM_BOT_TOKEN=REPLACE_WITH_BOT_TOKEN
+TELEGRAM_WEBHOOK_SECRET=REPLACE_WITH_WEBHOOK_SECRET
+GROK_MCP_TOKEN=REPLACE_WITH_MCP_TOKEN
+GROK_ROUTINE_URL=REPLACE_WITH_COMPLETE_ROUTINE_URL
+GROK_ROUTINE_AUTHORIZATION='REPLACE_WITH_COMPLETE_AUTHORIZATION_VALUE'
+```
 
-`status` 和 `doctor` 默认不展示正文。接纳的通知在重启后保持 accepted，不会因尚未回复而自动重复。已知临时发送失败沿持久计划退避；没有足够幂等能力的模糊发送保持 unknown。
+替换全部占位符。值含空格或 `$` 时按 Compose 的环境文件语法使用引号。限制文件仅部署人员可读；POSIX 系统可用 `chmod 600 .env`。提交代码时排除这个文件和账号配置。
 
-恢复 unknown 前，检查平台会话，确认是否已经产生效果，再用当前版本与 `--acknowledge-unknown` 显式承认重复风险。delivery requeue 不重跑 Agent，并保留已经发送的分片和回执；request requeue 将同一冻结消息通知重新入队，可用于 accepted/rejected/unknown 通知，不取消远端工作，也不撤销回复权限。版本冲突时重新读取状态，不使用陈旧版本重试。
+```sh
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose logs --tail 100 relanox
+```
 
-保留清理只处理符合条件的终态数据，包括入站文字/context/附件列表、出站内容/回执和二进制字节；持久去重和路由元数据保留。到期通知和未送达消息保留。按保留策略调度 `cleanup`，妥善保护含文字、附件和协议状态的备份。清理附件会使其公开 URL 在到期前失效，应为平台拉取和用户下载保留足够时间，详见[媒体传输](media.md)。旧请求的快照保存环境引用名，恢复时仍需对应凭据。
+Compose 构建本地镜像，启动服务，并在异常退出后重启。存储初始化和首次处理批次结束后，等待健康检查变为 healthy。
 
-endpoint 快照冻结 SecretRef 名称，不冻结解析后的值。Grok Routine URL 本身可能携带密钥，在 dispatch 时解析。仍有待处理请求时，不要将原环境变量改指另一 Routine；新目标使用新变量和新 endpoint。沿同一引用轮换凭据是有意操作，不通过持久化解析后的密钥实现冻结。
+业务 HTTP 映射到主机 `127.0.0.1:8787`。JSON 以只读方式挂载到 `/config/relanox.json`；命名卷在 `/data` 保存数据。管理端口位于容器内的 `127.0.0.1:8788`，在容器内运行管理命令：
 
-## 监控
+```sh
+docker compose exec relanox node dist/main.js doctor --config /config/relanox.json --management-url http://127.0.0.1:8788
+docker compose exec relanox node dist/main.js status --config /config/relanox.json --limit 100
+```
 
-[Prometheus 告警示例](https://github.com/relanox/relanox/blob/master/deploy/prometheus-alerts.yml) 需要按通知与发送的预期耗时调整阈值，并由已有监控系统配置通知。连接状态按渠道插件聚合所有账号，独立于服务 readiness。额外监控抓取可用性 `up`，区分进程停止与指标陈旧/缺失。示例不安装监控服务。
+## 提供 HTTPS 地址
 
-指标与 trace 配置见 [可观测性](reference/observability.md)。每个部署仍需配置账号权限、DNS/TLS 和平台审核前提。
+将公开域名指向主机，使用带可信 TLS 证书的反向代理。同一主机上的 Caddy 可以使用以下 `Caddyfile`：
 
-## 传输与冻结身份
+```caddyfile
+relay.example.com {
+  reverse_proxy 127.0.0.1:8787
+}
+```
 
-凭据保持为 SecretRef，拒绝重定向。明文传输要求所选插件显式启用回环选项，并使用插件允许的回环地址（部分渠道也允许 localhost，dot/Grok 要求字面量回环地址），不能换成远端不安全 endpoint。
+替换域名，开放证书签发和 HTTPS 访问所需的 TCP 80/443 端口，并按 Caddy 安装说明配置服务。代理位于另一容器时，需要通过 Docker 网络访问 Relanox 服务。
 
-发送目标冻结渠道身份。当前 bot/app/service 身份改变时，先恢复原配置与凭据身份，再显式恢复保留的 delivery。旧目标缺少必需冻结身份时，不能补入当前身份代替；核查原目标，必要时人工投递，不为通过发送校验改写持久身份。unknown 没有声明安全幂等能力时绝不自动重放；恢复仍要求当前版本与风险确认。
+保留公开 Host 头，使其匹配 `mcp.allowedHosts`。在公开地址下注册渠道 webhook 和 Agent MCP URL。转发业务 HTTP，管理端口保持回环访问。渠道需要公开附件 URL 时，按[收发图片和文件](media.md)配置。
+
+## 停止、重启和升级
+
+```sh
+docker compose stop relanox
+docker compose start relanox
+docker compose restart relanox
+```
+
+Compose 允许 20 秒停机；Relanox 默认关闭超时为 15 秒。需要更长正常停机时间时同时增加二者。
+
+升级前备份数据库与配置，用 `git rev-parse HEAD` 记录当前提交，然后：
+
+```sh
+docker compose stop relanox
+# 更改仓库前先按下方步骤备份。
+git pull --ff-only
+docker compose build
+docker compose up -d
+docker compose exec relanox node dist/main.js doctor --config /config/relanox.json --management-url http://127.0.0.1:8788
+```
+
+升级后在每个已配置渠道发送短消息验证回信。源码安装则停止进程、备份、更新仓库、运行 `pnpm install --frozen-lockfile` 和 `pnpm build`，再使用原工作目录与环境启动 CLI。
+
+`docker compose down` 保留数据卷。只有确定永久删除该安装的消息和连接状态时，才使用 `docker compose down --volumes`。
+
+## 备份和恢复
+
+SQLite 先正常停止，再备份整个 `/data` 目录，包括仍然存在的 `-wal`、`-shm` 文件。以下 PowerShell 命令适用于仓库提供的 Compose：
+
+```powershell
+docker compose stop relanox
+$backupPath = Join-Path (Get-Location) ('backups/' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+New-Item -ItemType Directory -Force $backupPath | Out-Null
+$containerId = docker compose ps -a -q relanox
+docker cp "${containerId}:/data/." $backupPath
+Copy-Item deploy/relanox.json (Join-Path $backupPath 'relanox.json')
+docker compose start relanox
+```
+
+限制备份访问权限，它包含聊天内容、附件和连接状态。另行保护配置使用的环境密钥副本。
+
+先在独立安装测试恢复，恢复文件时保持服务停止。对于随仓库提供的 Compose 卷，创建未启动容器，再复制数据库文件到 `/data`：
+
+```powershell
+# 替换为选定的备份目录。
+$restorePath = 'C:/backups/relanox/20261011-120000'
+docker compose create relanox
+$containerId = docker compose ps -a -q relanox
+Get-ChildItem -LiteralPath $restorePath -Filter 'relanox.sqlite*' | ForEach-Object {
+  docker cp $_.FullName "${containerId}:/data/"
+}
+docker compose run --rm --no-deps --user root --entrypoint sh relanox -c 'chown -R node:node /data'
+```
+
+更改过数据库名时相应修改筛选条件。恢复到空数据卷，避免较新的数据库或 WAL 文件与备份混用。将 JSON 恢复到 `deploy/relanox.json`，单独提供密钥。用 `docker compose run --rm relanox doctor --config /config/relanox.json` 检查离线存储。在启动恢复实例前，先停止使用相同真实渠道凭据的原实例。确认就绪健康并收到新回信后恢复正常使用。
+
+PostgreSQL 使用一致性数据库工具：
+
+```sh
+pg_dump --format=custom --file=relanox.dump "$RELANOX_DATABASE_URL"
+pg_restore --dbname="$RESTORE_DATABASE_URL" relanox.dump
+```
+
+以上使用 POSIX 变量；PowerShell 使用 `$env:RELANOX_DATABASE_URL` 和 `$env:RESTORE_DATABASE_URL`。恢复到独立空数据库，保留配置的 schema，更新恢复实例的连接字符串。也可以使用数据库服务商的备份恢复工具。
+
+## 查找并恢复卡住的消息
+
+源码安装使用 `node apps/cli/dist/main.js`。Docker 中：
+
+```sh
+docker compose exec relanox node dist/main.js status --config /config/relanox.json --endpoint-id grok-main
+```
+
+| 状态                      | 检查事项                                                    |
+| ------------------------- | ----------------------------------------------------------- |
+| 没有来信记录              | webhook/连接、发送者名单、准确聊天和话题绑定                |
+| 来信 `due`                | Agent 凭据、Routine 可用性或 dot 订阅；日志可查看安排的重试 |
+| 来信 `accepted`，没有回信 | Agent 指令、MCP 连接和远端执行                              |
+| 来信或回信 `rejected`     | 重试前修正报告的权限或配置问题                              |
+| 回信 `pending`            | 平台连接、权限、重试等待时间，以及同一来信更早的未完成回信  |
+| 回信 `sent`               | 平台已接收，检查原聊天或话题                                |
+| `unknown`                 | 重复操作前检查 Agent 或平台上是否已经完成                   |
+
+临时故障会自动重试。需要再次通知 Agent 时，从 status 读取来信的 `requestId` 和当前 `version`，代入：
+
+```sh
+docker compose exec relanox node dist/main.js requeue --config /config/relanox.json --kind request --id REQUEST_ID --expected-version 4
+```
+
+需要重新投递保留的回信时，使用其 `deliveryId` 和当前 `version`：
+
+```sh
+docker compose exec relanox node dist/main.js requeue --config /config/relanox.json --kind delivery --id DELIVERY_ID --expected-version 7
+```
+
+版本号填写实际当前值。恢复报告 conflict 时，重新查看 status 再决定重试。
+
+`unknown` 表示外部操作可能已完成，但响应丢失。先检查实际结果。确定需要重复时加 `--acknowledge-unknown`，这可能重复回信或 Agent 工作。重启会保留记录供检查。恢复 request 会再次发送原通知，恢复 delivery 会继续发送已保存的回信。
+
+更改过 bot/app 身份时，恢复排队回信前还原原账号设置与凭据身份。相同身份下轮换 token 可以使用。已有消息保留原目标；新身份使用新的账号与 Agent 连接。
+
+## 按需保留内容
+
+选择保留时长。例如 PowerShell 中清理 30 天前已完成且符合条件的内容：
+
+```powershell
+$before = [DateTimeOffset]::UtcNow.AddDays(-30).ToUnixTimeMilliseconds()
+docker compose exec relanox node dist/main.js cleanup --config /config/relanox.json --before $before --limit 1000
+```
+
+需要时分批再次运行。清理保留未完成工作和防止重复处理的记录，删除符合条件的旧文字、附件字节及相关内容。为用户下载留出足够时间：附件清理后公开 URL 失效。备份使用单独的保留策略。
+
+## 监控安装
+
+轮询本地 `/health/ready` 检查就绪状态，`/health/live` 检查进程健康。Docker 内置检查覆盖就绪状态，`doctor` 还检查环境变量与存储。需要集中监控时，按[日志与运行状态](reference/observability.md)配置指标采集。
+
+[Prometheus 告警示例](https://github.com/relanox/relanox/blob/master/deploy/prometheus-alerts.yml)覆盖处理与连接健康。将规则装入监控系统，调整延迟阈值，并在那里配置告警接收者。同时监控指标抓取可用性，使进程不可达时也能告警。

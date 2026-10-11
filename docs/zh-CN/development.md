@@ -1,60 +1,77 @@
-# 开发与维护
+# 贡献指南
 
-使用 Node 26.11.1 和 packageManager 指定的 pnpm。安装后先构建，再执行类型检查和类型感知 lint；workspace exports 指向编译后的声明文件。
+本指南帮助你准备修改、运行检查并提交审核。配置账号和运行服务，请从[快速开始](getting-started.md)入手。
+
+## 准备工作目录
+
+使用 `package.json` 指定的 Node 26.11.1 和 pnpm 12.11.2。每个实现任务都在 `.worktree/` 下创建独立分支和工作目录。例如，在已有仓库中执行：
 
 ```sh
+git worktree add .worktree/my-change -b my-change
+cd .worktree/my-change
 pnpm install --frozen-lockfile
 pnpm build
 pnpm check
 ```
 
-pnpm check 执行格式检查、Oxlint、类型检查和 Vitest。真实 PostgreSQL 测试需要 RELANOX_TEST_POSTGRES_URL 指向可创建/删除 schema 的一次性数据库。测试创建独立 schema 并清理；未提供变量时跳过。Linux CI 提供 PostgreSQL，Windows CI 执行 SQLite 与本地协议测试，不需要生产数据库或真实渠道凭据。
+先构建，再运行类型检查或 lint，因为工作区包使用构建后的类型声明。`pnpm check` 会运行格式检查、lint、类型检查和 Vitest。安装依赖时也会设置仓库跟踪的提交前钩子。
 
-```sh
-# POSIX；PowerShell 使用 $env:RELANOX_TEST_POSTGRES_URL。
-RELANOX_TEST_POSTGRES_URL=postgresql://relanox:password@127.0.0.1:5432/relanox_test pnpm test
+## 保持修改集中
+
+阅读[消息如何到达 Agent](architecture.md)和对应接入的指南。修改 SDK 时，阅读[扩展接入](reference/sdk.md)并查看导出的类型。每次修改围绕明确的可观察行为展开。
+
+凭据保留为环境变量引用，不要放入保存的消息、日志或工具返回值。验证配置时不要建立连接。通过限定权限的插件 host 操作消息和状态。保留代码旁用于解释它的注释。
+
+更新依赖时，保持精确版本、更新锁文件、检查安装脚本和许可；生产依赖变化时更新随附的许可声明。检查 `pnpm-workspace.yaml` 中的局部例外，不要关闭共享的安装策略。
+
+## 选择能发现实际回归的测试
+
+使用 Vitest。添加或修改测试之前，在拉取请求中说明：
+
+- 测试保护什么行为？
+- 哪种可信的回归会让它失败？
+- 为什么现有测试发现不了这个回归？
+- 是否需要没有生产调用者的生产接口？
+
+恢复测试使用真实存储。本地 HTTP 或 socket 对端可以模拟外部平台响应，但不能实现 Relanox 的路由、权限、持久化或重试。测试公开行为，不依赖内部代码结构。新的测试目录需要可发现的 TypeScript 配置，以供类型感知 lint 使用。
+
+运行 PostgreSQL 测试时，将 `RELANOX_TEST_POSTGRES_URL` 设置为可创建和删除 schema 的临时数据库。测试使用隔离 schema，并在结束后清理；未设置时会跳过 PostgreSQL 测试。PowerShell 示例：
+
+```powershell
+$env:RELANOX_TEST_POSTGRES_URL = 'postgresql://relanox:password@127.0.0.1:5432/relanox_test'
+pnpm test
 ```
 
-镜像契约先执行 `docker build -t relanox:test .`，再为 Vitest 设置 RELANOX_TEST_CONTAINER_IMAGE=relanox:test。测试运行最终生产镜像，覆盖自动 schema 初始化、就绪和重启。CI 用 Buildx 构建并加载镜像，验证 Compose；本地跳过不能证明数据库或镜像通过。
+验证生产容器时，先执行 `docker build -t relanox:test .`，在 shell 中设置 `RELANOX_TEST_CONTAINER_IMAGE=relanox:test`，再运行 `pnpm test`。这些测试检查构建镜像的启动、就绪和重启行为。
 
-CI 在 master push、PR 和手动触发中独立运行构建/质量、Linux/Windows 测试、生产容器任务，均安装 frozen lockfile。缓存不替代验证。Actions 与镜像固定 commit/digest，由 Dependabot 提交更新；workflow 使用只读 token，不保留 checkout 凭据，取消同分支被替代运行。验证镜像不自动发布。
+## 格式化与检查
 
-## 边界
+使用根目录脚本和共享配置。Prettier 负责格式化；Oxlint 还会修复声明和类方法之间要求的空行。
 
-组件职责见 [架构](architecture.md)。修改边界前阅读 [架构](architecture.md)、[SDK](reference/sdk.md)、[Core](reference/core.md) 和对应协议指南。渠道每账号一实例/命名空间，Agent 每 kind 一实例/每 endpoint 鉴权。环境密钥在使用时解析，不进入持久目标、快照、日志和工具结果。
+```sh
+pnpm lint:fix
+pnpm format
+pnpm lint
+pnpm typecheck
+pnpm test
+```
 
-## 变更与测试
+复杂度不超过 20，嵌套不超过四层。需要时拆分有明确职责的操作，不要绕过 lint 规则或提交前钩子来合入修改。
 
-实现任务使用 `.worktree/` 下的新分支/工作树。子 Agent 只修改分配的文件范围并提交；根任务评审、集成 master、推送并移除自己完成的工作树。不要删除其他任务 checkout；依赖任务在前置提交落地后开始。
+## 更新文档
 
-每次提交前检查近期 git log 并匹配现有风格。prepare 安装跟踪的 pre-commit hook。显式运行 pnpm format，hook 只检查，不静默修改 index，拒绝部分暂存。提交前运行 pnpm lint、pnpm typecheck 与相关 Vitest，不绕过 hook。
+保持英文和简体中文页面一致，链接留在读者选择的语言内。围绕使用者的需求说明配置步骤、预期结果和故障处理。
 
-新增/修改测试前在 PR 说明：保护什么可观察行为、什么可信回归会失败、现有覆盖为何不足、是否需要无生产调用者的 seam。缺少答案时不添加测试，不提交任务专用报告。拒绝无断言、自比较、用被测代码计算期望、mock 实现被断言业务、源码 grep 和敏感于重构的结构断言。
+```sh
+pnpm docs:dev
+pnpm docs:build
+pnpm docs:preview
+```
 
-使用真实存储和外部 HTTP/socket 协议对端。对端只能响应外部协议，不能实现 Relanox 路由、授权、持久化或重试。完整转发测试经过生产入口、Agent 鉴权/发送消息与外发传输，不能拼接 mock 业务函数。恢复测试使用真实存储；DI 必须有生产用途。保护公共 API、协议、配置、迁移、安全与发布契约，不因慢或静态删除有意义测试。
+提交文档修改之前运行 `pnpm docs:build`。公开站点为 [relanox.github.io](https://relanox.github.io/)。部署仓库每 30 分钟检查源更新；维护者可以触发其 Documentation 工作流立即更新。
 
-依赖版本固定并更新 lockfile，审查安装脚本与许可证，运行图变化时更新 production notices。参考 checkout 不随产品分发。新协议行为须有主要来源和渠道限制说明，不能用本地测试声称真实账号兼容。pnpm-workspace.yaml 定义依赖发布时间与安装脚本政策；更新依赖时审查精确例外，不全局关闭。
+## 提交与审核
 
-## 代码质量与组织
+每次提交前查看 `git log --oneline -20`，遵循近期提交风格。提交前运行格式化、lint、类型检查和相关 Vitest 测试；修改文档时还要构建文档。暂存一组完整且集中相关的修改，并通过仓库的提交前钩子。不要提交凭据、参考仓库、工作目录或构建输出。
 
-Prettier 直接使用 `prettier-config-standard` 共享配置，遵循 JavaScript Standard Style 的格式约定：2 空格缩进、80 列、单引号、不加可省略的分号、无尾逗号。这不代表启用完整的 Standard ESLint 规则集。类型感知 Oxlint 在 `oxlint.config.ts` 中加载 `@metamask/oxlint-config-typescript`，统一类型别名、类型导出、函数显式返回类型、类型断言、数组和 Promise 用法。现有项目规则继续叠加，包括参数属性和严格布尔表达式的既有政策。使用根脚本，不增加 formatter 层。CI 先构建 workspace 声明再检查；新测试目录需要可发现的 tsconfig。
-
-Oxlint 同时检查函数、类、接口、类型别名和枚举声明前后的空行，多行 export 与变量声明前后的空行、import 后的空行，以及类方法之间的空行。这些规则通过 Oxlint 的 JavaScript 插件支持运行。Prettier 保留声明间距，但不会补上要求的空行。运行 `pnpm lint:fix` 后再运行 `pnpm format`，分别修复间距和格式；`pnpm lint` 与 pre-commit hook 会拒绝缺少空行的代码，无需单独运行 ESLint 命令。
-
-- config schema 在导入图低于 runtime，校验不得解析密钥、打开资源或初始化状态。
-- 按职责组织模块；事务与连接状态机由单一所有者管理，文件长度不是拆分理由。
-- SDK 契约显式，内部导入具体兄弟模块，结算保持区分联合类型。
-- 名称清晰，SQL 参数、谓词和版本约束能一起审查。
-- 复杂度最多 20，嵌套最多 4。unsafe types、未处理 Promise、无用 suppressions 会失败；重构使用已有 API/协议测试。
-
-apps/cli/src/plugins.ts 静态目录有 18 个 import 的窄例外，包含十五渠道、两个 Agent 和 SDK；其余默认十个。其他窄例外由 oxlint.config.ts 定义。不能只为通过检查关闭规则，任何政策改变在 PR 说明。
-
-文档记录当前行为、配置和维护要求。任务状态、审查报告、测试运行结果、注册表快照留在 PR/CI。依赖版本和解析结果属于 manifests 与 lockfile。
-
-## 文档站维护
-
-使用 `pnpm docs:dev`、`pnpm docs:build` 和 `pnpm docs:preview` 维护 VitePress 站点。docs/en 与 docs/zh-CN 保持对应页面，站内链接留在同一语言。GitHub Pages 在 `https://relanox.github.io/` 提供静态文件，无法读取 HTTP Accept-Language；根入口读取浏览器 navigator.languages，精确 zh-CN 选择中文，并保存手动语言偏好。明确语言 URL 保持所选语言。
-
-CSS side-effect import 仅在主题入口使用窄例外。VitePress 内部 Vite 需要 esbuild 0.21.5，它和 workspace esbuild 0.28.2 都使用精确 build-script 允许项；升级站点依赖时保留窄政策。
-
-`relanox/relanox.github.io` 仓库使用自身 GitHub Actions token 构建并发布根站点，每 30 分钟检查本仓库；已发布的源码提交没有变化时跳过构建。维护者也可以手动触发站点仓库的 Documentation 工作流立即发布，无需跨仓库写入凭据。本仓库在文档变化时构建，并在旧项目地址发布逐页跳转，保留查询参数与锚点。
+在拉取请求中说明最终行为、测试理由和验证结果。不要把本次任务的状态报告放进仓库。将真实账号验证与本地协议测试分别记录。CI 会检查构建质量、Linux 和 Windows 测试以及生产容器。

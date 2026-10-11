@@ -1,52 +1,148 @@
-# Configuration and CLI
+# Configure conversations and commands
 
-The executable also installs as `relanox` through the package bin. The configuration is a strict JSON object with `relay` (the [SDK/core configuration](reference/core.md)) and optional `server`, `media` and `mediaLimits`. See [Media transfer](media.md) for public URL publication and binary limits. Config and SecretRefs are static for the process lifetime. Credentials resolve from environment references at use; values are never printed by validate, doctor, status defaults, or command errors. Example identities, bindings and hosts must be replaced with the actual configured identities. Validation does not contact a platform or prove account permissions.
+Relanox reads one JSON file. Copy [the SQLite example](https://github.com/relanox/relanox/blob/master/examples/relanox.sqlite.json), then edit it for your accounts and agents. Restart the service after editing to apply the settings.
 
-SQLite filenames resolve against the process working directory, not the config file directory. Create any parent directory before run. PostgreSQL replaces `relay.storage` with `{ "plugin": "postgres", "config": { "connectionString": { "env": "RELANOX_DATABASE_URL" }, "schema": "public" } }`; the environment variable holds the actual DSN. Run automatically creates missing tables and indexes without clearing existing records. Run refuses unavailable storage. Doctor/status only inspect storage and never initialize its schema or start channel connections.
+## Choose who can talk to which agent
 
-## Relay configuration
+Three lists describe your connections:
 
-| Field           | Contents                                                                            |
-| --------------- | ----------------------------------------------------------------------------------- |
-| `accounts`      | Channel accounts: `id`, `channel`, `allowedSenders`, plugin `config`                |
-| `endpoints`     | Agent endpoints: `id`, `agent`, plugin `config`                                     |
-| `bindings`      | `accountId`, `chatId`, optional `threadId`, `endpointId`, optional `allowedSenders` |
-| `storage`       | `plugin: "sqlite"` or `"postgres"` and plugin `config`                              |
-| `observability` | `plugin: "standard"` or `"none"` and plugin `config`                                |
+- An **account** (`accounts`) is the bot or service account on a messaging platform, such as a Telegram bot. Its `config` holds platform settings, and `allowedSenders` lists the people permitted to use it.
+- An **agent connection** (`endpoints`) is one connected dot or Grok agent. Its `config` holds MCP credentials and the settings for notifying it.
+- A **binding** (`bindings`) connects one conversation on an account to one agent. Messages go to that agent, and replies return to that conversation.
 
-Local account/endpoint IDs are 1–128 characters, begin with a letter/digit and otherwise allow letters, digits, underscores and hyphens. Platform IDs remain opaque strings. Bindings reference existing accounts/endpoints and have unique `(accountId,chatId,threadId)` tuples. Matching is exact, with no thread fallback or wildcard. Account allowlists are nonempty; a configured binding allowlist must also permit the sender.
+For example, this binding sends Telegram chat `123456789` to Grok connection `grok-main`:
 
-Agent kinds are `dot` and `grok`. Every endpoint receives a push containing the full message and its `replyTo`. Credential fields use `{"env":"VARIABLE_NAME"}`; Google Chat's referenced variable contains service-account JSON. See [Agents](agents.md) and the selected channel guide for plugin fields; the [all-channel example](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) contains every supported account.
-
-## Server configuration
-
-| Server option                       | Default              | Purpose                                                              |
-| ----------------------------------- | -------------------- | -------------------------------------------------------------------- |
-| `host` / `port`                     | `127.0.0.1` / `8787` | Native plugin business HTTP listener                                 |
-| `managementHost` / `managementPort` | `127.0.0.1` / `8788` | Management listener; host must be literal `127.0.0.1` or `::1`       |
-| `workerIntervalMs`                  | `1000`               | Delay between completed durable batches; batches never overlap       |
-| `workerStaleMs`                     | `60000`              | Maximum age of a successful batch; must exceed interval              |
-| `startupTimeoutMs`                  | `30000`              | Bound native connection initialization                               |
-| `shutdownTimeoutMs`                 | `15000`              | One total shutdown budget across draining, storage and observability |
-
-Ports allow 0–65535. Worker interval allows 10–60000 ms, freshness allows 100–600000 ms, and startup/shutdown budgets allow 100–120000 ms.
-
-Use `host: "0.0.0.0"` in a container and terminate HTTPS at a trusted reverse proxy. Only business HTTP paths need forwarding. Agent host/origin allowlists must describe the external URL. Management serves GET `/health/live`, `/health/ready`, and `/metrics` when enabled. Use the local CLI for administrative records and recovery. Health and metrics use the separate management listener. Readiness checks storage health, accepting state, worker failure and batch freshness. Connection health is exported through `relanox_connection_status` metrics and structured connection diagnostics.
-
-Run owns native connections and one durable worker. Connected channels can persist inbound messages while other native connections are still initializing. After connection initialization, the worker processes its first durable batch in the background; readiness stays HTTP 503 until that batch succeeds. Persisted backlog processing is not part of `startupTimeoutMs`. SIGINT/SIGTERM stop acceptance, abort connections, close listeners and wait for in-flight work within the total shutdown budget. Cleanup still attempts storage and observability if another cleanup fails. Timeout reports a redacted command failure; it does not promise remote cancellation or that an uncertain external effect was undone. Persisted leases and unknown-state recovery remain authoritative after restart. Partial startup failures release acquired resources.
-
-```sh
-node apps/cli/dist/main.js status --config relay.json --limit 100
-node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --dispatch-status unknown
-node apps/cli/dist/main.js status --config relay.json --include-content
-node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
-node apps/cli/dist/main.js requeue --config relay.json --kind request --id REQUEST_ID --expected-version 4
-node apps/cli/dist/main.js requeue --config relay.json --kind delivery --id DELIVERY_ID --expected-version 7 --acknowledge-unknown
-node apps/cli/dist/main.js cleanup --config relay.json --before 1790000000000 --limit 100
+```json
+{
+  "accountId": "telegram-main",
+  "chatId": "123456789",
+  "endpointId": "grok-main"
+}
 ```
 
-All commands require `--config <path>` (`-c`). Status/cleanup limits allow 1–1000, default 100; cleanup uses integer Unix epoch milliseconds. Dispatch status filters are due/accepted/rejected/unknown; delivery filters are pending/sent/rejected/unknown.
+Account and agent names must match entries in their lists. You choose these local names; platform user, chat and thread IDs come from the platform. Write every ID as a string, including numeric IDs. Local names allow letters, digits, underscores and hyphens, begin with a letter or digit, and have a maximum length of 128 characters.
 
-Status reads persisted stats and independent request/delivery pages. `--after-id` is an exclusive ID cursor, `--delivery-status` filters deliveries, and `--endpoint-id` scopes both. Default projections omit message text, endpoint configuration, targets and receipts. Explicit `--include-content` adds inbound/outbound message text only. This output is local administrative data and should be handled accordingly. Doctor reports missing environment variable names, storage health, and optionally running readiness from an explicitly supplied loopback HTTP origin. It refuses redirects and remote management origins.
+Add a binding for each conversation. Topics or threads need their exact `threadId`:
 
-Requeue requires the current record version shown by status and returns `updated`, `not_found`, `conflict`, or `unauthorized`. An unknown attempt requires `--acknowledge-unknown`; this acknowledges possible duplicate external effects. It resets local lease/retry state, preserves sent delivery chunks, and cannot cancel an already running remote agent. Notification requeue repeats the frozen message without revoking its reply authority. Cleanup redacts eligible terminal text while preserving deduplication and all unfinished/undelivered work. Exit codes are 0 for success/help, 1 for a redacted command failure, and 2 for an unhealthy doctor or rejected recovery. JSON command errors intentionally omit arbitrary provider/driver exception messages.
+```json
+{
+  "accountId": "telegram-main",
+  "chatId": "-1001234567890",
+  "threadId": "42",
+  "endpointId": "grok-main",
+  "allowedSenders": ["123456789"]
+}
+```
+
+Bindings match the exact chat and thread. Omitting `threadId` matches messages with no thread. Configure separate bindings for each topic. Slack uses the root message timestamp as `threadId`, so bind each root thread separately. Account `allowedSenders` is required and contains at least one person. An optional binding `allowedSenders` further restricts the conversation: a sender must appear in both lists. Follow [your channel's guide](channels/index.md) for ID formats.
+
+[The complete example](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) contains fifteen channels and both agents. Copy the entries you need, then replace their IDs, credentials and bindings.
+
+## Store credentials in the environment
+
+Credential fields refer to an environment variable:
+
+```json
+{ "env": "TELEGRAM_BOT_TOKEN" }
+```
+
+Supply it to the Relanox process. Shell-launched commands read the shell environment; Compose uses its `env_file`. For a source-run process, load values from any `.env` file into the environment first. Google Chat's service-account variable contains the complete service-account JSON.
+
+Use separate MCP tokens for separate agent connections. Keep the Routine's complete Authorization value as supplied, and protect its URL as a secret too. [Connect an agent](agents.md) shows the dot and Grok settings.
+
+To rotate a token, update the service manager's environment and restart. Keep the original bot/account identity while replies remain queued. For a new Grok Routine, use a new variable name and agent connection: pending messages still reference their original settings.
+
+## Choose where messages are stored
+
+SQLite suits a single installation:
+
+```json
+{
+  "storage": {
+    "plugin": "sqlite",
+    "config": { "filename": "data/relanox.sqlite" }
+  }
+}
+```
+
+Place this object inside `relay`, and create `data` before starting. Relative paths resolve from the process working directory. An absolute path makes this explicit; Docker uses `/data/relanox.sqlite`.
+
+For PostgreSQL, replace that object:
+
+```json
+{
+  "storage": {
+    "plugin": "postgres",
+    "config": {
+      "connectionString": { "env": "RELANOX_DATABASE_URL" },
+      "schema": "public"
+    }
+  }
+}
+```
+
+Supply the connection string in `RELANOX_DATABASE_URL`. Its database user needs permission to create tables and indexes in the configured schema. `run` initializes missing tables and preserves existing messages. Back up before upgrades using [Operations](operations.md).
+
+## Set ports and everyday options
+
+The optional top-level `server` object controls listeners and processing intervals:
+
+| Option              | Default     | When to change it                                                                                    |
+| ------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
+| `host`              | `127.0.0.1` | Set `0.0.0.0` in a container so its mapped business port is reachable                                |
+| `port`              | `8787`      | Change the business port used by your proxy                                                          |
+| `managementHost`    | `127.0.0.1` | Use `::1` for IPv6 loopback                                                                          |
+| `managementPort`    | `8788`      | Change the local health/metrics port                                                                 |
+| `workerIntervalMs`  | `1000`      | Change the delay between processing batches                                                          |
+| `workerStaleMs`     | `60000`     | Change how long readiness tolerates a missing successful batch; keep greater than `workerIntervalMs` |
+| `startupTimeoutMs`  | `30000`     | Allow more time to initialize platform connections                                                   |
+| `shutdownTimeoutMs` | `15000`     | Allow more time for graceful stop, and increase your service manager's stop timeout too              |
+
+Ports accept integers from 0 to 65535; use fixed nonzero ports for deployment. Management uses a literal loopback address. Forward business port 8787 through HTTPS and keep management local. Set agent `mcp.allowedHosts` to the public hostname, including a non-default port. If the MCP client sends Origin, add its exact origin to `mcp.allowedOrigins`; an empty list suits server-to-server clients without this header.
+
+Enable logs and metrics with `relay.observability`:
+
+```json
+{
+  "observability": {
+    "plugin": "standard",
+    "config": { "logs": true, "metrics": true, "processMetrics": true }
+  }
+}
+```
+
+Management serves `/health/live`, `/health/ready`, and `/metrics` when enabled. [Observability](reference/observability.md) describes metric names. Configure attachment limits and public download URLs using top-level `media` and `mediaLimits`; see [Media transfer](media.md).
+
+## Use the CLI
+
+Run the built CLI from the repository root. Every command takes `--config <file>` (or `-c`):
+
+```sh
+node apps/cli/dist/main.js validate --config relay.json
+node apps/cli/dist/main.js run --config relay.json
+node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
+node apps/cli/dist/main.js status --config relay.json --limit 100
+```
+
+| Command    | Purpose                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------- |
+| `validate` | Check JSON, account settings and bindings before starting                                    |
+| `run`      | Initialize storage and keep connections/message processing running                           |
+| `doctor`   | Check storage and environment variables; add `--management-url` to check the running service |
+| `status`   | Inspect stored incoming messages and replies                                                 |
+| `requeue`  | Retry a retained notification or reply after investigating                                   |
+| `cleanup`  | Remove eligible old content according to your retention policy                               |
+
+`validate` checks configuration structure. Use `doctor` for missing variables, then send a message to verify the platform connection. A fresh installation needs its first `run` before storage checks become healthy. The management URL for `doctor` is a local HTTP origin such as the example above.
+
+Narrow status queries with:
+
+```sh
+node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --dispatch-status unknown
+node apps/cli/dist/main.js status --config relay.json --delivery-status pending
+node apps/cli/dist/main.js status --config relay.json --include-content
+```
+
+Dispatch filters are `due`, `accepted`, `rejected`, `unknown`; delivery filters are `pending`, `sent`, `rejected`, `unknown`. Default page size is 100; `--limit` accepts 1–1000. Use `--after-id <id>` to continue after a record. `--include-content` adds message text; protect that output as private conversation data.
+
+[Operations](operations.md#find-and-recover-a-stalled-message) gives recovery and cleanup commands. CLI output is JSON. Exit code 0 means success, 1 means a command failed, and 2 means an unhealthy diagnostic or refused recovery. Use Ctrl+C or the service manager's normal stop command for graceful shutdown.

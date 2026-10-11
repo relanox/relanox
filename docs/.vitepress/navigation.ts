@@ -34,41 +34,50 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
 
   return {
     nav: [
-      page(label('Guide', '开始使用'), 'getting-started'),
-      page(label('Operations', '部署与运维'), 'operations'),
-      page(label('Development', '开发维护'), 'development')
+      page(label('Get started', '开始使用'), 'getting-started'),
+      page(label('Choose a channel', '选择渠道'), 'channels/'),
+      page(label('Manage Relanox', '日常管理'), 'operations')
     ],
     sidebar: [
       {
-        text: label('Guide', '使用指南'),
+        text: label('Get started', '开始使用'),
         items: [
-          page(label('Getting started', '快速开始'), 'getting-started'),
-          page(label('Configuration & CLI', '配置与命令'), 'configuration'),
-          page(label('Connect dot / Grok', '连接 dot / Grok'), 'agents'),
-          page(label('Media transfer', '媒体传输'), 'media'),
-          page(label('Operations', '部署与运维'), 'operations')
+          page(label('Quick start', '快速开始'), 'getting-started'),
+          page(label('How it works', '消息如何到达 Agent'), 'architecture'),
+          page(label('Connect an Agent', '连接 Agent'), 'agents'),
+          page(label('Change settings', '修改配置'), 'configuration'),
+          page(label('Send pictures and files', '收发图片和文件'), 'media')
         ]
       },
       {
-        text: label('Channels', '消息渠道'),
+        text: label('Connect a chat app', '连接聊天软件'),
         collapsed: true,
-        items: channels.map(([name, file]) => page(name, `channels/${file}`))
+        items: [
+          page(label('Choose a channel', '选择消息渠道'), 'channels/'),
+          ...channels.map(([name, file]) => page(name, `channels/${file}`))
+        ]
       },
       {
-        text: label('Development & reference', '开发与参考'),
+        text: label('Daily use', '日常使用'),
         items: [
-          page(label('Architecture', '架构'), 'architecture'),
-          page(label('Development', '开发维护'), 'development'),
-          page('Core API', 'reference/core'),
+          page(label('Deployment and backups', '部署与备份'), 'operations'),
           page(
-            label('SDK & storage contracts', 'SDK 与存储契约'),
-            'reference/sdk'
+            label('Message status and recovery', '消息状态与恢复'),
+            'reference/core'
           ),
-          page(label('Observability', '可观测性'), 'reference/observability'),
           page(
-            label('Third-party licenses', '第三方许可'),
-            'reference/licenses'
+            label('Logs and monitoring', '日志与运行状态'),
+            'reference/observability'
           )
+        ]
+      },
+      {
+        text: label('Contribute and extend', '贡献与扩展'),
+        collapsed: true,
+        items: [
+          page(label('Contributing', '贡献指南'), 'development'),
+          page(label('Build an integration', '扩展接入'), 'reference/sdk'),
+          page(label('Licenses', '许可证'), 'reference/licenses')
         ]
       }
     ],

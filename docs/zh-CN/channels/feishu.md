@@ -1,45 +1,67 @@
 # 飞书 / Lark
 
-账号 `config`（[配置说明](../configuration.md)）：
+将飞书或 Lark 的企业自建应用机器人连接到 Agent。
+
+## 准备账号
+
+创建企业自建应用，启用机器人能力，授予接收消息、发送消息和资源访问权限。记录 App ID、tenant key 和机器人 open ID。将应用密钥、事件 Verification Token 和 Encrypt Key 存入下方环境变量。Lark 用户将 `domain` 改为 `"lark"`。
+
+## 添加配置
+
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "appId": "cli_example",
-  "appSecret": {
-    "env": "FEISHU_APP_SECRET"
-  },
-  "verificationToken": {
-    "env": "FEISHU_VERIFICATION_TOKEN"
-  },
-  "encryptKey": {
-    "env": "FEISHU_ENCRYPT_KEY"
-  },
-  "tenantKey": "example-tenant",
-  "botOpenId": "ou_example_bot",
-  "domain": "feishu"
+  "accounts": [
+    {
+      "id": "feishu-main",
+      "channel": "feishu",
+      "allowedSenders": ["ou_example_user"],
+      "config": {
+        "appId": "cli_example",
+        "appSecret": {
+          "env": "FEISHU_APP_SECRET"
+        },
+        "verificationToken": {
+          "env": "FEISHU_VERIFICATION_TOKEN"
+        },
+        "encryptKey": {
+          "env": "FEISHU_ENCRYPT_KEY"
+        },
+        "tenantKey": "example-tenant",
+        "botOpenId": "ou_example_bot",
+        "domain": "feishu"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "feishu-main",
+      "chatId": "oc_example_chat",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-为企业自建应用启用机器人能力及消息收发权限，配置加密/签名 HTTP 事件订阅 v2.0，地址为 `https://relay.example/channels/<accountId>/events`，订阅 `im.message.receive_v1`。认证使用企业自建应用的 tenant access token。白名单使用 `open_id`，绑定 `message.chat_id` 和 `message.thread_id`，缺少后者时使用 `root_id`。
+消息事件的发送者 `open_id` 填入 `allowedSenders`，`message.chat_id` 填入 `chatId`。事件头中可取得 `tenant_key`，机器人身份可通过机器人信息 API 取得。消息串绑定使用 `message.thread_id`；事件以 `root_id` 标识消息串时使用该值。
 
-## 投递与恢复
+会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
 
-验证原始正文签名和五分钟时效，按需解密 AES-256-CBC 封装，并校验 token、应用和租户。注册挑战可无签名，但仍校验 verification token。`header.event_id` 去重，接收 `message.content` 中人类文字及原生媒体。延迟回复使用原消息 reply API，并按线程设置 `reply_in_thread`；缺少引用时按 chat ID 创建消息。租户令牌仅在内存缓存，过期/凭据轮换时刷新。每片最多 10,000 UTF-8 字节。发消息前临时令牌失败可重试，提交不确定时保留 unknown。
+## 启用连接
 
-## 参数与限制
+使用事件订阅 v2.0，将地址填为 `https://relay.example.com/channels/feishu-main/events`，订阅 `im.message.receive_v1`，并配置相同的 Verification Token 和 Encrypt Key。验证回调前启动 Relanox，然后发布应用变更，向使用者开放机器人。
 
-`domain` 为 `feishu`（默认）或 `lark`，对应 `https://open.feishu.cn` 或 `https://open.larksuite.com`。可用 `apiBaseUrl` 覆盖；`timeoutMs` 为 100–60,000，默认 10,000；`allowInsecureLoopback` 默认 false。
+## 发送第一条消息
 
-## 原生媒体
+打开与机器人的会话，或将它加入绑定群组并 @ 它发送“你好”。发送者需在应用可用范围和允许发送者列表内。
 
-除消息权限外，授予资源下载、上传权限（`im:resource` 或对应的新上传权限）。接收原生图片、音频、视频、文件，以及含文字、图片或视频资源的富文本；多语言富文本选取第一个语言。通过 `messages/{message_id}/resources/{key}?type=image|file` 携带租户令牌下载用户消息资源，不能用仅供应用自有资源的图片或文件下载 API 替代。
+## 图片和文件
 
-图片用 multipart `im/v1/images`（`image_type=message`），其他资源用 `im/v1/files` 上传，再调用冻结的消息或回复 API。图片最多 10 MiB，其他上传最多 30 MiB，消息资源下载最多 100 MiB，同时受中转限制。音频需 Opus/Ogg 和 `durationMs`；视频需 MP4 和 `durationMs`，可附可选的生成 previewUrl 或已有 previewMediaId；普通文件使用 `file_type=stream`。回复文字另发，不支持的格式或缺失元数据在消息效果前拒绝。
+提问时可发送图片、音频、视频、文件或富文本消息。授予资源下载和上传权限，如 `im:resource` 或适用的上传权限。回复图片上传上限为 10 MiB，其他上传为 30 MiB，同时受 Relanox 限制。生成的音频需为 Opus/Ogg 并带时长，视频需为 MP4 并带时长。
 
-参见[媒体传输](../media.md)、官方[资源 API](https://open.feishu.cn/document/server-docs/im-v1/message/get-2)、[文件上传](https://open.feishu.cn/document/server-docs/im-v1/file/create)及[官方 SDK](https://github.com/larksuite/node-sdk/blob/main/channel/outbound/media/uploader.ts)。本地测试验证协议传输，未验证真实租户权限或播放。
+## 常见问题
 
-## 账号变更
-
-冻结应用、租户、机器人 open ID 和规范化 API 地址。
+回调验证失败时，核对双方 Token 和 Encrypt Key。部分用户无法使用机器人时，检查已发布应用的可用范围。媒体传输失败时，检查资源权限，并按企业要求重新安装或发布权限变更。

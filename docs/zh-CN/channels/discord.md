@@ -1,36 +1,56 @@
 # Discord
 
-账号 `config`（[配置说明](../configuration.md)）：
+在 Discord 私聊、服务器频道和帖子中使用机器人。
+
+## 准备账号
+
+在 Discord 开发者门户创建应用和机器人，将 Token 保存到 `DISCORD_BOT_TOKEN`，机器人用户 ID 填入 `botUserId`。启用 Message Content Intent，邀请机器人时授予查看频道、发送消息、访问所需帖子及附加文件权限。
+
+## 添加配置
+
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "botToken": {
-    "env": "DISCORD_BOT_TOKEN"
-  },
-  "botUserId": "987654321098765432"
+  "accounts": [
+    {
+      "id": "discord-main",
+      "channel": "discord",
+      "allowedSenders": ["123456789012345678"],
+      "config": {
+        "botToken": {
+          "env": "DISCORD_BOT_TOKEN"
+        },
+        "botUserId": "987654321098765432"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "discord-main",
+      "chatId": "112233445566778899",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+在 Discord 启用开发者模式，再复制发送者和频道 ID。`allowedSenders` 填用户 ID。普通频道绑定填写频道 ID；帖子绑定的 `chatId` 填父频道 ID，`threadId` 填帖子频道 ID。私聊使用私聊频道 ID。
 
-启用 Message Content intent，授予机器人查看/发送频道消息及访问线程权限。默认 intents 为 37377（`GUILDS`、`GUILD_MESSAGES`、`DIRECT_MESSAGES`、`MESSAGE_CONTENT`），自定义值必须保留三个消息/内容位。Gateway v10 JSON/WSS 接收，REST v10 发送。白名单使用用户 ID；普通频道和私聊绑定频道 ID，服务器线程绑定父频道 `chatId` 和线程频道 `threadId`。
+会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
 
-## 投递与恢复
+## 启用连接
 
-READY 必须匹配 `botUserId`。原生处理心跳/ACK、Identify/Resume 和重连；致命认证、intents 或分片关闭码停止重连。账号会话/序号持久保存，接收成功才推进游标，失败保留旧游标；平台会话过期仍限制重放。接收人类普通/回复文字及附件，忽略机器人、Webhook 和系统消息。发送引用原消息并禁止 mention，每片最多 2,000 UTF-16 单元。稳定 nonce 和 `enforce_nonce` 仅在数分钟内减少重复；429 按 `retry_after` 重试。
+添加账号后启动 Relanox，它会自动连接 Discord。保持进程运行，并允许访问 Discord 的出站 HTTPS 和 WebSocket 连接。
 
-## 参数与限制
+## 发送第一条消息
 
-`apiBaseUrl` 默认 `https://discord.com/api/v10`；`gatewayUrl` 默认 `wss://gateway.discord.gg`；`timeoutMs` 为 100–60,000，默认 10,000；`reconnectDelayMs` 为 100–30,000，默认 5,000；`allowInsecureLoopback` 默认 false。每个机器人使用一个网关会话接收消息。
+用允许的用户在绑定频道或私聊中发送“你好”。帖子绑定需先进入该帖子，回复会出现在同一会话中。
 
-## 原生媒体
+## 图片和文件
 
-Gateway 接收纯附件及文字附带附件。`MESSAGE_CONTENT` 同时决定文字和附件字段可见性；发送还需 `ATTACH_FILES` 权限。通过有界 HTTPS CDN 下载附件，不携带机器人令牌；持久保存真实字节。
+可在消息中附加图片、音频、视频或文件，也可单独发送附件。机器人会通过 Discord 发回生成的附件。文件需同时符合 Relanox 媒体限制和服务器的 Discord 上传额度。
 
-图片、音频、视频及文件通过 Create Message multipart `payload_json`/`files[0]` 上传，保留冻结频道或线程、原消息引用、mention 抑制及 nonce。上传采用保守的 10 MiB 上限，同时受中转限制；服务器等级、编码和平台限制仍生效。不确定媒体发送不自动重放。
+## 常见问题
 
-参见[媒体传输](../media.md)及官方[消息 API](https://docs.discord.com/developers/resources/message#create-message)。本地 Gateway/REST 测试验证字节传输，未验证真实账号权限及播放。
-
-## 账号变更
-
-冻结机器人用户和规范化 API 地址；保存的 Gateway 会话还匹配 Gateway URL，身份/服务器变化后重新 Identify。
+消息正文缺失时，检查 Message Content Intent 和频道权限。帖子没有回复时，检查父频道与帖子 ID，以及帖子访问权限。机器人连接失败时，确认 Token 属于配置中的机器人用户。

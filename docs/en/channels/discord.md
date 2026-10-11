@@ -1,40 +1,56 @@
 # Discord
 
-Reception uses Gateway v10 JSON over WSS; output uses REST API v10.
+Use a Discord bot in direct messages, server channels and threads.
 
-Account `config` ([configuration](../configuration.md)):
+## Prepare your account
+
+Create an application and bot in the Discord developer portal. Save its token as `DISCORD_BOT_TOKEN` and its user ID as `botUserId`. Enable Message Content Intent. Invite the bot with permission to view channels, send messages, access the intended threads and attach files.
+
+## Add the configuration
+
+Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
 
 ```json
 {
-  "botToken": {
-    "env": "DISCORD_BOT_TOKEN"
-  },
-  "botUserId": "987654321098765432"
+  "accounts": [
+    {
+      "id": "discord-main",
+      "channel": "discord",
+      "allowedSenders": ["123456789012345678"],
+      "config": {
+        "botToken": {
+          "env": "DISCORD_BOT_TOKEN"
+        },
+        "botUserId": "987654321098765432"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "discord-main",
+      "chatId": "112233445566778899",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## Setup and delivery
+Enable Developer Mode in Discord, then use Copy ID on the sender and channel. `allowedSenders` contains user IDs. An ordinary channel binding uses its channel ID; a thread uses its parent channel as `chatId` and the thread channel ID as `threadId`. For a DM, use the DM channel ID.
 
-Enable Message Content intent in the developer portal and grant the bot channel viewing/sending and thread access permissions. Default intents are 37377 (`GUILDS`, `GUILD_MESSAGES`, `DIRECT_MESSAGES`, `MESSAGE_CONTENT`). Custom intents must retain the three message/content bits. Bind ordinary channels using their channel ID. Guild thread reception resolves the channel's type/parent via `GET /channels/{id}`; bind the parent channel as `chatId` and thread channel as `threadId`. Outbound sends to the frozen thread when present. DMs use their channel ID.
+Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
 
-Transport: Gateway v10 JSON over WSS, REST API v10. Sources: [Gateway](https://docs.discord.com/developers/events/gateway), [Gateway events](https://docs.discord.com/developers/events/gateway-events), [channels](https://docs.discord.com/developers/resources/channel), [messages](https://docs.discord.com/developers/resources/message), [rate limits](https://docs.discord.com/developers/topics/rate-limits).
+## Enable the connection
 
-Identify/resume, heartbeat/ACK watchdog, reconnect and invalid-session handling are native. READY bot identity must match config. Fatal authentication/intents/sharding close codes degrade the connection and stop automatic reconnect. Session/sequence live in account-scoped durable storage; a text dispatch advances the cursor only after durable ingestion. Failed handoff closes the connection and retains the earlier cursor. Discord's replay/session expiry limits still apply; no unlimited offline delivery promise is made.
+Start Relanox after adding the account. It connects to Discord automatically. Keep the process running and allow outbound HTTPS and WebSocket connections to Discord.
 
-Human default/reply text and attachment messages are accepted; bot/webhook/system messages are diagnosed and skipped. REST sends suppress allowed mentions and reference the original message. Text is split at 2000 UTF16 units. A stable 24-character nonce with `enforce_nonce` reduces short-window duplicates, but Discord only enforces it for a few minutes, so `idempotentSend` is false. 429 `retry_after` is honored; transport/5xx ambiguity remains `unknown`.
+## Send your first message
 
-Optional config: `apiBaseUrl` (default `https://discord.com/api/v10`), `gatewayUrl` (default `wss://gateway.discord.gg`), `intents`, `timeoutMs` (default 10000), `reconnectDelayMs` (100–30000, default 5000), `allowInsecureLoopback` (default false). Production custom URLs support enterprise proxies; cleartext is loopback-only with opt-in. HTTP redirects are disallowed, WS payloads/dispatch backlog are bounded.
+Send “Hello” from an allowed user in the bound channel or DM. For a thread binding, open that thread first. The reply appears in the same conversation.
 
-## Native media
+## Images and files
 
-The Gateway accepts attachment-only messages and text with attachments. `MESSAGE_CONTENT` is needed for attachment fields as well as text; grant `ATTACH_FILES` for output. Downloads use bounded public HTTPS CDN URLs without the bot token. URLs are not persisted as the attachment: core stores the original bytes.
+Attach images, audio, videos or files to your message, with or without text. The bot can send generated attachments back through Discord. Keep files within your Relanox media limit and the server’s Discord upload allowance.
 
-Generated images/audio/video/files use Create Message multipart `payload_json` and `files[0]`, retaining the frozen channel/thread, reply, mention suppression and nonce. The plugin uses a conservative 10 MiB upload cap, additionally bounded by relay limits. Guild tier limits and supported codecs still apply. An ambiguous multipart send remains unknown rather than being automatically replayed.
+## Troubleshooting
 
-See [Media transfer](../media.md) and Discord's [message API](https://docs.discord.com/developers/resources/message#create-message). Local Gateway/REST tests verify byte transport.
-
-## Account changes
-
-Accepted targets freeze the bot user and canonical API base URL. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported.
-
-Saved Gateway sessions also bind bot ID, canonical API base and configured Gateway URL. Changing these settings, or loading a session without matching identity fields, starts a new Identify instead of resuming that session.
+For missing text, verify Message Content Intent and the bot’s channel permissions. For missing thread replies, check both parent and thread IDs and thread access. If the bot cannot connect, check that the token belongs to the configured bot user.

@@ -1,69 +1,33 @@
-# Architecture
+# How messages reach your agent
 
-Relanox is a resident message gateway. It persists channel text and media, hands them to an existing dot or Grok Bot, and sends asynchronous reply messages to the original conversation. [Configuration](configuration.md) controls deployment; [Core](reference/core.md) and [SDK](reference/sdk.md) define runtime and persistence contracts.
+Relanox connects your messaging accounts to an existing dot or Grok Bot. A person sends a message in a configured conversation, your agent receives it, and the agent's replies return to that same conversation.
 
-## Components
+## Follow a message
 
-Channel → Core → Agent → hosted dot/Grok; Core ↔ Storage; CLI manages lifecycle; Observability records local stages.
+1. **You send a message.** The channel connection receives text and supported attachments from the platform.
+2. **Relanox checks who may use the agent.** The sender must be on the account's allowlist. The conversation must have a binding to an agent; a thread needs its own matching binding. An optional binding allowlist can narrow access further.
+3. **Relanox saves the message.** Text, attachments and the original reply destination are saved in SQLite or PostgreSQL before the input is acknowledged. The same message arriving again is recognized as a duplicate.
+4. **Your agent is notified.** Relanox sends the message and attachment information to dot or Grok. The agent can read the attachments and prepare a reply in its own service.
+5. **The reply returns to the conversation.** The agent asks Relanox to send text or supported media. Relanox saves the reply, splits long text to fit the platform, then sends it and records the result.
 
-| Component     | Responsibility                                                                                                              |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| SDK           | Values, configuration, messages, Host and plugin contracts                                                                  |
-| Core          | Authorization, exact bindings, deduplication, message correlation, retry decisions, HTTP routing and bounded worker batches |
-| Channel       | Platform authentication, input normalization, independent sending and receipts                                              |
-| Agent         | Hosted-agent authentication/transport, MCP tools and notifications                                                          |
-| Storage       | Schema, indexes, snapshots and atomic durable operations                                                                    |
-| Observability | Logs, metrics and short local traces                                                                                        |
-| CLI           | Concrete plugin assembly, HTTP listeners, worker loop, connections and administration                                       |
+Your Agent can send a progress update followed by a final answer. After receiving your question, it takes time to prepare a response and send it back to the conversation. See [Message status and recovery](reference/core.md) if a reply is delayed.
 
-Core and plugins depend on SDK. CLI assembles concrete implementations. Channels and agents receive scoped Hosts and namespaced protocol state, never direct Storage access. Storage enforces atomic predicates; Core chooses business transitions.
+## What happens after a restart?
 
-`channel-media` depends on SDK contracts and the shared `transport` primitives. It does not own media authorization, publication or persistence; those remain in Core and Storage. Channels keep their native platform upload/download protocols.
+Saved work stays in the configured database. When Relanox starts again, it resumes messages waiting for notification or delivery. Keep the SQLite file on persistent storage, or use a persistent PostgreSQL database.
 
-`agent-mcp` owns the MCP configuration, authentication guard, message tools, media download tickets and shared request projection used by dot and Grok. It depends on SDK contracts, the MCP server library and the shared `channel-media` bounded remote downloader, never Core or a concrete agent plugin. dot retains subscriptions and webhook dispatch; Grok retains Routine dispatch. The shared packages are libraries, not plugins registered in the CLI catalog.
+Keep Relanox running so it can receive new messages. After an interruption, check its connection status and resend any questions that still need an answer.
 
-`transport` contains shared HTTP body readers, bounded requests, signature checks, WebSocket helpers and public-address classification. Platform error mapping, credential policy and DNS trust decisions remain in the callers. `storage-support` shares durable JSON codecs, message/media digests and record/media predicates between the database plugins; SQL, transactions and database-specific decoding remain in each backend.
+## Where will an old message be sent?
 
-## Durable message flow
+Each received message keeps its original agent endpoint and reply destination. Changing a binding affects new messages; it does not redirect work already saved. After changing an account key, update its environment variable and restart the service. Saved messages will also use the updated key.
 
-The database holds `inbound` messages with frozen snapshots and notification progress; `outbound` reply messages with text/media chunks, send progress and receipts; request-owned `media` bytes and metadata; and namespaced `plugin_state` subscriptions, cursors and publication tickets. Binary bytes stay outside JSON snapshots.
+Relanox uses the original message to choose the reply destination and checks the Agent's access.
 
-1. The channel authenticates an event. Core checks sender allowlists and an exact account/chat/thread binding, then commits before acknowledging input. Stable channel/account/event IDs deduplicate ingress.
-2. Acceptance freezes the endpoint, credential references and reply target. Binding changes cannot redirect an existing message, and agents cannot supply another destination.
-3. The worker leases each due notification. Grok receives a Routine payload and dot receives a signed event, both containing `replyTo`, text, context, source and attachment metadata. Dispatch does not wait for remote work. Accepted receipt ends automatic notification retry, and separate messages at the same endpoint can proceed independently.
-4. An authenticated agent can read received media and call `sendMessage` with the event's `replyTo`. Each call commits its own outbound message and any generated media atomically. An input can receive multiple reply messages, including no reply at all.
-5. Identical content without an explicit key reuses the queued message. An explicit idempotency key provides stable retry identity; reuse with changed text or attachment order conflicts. Use distinct explicit keys when identical content is deliberately sent twice. `queued` confirms durable acceptance, not delivery.
-6. The channel sends chunks to the frozen target and stores each receipt. Replies to one input follow durable insertion order; an earlier pending or unknown delivery holds later replies until it advances or is explicitly recovered. Rejected delivery releases later replies, and separate inputs proceed independently. Known transient failures retry. Ambiguous effects stop automatic sends and require explicit recovery unless the platform supports durable send idempotency.
+## What do I need to run?
 
-Short lease tokens and versions fence stale local settlement. They cannot undo a transmitted network request. Explicit request requeue repeats a notification; it does not cancel remote work or invalidate replies. Storage is the sole authority for durable work. Startup resumes due notifications and deliveries. Connections without replay cannot promise recovery of events missed while disconnected. Retention preserves due/unknown notifications, undelivered messages and durable deduplication records.
+Prepare a computer or server to run Relanox and an available dot or Grok Bot. Start with SQLite to store data in a local file, or connect to PostgreSQL. Some channels need a public HTTPS address for webhooks or media downloads; others connect outward to the platform. Each [channel guide](channels/index.md) explains its requirements.
 
-## Lifecycle and security
+The service has a separate local management address for health checks and metrics. Keep that address private. Message contents and credentials are excluded from the standard operational logs; administrative commands can show message content only when you ask for it.
 
-Each instance uses one authoritative SQLite or PostgreSQL backend. Startup validates all plugin configurations, initializes missing schema, checks storage, registers handlers and starts connections/the worker. Diagnosis is read-only. Shutdown stops acceptance and drains short calls within a bounded total budget.
-
-Channel and agent protocols authenticate separately. Message text grants no authority. Credentials resolve from environment references at use and are absent from durable request snapshots and logs. dot callbacks enforce exact authorization, DNS address policy and redirect refusal. HTTP and external-call sizes/times are bounded.
-
-Business MCP/webhook routes belong behind HTTPS. Management uses a separate literal-loopback listener. Telemetry failure cannot block durable work; logs omit bodies/secrets and metric labels have finite vocabulary. Traces cover local relay stages, not remote inference. See [Observability](reference/observability.md) and [Operations](operations.md).
-
-## Source responsibilities
-
-Package entrypoints are stable public boundaries. Internal modules import concrete siblings rather than their own `index.ts`.
-
-| Source                               | Responsibility                                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `packages/sdk/src`                   | Values, config, messages, state, storage, observability and plugin hosts                         |
-| `packages/channel-media/src`         | Bounded channel downloads, MIME classification and native upload helpers                         |
-| `packages/agent-mcp/src`             | Shared hosted-agent MCP authentication, message tools, media downloads and safe event projection |
-| `packages/transport/src`             | Shared HTTP, signature, WebSocket and address primitives                                         |
-| `packages/storage-support/src`       | Durable value encoding, digests and storage predicates                                           |
-| `packages/core/src/config`           | Shape, reference relationships, plugin validation and route indexes                              |
-| `packages/core/src/hosts`            | Scoped channel/agent hosts, namespaces, connection telemetry and setup                           |
-| `packages/core/src/worker`           | Bounded sequential execution, outcome validation and retry policy                                |
-| `packages/core/src/runtime.ts`       | Core assembly, HTTP, worker and administration                                                   |
-| `plugins/channel-*/src`              | Pure config/schemas, account runtime, transports and connection state                            |
-| `plugins/agent-*/src`                | Per-endpoint config, secrets, MCP and notification/Routine transport                             |
-| `plugins/storage-*/src`              | Database transactions, requests, leases, protocol CAS, inspection and codecs                     |
-| `plugins/observability-standard/src` | Configuration, sanitization, backpressure, metrics, traces and lifecycle                         |
-| `apps/cli/src`                       | Application config, plugin catalog, listeners, worker lifecycle and admin commands               |
-
-[Development](development.md) describes maintenance and verification. Local protocol peers and real storage tests protect contracts; they do not establish live-account compatibility.
+Start with [Quick start](getting-started.md), then use [Configuration](configuration.md), [Media transfer](media.md) and [Operations](operations.md) for deployment details. If you are contributing an integration, see [Build an integration](reference/sdk.md).

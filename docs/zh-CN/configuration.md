@@ -1,80 +1,148 @@
-# 配置与 CLI
+# 修改配置
 
-CLI 接收严格 JSON 对象：必需的 `relay` 和可选的 `server`、`media`、`mediaLimits`。公开 URL 发布与二进制限额见[媒体传输](media.md)，安装与首个账号示例见[快速开始](getting-started.md)。配置和 SecretRef 在进程生命周期内固定；修改 JSON 后重启进程。凭据在使用时从引用的环境变量解析，诊断和命令错误不输出其值。
+Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://github.com/relanox/relanox/blob/master/examples/relanox.sqlite.json)，再换成自己的账号和 Agent 设置。修改后重启服务，让新配置生效。
 
-## Relay 配置
+## 决定谁可以和哪个 Agent 聊天
 
-| 字段            | 内容                                                                        |
-| --------------- | --------------------------------------------------------------------------- |
-| `accounts`      | 渠道账号数组：`id`、`channel`、`allowedSenders`、插件 `config`              |
-| `endpoints`     | Agent endpoint 数组：`id`、`agent`、插件 `config`                           |
-| `bindings`      | `accountId`、`chatId`、可选 `threadId`、`endpointId`、可选 `allowedSenders` |
-| `storage`       | `plugin: "sqlite"` 或 `"postgres"` 与对应 `config`                          |
-| `observability` | `plugin: "standard"` 或 `"none"` 与对应 `config`                            |
+三个列表描述你的连接：
 
-账号和 endpoint 的 ID 是 1–128 字符的本地名称，以字母或数字开头，其余允许字母、数字、下划线和连字符。平台 ID 是不透明字符串，即使看起来是数字也保持字符串。绑定必须引用存在的账号和 endpoint；`(accountId,chatId,threadId)` 不重复。匹配精确聊天与线程，没有线程回退或通配符。账号发送者白名单不能为空；绑定白名单存在时必须同时满足两层白名单。
+- **账号**（`accounts`）：聊天平台上的机器人或服务账号，例如 Telegram bot。`config` 保存平台设置，`allowedSenders` 列出允许使用它的人。
+- **Agent 连接**（`endpoints`）：一个已连接的 dot 或 Grok Agent。`config` 保存 MCP 凭据以及通知这个 Agent 的方式。
+- **聊天绑定**（`bindings`）：把账号中的一个聊天连接到一个 Agent。这个聊天的消息发给所选 Agent，回信也发回这里。
 
-endpoint 的 `agent` 只支持 `dot` 与 `grok`。持久工作循环向所有 endpoint 推送完整消息，接纳的通知不自动重发。完整配置见 [全部渠道示例](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json)，各插件字段见对应渠道指南和 [Agent](agents.md)。凭据字段使用 `{"env":"VARIABLE_NAME"}`；Google Chat 服务账号 JSON 是引用变量的值。
-
-### 存储
-
-SQLite `filename` 相对进程工作目录解析，不相对配置文件；启动前创建父目录。PostgreSQL 配置示例：
+例如，以下绑定将 Telegram 聊天 `123456789` 交给名为 `grok-main` 的 Grok：
 
 ```json
 {
-  "plugin": "postgres",
-  "config": {
-    "connectionString": { "env": "RELANOX_DATABASE_URL" },
-    "schema": "public"
+  "accountId": "telegram-main",
+  "chatId": "123456789",
+  "endpointId": "grok-main"
+}
+```
+
+账号名和 Agent 连接名必须与列表中的条目一致。这些本地名字由你决定；用户、聊天和话题 ID 来自平台。所有 ID 都写成字符串，包括数字 ID。本地名字可以使用字母、数字、下划线和连字符，以字母或数字开头，长度最多 128 个字符。
+
+每个聊天添加一条绑定。话题或线程需要写入准确的 `threadId`：
+
+```json
+{
+  "accountId": "telegram-main",
+  "chatId": "-1001234567890",
+  "threadId": "42",
+  "endpointId": "grok-main",
+  "allowedSenders": ["123456789"]
+}
+```
+
+绑定按聊天和话题精确匹配。省略 `threadId` 时仅匹配没有线程的消息。每个话题分别添加绑定。Slack 将根消息时间戳作为 `threadId`，因此每个根线程也需要独立绑定。账号的 `allowedSenders` 必填，至少包含一人；绑定中的可选 `allowedSenders` 进一步限制该聊天，发送者必须同时出现在两个名单中。ID 格式请按[对应平台的接入指南](channels/index.md)填写。
+
+[完整示例](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) 包含十五个渠道和两种 Agent。复制需要的条目，然后替换其中的 ID、凭据和绑定。
+
+## 用环境变量保存凭据
+
+凭据字段引用一个环境变量：
+
+```json
+{ "env": "TELEGRAM_BOT_TOKEN" }
+```
+
+把变量提供给运行 Relanox 的进程。终端启动读取当前终端的环境变量；Compose 使用配置的 `env_file`。源码启动时，需先将 `.env` 中的值载入进程环境。Google Chat 的服务账号变量保存完整的服务账号 JSON。
+
+不同 Agent 连接使用独立 MCP token。Routine 的 Authorization 保留平台提供的完整值，它的 URL 也应作为密钥保护。[连接 Agent](agents.md) 给出 dot 和 Grok 的具体设置。
+
+轮换 token 时更新服务管理器的环境设置并重启。有排队回信时，保持原来的 bot/账号身份。更换 Grok Routine 时，使用新的环境变量名和 Agent 连接，已有消息仍然引用原来的设置。
+
+## 选择消息保存位置
+
+单个安装可以使用 SQLite：
+
+```json
+{
+  "storage": {
+    "plugin": "sqlite",
+    "config": { "filename": "data/relanox.sqlite" }
   }
 }
 ```
 
-变量保存实际 DSN。`run` 自动创建缺失表和索引，不清空已有记录；存储不可用时拒绝启动。`doctor` 和 `status` 只检查存储，不初始化 schema，也不建立渠道连接。
+将这个对象放在 `relay` 内，启动前创建 `data` 目录。相对路径以进程的工作目录为准。也可以使用绝对路径；Docker 中使用 `/data/relanox.sqlite`。
 
-## Server 配置
+使用 PostgreSQL 时替换存储对象：
 
-| 字段                                | 默认值               | 范围与用途                                            |
-| ----------------------------------- | -------------------- | ----------------------------------------------------- |
-| `host` / `port`                     | `127.0.0.1` / `8787` | 业务 HTTP listener；端口 0–65535                      |
-| `managementHost` / `managementPort` | `127.0.0.1` / `8788` | 管理 listener；host 只允许字面量 `127.0.0.1` 或 `::1` |
-| `workerIntervalMs`                  | `1000`               | 10–60000；一个批次完成后的等待，不重叠运行            |
-| `workerStaleMs`                     | `60000`              | 100–600000；成功批次最大年龄，必须大于 interval       |
-| `startupTimeoutMs`                  | `30000`              | 100–120000；原生连接初始化期限                        |
-| `shutdownTimeoutMs`                 | `15000`              | 100–120000；排空、存储和观测关闭的总预算              |
+```json
+{
+  "storage": {
+    "plugin": "postgres",
+    "config": {
+      "connectionString": { "env": "RELANOX_DATABASE_URL" },
+      "schema": "public"
+    }
+  }
+}
+```
 
-容器使用 `host: "0.0.0.0"`，由可信反向代理终止 HTTPS，只转发业务路径。Agent host/origin 白名单应对应外部 URL。管理提供 GET `/health/live`、`/health/ready` 和启用时的 `/metrics`，记录查询与恢复通过本地 CLI 操作。健康与指标由独立管理 listener 提供。
+在 `RELANOX_DATABASE_URL` 中提供连接字符串，并让数据库用户拥有在指定 schema 创建表和索引的权限。`run` 创建缺少的表并保留已有消息。升级前按[部署与备份](operations.md)备份。
 
-就绪检查存储健康、接收状态、工作失败和批次新鲜度；渠道连接状态通过 `relanox_connection_status` 和结构化诊断单独表达，不代表真实账号验证。
+## 设置端口和常用选项
 
-## CLI 命令
+顶层可选的 `server` 对象控制 HTTP 监听和处理间隔：
 
-所有命令要求 `--config <path>`，也可使用 `-c`。
+| 选项                | 默认值      | 何时修改                                                    |
+| ------------------- | ----------- | ----------------------------------------------------------- |
+| `host`              | `127.0.0.1` | 容器中设为 `0.0.0.0`，使映射的业务端口可达                  |
+| `port`              | `8787`      | 更改反向代理连接的业务端口                                  |
+| `managementHost`    | `127.0.0.1` | 使用 IPv6 回环时设为 `::1`                                  |
+| `managementPort`    | `8788`      | 更改本地健康检查与指标端口                                  |
+| `workerIntervalMs`  | `1000`      | 更改两批消息处理之间的等待时间                              |
+| `workerStaleMs`     | `60000`     | 更改就绪检查允许多久没有成功批次；需大于 `workerIntervalMs` |
+| `startupTimeoutMs`  | `30000`     | 为平台连接初始化留出更多时间                                |
+| `shutdownTimeoutMs` | `15000`     | 为正常停机留出更多时间，同时增加服务管理器的停止超时        |
+
+端口范围为 0–65535，部署时使用固定的非零端口。管理地址使用字面回环地址。通过 HTTPS 代理业务端口 8787，管理端口保留在本地。Agent 的 `mcp.allowedHosts` 填公开主机名，包括非默认端口。如果 MCP 客户端发送 Origin 头，将它的完整来源加入 `mcp.allowedOrigins`；不发送该头的服务端客户端适合空列表。
+
+用 `relay.observability` 开启日志和指标：
+
+```json
+{
+  "observability": {
+    "plugin": "standard",
+    "config": { "logs": true, "metrics": true, "processMetrics": true }
+  }
+}
+```
+
+管理端口提供 `/health/live`、`/health/ready` 和开启后的 `/metrics`。[日志与运行状态](reference/observability.md)介绍指标名称。附件大小限制和公开下载地址使用顶层 `media`、`mediaLimits`，见[收发图片和文件](media.md)。
+
+## 使用 CLI
+
+从仓库根目录运行构建后的 CLI。每条命令带 `--config <文件>`，也可简写为 `-c`：
 
 ```sh
 node apps/cli/dist/main.js validate --config relay.json
 node apps/cli/dist/main.js run --config relay.json
 node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
 node apps/cli/dist/main.js status --config relay.json --limit 100
-node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --dispatch-status unknown
-node apps/cli/dist/main.js status --config relay.json --include-content
-node apps/cli/dist/main.js requeue --config relay.json --kind request --id REQUEST_ID --expected-version 4
-node apps/cli/dist/main.js requeue --config relay.json --kind delivery --id DELIVERY_ID --expected-version 7 --acknowledge-unknown
-node apps/cli/dist/main.js cleanup --config relay.json --before 1790000000000 --limit 100
 ```
 
-`validate` 检查配置及全部插件 schema，不解析凭据、不打开存储、不启动连接，也不证明平台权限。
+| 命令       | 用途                                                         |
+| ---------- | ------------------------------------------------------------ |
+| `validate` | 启动前检查 JSON、账号设置和绑定                              |
+| `run`      | 初始化存储，持续运行连接和消息处理                           |
+| `doctor`   | 检查存储和环境变量；加 `--management-url` 检查正在运行的服务 |
+| `status`   | 查看已保存的来信和回信                                       |
+| `requeue`  | 查明原因后重试保留的通知或回信                               |
+| `cleanup`  | 按保留策略清理符合条件的旧消息内容                           |
 
-`status` 返回持久统计和独立的请求/发送分页，`--limit` 为 1–1000，默认 100。`--after-id` 是不包含自身的 ID 游标；`--endpoint-id` 作用于两类记录。`--dispatch-status` 为 due/accepted/rejected/unknown，`--delivery-status` 为 pending/sent/rejected/unknown。默认省略文字、endpoint 配置、token、目标和回执；`--include-content` 只额外包含入站/出站消息文字。这是本地管理数据。
+`validate` 检查配置结构，`doctor` 查找缺失变量，再发送消息验证平台连接。新安装应先运行一次 `run`，让存储检查正常。`doctor` 的管理 URL 使用本地 HTTP 来源，例如上述地址。
 
-`doctor` 输出缺失的变量名、存储健康，可通过显式回环 HTTP origin 检查运行中服务的 readiness；拒绝重定向和远端管理地址。
+缩小状态查询范围：
 
-`requeue` 要求 `status` 给出的当前版本，返回 updated/not_found/conflict/unauthorized。unknown 必须用 `--acknowledge-unknown` 承认重复外部效果的可能性。恢复只撤销本地 lease；已发送分片保留，无法取消已运行的远端 Agent。详细恢复步骤见 [运维](operations.md)。
+```sh
+node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --dispatch-status unknown
+node apps/cli/dist/main.js status --config relay.json --delivery-status pending
+node apps/cli/dist/main.js status --config relay.json --include-content
+```
 
-`cleanup` 使用 Unix 毫秒时间边界，limit 为 1–1000，默认 100；只清理符合保留条件的终态正文，保留去重和所有未完成/未送达工作。退出码 0 表示成功或帮助，1 表示脱敏后的命令失败，2 表示 doctor 不健康或恢复被拒绝。错误 JSON 不复制任意平台/驱动异常文字。
+通知状态可筛选 `due`、`accepted`、`rejected`、`unknown`；回信状态可筛选 `pending`、`sent`、`rejected`、`unknown`。默认每页 100 条，`--limit` 范围 1–1000。用 `--after-id <id>` 从某条记录之后继续查询。`--include-content` 会加入消息正文，请按私人聊天数据保护输出。
 
-## 启停
-
-`run` 管理原生连接和一个持久工作循环。部分连接已经初始化时可接收消息；全部初始化后异步运行首个批次，在其成功前 readiness 返回 503。积压处理不属于 startupTimeoutMs。
-
-SIGINT/SIGTERM 停止接收、中止连接、关闭 listener 并在总预算内等待在途工作。某项清理失败仍会尝试释放存储和观测；部分启动失败也释放已获得资源。超时只返回脱敏失败，不保证远端取消或撤销不确定效果。重启后的持久 lease 和 unknown 状态仍是恢复依据。
+[部署与备份](operations.md#查找并恢复卡住的消息)给出恢复和清理命令。CLI 输出 JSON。退出码 0 表示成功，1 表示命令失败，2 表示诊断不健康或恢复被拒绝。用 Ctrl+C 或服务管理器的正常停止命令关闭服务。

@@ -1,38 +1,65 @@
 # Telegram
 
-Use HTTPS Bot API message webhooks and independent native text/media output.
+Talk to your agent in a Telegram bot chat, group or forum topic.
 
-Account `config` ([configuration](../configuration.md)):
+## Prepare your account
+
+Create a bot with @BotFather and save its token as `TELEGRAM_BOT_TOKEN`. Choose a webhook secret using letters, digits, `_` and `-`, and save it as `TELEGRAM_WEBHOOK_SECRET`. Add the bot to your group if you want group conversations. Arrange a public HTTPS address for Relanox.
+
+## Add the configuration
+
+Before registering the webhook, send the bot a private “Hello”, then run this in PowerShell with `TELEGRAM_BOT_TOKEN` already set. Inspect `result[].message.from.id` and `result[].message.chat.id` in the output. For a group/topic ID, send a test message there and inspect its update too. A newly created bot is easiest for this step; an existing bot needs its current webhook removed before `getUpdates` works. Coordinate that change with its owner.
+
+```powershell
+Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdates" |
+  ConvertTo-Json -Depth 12
+```
+
+Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
 
 ```json
 {
-  "botToken": {
-    "env": "TELEGRAM_BOT_TOKEN"
-  },
-  "webhookSecret": {
-    "env": "TELEGRAM_WEBHOOK_SECRET"
-  }
+  "accounts": [
+    {
+      "id": "telegram-main",
+      "channel": "telegram",
+      "allowedSenders": ["123456789"],
+      "config": {
+        "botToken": {
+          "env": "TELEGRAM_BOT_TOKEN"
+        },
+        "webhookSecret": {
+          "env": "TELEGRAM_WEBHOOK_SECRET"
+        }
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "telegram-main",
+      "chatId": "123456789",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## Setup and delivery
+Use the decimal `from.id` as the allowed sender and `chat.id` as the binding chat ID. These fields are available in a bot message update. A private chat normally uses your user ID as its chat ID. Groups can have negative chat IDs: preserve the minus sign. For a forum topic, add its `message_thread_id` as the binding `threadId`, also as a string.
 
-Set the bot's webhook externally to `https://your-relay/channels/telegram-main/webhook` with the same `secret_token` and `allowed_updates: ["message"]`. This plugin does not alter existing platform webhook registrations. Set bindings to the exact decimal chat ID, and a decimal topic `threadId` when present. Sender allowlists use `from.id`; incoming messages use identified bot users.
+Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
 
-Webhook secrets use constant-time comparison. `update_id` deduplicates deliveries, and successful HTTP 204 follows durable ingestion; failed handoff returns 503. Bot, edited and service events create no task.
+## Enable the connection
 
-Outbound is plain text with previews disabled and optional topic/reply parameters; 4096 codepoints per core chunk. API `ok:false` is checked even on HTTP 200; 429 `retry_after` becomes a durable core retry delay. Network timeouts and ambiguous responses are `unknown`. No durable platform idempotency is claimed.
+After starting Relanox, call Telegram Bot API `setWebhook` with `url` set to `https://relay.example.com/channels/telegram-main/webhook`, `secret_token` set to your webhook secret, and `allowed_updates` set to `["message"]`. Replace the domain with your own. `getWebhookInfo` shows the registered address and recent delivery errors.
 
-Optional config: `apiBaseUrl` (default `https://api.telegram.org`) for a local Bot API server or enterprise proxy, `timeoutMs` (100–60000, default 10000), `allowInsecureLoopback` (default false). Cleartext HTTP is permitted only on literal loopback/localhost with explicit opt-in; credentials, fragments and redirects are rejected. Secrets remain environment references in persisted configuration. Bot token format and webhook secret alphabet are checked before use.
+## Send your first message
 
-## Native media
+Open the bot, press Start, then send “Hello”. In a group, address the bot with a mention or reply to it; adjust BotFather privacy settings if you want it to receive ordinary group messages. Send the message in the exact chat or topic you bound.
 
-Photos, audio, voice, video, animation, video notes and documents are downloaded with `getFile` before durable ingestion. The largest photo size is selected; captions remain request text, and media-only messages are accepted. Cloud downloads are bounded to 20 MiB and the configured relay limit.
+## Images and files
 
-Generated images, audio, video and files use multipart `sendPhoto`, `sendAudio`/`sendVoice`, `sendVideo` and `sendDocument` with actual stored bytes and the frozen chat/topic/reply. Ogg/Opus uses `sendVoice`; GIF images use `sendAnimation`. Native audio/video duration is preserved in milliseconds and sent as integer seconds. Uploads are bounded to 10 MiB for photos and 50 MiB otherwise, additionally bounded by relay limits. Telegram validates codec, dimensions and platform limits. Media captions are limited to 1,024 codepoints; core sends final text separately so it is not truncated. Ambiguous effects stay held.
+Attach a photo, voice message, audio, video or document as usual; a caption can carry your question. Received cloud files must fit Telegram’s 20 MiB download limit and your relay limit. Replies can contain images, audio, video and files. Photos are limited to 10 MiB and other uploads to 50 MiB, with the relay limit also applying.
 
-See [Media transfer](../media.md) and the official [Bot API](https://core.telegram.org/bots/api#getfile). Local tests verify HTTP and multipart bytes; live account and codec compatibility remain unverified.
+## Troubleshooting
 
-## Account changes
-
-Accepted targets freeze the bot ID derived from the token’s numeric prefix and canonical API base URL. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported.
+If the bot receives nothing, check `getWebhookInfo`, HTTPS reachability and the matching webhook secret. If only group messages are missing, check bot membership and privacy settings. If messages arrive but receive no answer, compare the sender, chat and topic IDs with your configuration.

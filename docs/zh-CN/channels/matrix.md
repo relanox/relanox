@@ -1,41 +1,57 @@
 # Matrix
 
-账号 `config`（[配置说明](../configuration.md)）：
+使用专用 Matrix 账号，在未加密房间和消息串中对话。
+
+## 准备账号
+
+在 Homeserver 创建专用账号/设备并取得 Access Token，保存到 `MATRIX_ACCESS_TOKEN`，记录完整用户 ID。邀请账号进入各房间并让其加入，授予发送消息和上传文件权限。
+
+## 添加配置
+
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "homeserver": "https://matrix.example.com",
-  "userId": "@relay:example.com",
-  "accessToken": {
-    "env": "MATRIX_ACCESS_TOKEN"
-  }
+  "accounts": [
+    {
+      "id": "matrix-main",
+      "config": {
+        "homeserver": "https://matrix.example.com",
+        "userId": "@relay:example.com",
+        "accessToken": {
+          "env": "MATRIX_ACCESS_TOKEN"
+        }
+      },
+      "channel": "matrix",
+      "allowedSenders": ["@alice:example.com"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "matrix-main",
+      "chatId": "!support:example.com",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+允许发送者填写完整 Matrix 用户 ID，如 `@alice:example.com`。从房间信息或房间事件复制内部房间 ID（如 `!support:example.com`）填入 `chatId`。房间别名 `#support:example.com` 与房间 ID 不同。绑定消息串时，`threadId` 填原始 `m.thread` 根事件 ID。
 
-创建专用账号/设备并加入房间，使用 Client-Server `/sync` 接收和房间 API 发送。白名单为准确 MXID，绑定房间 ID 和可选原始 m.thread 根事件 ID。接收 m.text、m.image、m.audio、m.video 和 m.file，忽略自身事件、编辑/其他关系和成员操作。使用未加密房间。
+会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
 
-## 投递与恢复
+## 启用连接
 
-全部事件持久接收或明确排除后推进持久 sync 游标，重放按事件 ID 去重。已有游标遇 limited timeline 报告 `sync_history_gap` 并停止推进，不补拉历史，需运维解决。发送先检查加密状态，检查临时失败可安全重试。PUT 输出复用分片 transaction ID，去重依赖同一设备/端点，替换令牌/设备可能失去范围；unknown 需显式恢复。回复保留原事件/线程关系，每片最多 16,000 UTF-8 字节。
+启动 Relanox 后会自动从 Homeserver 接收消息。保持配置的设备登录有效，并保持 Relanox 运行。使用 HTTPS Homeserver 地址。
 
-## 参数与限制
+## 发送第一条消息
 
-`homeserver`/`userId` 必填；`timeoutMs` 为 100–120,000，默认 10,000；`syncTimeoutMs` 为 0–60,000，默认 30,000；`reconnectMs` 为 100–60,000，默认 1,000；`allowInsecureLocalhost` 默认 false。Sync 允许长轮询时长加请求超时。
+用允许的账号在绑定的未加密房间发送“你好”。消息串绑定需在该串内回复。专用账号会将 Agent 回答发送到同一房间或消息串。
 
-## 账号变更
+## 图片和文件
 
-冻结 homeserver 和配置的用户 ID。
+在房间消息中附加图片、音频、视频或文件。生成附件会上传到 Homeserver，以原生房间消息显示。附件需符合 Homeserver 上传限制和 Relanox 媒体限制。
 
-## 原生媒体
+## 常见问题
 
-图片、音频、视频和文件通过配置 homeserver 的认证接口 `/_matrix/client/v1/media/download/<server>/<mediaId>` 下载。`mxc://` 中的服务器名仅作媒体标识，不会变成携带凭证的下载目标。下载拒绝重定向并遵守核心字节限制；附件使用未加密文件。
-
-输出先调用 `POST /_matrix/media/v3/upload`，再发送对应的 m.image、m.audio、m.video 或 m.file 房间事件。保留文件名、MIME、大小和可选时长；同一请求已有图片预览会上传并写入 thumbnail_url/thumbnail_info。核心按顺序在文本后发送结果附件。上传或发送结果不明确时遵守已有 unknown 恢复规则。媒体完整缓冲并持久保存；homeserver 上限可能低于核心上限。本地 HTTP、SQLite 和 MCP 测试验证协议约定。
-
-协议来源：[Matrix Client-Server API](https://spec.matrix.org/latest/client-server-api/)。
-
-媒体上传在提交收件人消息前完成。上传传输错误、无效上传响应及服务端失败可重试；明确的客户端拒绝保持拒绝，限流遵循重试间隔。随后发送消息仍保留通常的结果不确定性处理。 原生媒体事件提供独立 `filename` 时，与其不同的 `body` 会作为说明正文与附件一起保存。
-
-[媒体传输](../media.md)
+没有消息到达时，检查账号已加入房间、房间未加密、Token 仍有效。消息串没有回答时，核对根事件 ID。离线后报告历史缺口时，先检查遗漏会话，重新发送仍需回答的问题，再恢复连接。

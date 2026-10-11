@@ -1,39 +1,61 @@
 # IRC
 
-账号 `config`（[配置说明](../configuration.md)）：
+通过专用 IRC 昵称，在频道和私聊中回答文字消息。
+
+## 准备账号
+
+选择支持认证账号标签的 TLS IRC 服务器，注册机器人昵称和账号，将 SASL 密码保存到 `IRC_SASL_PASSWORD`。取得加入所选频道及发言权限。网络另需服务器密码时，添加 `password: {"env":"IRC_SERVER_PASSWORD"}`。
+
+## 添加配置
+
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "server": "irc.example.com",
-  "port": 6697,
-  "tls": true,
-  "nick": "relanox",
-  "channels": ["#support"],
-  "sasl": {
-    "username": "relanox",
-    "password": {
-      "env": "IRC_SASL_PASSWORD"
+  "accounts": [
+    {
+      "id": "irc-main",
+      "config": {
+        "server": "irc.example.com",
+        "port": 6697,
+        "tls": true,
+        "nick": "relanox",
+        "channels": ["#support"],
+        "sasl": {
+          "username": "relanox",
+          "password": {
+            "env": "IRC_SASL_PASSWORD"
+          }
+        }
+      },
+      "channel": "irc",
+      "allowedSenders": ["account:alice"]
     }
-  }
+  ],
+  "bindings": [
+    {
+      "accountId": "irc-main",
+      "chatId": "#support",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+允许发送者填写 `account:<account-name>`，使用用户已认证的网络账号，可从带账号标签的消息或网络账号信息取得。频道 `chatId` 使用配置中的准确频道名。私聊绑定使用 `dm:<folded-nick>`，按 IRC 的 RFC1459 规则规范化昵称（小写，并将 `[]\^` 转为 `{}|~`）。例如 Alice 使用 `dm:alice`。
 
-连接 TLS IRC 网络，可选 password 为服务器 PASS 密钥，sasl 配置 SASL PLAIN，配置后必须成功。协商 account-tag、server-time、message-tags，welcome 后加入频道。默认要求已认证 account tag，白名单 `account:<account-name>`；绑定配置频道原拼写或 `dm:<RFC1459-folded-sender-nick>`。allowNickFallback:true 允许 `nick:<folded-nick>` 并警告；昵称/延迟私聊目标可能易主，无稳定按账号寻址私聊 API。
+## 启用连接
 
-## 投递与恢复
+填写服务器主机名、TLS 端口、昵称和频道列表。启动 Relanox 后会自动登录并加入这些频道。保持进程连接以接收新消息。
 
-处理 PING/PONG，忽略 CTCP、命令和自身回显。有 msgid 时去重，否则本地行 ID 不保证重放去重。重连后继续接收新消息。PRIVMSG 每片最多 400 UTF-8 字节，目标最多 90 字节，保持 512 字节行上限；换行为空格，拒绝 NUL。成功回执仅表示 acknowledgement:socket_write，不证明服务器接纳或收件人送达；传输不确定保留 unknown。
+## 发送第一条消息
 
-## 参数与限制
+登录自己的 IRC 账号，在绑定频道或机器人昵称的私聊中发送“你好”。回答以普通文字行显示，较长回答会拆为多行。
 
-`server`/`nick` 必填；port 默认 6697；tls 默认 true；channels 默认空，最多 100；allowNickFallback 默认 false；`timeoutMs` 为 100–120,000，默认 10,000；`reconnectMs` 为 100–60,000，默认 1,000。明文 TCP 必须回环加 allowInsecureLocalhost:true，TLS 证书验证不可远程关闭。
+## 图片和文件
 
-## 账号变更
+IRC 适合文字提问。需要向 Agent 提交图片或文件时，可在[渠道指南](../configuration.md)中选择 Telegram、Discord 或 Matrix 等带附件的渠道。
 
-冻结服务器、端口和 TLS 模式。
+## 常见问题
 
-IRC 通过原生 PRIVMSG 收发文字消息。
-
-[媒体传输](../media.md)
+消息被过滤时，确认 IRC 客户端已登录网络账号且服务器发送账号标签。使用昵称身份的网络可由管理员显式启用 `allowNickFallback:true`，并允许 `nick:<folded-nick>`；仅在访问策略可接受昵称归属变化时使用。机器人无法加入频道时，检查 SASL 凭据和频道权限。

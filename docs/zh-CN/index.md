@@ -1,35 +1,38 @@
 ---
 layout: home
-title: 文档
+title: 使用指南
 hero:
   name: Relanox
-  text: 在消息渠道中使用已有的 Agent。
-  tagline: 面向 dot 和 Grok Bot 的自托管消息网关。接收文字和媒体、持久保存交接状态，再将回复发回原会话。
+  text: 在常用聊天软件里，让 Agent 帮你做事。
+  tagline: 连接 dot 或 Grok Bot，在原会话中收发消息、图片和文件。部署在你自己的电脑或服务器上。
   actions:
     - theme: brand
-      text: 快速开始
+      text: 开始使用
       link: /zh-CN/getting-started
     - theme: alt
-      text: 配置消息渠道
-      link: /zh-CN/configuration
+      text: 选择聊天渠道
+      link: /zh-CN/channels/
 features:
-  - title: 15 个原生渠道
-    details: 通过平台消息协议连接 Telegram、Discord、Slack、飞书、企业微信、钉钉、QQ 等渠道。
-  - title: 持久交接
-    details: 使用 SQLite 或 PostgreSQL 保存入站消息、通知状态和发送进度，重启后继续处理。
-  - title: 自行部署
-    details: 运行 Node 服务或 Docker 容器，通过环境变量管理凭据，并使用日志、指标和 trace 监控服务。
+  - title: 留在熟悉的聊天里
+    details: 通过 Telegram、飞书、企业微信等 15 个渠道与 Agent 对话，回复直接回到原会话。
+  - title: 文字、图片和文件
+    details: 发一张截图请 Agent 解释，或让它把生成的文件发回来。文件收发方式按所选平台配置。
+  - title: 自己管理
+    details: 使用 Node.js 或 Docker 部署，选择 SQLite 或 PostgreSQL 保存消息和附件。
 ---
 
-## 从一条完整的消息路径开始
+## 从第一条回复开始
 
-配置渠道账号、Agent endpoint 和两者之间的绑定。Relanox 负责消息传输，由你的托管 Agent 完成任务。
+准备一个聊天机器人账号和可用的 dot 或 Grok Bot，按[快速开始](getting-started.md)完成安装。先接通一条会话，再添加其他账号和群聊。
 
-- [安装并启动服务](getting-started.md)
-- [连接 dot 或 Grok Bot](agents.md)
-- [收发媒体](media.md)
-- [部署、备份与恢复发送](operations.md)
+| 你想做什么                  | 从这里开始                          |
+| --------------------------- | ----------------------------------- |
+| 安装并收到第一条回复        | [快速开始](getting-started.md)      |
+| 连接常用聊天软件            | [选择消息渠道](channels/index.md)   |
+| 让 dot 或 Grok Bot 处理消息 | [连接 Agent](agents.md)             |
+| 发图片、文档或生成的文件    | [收发图片和文件](media.md)          |
+| 添加一个群聊或更换 Agent    | [修改配置](configuration.md)        |
+| 在服务器长期运行、备份数据  | [部署与日常管理](operations.md)     |
+| 查看为什么还没收到回复      | [消息状态与恢复](reference/core.md) |
 
-## 接入渠道
-
-Relanox 按各渠道原生能力处理文字和媒体。选择渠道后，按对应文档配置账号、权限和消息绑定。
+想先了解整个过程？阅读[消息如何到达 Agent](architecture.md)。

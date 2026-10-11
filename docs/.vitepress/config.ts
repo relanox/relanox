@@ -6,7 +6,7 @@ const base = '/'
 
 export default defineConfig({
   title: 'Relanox',
-  description: 'Connect your hosted agents to your messaging channels.',
+  description: 'Use dot and Grok Bot from your favorite chat apps.',
   base,
   srcExclude: ['README.md'],
   cleanUrls: false,
@@ -22,7 +22,7 @@ export default defineConfig({
     'zh-CN': {
       label: '简体中文',
       lang: 'zh-CN',
-      description: '将已有的托管 Agent 连接到消息渠道。',
+      description: '在常用聊天软件里使用 dot 和 Grok Bot。',
       themeConfig: navigation(true)
     }
   },

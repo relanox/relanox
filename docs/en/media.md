@@ -1,30 +1,60 @@
-# Images, audio, video and files
+# Send pictures and files
 
-Relanox stores incoming media with its request and returns generated media to the original conversation. Support follows each channel's native protocol and permissions. Text and attachments form one durable request; a media-only message does not need placeholder text. Each send is an independent durable message.
+After connecting a channel and an Agent, you can share pictures, audio, videos and files in your chat. Send a screenshot for an explanation, ask for the main points of a document, or have the Agent send back an image it creates.
 
-The [channel guides](configuration.md) describe supported directions, formats and platform limits. IRC handles text messages. LINE receives files and sends images, audio and video. Google Chat bot-authenticated delivery uses image cards and download buttons. Teams file delivery depends on personal-chat consent. These distinctions also apply when a hosted agent can generate the requested file.
+Start with a small picture and ask, “Please describe this image.” Once the Agent reads it and replies, try the other file types you need.
 
-## Agent workflow
+## Let the Agent read attachments
 
-Incoming dot events and Grok Routine content directly include replyTo and attachment metadata: id, kind, mimeType, fileName, size, sha256 and optional durationMs/previewMediaId. They carry no binary bytes.
+Add this to your Agent's saved instructions:
 
-1. Read a received asset with `relanox_read_media({replyTo,mediaId})`. Images/audio up to 1 MiB return inline MCP content; other assets return a signed five-minute GET resource link scoped to the endpoint and input. Links themselves grant temporary access; keep them out of replies/logs.
-2. Send text or attachments with `relanox_send_message`. Echo received media as `attachments:[{mediaId:"received-id"}]`. Generated files use `{url:"https://public.example/file",kind:"image",mimeType:"image/png",fileName:"picture.png"}`. The gateway downloads public HTTPS URLs with size/time bounds, DNS/address checks and no redirects, then atomically queues the bytes and message.
-3. Provide positive integer durationMs when the platform requires audio/video duration. An image previewUrl downloads a generated companion atomically with its main asset; previewMediaId can reference a received image belonging to the same input. Previews need not be separate reply attachments.
-4. Multiple sends are allowed for the same replyTo. Empty text requires attachments. Reuse an explicit idempotencyKey with identical content/attachment order to retry; absent a key, identical content deduplicates. Distinct explicit keys permit intentionally identical messages. `queued` does not mean delivered.
+> When a message contains attachments, use relanox_read_media to read them as needed. Send your answer with relanox_send_message using the replyTo from that message.
 
-Direct SDK hosts can pass inline MediaUpload bytes or a `{media,preview}` pair to sendMessage; MCP clients provide public HTTPS URLs. Both dot and Grok expose the two media/message tools. Hosted clients must support relevant inline content or resource downloads, and generated files must be available through a public URL. Local protocol tests cover the media tools and transport.
+Connecting Relanox makes these tools available to the Agent. You can continue sending attachments normally in your chat. See [Connect an Agent](agents.md) for setup.
 
-## Public URLs for native delivery
+## Receive files created by the Agent
 
-The current adapters require public URLs for LINE image/audio/video output, Google Chat image cards and download buttons, and Teams group/channel images above 15,000 bytes. LINE requires HTTPS media URLs; Google Chat native attachment upload requires a separately authorized user identity rather than the configured bot. QQ uses native signed multipart uploads without publication. Teams personal-chat images above 15,000 bytes use native file consent and arrive as file cards; small images remain inline. For the remaining URL-based paths, add a public HTTPS origin at the top level of the CLI configuration:
+To send a generated image or file, the Agent supplies a public HTTPS address that downloads the file directly. Relanox retrieves it and sends it using your chat platform's delivery method.
+
+You can add this instruction:
+
+> To send a generated file, include its HTTPS download address, type and filename in the attachments for relanox_send_message. For audio or video, include the duration and cover image required by the destination channel.
+
+The address should return the file itself. Open it in a browser to check that it downloads. Before sending audio or video, check the [channel guide](channels/index.md) for formats, duration and cover images.
+
+## Set up a file download address for your channel
+
+These delivery methods need a public HTTPS address served by Relanox:
+
+| Channel         | Content using the address                                  |
+| --------------- | ---------------------------------------------------------- |
+| LINE            | Images, audio and video                                    |
+| Google Chat     | Image cards and file download buttons                      |
+| Microsoft Teams | Images larger than 15,000 bytes in group chats or channels |
+
+Add `media` at the top level of `relay.json`, alongside `relay`:
 
 ```json
 {
   "media": {
     "publicBaseUrl": "https://relay.example.com",
     "urlLifetimeMs": 86400000
-  },
+  }
+}
+```
+
+Replace `relay.example.com` with your domain. Configure your reverse proxy to forward requests under `/media/` to Relanox's service port, which defaults to `8787`. See [Deployment and daily use](operations.md) for domain setup.
+
+Download links last 24 hours by default. Anyone with a link can access the file while it is valid, so treat it as a temporary file-sharing link. `urlLifetimeMs` is measured in milliseconds and can be set up to seven days.
+
+Large images and files in Teams personal chats use the platform's file consent flow. IRC handles text conversations; LINE receives files and sends images, audio and video. Each [channel guide](channels/index.md) explains how files appear in that app.
+
+## Adjust attachment sizes
+
+The defaults allow 25 MiB per attachment, 50 MiB in one message and up to 10 attachments. Add `mediaLimits` at the top level of your configuration to adjust these values:
+
+```json
+{
   "mediaLimits": {
     "maxMediaBytes": 26214400,
     "maxTotalMediaBytes": 52428800,
@@ -33,18 +63,20 @@ The current adapters require public URLs for LINE image/audio/video output, Goog
 }
 ```
 
-Merge these fields into the configuration containing `relay`; this fragment is not a complete configuration. Forward `/media/*` to the business listener at the configured origin. The origin must have no path, query, fragment or embedded credentials. `allowInsecureLocalhost: true` explicitly permits loopback HTTP for local protocol tests; public platform fetches require reachable HTTPS.
+The first two values are measured in bytes: the size of one attachment and the combined size for one message. Both can be set up to 200 MiB. `maxAttachments` can be set up to 10. Restart Relanox after editing the settings.
 
-Publication creates an opaque URL for one account, request and asset. It remains stable across retries and process restarts until its expiry. The default lifetime is 24 hours, with a maximum of seven days. Possession of a URL grants access until expiry or asset cleanup. Responses have `no-store` and `nosniff`; filenames and actual content types are preserved. The gateway does not infer the public origin from incoming Host or forwarded headers.
+Chat platforms have their own file requirements too. Check the type and size before sending. For a size error, try compressing the file, sending smaller batches or adjusting Relanox's settings. Received attachments, generated files and cover images for one incoming message also share an overall allowance of twice the configured attachment count and total size.
 
-Direct-upload channels do not require this configuration. An adapter that requires publication reports an explicit configuration failure when no publisher is available. Private agent download URLs do not depend on `media.publicBaseUrl`; they use the authenticated MCP request's validated authority.
+## Where files are stored
 
-## Limits, persistence and recovery
+Relanox saves received attachments in your configured database. A database backup includes those files, so allow enough storage for pictures and videos.
 
-Default relay limits are 25 MiB per asset, 50 MiB total and ten attachments per incoming request or outbound message. `mediaLimits` can change them up to 200 MiB per asset, 200 MiB total and ten attachments. Platform format and size limits still apply, including smaller image/preview limits. Generated assets share an atomic per-request budget of twice the configured attachment count and total bytes, counting inputs and previews as well as generated output.
+Routine cleanup removes eligible old attachments, which also expires their download links. Leave enough time for recipients to download their files before cleaning up. See [Backups and cleanup](operations.md) for the commands.
 
-Downloads enforce actual byte limits and timeouts, reject redirects and restrict credential forwarding to trusted platform origins. Untrusted remote media URLs cannot target private network addresses. Media bytes are stored in SQLite BLOBs or PostgreSQL bytea alongside request-owned metadata. Database backups therefore include attachments; account for their size and sensitivity.
+## If an attachment does not arrive
 
-Message enqueue commits text chunks first, followed by attachment chunks in the requested order. Each chunk has its own persisted progress and receipt. A failed later attachment does not repeat successful earlier chunks. Ambiguous external sends retain the normal `unknown` state and require explicit recovery; restarting does not imply that a platform send was safe to repeat.
-
-Retention redacts eligible incoming text/context/attachment lists, outbound content/receipts and binary bytes. Durable deduplication and routing metadata, including stored media filenames/hashes, remain. Due/unknown notifications and undelivered messages are preserved. Cleanup can invalidate an otherwise unexpired public URL. Configure the retention interval to leave enough time for native platform downloads and user access to download buttons. See [Operations](operations.md) for backup and recovery commands.
+1. Send a text message to check that your account and Agent are connected.
+2. Try a small image to check whether the issue concerns file type or size.
+3. For a generated file, open its download address and confirm it downloads directly.
+4. For LINE, Google Chat or Teams group images, check the download address settings above.
+5. Check [message status and recovery](reference/core.md) for the next action.

@@ -1,39 +1,61 @@
 # IRC
 
-Use a resident TLS IRC connection for channel/private PRIVMSG reception and independent text output.
+Use a dedicated IRC nickname to answer text in channels and private messages.
 
-Account `config` ([configuration](../configuration.md)):
+## Prepare your account
+
+Choose a TLS IRC server with authenticated account tags and register the relay’s nickname/account. Save its SASL password as `IRC_SASL_PASSWORD`. Obtain permission to join and speak in the selected channels. If the network needs a separate server password, add `password: {"env":"IRC_SERVER_PASSWORD"}`.
+
+## Add the configuration
+
+Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
 
 ```json
 {
-  "server": "irc.example.com",
-  "port": 6697,
-  "tls": true,
-  "nick": "relanox",
-  "channels": ["#support"],
-  "sasl": {
-    "username": "relanox",
-    "password": {
-      "env": "IRC_SASL_PASSWORD"
+  "accounts": [
+    {
+      "id": "irc-main",
+      "config": {
+        "server": "irc.example.com",
+        "port": 6697,
+        "tls": true,
+        "nick": "relanox",
+        "channels": ["#support"],
+        "sasl": {
+          "username": "relanox",
+          "password": {
+            "env": "IRC_SASL_PASSWORD"
+          }
+        }
+      },
+      "channel": "irc",
+      "allowedSenders": ["account:alice"]
     }
-  }
+  ],
+  "bindings": [
+    {
+      "accountId": "irc-main",
+      "chatId": "#support",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## Setup and delivery
+Use `account:<account-name>` for allowed senders: this is the user’s authenticated network account, available in account-tagged messages or the network’s account information. Bind the exact configured channel name as `chatId`. Private bindings use `dm:<folded-nick>` with IRC’s RFC1459 nickname normalization (lowercase plus `[]\^` normalized to `{}|~`). For example, Alice becomes `dm:alice`.
 
-Server `password:{env:...}` is a separate optional PASS credential. SASL PLAIN is required to succeed when configured; it is carried over TLS. Registration negotiates CAP LS 302, account-tag, server-time and message-tags where available, then joins configured channels after welcome. CTCP, commands and bot-authored echoes are excluded.
+## Enable the connection
 
-By default, messages need an authenticated account tag. Allowlist `account:<account-name>`. Binding chat IDs are the configured channel spelling or `dm:<RFC1459-folded-sender-nick>` for private messages. If a network lacks account tags, `allowNickFallback:true` explicitly permits `nick:<folded-nick>` identities and emits a warning. Nickname identity and a delayed private reply address can change ownership; use account-tag-capable networks and understand that IRC does not provide a stable account-addressed DM API here.
+Fill in the server hostname, TLS port, nickname and channel list. Start Relanox; it signs in and joins those channels automatically. Keep the process connected to receive new messages.
 
-A server `msgid` is used for event identity when available. Without it, each received line gets a local unique ID, so reconnect/replay deduplication cannot be guaranteed. Reconnection resumes reception of new messages.
+## Send your first message
 
-The plugin limits text chunks to 400 UTF-8 bytes and targets to 90 bytes, preserving the IRC 512-byte line limit including CRLF. Within message text, CRLF, CR and LF are normalized to spaces so multiline agent answers fit one PRIVMSG per persisted chunk. A command-like next line remains literal message text and cannot inject an IRC command. NUL is rejected. A successful send receipt means only `acknowledgement:socket_write`; it does not prove server acceptance or recipient delivery. Disconnect/transport ambiguity stays unknown, and `idempotentSend:false` prevents automatic assumptions of safe replay.
+Sign in to your own IRC account and send “Hello” in the bound channel or privately to the relay nickname. Answers appear as ordinary text lines; long answers are split into several lines.
 
-`timeoutMs` defaults to 10,000 and `reconnectMs` to 1,000. TLS is on by default, with normal certificate verification. Plain TCP requires both a loopback server and `allowInsecureLocalhost:true`; there is no option to disable remote certificate checks.
+## Images and files
 
-Targets freeze the server, port and TLS mode together with the recipient. Reconfiguring the connection does not redirect old results to another network; a mismatch rejects the send.
+Use IRC for text questions. To ask about an image or file, choose a channel with attachments, such as Telegram, Discord or Matrix, from the [channel guides](../configuration.md).
 
-IRC sends and receives text through native PRIVMSG messages.
+## Troubleshooting
 
-[Media transfer](../media.md)
+If a message is filtered, confirm that your IRC client is logged into its network account and the server sends account tags. For networks using nicknames, an administrator can explicitly enable `allowNickFallback:true` and allow `nick:<folded-nick>`; use this only when nickname ownership is acceptable for your access policy. Check SASL credentials and channel access if the relay cannot join.

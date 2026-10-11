@@ -1,63 +1,44 @@
-# Core 装配 API
+# 消息状态与恢复
 
-`@relanox/core` 只依赖 SDK、Hono 和 Zod。`createCore` 接收 `{config,storage,channels,agents,observe?,worker?,media?}`，不创建/初始化存储、不建立 listener/timer、不解析凭据、不启停插件。CLI 在 run 时初始化并检查存储、装配插件、创建 Core、以进程 AbortSignal 启动连接并定期调用 processDue。诊断只检查存储；关闭设置 accepting=false，停止循环/连接，释放存储与有期限的观测导出。
+消息延迟、回复重复，或不确定是否应该重试发送时，可以查阅本页。[运行维护](../operations.md)提供了查看和恢复消息的命令。
 
-## 插件装配与配置
+## 已接收、已接受与已送达有什么区别？
 
-channels 是以配置账号 ID 为 key 的 ReadonlyMap，每账号一个 ChannelPlugin；agents 以 dot/grok 为 key，每种一个实例。装配时插件泛型擦除为 unknown，但工厂仍校验各自 schema。metadata 必须符合配置 kind、SDK major 1 和 node runtime。任何 setup 前完成全部账号和每 endpoint 校验。
+Relanox 先保存输入，再通知选定的 Agent。Agent 可以在准备好回复之前接受通知。Agent 发送回复时，Relanox 会另存一条发送记录。
 
-账号 setup 接收解析后的插件配置与原始静态账号副本；Agent setup 接收全部原始 endpoint 和第三参数 `{}`，每 endpoint 的 validateConfig 不把它当 Agent 全局配置。dispatch 按需再次校验冻结 endpoint。
+| 状态            | 含义                                   | 建议操作                            |
+| --------------- | -------------------------------------- | ----------------------------------- |
+| 通知 `due`      | 输入等待通知或再次尝试。               | 检查 Agent 连接和最近错误。         |
+| 通知 `accepted` | Agent 已接受通知。                     | 没有回复时，检查 Agent 自身的服务。 |
+| 发送 `pending`  | 已保存的回复尚未全部发完。             | 检查渠道连接和重试错误。            |
+| 发送 `sent`     | 回复的所有部分都已发送，并记录了回执。 | 无需恢复。                          |
+| `rejected`      | 永久错误或重试次数用尽，处理已经停止。 | 修复原因后再手动重新入队。          |
+| `unknown`       | 无法确认远端操作是否已经发生。         | 重试前先检查远端会话或 Agent。      |
 
-`validateConfig(unknown)` 校验严格 SDK JSON。ID 是安全 URL 段，引用存在、绑定 tuple 唯一、发送者白名单显式非空。无匹配绑定拒绝；账号和可选绑定白名单必须同时允许。没有线程回退或通配符。配置只包含静态 JSON，凭据字段要求 SecretRef。`secretRefSchema` 和 `resolveSecretRef(ref,environment)` 支持装配/插件在使用时解析，Core 不读取 process.env。
+Agent 收到的 `queued` 表示回复已保存，不是聊天平台的送达回执。
 
-Core 持久保存原始 endpoint JSON/options/SecretRef 和目标，不保存校验结果或解析后的密钥。插件不得将凭据放入 target.data/context。修改配置需要重建进程；旧工作保留原目标，仍解析当前引用的环境值。
+## 哪些情况会自动重试？
 
-## HTTP 与 Host
+已知的临时失败，例如平台明确报告限流或可重试的服务错误，会延迟重试。默认最多尝试八次；等待时间从一秒逐步增加到五分钟。可重试的响应也可以指定该范围内的等待时间。标准 CLI 使用上述默认重试设置。
 
-路由挂在 `/channels/<accountId><path>` 与 `/agents/<agentId><path>`；`/` 表示命名空间根。渠道 `/webhook` 得到 `/channels/bot/webhook`；Agent `/mcp` 得到 `/agents/grok/mcp`。handler 接收包含前缀的完整 URL。路径只允许安全字面段与末尾 `*`，不允许遍历/query/fragment；重复路由拒绝 setup。
+如果调用超时，但请求可能已经到达远端，再发一次就可能重复。Relanox 会把这类不确定结果记为 `unknown`，停止自动尝试。
 
-Core 路由错误返回脱敏 500。正文按原始字节缓冲，受 maxHttpBodyBytes 限制，包括 chunked/伪造 Content-Length；超限 413，不完整正文到 callTimeoutMs 返回 408，不解码或重序列化签名输入。插件在调用 Host 前鉴权并实施协议限额。管理健康/指标由 CLI 独立 listener 提供，不属于业务 fetch API。
+Agent 接受通知后，不会因为迟迟没有回复而自动再次收到通知。将输入重新入队会再次通知 Agent，不会取消它之前的工作。
 
-ChannelHost 固定 source/target 的账号和渠道，校验有界 Unicode 文字、可序列化 context、白名单和绑定，等待 acceptInbound 后返回。稳定事件去重由 Storage 执行。AgentHost.forPrincipal 将鉴权 endpoint 与配置 Agent endpoint 取交集，去重并拒绝范围扩张；仅可在协议鉴权后调用。
+## 为什么后面的回复还在等待？
 
-`sendMessage({replyTo,text,idempotencyKey?,attachments?})` 使用不变范围，只读取输入以构造冻结目标和分片；`Storage.enqueueMessage` 原子重查授权、消息身份和媒体一致性，不接收调用方指定目标。默认按相同内容去重，显式 key 用于稳定重试及有意重复发送。同一输入可关联多条独立入队消息。`media.read({requestId,mediaId})` 使用同一 endpoint 授权。对外工具和推送只含安全字段，不暴露 endpoint.config 或私有 SecretRef。
+同一条输入的回复按保存顺序发送。长文字会拆成符合平台限制的多段，然后发送附件。前面一条回复处于等待或不确定状态时，会阻挡该输入后续的回复；前面的回复被拒绝后，后续回复可以继续。
 
-`chunkText(text,max,unit)` 支持 UTF16、codepoints 和 UTF8 字节，不拆 Unicode scalar；孤立 surrogate 或单 scalar 无法容纳时拒绝。分片 idempotencyKey 为 `<deliveryUUID>:<index>`，state 为 null。需要协议序号的插件在外部发送前通过绑定 StateStore CAS 分配，重试复用已分配序号和持久分片身份。命名空间由 metadata ID 与账号/Agent kind 决定，不由调用者指定。
+不同输入可以独立处理，即使它们使用同一个 Agent。
 
-## 媒体边界
+## 怎样避免重复消息？
 
-Core 在字节与请求一并提交前校验入站附件；只有存在媒体时才允许空文字，并检查渠道接收能力、MIME/类型一致性、文件名、字节/数量预算和完整性。每次限定发送接收有序入站媒体 ID 或生成字节，可原子提交正文/预览对；检查归属、预览与发送能力，在文字之后建立媒体分片。工作循环在原生发送前读取并核验持久字节。
+同一条消息重复到达时，会自动识别。默认情况下，Agent 再次提交同样的回复，会复用已经排队的回复。
 
-可选 `media` 配置由 `validateMediaOptions` 校验，包括 `publicBaseUrl`、可选 `urlLifetimeMs` 和显式 `allowInsecureLocalhost`。publisher 挂载 `/media/<accountId>/<requestId>/<mediaId>`，不可猜测且会过期的访问 token 保存在 Core 自有命名空间。插件 Host 只能发布所属账号的请求附件。Agent 签名下载路由独立鉴权后才使用更大正文限额，普通 HTTP 路由保留 `maxHttpBodyBytes`。部署和保留要求见[媒体传输](../media.md)。
+如果你编写集成，可靠重试以及有意发送重复内容的方法见[扩展接入](sdk.md)。
 
-## 工作批次
+## 恢复之前要确认什么？
 
-processDue 运行一个有界顺序批次，阻止同 runtime 重叠。Storage 选择到期消息工作并原子领取 lease，Core 无内存队列。一次只领取一项，避免慢调用耗尽已排队工作的 lease。dispatch 接收冻结原配置；send 接收单个持久分片与目标。
+先查看当前记录，修复连接、凭据或平台限制。结果为 `unknown` 时，先确认消息是否已经到达。恢复需要填写记录当前的版本；恢复不确定结果还需要明确接受可能重复发送的风险。
 
-调用带 signal 和超时竞争；异常、非法结果、超时变为 unknown，停止自动效果。声明 idempotentSend 的账号可安全恢复过期发送，复用原分片 key。settleAttempt 接收精确 lease token/version；并发结算/requeue 可使结算冲突。中止不能撤销外部效果，插件须遵守 signal。
-
-| Worker 选项        | 默认值   |
-| ------------------ | -------- |
-| batchSize          | 32       |
-| batchDurationMs    | 30000    |
-| callTimeoutMs      | 10000    |
-| leaseMs            | 30000    |
-| maxAttempts        | 8        |
-| retryBaseMs        | 1000     |
-| retryMaxMs         | 300000   |
-| maxTextBytes       | 1048576  |
-| maxMediaBytes      | 26214400 |
-| maxTotalMediaBytes | 52428800 |
-| maxAttachments     | 10       |
-| maxContextBytes    | 65536    |
-| maxHttpBodyBytes   | 2097152  |
-
-lease 必须大于 timeout。retryable 延迟限定在 base/max 内，无显式延迟时指数退避。accepted dispatch 为终态，无论 Agent 是否回复，都不自动再次通知。retryable 耗尽预算变 rejected `retry_budget_exhausted`，保留供显式恢复。同 endpoint 不串行占用，也无自动通知续期。outbound 预算按当前分片计算，成功推进后重置；unknown 必须显式恢复。
-
-## 管理与观测
-
-status(filter?) 返回统计、请求/发送分页和连接组件。这是含正文的管理 API，CLI 不得公开 HTTP 暴露或记录日志。health 检查存储健康/连接并捕获驱动错误；readiness 还检查 accepting 和最近 worker 失败。渠道连接退化独立显示；CLI 负责监督循环与新鲜度。
-
-cleanup({before,limit}) 校验有界参数后委托保留清理，不删除未完成/未送达工作。requeue({kind,id,expectedVersion,acknowledgeUnknown}) 使用精确版本恢复，不执行远端取消；unknown 必须显式确认。完整原子规则见 [SDK](sdk.md)。
-
-observe 使用异常隔离 facade，有限计数器、秒制 duration、gauge 与 standard 观测一致，记录短 ingest/enqueue_message/dispatch/send span 和安全字段。ingest 持久保存本地/输入 span context，后续阶段关联。成功批次从真实 getStats 更新积压；失败保留旧值并标记 storage_stats_stale。导出失败不改变业务状态或 readiness。详见 [可观测性](observability.md)。
+已经发送了一部分的回复会从未完成的部分继续，并保留前面部分的回执。重启服务可以继续已保存的工作，但不会自行消除远端结果的不确定性。恢复命令见[运行维护](../operations.md)，定位失败环节可参考[日志与监控](observability.md)。

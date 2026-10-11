@@ -1,70 +1,86 @@
-# Observability contract for core and native plugins
+# Logs and service status
 
-Use only SDK `host.observe` / the injected facade. Assembly uses `createStandardObservability()` from `@relanox/observability-standard`; validate its configuration, setup, pass observe to core, and mount the optional Web Request/Response metrics handler privately. Configuration, metrics and lifecycle details follow below.
+Relanox writes structured JSON logs and can expose Prometheus metrics. Use logs to find the failing stage, metrics to spot growing queues or disconnected channels, and message status to decide whether recovery is needed.
 
-Finite log events: inbound.accepted, inbound.duplicate, inbound.rejected, dispatch.completed, message.queued, media.read, delivery.completed, retry.scheduled, delivery.unknown, connection.changed, worker.completed, storage.failed, recovery.completed, retention.completed, startup.completed, shutdown.completed, operation.failed. Unknown events become operation.failed; never put arbitrary error/message strings in event.
+## Enable logs and metrics
 
-Finite span names and operation labels: ingest, dispatch, enqueue_message, read_media, send, storage, http, worker, connection, recovery, retention, startup, shutdown.
+Put this `observability` section inside `relay` in your configuration file:
 
-Finite outcomes: ok, error, accepted, duplicate, rejected, retryable, unknown, sent, conflict, unauthorized, connected, disconnected, degraded, stale, not_found, queued, updated.
+```json
+{
+  "observability": {
+    "plugin": "standard",
+    "config": {
+      "logs": true,
+      "level": "info",
+      "metrics": true,
+      "processMetrics": true
+    }
+  }
+}
+```
 
-Plugin field/label accepts core, cli, storage-sqlite, storage-postgres, observability-standard, agent-dot, agent-grok and `channel-<channel>` for each of the 15 channel IDs. channel labels accept the 15 SDK ChannelIds; agent labels accept dot/grok. Arbitrary account, endpoint, user, chat or request identifiers are forbidden metric labels. Unknown label keys/values drop the observation, and each metric has at most 64 label tuples per runtime.
+Logs go to the service's standard output. View them in the terminal running Relanox, your service manager, or with `docker compose logs -f relanox` for the provided Compose deployment. Change `level` to `debug`, `warn` or `error` if needed, then restart the service.
 
-Generic log errorCode and metric error_class values: timeout, network, authentication, authorization, rate_limit, invalid_input, conflict, storage, unsupported, unavailable, unknown, internal. Logs additionally retain these actionable core codes: call_timeout, retry_budget_exhausted, invalid_chunk_index, plugin_missing, plugin_exception, invalid_plugin_outcome, storage_unavailable, not_accepting, worker_failed. Map platform error codes into generic categories; store detailed protocol failure codes only in the existing bounded business outcome record where needed. Do not copy raw platform errors into logs. Logs whitelist plugin/requestId/deliveryId/traceId/errorCode/outcome/operation; correlation request/delivery IDs must be UUIDs, trace IDs 32 hex. Raw payloads, secrets, arbitrary object fields and free text are excluded.
+With the default management settings, check these local addresses:
 
-`count` accepts only the four *_total business counters. `record` sets snapshot gauges and observes seconds duration histograms, with names listed below. Core polls storage and publishes freshness; collection never polls business storage. Failed stats refresh sets storage_stats_stale=1 and retains prior gauges. Connection status connected=1, disconnected/degraded=0. Optional spans return serializable W3C context for later short stages; context conveys correlation only. End each short operation exactly once. The standard plugin does not register a global OTel provider or context manager; explicit durable parents carry stage relationships.
+```sh
+curl http://127.0.0.1:8788/health/live
+curl http://127.0.0.1:8788/health/ready
+curl http://127.0.0.1:8788/metrics
+```
 
-Telemetry is best effort, never durable business state. The SDK noop facade remains a supported disabled option. Health/readiness belongs to core/CLI and must work with disabled or failed telemetry.
+`/health/live` checks whether the service is running. `/health/ready` checks database access, whether the service is accepting work and its worker is healthy. A channel can be disconnected while the service is ready; inspect connection metrics as well. The addresses use `server.managementHost` and `server.managementPort`. Keep this listener private. For containers, access it from inside the container or use the documented local administration commands.
 
-The standard plugin normalizes the existing native channel diagnostic vocabulary before sanitization. The exact `channel_policy_rejection`, `channel_input_discarded`, `channel_unsupported_input`, `channel_unsupported_sender`, `channel_event_ignored` and `channel_invalid_frame` events become `inbound.rejected`; `channel_connection_replaced` becomes `connection.changed`, and operation `receive` becomes `ingest`. An explicit finite map converts known native policy, unsupported-input, identity, connection and synchronization codes into the generic error categories above. For example, `sender_not_allowed` becomes `authorization`, `encrypted_unsupported` becomes `unsupported`, and `bot_connection_replaced` becomes `conflict`. This does not retain raw provider codes, infer categories from prefixes, or expand metric labels. New emitters should use the documented generic vocabulary directly.
+## Find why a reply is missing
 
-## Standard plugin configuration
+Look for these log events in the order the message moves through Relanox. Where present, `requestId` connects an input to its later stages and `deliveryId` identifies a saved reply.
 
-`createStandardObservability()` returns the SDK plugin. Call `validateConfig(unknown)` and `setup(config)`, pass `runtime.observe` to core/storage/channels, and mount `runtime.metrics` exclusively on CLI's management listener. The handler does not listen, authorize, or select a bind address. It accepts GET/HEAD; other methods return 405. `flush(signal)` and idempotent `shutdown(signal)` wait for accepted log write callbacks, honoring an abort signal and a local deadline. The application owns any supplied `logDestination` Writable and must keep it alive until shutdown; the plugin never ends stdout or the collector stream. Reaching the deadline can still leave writes incomplete.
+| Event                | What to check                                                                 |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `inbound.rejected`   | Sender allowlist, conversation binding, or unsupported input.                 |
+| `dispatch.completed` | Whether the agent accepted the notification; check `outcome` and `errorCode`. |
+| `message.queued`     | A reply was saved and is waiting to be sent.                                  |
+| `retry.scheduled`    | A temporary failure will be retried.                                          |
+| `delivery.completed` | Inspect the send outcome.                                                     |
+| `delivery.unknown`   | The remote result is uncertain; check the conversation before retrying.       |
+| `connection.changed` | A platform connection changed state.                                          |
+| `storage.failed`     | Database access needs attention.                                              |
 
-Configuration is a strict object:
+Error categories such as `authentication`, `authorization`, `rate_limit`, `timeout` and `storage` help locate the problem. Logs omit message bodies, resolved credentials and raw platform error objects. Use the status commands in [Operations](../operations.md) to inspect the affected record; enable message content only when needed and keep the output private.
 
-| Field                      | Default              | Bounds/meaning                                                            |
-| -------------------------- | -------------------- | ------------------------------------------------------------------------- |
-| logs                       | true                 | boolean; JSON Pino output                                                 |
-| level                      | info                 | debug/info/warn/error                                                     |
-| metrics                    | true                 | boolean; handler omitted when false                                       |
-| processMetrics             | true                 | boolean; CPU/memory/event-loop metrics in independent registry            |
-| logBufferBytes             | 65536                | integer 1024..1048576; pending queue during backpressure                  |
-| lifecycleTimeoutMs         | 3000                 | integer 100..10000                                                        |
-| tracing                    | omitted              | opt-in object, no default endpoint or environment activation              |
-| tracing.endpoint           | required             | explicit full OTLP HTTP trace URL; http/https, no userinfo/query/fragment |
-| tracing.sampleRatio        | 0.1                  | 0..1                                                                      |
-| tracing.maxQueueSize       | 512                  | integer 1..4096                                                           |
-| tracing.maxExportBatchSize | min(128, queue size) | integer 1..queue size                                                     |
-| tracing.scheduledDelayMs   | 1000                 | integer 100..10000                                                        |
-| tracing.exportTimeoutMs    | 2000                 | integer 100..10000                                                        |
+## Choose useful alerts
 
-Trace providers are local to each runtime, never registered globally. Core calls explicit short spans and stores `span.context` as an optional durable parent for later stages. Incoming tracestate is discarded to prevent opaque secret propagation. Calling end twice has no additional effect. No long remote-work spans, auto-instrumentation, SDK-node, HTTP body, SQL, host/cloud detection or OTel log/metric export is installed. Export errors do not reject business calls. SDK/exporter may emit its own bounded internal diagnostic behavior; plugin does not recursively log export failures. Export/exit deadlines may lose telemetry without affecting database durability.
+Point your Prometheus collector at the private `/metrics` address. Start with these metrics rather than alerting on every error:
 
-Only exported `events`/`operations`, known plugin IDs and fixed outcome/error categories are output; unknown event becomes `operation.failed`, other unknown fields/categories are dropped. requestId/deliveryId accept generated UUIDs only; traceId accepts 32 hex digits. Error objects and free text are never serialized. Callers should map their detailed error codes to the listed categories. Pino base hostname/pid fields are disabled. When stdout returns false, at most logBufferBytes are queued; overflow is dropped and counted, and destination failures are absorbed.
+| Metric                                          | What it tells you                                                                  |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `relanox_connection_status`                     | `1` means connected; `0` means disconnected or degraded.                           |
+| `relanox_pending`                               | Inputs still waiting for agent notification.                                       |
+| `relanox_outbound`                              | Replies not yet delivered, including stopped replies.                              |
+| `relanox_unknown`                               | Actions with an uncertain remote result that need review.                          |
+| `relanox_oldest_pending_age_seconds`            | Age of the oldest input awaiting notification.                                     |
+| `relanox_worker_last_success_timestamp_seconds` | Time of the last successful worker batch. Alert when it stops advancing.           |
+| `relanox_storage_stats_stale`                   | `1` means queue counts could not be refreshed.                                     |
+| `relanox_telemetry_dropped_total`               | Monitoring data was dropped, for example because the log destination was too slow. |
 
-All business metrics use SDK labels channel/agent/plugin/operation/outcome/error_class. Values are fixed known channels/agents/plugin IDs and operation/outcome/error categories exported/defined in source. Missing labels appear as `none`; unknown keys/values reject the observation. Each metric accepts at most 64 distinct label tuples per runtime to prevent multiplication of finite vocabularies. Unknown metric names, negative/nonfinite values and wrong method types are ignored. No request/user/chat/account/endpoint label exists. No global registry registration occurs.
+Compare queue age and worker freshness against the response time you expect from your deployment. When `relanox_storage_stats_stale` is `1`, other queue values may show the last successful snapshot. Counters such as `relanox_delivery_total` and `relanox_retries_total` reset after a process restart; duration metrics use seconds.
 
-| SDK call / metric                                           | Meaning                                                                        |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| count relanox_inbound_total                                 | channel/outcome accepted, duplicate, rejected                                  |
-| count relanox_dispatch_total                                | agent/outcome of short notification                                            |
-| count relanox_delivery_total                                | channel/outcome of persisted chunk send                                        |
-| count relanox_retries_total                                 | operation dispatch/send; local retry observations                              |
-| record relanox_http_duration_seconds                        | seconds; bounded HTTP operation                                                |
-| record relanox_storage_duration_seconds                     | seconds; storage call                                                          |
-| record relanox_dispatch_duration_seconds                    | seconds; dispatch call                                                         |
-| record relanox_send_duration_seconds                        | seconds; send call                                                             |
-| record relanox_reply_duration_seconds                       | seconds; input acceptance to queued reply                                      |
-| record relanox_delivery_duration_seconds                    | seconds; queued message to delivery                                            |
-| record relanox_pending / relanox_outbound / relanox_unknown | gauges set from Storage.getStats                                               |
-| record relanox_oldest_pending_age_seconds                   | current age, zero only after successful empty snapshot                         |
-| record relanox_storage_stats_stale                          | 1 when refresh fails, 0 after success; retain other previous gauges on failure |
-| record relanox_worker_last_success_timestamp_seconds        | Unix seconds of successful loop, permits external freshness alert              |
-| record relanox_connection_status                            | plugin label; connected=1, disconnected/degraded=0                             |
-| relanox_telemetry_dropped_total                             | internal counter with fixed signal logs/metrics/traces                         |
+## Send traces to a collector
 
-Duration histograms have seconds buckets 0.005, 0.025, 0.1, 0.5, 1, 5, 30, 120, 600, 3600 and +Inf. Counters are process observations and reset on restart. Gauges are snapshots, never business facts. Collecting metrics does not access storage or write business state. Core owns freshness, health and storage polling. Readiness must not depend on collectors or this plugin. `noopObservability` from SDK is the disabled alternative; CLI may retain minimum startup errors independently.
+Tracing is optional. Add `tracing` to the standard plugin's `config`, using the collector's full OTLP HTTP trace URL:
 
-Known core diagnostic log codes are also allowed verbatim: call_timeout, retry_budget_exhausted, invalid_chunk_index, plugin_missing, plugin_exception, invalid_plugin_outcome, storage_unavailable, not_accepting, worker_failed. Generic error_class metric labels remain the fixed categories timeout/network/authentication/authorization/rate_limit/invalid_input/conflict/storage/unsupported/unavailable/unknown/internal. OTLP is activated exclusively by this configuration's endpoint; when activated, the upstream exporter may honor its standard OTEL_EXPORTER_OTLP_HEADERS/OTEL_EXPORTER_OTLP_TRACES_HEADERS environment settings for collector authentication. Treat those variables as deployment secrets.
+```json
+{
+  "tracing": {
+    "endpoint": "http://127.0.0.1:4318/v1/traces",
+    "sampleRatio": 0.1
+  }
+}
+```
+
+Replace the address with one reachable from the Relanox process. In a container, `127.0.0.1` refers to that container. `sampleRatio: 0.1` samples 10% of traces. Traces cover local receiving, notification and sending stages; the agent's remote processing time is not traced as one continuous operation.
+
+If your collector needs authentication, the exporter can use `OTEL_EXPORTER_OTLP_HEADERS` or `OTEL_EXPORTER_OTLP_TRACES_HEADERS`. Treat those environment variables as secrets. Collector or logging failures do not stop message processing, but monitoring data can be lost.
+
+To turn monitoring off, set `relay.observability` to `{ "plugin": "none", "config": {} }`. Health and readiness checks remain available.

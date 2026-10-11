@@ -1,35 +1,38 @@
 ---
 layout: home
-title: Documentation
+title: User guide
 hero:
   name: Relanox
-  text: Your agents, in your channels.
-  tagline: A self-hosted message gateway for dot and Grok Bot. Receive text and media, persist the handoff, and send replies to the original conversation.
+  text: Work with your Agent from your favorite chat app.
+  tagline: Connect dot or Grok Bot and exchange messages, pictures and files in the same conversation. Run it on your own computer or server.
   actions:
     - theme: brand
       text: Get started
       link: /en/getting-started
     - theme: alt
-      text: Configure a channel
-      link: /en/configuration
+      text: Choose a chat app
+      link: /en/channels/
 features:
-  - title: 15 native channels
-    details: Connect Telegram, Discord, Slack, Feishu, WeCom, DingTalk, QQ and more through their messaging protocols.
-  - title: Durable handoff
-    details: SQLite or PostgreSQL preserves incoming messages, notification state and delivery progress across restarts.
-  - title: Your infrastructure
-    details: Run a Node service or Docker container. Keep credentials in your environment and monitor logs, metrics and traces.
+  - title: Stay in your chat
+    details: Talk to your Agent through Telegram, Slack, Discord and 12 other channels. Replies return to the same conversation.
+  - title: Share pictures and files
+    details: Ask about a screenshot or receive a file the Agent creates. Each channel guide explains how to set up file sharing.
+  - title: Run it yourself
+    details: Deploy with Node.js or Docker and choose SQLite or PostgreSQL to store your messages and attachments.
 ---
 
-## Start with a complete route
+## Start with your first reply
 
-Configure a channel account, an Agent endpoint and a binding between them. Relanox handles message transport; your hosted Agent handles the work.
+Prepare a chat bot account and an available dot or Grok Bot, then follow the [quick start](getting-started.md). Connect one conversation first and add more accounts or group chats when it works.
 
-- [Install and start the service](getting-started.md)
-- [Connect dot or Grok Bot](agents.md)
-- [Send and receive media](media.md)
-- [Deploy, back up and recover deliveries](operations.md)
+| What would you like to do?                 | Start here                                       |
+| ------------------------------------------ | ------------------------------------------------ |
+| Install Relanox and get a first reply      | [Quick start](getting-started.md)                |
+| Connect your chat app                      | [Choose a channel](channels/index.md)            |
+| Have dot or Grok Bot handle messages       | [Connect an Agent](agents.md)                    |
+| Share images, documents or generated files | [Send pictures and files](media.md)              |
+| Add a group chat or change the Agent       | [Change settings](configuration.md)              |
+| Run on a server and back up your data      | [Deployment and daily use](operations.md)        |
+| Find out why a reply has not arrived       | [Message status and recovery](reference/core.md) |
 
-## Connect a channel
-
-Relanox handles text and media according to each channel's native capabilities. Choose a channel and follow its guide to configure your account, permissions and message bindings.
+For an overview, read [How messages reach your Agent](architecture.md).

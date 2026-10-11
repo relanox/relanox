@@ -1,40 +1,56 @@
-# Signal through signal-cli
+# Signal with signal-cli
 
-This integration requires a separately installed, registered and maintained unofficial signal-cli HTTP JSON-RPC/SSE daemon. Signal has no official Bot API here. Relanox does not install the daemon, register a number or manage its account/encryption/session storage.
+Use a dedicated Signal account through a separately managed signal-cli daemon.
 
-Account `config` ([configuration](../configuration.md)):
+## Prepare your account
+
+Install signal-cli, register or link the Signal account, and start its HTTP JSON-RPC/SSE daemon. Record the account number and UUID. Back up signal-cli’s account/session data alongside your Relanox database. For remote access, place the daemon behind an authenticated HTTPS proxy; save the complete Authorization header value as `SIGNAL_BRIDGE_AUTHORIZATION`.
+
+## Add the configuration
+
+Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
 
 ```json
 {
-  "serviceUrl": "https://signal-bridge.example.com",
-  "account": "+15551234567",
-  "selfUuid": "the_registered_accounts_uuid",
-  "authorization": {
-    "env": "SIGNAL_BRIDGE_AUTHORIZATION"
-  }
+  "accounts": [
+    {
+      "id": "signal-main",
+      "config": {
+        "serviceUrl": "https://signal-bridge.example.com",
+        "account": "+15551234567",
+        "selfUuid": "22222222-2222-4222-8222-222222222222",
+        "authorization": {
+          "env": "SIGNAL_BRIDGE_AUTHORIZATION"
+        }
+      },
+      "channel": "signal",
+      "allowedSenders": ["11111111-1111-4111-8111-111111111111"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "signal-main",
+      "chatId": "direct:11111111-1111-4111-8111-111111111111",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## Setup and delivery
+To discover a sender, send a test message and have the daemon administrator inspect its `/api/v1/events?account=<account>` event stream. Use the received envelope’s `sourceUuid` as the allowed sender when available; otherwise use its number/source identifier. Bind a direct conversation as `direct:<sender>` and a group as `group:<groupId>`. Get the group ID from the daemon’s group information or received envelope. Set `selfUuid` to the daemon account’s UUID.
 
-`authorization` is optional and supplies the complete Authorization header to a trusted reverse proxy. The native daemon itself does not supply this authentication boundary; keep it on a private interface and put authentication/TLS in front of remote access. For a loopback daemon, explicitly set `allowInsecureLocalhost:true` and an HTTP loopback `serviceUrl`.
+## Enable the connection
 
-Reception uses `/api/v1/events?account=<account>`. SSE `receive` data contains `{envelope,account?}`; sender identity prefers `sourceUuid`, then number/source. Configure exact allowlist IDs accordingly. Direct chat bindings use `direct:<sender>` and group bindings use `group:<groupId>`. `selfUuid` is recommended so the account's own UUID messages are reliably excluded. Images, audio, video and files are accepted as attachments, including messages without text. View-once, receipt/typing and self messages are excluded.
+Set `serviceUrl` to the daemon/proxy’s base URL and `account` to its registered account number. Relanox connects automatically when started. For a daemon on the same machine, use an HTTP loopback URL and add `allowInsecureLocalhost:true`; remove `authorization` if that local daemon does not require it.
 
-The SSE ID is saved after durable ingest and supplied as `Last-Event-ID` on reconnect. signal-cli's event buffer is bounded and in memory; restart or a long outage can lose upstream history. Unknown cursor IDs replay only what the daemon still retains. Storage deduplicates stable envelope identities; this is not an unlimited durable upstream queue. Streams reconnect periodically and shutdown cancels active reads.
+## Send your first message
 
-Delayed send uses `POST /api/v1/rpc`, JSON-RPC method `send`, with configured account, message and either a recipient array or group ID. Success requires a matching RPC ID and result timestamp; when recipient results are supplied, every result must be `SUCCESS`. Partial group failures remain unknown for operator recovery because automatically retrying the group can duplicate successful recipients. Timestamp-only responses remain compatible with older daemon versions. Chunks are at most 16,000 UTF-8 bytes. `idempotentSend:false`; ambiguous sends remain unknown. Relanox's database backup does not include signal-cli's external account/session state.
+From an allowed Signal contact, send “Hello” to the dedicated account or a bound group it has joined. Leave both signal-cli and Relanox running so incoming questions can be received.
 
-`timeoutMs` defaults to 10,000, `reconnectMs` to 1,000. Remote URLs require HTTPS and reject embedded credentials, query, fragments and redirects.
+## Images and files
 
-Targets freeze the bridge URL and configured Signal account as well as the recipient/group. Old results reject after those account coordinates change; they are not redirected to another bridge/account.
+Send images, audio, videos or files normally. Ensure signal-cli downloads incoming attachments so Relanox can retrieve them. Generated attachments are sent through the same dedicated Signal account. Respect Signal’s limits and the Relanox media limit.
 
-## Native media
+## Troubleshooting
 
-Attachment metadata comes from the authenticated daemon event. Relanox calls native JSON-RPC `getAttachment` with the configured account, attachment ID and original sender or group ID, validates its `{data}` base64 result and enforces both encoded-response and decoded-byte limits. The daemon must already have downloaded the attachment; missing or oversized data does not advance the SSE cursor. Arbitrary URLs and daemon filesystem paths are never used as relay downloads.
-
-Output uses native `send` attachments as RFC 2397 data URIs with MIME, filename and complete bytes. Images, audio, video and files use the same native attachment contract. Relanox buffers and persists media. Native Signal limits and the daemon's external attachment retention still apply. Local SSE/JSON-RPC/SQLite/MCP tests verify byte relay and group addressing.
-
-Protocol sources: [signal-cli manual](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli.1.adoc#getattachment), [JSON-RPC manual](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli-jsonrpc.5.adoc).
-
-[Media transfer](../media.md)
+If messages are missing, check the daemon’s registered account, event stream and proxy authorization. If attachments fail, verify that signal-cli has downloaded and retained them. After a daemon restart or long disconnection, resend any questions that did not receive answers.

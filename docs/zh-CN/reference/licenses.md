@@ -1,64 +1,21 @@
-# 生产依赖许可证
+# 许可证
 
-生产依赖许可证概览。精确版本由 package manifests 与 lockfile 定义，本页说明声明许可证和随产品提供的 notices。依赖包原有的许可证文件保留在 `node_modules` 中。两个 npm 归档缺失的上游文本单独保存在 [licenses/](https://github.com/relanox/relanox/tree/master/licenses)，并随镜像分发。 开发工具不随运行镜像分发。
+Relanox 使用 [MIT 许可证](https://github.com/relanox/relanox/blob/master/LICENSE)。你可以使用、修改和再分发，包括商业用途；需要保留版权和许可声明。许可证还列出了担保与责任条款。
 
-| 依赖包                                  | 声明许可证 |
-| --------------------------------------- | ---------- |
-| @hono/node-server                       | MIT        |
-| @modelcontextprotocol/core              | Apache-2.0 |
-| @modelcontextprotocol/server            | Apache-2.0 |
-| @opentelemetry/api                      | Apache-2.0 |
-| @opentelemetry/api-logs                 | Apache-2.0 |
-| @opentelemetry/context-async-hooks      | Apache-2.0 |
-| @opentelemetry/core                     | Apache-2.0 |
-| @opentelemetry/exporter-trace-otlp-http | Apache-2.0 |
-| @opentelemetry/otlp-exporter-base       | Apache-2.0 |
-| @opentelemetry/otlp-transformer         | Apache-2.0 |
-| @opentelemetry/resources                | Apache-2.0 |
-| @opentelemetry/sdk-logs                 | Apache-2.0 |
-| @opentelemetry/sdk-metrics              | Apache-2.0 |
-| @opentelemetry/sdk-trace                | Apache-2.0 |
-| @opentelemetry/sdk-trace-base           | Apache-2.0 |
-| @opentelemetry/sdk-trace-node           | Apache-2.0 |
-| @opentelemetry/semantic-conventions     | Apache-2.0 |
-| @pinojs/redact                          | MIT        |
-| @prometheus-io/client                   | Apache-2.0 |
-| @stablelib/base64                       | MIT        |
-| atomic-sleep                            | MIT        |
-| better-sqlite3                          | MIT        |
-| bintrees                                | MIT        |
-| commander                               | MIT        |
-| fast-sha256                             | Unlicense  |
-| hono                                    | MIT        |
-| jose                                    | MIT        |
-| node-addon-api                          | MIT        |
-| on-exit-leak-free                       | MIT        |
-| pg                                      | MIT        |
-| pg-cloudflare                           | MIT        |
-| pg-connection-string                    | MIT        |
-| pg-int8                                 | ISC        |
-| pg-pool                                 | MIT        |
-| pg-protocol                             | MIT        |
-| pg-types                                | MIT        |
-| pgpass                                  | MIT        |
-| pino                                    | MIT        |
-| pino-abstract-transport                 | MIT        |
-| pino-std-serializers                    | MIT        |
-| postgres-array                          | MIT        |
-| postgres-bytea                          | MIT        |
-| postgres-date                           | MIT        |
-| postgres-interval                       | MIT        |
-| process-warning                         | MIT        |
-| quick-format-unescaped                  | MIT        |
-| real-require                            | MIT        |
-| safe-stable-stringify                   | MIT        |
-| sonic-boom                              | MIT        |
-| split2                                  | ISC        |
-| standardwebhooks                        | MIT        |
-| tdigest                                 | MIT        |
-| thread-stream                           | MIT        |
-| ws                                      | MIT        |
-| xtend                                   | MIT        |
-| zod                                     | MIT        |
+## 再分发 Relanox
 
-better-sqlite3 内嵌的 SQLite 为公共领域。pg-types 和 pgpass 在 README 中提供 MIT 文字。Standard Webhooks 发布包省略库许可证文件，由精确 published gitHead 提供 MIT 文字；Prometheus client 发布包省略 upstream NOTICE，同样按精确 gitHead 补齐。参考仓库不安装或包含在镜像中。
+请附上 Relanox 的许可证，以及你随产品分发的依赖的许可声明。仓库中的[补充许可文件](https://github.com/relanox/relanox/tree/master/licenses)随生产依赖提供。各依赖包也在 `node_modules` 中保留自己的许可文件。
+
+包清单和锁文件记录了精确版本。随运行环境提供的依赖声明了以下许可：
+
+| 许可       | 运行依赖示例                                                                          |
+| ---------- | ------------------------------------------------------------------------------------- |
+| MIT        | Hono、Pino、better-sqlite3、PostgreSQL 的 `pg` 客户端、Zod、`ws`、Standard Webhooks。 |
+| Apache-2.0 | Model Context Protocol 包、OpenTelemetry 包、Prometheus 客户端。                      |
+| ISC        | `pg-int8` 和 `split2`。                                                               |
+| Unlicense  | `fast-sha256`。                                                                       |
+| 公有领域   | better-sqlite3 内嵌的 SQLite。                                                        |
+
+`pg-types` 和 `pgpass` 的 MIT 文本包含在各自的 README 文件中。Standard Webhooks 的发布包缺少许可文件，Prometheus 客户端的发布包缺少上游 NOTICE；仓库在 `licenses/` 中提供了对应发布提交的补充文件。开发工具与生产镜像分开。
+
+如果在再分发前修改了生产依赖，请检查已安装包的许可文件，并随依赖变更更新声明。依赖维护步骤见[贡献指南](../development.md)。

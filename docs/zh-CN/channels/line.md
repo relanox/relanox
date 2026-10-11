@@ -1,43 +1,59 @@
-# LINE Messaging API
+# LINE
 
-账号 `config`（[配置说明](../configuration.md)）：
+连接 LINE 官方账号，回答私聊、群组和聊天室消息。
+
+## 准备账号
+
+创建具有 Messaging API Channel 的官方账号，将 Channel Secret 和 Access Token 存入下方环境变量。通过机器人信息或回调的 `destination` 取得机器人用户 ID。将官方账号添加为好友，或邀请到目标群组/聊天室，并检查套餐推送消息额度。
+
+## 添加配置
+
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "botUserId": "U_your_bot_destination",
-  "channelSecret": {
-    "env": "LINE_CHANNEL_SECRET"
-  },
-  "accessToken": {
-    "env": "LINE_ACCESS_TOKEN"
-  }
+  "accounts": [
+    {
+      "id": "line-main",
+      "config": {
+        "botUserId": "U_your_bot_destination",
+        "channelSecret": {
+          "env": "LINE_CHANNEL_SECRET"
+        },
+        "accessToken": {
+          "env": "LINE_ACCESS_TOKEN"
+        }
+      },
+      "channel": "line",
+      "allowedSenders": ["U_example_user"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "line-main",
+      "chatId": "G_example_group",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-创建带 Messaging API 的 Official Account，获取 secret/access token，启用 `https://relay.example/channels/<accountId>/webhook`，可启用重投。Push 要求与用户为好友或加入群/聊天室，并具备权限和配额。`botUserId` 匹配 Webhook `destination`；白名单使用源 `userId`，绑定用户/群/聊天室 `chatId`，无线程地址。
+`allowedSenders` 填事件中的 `source.userId`。私聊 `chatId` 填该用户 ID，群组填 `source.groupId`，聊天室填 `source.roomId`。示例是群组绑定。`botUserId` 必须等于该账号回调的 `destination`。
 
-## 投递与恢复
+## 启用连接
 
-验证原始正文 HMAC-SHA256 `X-Line-Signature` 和 destination，持久接收后 ACK；`webhookEventId` 去重。独立 `/v2/bot/message/push` 每片最多 5,000 UTF-16 单元。发送前持久保存 UUID retry key，重试/恢复复用；409 且含 `X-Line-Accepted-Request-Id` 可确认此前接纳。首次尝试后 24 小时为本地重试期限，超时保留 unknown 需人工处理；接纳不证明收件人送达。429 重试，明确 4xx 拒绝。
+启用 Webhooks，将地址填为 `https://relay.example.com/channels/line-main/webhook`。启动 Relanox 后执行平台回调验证；需要 LINE 重试失败回调时，可启用 webhook redelivery。
 
-## 参数与限制
+## 发送第一条消息
 
-`apiBase` 默认 `https://api.line.me`；`allowLoopback` 默认 false。发送使用 push API，入站消息需要可识别的发送者。
+用允许的用户向官方账号或绑定群组/聊天室发送“你好”。官方账号会将回复发到对应会话。
 
-## 原生媒体
+## 图片和文件
 
-图片、音频、视频、文件通过 `contentApiBase`（默认 `https://api-data.line.me`）认证下载；外部内容提供方的 URL 不携带 LINE 令牌。接收纯媒体及原生文字事件，确认前保存真实字节和音视频时长。
+提问时可发送图片、音频、视频或文件。图片、音频和视频回复需配置 `media.publicBaseUrl`，按[媒体](../media.md)通过 HTTPS 对外提供。使用 10 MB 内的 JPEG/PNG 图片。大于 1 MB（1,000,000 字节）的图片及每个 MP4 视频需提供不超过 1 MB 的 JPEG/PNG 预览图。生成音频使用 MP3/M4A 并带时长。音频/视频可到 200 MB，同时受 Relanox 限制。
 
-原生图片、音频、视频输出需要全局公开媒体发布配置，参见[媒体传输](../media.md)。LINE 通过不含代理凭据的随机公开 URL 获取字节。图片需 JPEG/PNG，最多 10 MB；预览图片最多 1 MB。小图片复用原图 URL，大图片及所有视频必须提供生成 previewUrl 或已有 previewMediaId。视频需 MP4，音频需 MP3/M4A 和正数 `durationMs`；音视频最多 200 MB，仍受中转限制。回复文字另发；push 沿用持久 retry key。
+## 常见问题
 
-Messaging API 的[图片](https://developers.line.biz/en/reference/messaging-api/#image-message)、[音频](https://developers.line.biz/en/reference/messaging-api/#audio-message)和[视频](https://developers.line.biz/en/reference/messaging-api/#video-message)发送对象都要求 HTTPS `originalContentUrl`，图片和视频还要求 `previewImageUrl`。这些对象不提供二进制上传或可复用媒体 ID，因此媒体输出仍需 `media.publicBaseUrl`；文字输出和入站媒体下载不需要该发布配置。[Get content](https://developers.line.biz/en/reference/messaging-api/#get-content) 用于下载收到的消息，[图文菜单图片上传](https://developers.line.biz/en/reference/messaging-api/#upload-rich-menu-image)只为图文菜单设置图片，不能为 push 消息提供媒体。
-
-Messaging API 没有原生普通文件发送对象：可接收文件，拒绝文件输出，不声明该发送能力，也不将媒体替换成 URL 文字。可选 `contentApiBase` 支持管理员指定网关，遵循 `apiBase` 相同传输规则。
-
-官方[消息对象](https://developers.line.biz/en/reference/messaging-api/index.html.md)定义平台限制。本地测试验证签名接收和原生 URL 字节下载，未验证真实账号播放、公开可达性及配额。
-
-## 账号变更
-
-冻结机器人用户和规范化 API 地址，不保存凭据或 reply token。
+回调验证失败时，检查 Channel Secret 和机器人 destination ID。群消息缺失时，启用官方账号群组访问并确认它已加入。文字正常而媒体回复失败时，检查 HTTPS 媒体地址、预览图和时长；所有回复都需检查推送额度。

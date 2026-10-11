@@ -1,40 +1,183 @@
-# Operations
+# Run and maintain Relanox
 
-Relanox is one resident Node 26 process with one authoritative SQLite or PostgreSQL database. Back up the configuration and database before upgrades.
+Keep Relanox running on a server, retain its database across restarts, and put business HTTP behind HTTPS. [Getting started](getting-started.md) covers account setup; this page covers deployment and maintenance.
 
-## Container deployment
+## Start with Docker Compose
 
-The Dockerfile builds the workspace and deploys only CLI production dependencies. It runs as UID 1000, with a writable `/data` volume. Both stages pin the Node 26.11.1 Debian image by digest. SQLite ships its native binary in the installed package. No host `node_modules` or reference repositories enter the build context.
+Install Docker with Compose, clone the repository, and prepare these files from its root:
 
-1. Copy `.env.example` to `.env` and `deploy/empty.example.json` to `deploy/relanox.json`.
-2. Replace the empty account, endpoint and binding arrays with your selected configuration from [CLI examples](configuration.md). The empty configuration only checks installation; it cannot relay messages. Set referenced credentials in `.env`.
-3. Run `docker compose build`, then `docker compose run --rm relanox validate --config /config/relanox.json`.
-4. Run `docker compose up -d`; inspect `docker compose ps` and `docker compose logs --tail 100`.
+```sh
+git clone https://github.com/relanox/relanox.git
+cd relanox
+mkdir -p deploy
+cp examples/relanox.sqlite.json deploy/relanox.json
+```
 
-Compose publishes business HTTP on host `127.0.0.1:8787`. Terminate public HTTPS in your reverse proxy and forward the exact `/channels/<account>/...` and `/agents/<kind>/...` routes documented by the selected plugin. Long-connection plugins need outbound access. Do not add request bodies, Authorization headers or secret query parameters to proxy logs.
+PowerShell uses `New-Item -ItemType Directory -Force deploy` and `Copy-Item examples/relanox.sqlite.json deploy/relanox.json`.
 
-The management listener stays on container `127.0.0.1:8788`; it is not published. The image health check requests `/health/ready`. If you change that port, override the health check as well. `/health/live` reports process acceptance, `/health/ready` also checks storage health and worker freshness; individual channel connection state is reported separately through metrics, and `/metrics` exposes Prometheus metrics when standard observability is enabled. Scrape from the same network namespace, for example a monitoring sidecar sharing the service's network, or through an explicitly authenticated local proxy. Do not expose management endpoints publicly.
+Edit `deploy/relanox.json` using [Configuration](configuration.md). For the supplied Compose file, set:
 
-Startup creates the message schema automatically. Stop the running relay before replacing the binary, take a backup, rebuild, then start and verify readiness. Compose allows 20 seconds for shutdown against the CLI's default 15-second shutdown budget. Increase both together if needed. `docker compose down` preserves the named volume; `down --volumes` deletes it.
+- `server.host`: `0.0.0.0`.
+- `relay.storage.config.filename`: `/data/relanox.sqlite`.
+- `mcp.allowedHosts`: your public hostname, such as `relay.example.com`.
+- Your sender IDs and exact conversation bindings.
 
-## Storage and recovery
+Create a protected `.env` file in the repository root with the variables referenced by your config. For Telegram/Grok:
 
-SQLite uses WAL. For an offline backup, stop Relanox cleanly and copy the entire data directory, including any remaining WAL/SHM files. Do not copy only the main file while writes are active. For PostgreSQL, use the server's consistent backup tooling and preserve the configured schema. Restore into a separate test instance first; never run two restored copies against the same live channel credentials while assessing recovery.
+```dotenv
+TELEGRAM_BOT_TOKEN=REPLACE_WITH_BOT_TOKEN
+TELEGRAM_WEBHOOK_SECRET=REPLACE_WITH_WEBHOOK_SECRET
+GROK_MCP_TOKEN=REPLACE_WITH_MCP_TOKEN
+GROK_ROUTINE_URL=REPLACE_WITH_COMPLETE_ROUTINE_URL
+GROK_ROUTINE_AUTHORIZATION='REPLACE_WITH_COMPLETE_AUTHORIZATION_VALUE'
+```
 
-`status` and `doctor` show operational state without message bodies by default. A known transient delivery failure follows the persisted retry schedule. An ambiguous external send remains `unknown` unless that channel declares sufficient idempotency. Before explicitly requeueing an unknown send, inspect the platform conversation and accept the duplicate-send risk using the CLI's required acknowledgment. Requeueing delivery does not rerun the agent. Request requeue repeats the notification using the frozen message; it does not cancel remote work or revoke reply authority. Accepted and rejected notifications can also be requeued explicitly.
+Replace all placeholders. Follow Compose's quoting syntax for values containing spaces or `$`. Restrict access to the deployment operator; on POSIX systems use `chmod 600 .env`. Keep this file and account configuration out of commits.
 
-Retention removes/redacts eligible terminal data only, including incoming text/context/attachment lists, outbound content/receipts and binary bytes; durable deduplication and routing metadata remain. Due notifications and undelivered messages are preserved. Schedule the explicit `cleanup` command according to your retention policy; retain backups securely because they contain message text, attachments and protocol state. Cleanup invalidates public media URLs for removed assets even before URL expiry, so leave enough time for native fetches and user downloads. See [Media transfer](media.md). Secret environment references are retained in snapshots, so referenced secrets must still be available when old requests resume.
+```sh
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose logs --tail 100 relanox
+```
 
-An endpoint snapshot freezes the configured SecretRef name, not its resolved value. In particular, a Grok Routine URL is itself secret-bearing and is resolved from its environment variable at dispatch. Do not repurpose that variable for a different Routine while requests are pending; use a new environment variable and endpoint configuration for a new destination. Credential rotation under the same reference is deliberate, and resolved credentials are never persisted to freeze them.
+Compose builds a local image, runs the service and restarts it after an unexpected exit. Wait for its health check to become healthy after storage initialization and the first processing batch.
 
-## Monitoring
+Business HTTP maps to host `127.0.0.1:8787`. The JSON mounts read-only at `/config/relanox.json`; a named volume stores data at `/data`. Management listens on `127.0.0.1:8788` inside the container. Run administration there:
 
-Prometheus rule examples are in [deploy/prometheus-alerts.yml](https://github.com/relanox/relanox/blob/master/deploy/prometheus-alerts.yml). Adjust thresholds to the expected notification and delivery latency and configure notification routing in your monitoring stack. Connection status is aggregated per channel plugin across its configured accounts; it is separate from service readiness. Monitor scrape availability (`up`) separately so a stopped process is distinguishable from stale or missing metrics. These examples do not install a monitoring service.
+```sh
+docker compose exec relanox node dist/main.js doctor --config /config/relanox.json --management-url http://127.0.0.1:8788
+docker compose exec relanox node dist/main.js status --config /config/relanox.json --limit 100
+```
 
-Platform account permissions, public DNS/TLS and platform review requirements must be configured for each deployment.
+## Give the service an HTTPS address
 
-## Transport and frozen identities
+Point your public domain at the host and use a reverse proxy with a trusted TLS certificate. Caddy on the same host can use this `Caddyfile`:
 
-Credentials stay in SecretRefs. Redirects are refused. Cleartext transports require the selected plugin's explicit loopback option and a loopback address it permits (some channels also permit localhost; dot/Grok require literal loopback addresses); do not substitute a remote insecure endpoint.
+```caddyfile
+relay.example.com {
+  reverse_proxy 127.0.0.1:8787
+}
+```
 
-A delivery target freezes its channel identity. If the current bot/app/service identity differs, restore the original configuration and credential identity before explicitly recovering the retained delivery. A legacy target missing required frozen identity cannot be repaired by adopting the current identity: inspect the original destination and deliver manually if necessary. Never rewrite durable target identity merely to make a send pass. Unknown effects are never automatically replayed without declared safe idempotency; recovery still requires the current version and acknowledgment.
+Replace the domain, make TCP ports 80/443 reachable for certificate issuance and HTTPS traffic, and configure Caddy as a service using its installation instructions. A proxy in another container needs a Docker network route to Relanox instead of this host-loopback address.
+
+Preserve the public Host header to match `mcp.allowedHosts`. Register channel webhook and Agent MCP URLs under the public address. Forward business HTTP and retain management on loopback. [Media transfer](media.md) describes public attachment URLs when your channel needs them.
+
+## Stop, restart and upgrade
+
+```sh
+docker compose stop relanox
+docker compose start relanox
+docker compose restart relanox
+```
+
+Compose allows 20 seconds to stop; Relanox's default shutdown timeout is 15 seconds. Increase both when you need a longer graceful stop.
+
+Before upgrading, back up the database and configuration. Record the current commit using `git rev-parse HEAD`, then:
+
+```sh
+docker compose stop relanox
+# Take the backup below before changing the checkout.
+git pull --ff-only
+docker compose build
+docker compose up -d
+docker compose exec relanox node dist/main.js doctor --config /config/relanox.json --management-url http://127.0.0.1:8788
+```
+
+Send a short message through each configured channel after upgrading. For a source installation, stop the process, back up, update the checkout, run `pnpm install --frozen-lockfile` and `pnpm build`, then start the CLI with the original working directory and environment.
+
+`docker compose down` retains the data volume. Use `docker compose down --volumes` only when you intend to permanently remove that installation's stored messages and state.
+
+## Back up and restore
+
+For SQLite, stop cleanly and back up the entire `/data` directory, including remaining `-wal` and `-shm` files. These PowerShell commands use the supplied Compose deployment:
+
+```powershell
+docker compose stop relanox
+$backupPath = Join-Path (Get-Location) ('backups/' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+New-Item -ItemType Directory -Force $backupPath | Out-Null
+$containerId = docker compose ps -a -q relanox
+docker cp "${containerId}:/data/." $backupPath
+Copy-Item deploy/relanox.json (Join-Path $backupPath 'relanox.json')
+docker compose start relanox
+```
+
+Restrict access to backups, which contain conversations, attachments and connection state. Keep a separately protected copy of the environment secrets used by the config.
+
+Test restoration in a separate installation first. Keep it stopped while restoring. For the supplied Compose volume, create a stopped container and copy the database files to `/data`:
+
+```powershell
+# Replace with the chosen backup directory.
+$restorePath = 'C:/backups/relanox/20261011-120000'
+docker compose create relanox
+$containerId = docker compose ps -a -q relanox
+Get-ChildItem -LiteralPath $restorePath -Filter 'relanox.sqlite*' | ForEach-Object {
+  docker cp $_.FullName "${containerId}:/data/"
+}
+docker compose run --rm --no-deps --user root --entrypoint sh relanox -c 'chown -R node:node /data'
+```
+
+Use the actual database filename in the filter if you changed it. Restore into an empty data volume so newer database/WAL files cannot mix with the backup. Restore JSON to `deploy/relanox.json` and secrets separately. Run `docker compose run --rm relanox doctor --config /config/relanox.json` for an offline storage check. Stop the original instance using those live credentials before starting the restored one. Verify readiness and a fresh reply before returning to normal operation.
+
+For PostgreSQL, use consistent database tooling:
+
+```sh
+pg_dump --format=custom --file=relanox.dump "$RELANOX_DATABASE_URL"
+pg_restore --dbname="$RESTORE_DATABASE_URL" relanox.dump
+```
+
+These use POSIX variables; PowerShell uses `$env:RELANOX_DATABASE_URL` and `$env:RESTORE_DATABASE_URL`. Restore into an empty separate database, preserve the configured schema, and update the restored instance's connection string. Managed database backup/restore tools are also suitable.
+
+## Find and recover a stalled message
+
+For source installations, use `node apps/cli/dist/main.js`. Inside Docker:
+
+```sh
+docker compose exec relanox node dist/main.js status --config /config/relanox.json --endpoint-id grok-main
+```
+
+| State                           | Check                                                                                    |
+| ------------------------------- | ---------------------------------------------------------------------------------------- |
+| No incoming record              | Webhook/connection, sender allowlist, exact chat and thread binding                      |
+| Incoming `due`                  | Agent credentials, Routine availability or dot subscription; logs show scheduled retries |
+| Incoming `accepted`, no reply   | Agent instructions, MCP connection and remote execution                                  |
+| Incoming or delivery `rejected` | Correct the reported permission/configuration problem before retrying                    |
+| Delivery `pending`              | Platform connection, permissions, retry delay and earlier held replies to the same input |
+| Delivery `sent`                 | The platform accepted the reply; check its original chat/topic                           |
+| `unknown`                       | Check the Agent or platform for a completed action before repeating                      |
+
+Temporary failures retry automatically. To repeat a retained Agent notification, substitute its `requestId` and current `version` from status:
+
+```sh
+docker compose exec relanox node dist/main.js requeue --config /config/relanox.json --kind request --id REQUEST_ID --expected-version 4
+```
+
+To resend a retained reply without asking the Agent to answer again, use its `deliveryId` and current `version`:
+
+```sh
+docker compose exec relanox node dist/main.js requeue --config /config/relanox.json --kind delivery --id DELIVERY_ID --expected-version 7
+```
+
+Use the actual current version. If recovery reports a conflict, read status again before retrying.
+
+For `unknown`, the external action could have completed before its response was lost. Inspect it first. If a repeat is appropriate, add `--acknowledge-unknown`; this can duplicate a reply or repeat Agent work. Restarting retains the record for inspection. Request recovery repeats the original notification; delivery recovery resumes the retained reply.
+
+If you changed bot/app identity, restore its original account settings and credential identity before recovering queued replies. Rotation under the same identity is suitable. Retained messages keep their original destination; use new accounts/Agent connections for new identities.
+
+## Keep only the content you need
+
+Choose a retention interval. To clean eligible completed content older than 30 days in PowerShell:
+
+```powershell
+$before = [DateTimeOffset]::UtcNow.AddDays(-30).ToUnixTimeMilliseconds()
+docker compose exec relanox node dist/main.js cleanup --config /config/relanox.json --before $before --limit 1000
+```
+
+Repeat in subsequent batches as needed. Cleanup retains unfinished work and records preventing duplicates. It removes eligible old text, attachment bytes and related content. Allow time for downloads: cleaned assets' public URLs stop working. Give backups their own retention policy.
+
+## Monitor the installation
+
+Poll local `/health/ready` for readiness and `/health/live` for process health. Docker's built-in check polls readiness; `doctor` also checks environment variables and storage. For centralized monitoring, follow [Logs and service status](reference/observability.md) to collect metrics.
+
+[Prometheus alert examples](https://github.com/relanox/relanox/blob/master/deploy/prometheus-alerts.yml) cover processing and connection health. Install them in your monitoring stack, adjust latency thresholds, and configure alert destinations there. Monitor scrape availability too, so an unreachable process produces an alert.

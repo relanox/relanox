@@ -1,39 +1,57 @@
 # Mattermost
 
-Reception uses native WebSocket posted events; output uses independent REST posts.
+Use a dedicated Mattermost bot in channels and threads on your server.
 
-Account `config` ([configuration](../configuration.md)):
+## Prepare your account
+
+Create a bot account and access token. Record its user ID and save the token as `MATTERMOST_TOKEN`. Add the bot to the intended channels with read/post permissions. For attachments it also needs `upload_file` and `read_channel` permissions.
+
+## Add the configuration
+
+Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
 
 ```json
 {
-  "serverUrl": "https://mattermost.example.com",
-  "botUserId": "dedicated_bot_user_id",
-  "token": {
-    "env": "MATTERMOST_TOKEN"
-  }
+  "accounts": [
+    {
+      "id": "mattermost-main",
+      "config": {
+        "serverUrl": "https://mattermost.example.com",
+        "botUserId": "dedicated_bot_user_id",
+        "token": {
+          "env": "MATTERMOST_TOKEN"
+        }
+      },
+      "channel": "mattermost",
+      "allowedSenders": ["dedicated_sender_id"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "mattermost-main",
+      "chatId": "dedicated_channel_id",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## Setup and delivery
+Use Mattermost user IDs in `allowedSenders` and channel IDs in `chatId`. The bot token can call `GET /api/v4/users/me` for its own ID, `GET /api/v4/users/username/<username>` for a sender ID, and `GET /api/v4/teams/name/<team>/channels/name/<channel>` for a channel ID. A message event also contains `user_id` and `channel_id`. For a specific thread, set `threadId` to the root post ID.
 
-Create a bot account with permission to read and post in the selected channels. Allowlist exact Mattermost user IDs and bind channel IDs; a thread binding uses its root post ID. The WebSocket authenticates through `authentication_challenge` with the token, then decodes the JSON post inside `data.post`. Own posts, messages without text or files, and nonstandard/system post types are excluded. Sender identity is the authenticated event's `user_id`.
+Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
 
-Delayed output calls `POST /api/v4/posts` with the frozen `channel_id`, message and optional `root_id`. It requires a provider post ID before recording success. Chunks are at most 16,000 Unicode code points. HTTP 429 is retryable; explicit provider 4xx is rejected; ambiguous transport/5xx/malformed success is unknown. `idempotentSend:false`: the relay does not promise durable provider-side deduplication.
+## Enable the connection
 
-Disconnects reconnect with fresh authentication. Stable post IDs deduplicate events that are received again, but Mattermost WebSocket history is not replayed by this integration. Messages occurring while disconnected can be missed; no end-to-end platform replay guarantee is claimed.
+Set `serverUrl` to the HTTPS base address of your Mattermost server. Start Relanox; it opens the server’s WebSocket connection automatically. Ensure your reverse proxy passes WebSocket connections and keep the process running.
 
-`timeoutMs` defaults to 10,000 and `reconnectMs` to 1,000. HTTPS/WSS is required. `allowInsecureLocalhost:true` permits explicit loopback HTTP/WS; embedded URL credentials, query, fragments and HTTP redirects reject. Signal-driven stop closes the active connection and bounded reconnect work.
+## Send your first message
 
-Targets freeze the server URL and configured bot user ID. Reconfiguring either causes old results to reject instead of silently posting into a different server/account.
+Send “Hello” from an allowed user in the bound channel. For a thread binding, reply under the root post. The bot posts the answer to the same channel/thread.
 
-## Native media
+## Images and files
 
-Native posted `file_ids` are resolved through `GET /api/v4/files/<id>/info` and downloaded through `GET /api/v4/files/<id>` with the configured token. MIME metadata classifies images, audio, video and other files. Requests stay on the configured server, reject redirects and enforce the core byte limit; no message-provided URL is fetched.
+Attach images, audio, videos or files as usual. Relanox sends generated files back as native post attachments, and Mattermost creates available previews. Respect the server’s upload-size setting and the Relanox media limit.
 
-Output uploads binary multipart `files` with `channel_id` to `POST /api/v4/files`, then creates the frozen thread post with `file_ids`. Server MIME processing generates native previews. File order is preserved by core. The bot needs upload_file and read_channel permissions, and server file-size limits still apply. Buffering and durable storage are supported. Local WebSocket/HTTP/SQLite/MCP tests verify binary relay and thread metadata.
+## Troubleshooting
 
-Protocol source: [Mattermost file API](https://github.com/mattermost/mattermost/blob/master/api/v4/source/files.yaml).
-
-Media uploads finish before the recipient message is submitted. Upload transport errors, invalid upload responses and server failures are retryable; explicit client rejection remains rejected and rate limits honor retry delay. The subsequent message send retains its normal ambiguity handling.
-
-[Media transfer](../media.md)
+For connection failures, verify the HTTPS server address, token and proxy WebSocket settings. For missing posts, check channel membership and IDs. If a message was sent while Relanox was disconnected, send the question again after reconnecting. For upload failures, check bot permissions and server file-size settings.
