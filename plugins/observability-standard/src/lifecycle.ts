@@ -1,4 +1,4 @@
-export async function bounded(
+export async function runWithLifecycleDeadline(
   signal: AbortSignal,
   timeoutMs: number,
   dropped: () => void,

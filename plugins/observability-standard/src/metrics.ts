@@ -3,10 +3,12 @@ import type { MetricLabels, Observability } from "@relanox/sdk";
 import type { StandardConfig } from "./config.js";
 import { labelNames, metricDefinitions, safeLabels } from "./fields.js";
 
-export function createMetrics(
-  config: StandardConfig,
-  isolate: (operation: () => void, signal: string) => void,
-) {
+export interface MetricsRuntime extends Pick<Observability, "count" | "record"> {
+  readonly registry: Registry;
+  readonly dropped: Counter<string>;
+  metrics(this: void, request: Request): Promise<Response>;
+}
+export function createMetrics(config: StandardConfig): MetricsRuntime {
   const registry = new Registry();
   const dropped = new Counter({
     name: "relanox_telemetry_dropped_total",
@@ -79,34 +81,30 @@ export function createMetrics(
   };
   const observe: Pick<Observability, "count" | "record"> = {
     count(name, labels, value = 1) {
-      isolate(() => {
-        if (!config.metrics || !Number.isFinite(value) || value < 0) {
-          return;
-        }
-        if (!counters.has(name)) {
-          return;
-        }
-        const safe = labelsFor(name, labels);
-        if (safe) {
-          counters.get(name)?.inc(safe, value);
-        }
-      }, "metrics");
+      if (!config.metrics || !Number.isFinite(value) || value < 0) {
+        return;
+      }
+      if (!counters.has(name)) {
+        return;
+      }
+      const safe = labelsFor(name, labels);
+      if (safe) {
+        counters.get(name)?.inc(safe, value);
+      }
     },
     record(name, value, labels) {
-      isolate(() => {
-        if (!config.metrics || !Number.isFinite(value) || value < 0) {
-          return;
-        }
-        if (!histograms.has(name) && !gauges.has(name)) {
-          return;
-        }
-        const safe = labelsFor(name, labels);
-        if (!safe) {
-          return;
-        }
-        histograms.get(name)?.observe(safe, value);
-        gauges.get(name)?.set(safe, value);
-      }, "metrics");
+      if (!config.metrics || !Number.isFinite(value) || value < 0) {
+        return;
+      }
+      if (!histograms.has(name) && !gauges.has(name)) {
+        return;
+      }
+      const safe = labelsFor(name, labels);
+      if (!safe) {
+        return;
+      }
+      histograms.get(name)?.observe(safe, value);
+      gauges.get(name)?.set(safe, value);
     },
   };
   return { ...observe, metrics, registry, dropped };

@@ -5,7 +5,7 @@ import type { StandardConfig } from "./config.js";
 import { createLogs } from "./logs.js";
 import { createMetrics } from "./metrics.js";
 import { createTracing } from "./tracing.js";
-import { bounded } from "./lifecycle.js";
+import { runWithLifecycleDeadline } from "./lifecycle.js";
 
 export { validateStandardConfig } from "./config.js";
 export type { StandardConfig } from "./config.js";
@@ -23,6 +23,8 @@ export function createStandardObservability(
     async setup(input): Promise<ObservabilityRuntime> {
       const config = validateStandardConfig(input);
       let closed = false;
+      const telemetry = createMetrics(config);
+      const { registry, dropped, metrics } = telemetry;
       const isolate = (operation: () => void, signal: string): void => {
         if (closed) {
           return;
@@ -30,11 +32,9 @@ export function createStandardObservability(
         try {
           operation();
         } catch {
-          telemetry.dropped.inc({ signal });
+          dropped.inc({ signal });
         }
       };
-      const telemetry = createMetrics(config, isolate);
-      const { registry, dropped, metrics } = telemetry;
       const { writer, log } = createLogs(config, options.logDestination ?? process.stdout, () => {
         dropped.inc({ signal: "logs" });
       });
@@ -52,8 +52,16 @@ export function createStandardObservability(
             log(level, event, fields);
           }, "logs");
         },
-        count: telemetry.count,
-        record: telemetry.record,
+        count(name, labels, value) {
+          isolate(() => {
+            telemetry.count(name, labels, value);
+          }, "metrics");
+        },
+        record(name, value, labels) {
+          isolate(() => {
+            telemetry.record(name, value, labels);
+          }, "metrics");
+        },
         span,
       };
       let shutdown: Promise<void> | undefined;
@@ -64,7 +72,7 @@ export function createStandardObservability(
           if (closed) {
             return;
           }
-          await bounded(
+          await runWithLifecycleDeadline(
             signal,
             config.lifecycleTimeoutMs,
             () => {
@@ -82,7 +90,7 @@ export function createStandardObservability(
             const stopped = provider?.shutdown().catch(() => {
               dropped.inc({ signal: "traces" });
             });
-            await bounded(
+            await runWithLifecycleDeadline(
               signal,
               config.lifecycleTimeoutMs,
               () => {

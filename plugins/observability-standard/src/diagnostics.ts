@@ -1,5 +1,5 @@
 // Exact constants emitted by native channels. Never infer categories from arbitrary error text.
-export const nativeEvents = new Map([
+export const nativeEvents: ReadonlyMap<string, string> = new Map([
   ["channel_policy_rejection", "inbound.rejected"],
   ["channel_input_discarded", "inbound.rejected"],
   ["channel_unsupported_input", "inbound.rejected"],
@@ -47,7 +47,7 @@ const nativeErrors = new Map([
   ["gateway_lifecycle_error", "unknown"],
 ]);
 
-export function nativeField(key: string, value: unknown): unknown {
+export function normalizeNativeDiagnosticField(key: string, value: unknown): unknown {
   if (typeof value !== "string") {
     return value;
   }
