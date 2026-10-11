@@ -90,6 +90,23 @@ function resourceUri(result: unknown): string {
 }
 
 describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
+  it('advertises generated file parameters only on dot', async () => {
+    const fx = await setup(agent)
+    const client = await fx.client()
+
+    const tool = (await client.listTools()).tools.find(
+      (entry) => entry.name === 'relanox_send_message'
+    )
+
+    if (agent === 'dot') {
+      expect(tool).toMatchObject({ _meta: { 'openai/fileParams': ['files'] } })
+      expect(tool?.inputSchema.properties).toHaveProperty('files')
+    } else {
+      expect(tool).not.toHaveProperty(['_meta', 'openai/fileParams'])
+      expect(tool?.inputSchema.properties).not.toHaveProperty('files')
+    }
+  })
+
   it('reads received media without a claim, preserves binary bytes across restart and sends ordered media', async () => {
     const fx = await setup(agent)
     const image = Buffer.from('image bytes')
