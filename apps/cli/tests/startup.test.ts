@@ -174,7 +174,23 @@ test("returns from startup before a valid initial backlog receipt and gates read
 
 test("shutdown waits for the asynchronously launched first batch to settle in real storage", async () => {
   const value = await recoveredNotification();
-  const starting = startRuntime(value.config);
+  const second = { ...endpoint("push"), id: "second" };
+  await value.database.acceptInbound({
+    requestId: "next-process-request",
+    source: { channel: "telegram", accountId: "bot", eventId: "second-event" },
+    senderId: "user",
+    text: "next process backlog",
+    target: { channel: "telegram", accountId: "bot", chatId: "chat", data: null },
+    context: null,
+    receivedAt: 2,
+    acceptedAt: 2,
+    endpoint: second,
+  });
+  const config = {
+    ...value.config,
+    relay: { ...value.config.relay, endpoints: [...value.config.relay.endpoints, second] },
+  };
+  const starting = startRuntime(config);
   let runtime: Awaited<ReturnType<typeof startRuntime>> | null = null;
   void starting.catch(() => {});
   try {
@@ -197,6 +213,16 @@ test("shutdown waits for the asynchronously launched first batch to settle in re
       attempts: 1,
     });
     expect(value.remote.requests).toHaveLength(1);
+    expect((await value.database.getInbound("next-process-request"))?.dispatch).toEqual({
+      status: "due",
+      attempts: 0,
+      dueAt: 2,
+    });
+    runtime = await startRuntime(config);
+    await expect
+      .poll(async () => (await value.database.getInbound("next-process-request"))?.dispatch.status)
+      .toBe("accepted");
+    expect(value.remote.requests).toHaveLength(2);
   } finally {
     value.remote.release();
     runtime ??= await starting.catch(() => null);
