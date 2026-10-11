@@ -1,7 +1,7 @@
-import { z } from "zod";
-import { platformIdSchema } from "./config.js";
+import { z } from 'zod'
+import { platformIdSchema } from './config.js'
 
-const identitySchema = z.object({ id: platformIdSchema });
+const identitySchema = z.object({ id: platformIdSchema })
 
 export const activitySchema = z.object({
   type: z.string(),
@@ -17,8 +17,8 @@ export const activitySchema = z.object({
         contentType: z.string(),
         contentUrl: z.url().optional(),
         name: z.string().optional(),
-        content: z.object({ downloadUrl: z.url().optional() }).optional(),
-      }),
+        content: z.object({ downloadUrl: z.url().optional() }).optional()
+      })
     )
     .optional(),
   from: identitySchema,
@@ -26,11 +26,11 @@ export const activitySchema = z.object({
   conversation: z.object({
     id: platformIdSchema,
     tenantId: platformIdSchema.optional(),
-    conversationType: z.string().optional(),
+    conversationType: z.string().optional()
   }),
   channelData: z.object({ tenant: z.object({ id: platformIdSchema }) }),
-  replyToId: platformIdSchema.optional(),
-});
+  replyToId: platformIdSchema.optional()
+})
 
 export const targetSchema = z.strictObject({
   appId: platformIdSchema,
@@ -40,18 +40,21 @@ export const targetSchema = z.strictObject({
   botId: platformIdSchema,
   userId: platformIdSchema,
   replyToId: platformIdSchema.optional(),
-  personal: z.boolean().optional(),
-});
+  personal: z.boolean().optional()
+})
 
 export const keysSchema = z.object({
   keys: z.array(
-    z.object({ kid: platformIdSchema.optional(), endorsements: z.array(z.string()).optional() }),
-  ),
-});
+    z.object({
+      kid: platformIdSchema.optional(),
+      endorsements: z.array(z.string()).optional()
+    })
+  )
+})
 
-export const receiptSchema = z.object({ id: platformIdSchema });
+export const receiptSchema = z.object({ id: platformIdSchema })
 
 export const oauthTokenResponseSchema = z.object({
   access_token: z.string().min(1),
-  token_type: z.string().optional(),
-});
+  token_type: z.string().optional()
+})

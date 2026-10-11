@@ -1,36 +1,41 @@
-import type { OutboundRecord, ChannelPlugin, Storage, SendResult } from "@relanox/sdk";
-import { readPreview } from "../hosts/media.js";
-import { verifiedMedia } from "../media.js";
+import type {
+  OutboundRecord,
+  ChannelPlugin,
+  Storage,
+  SendResult
+} from '@relanox/sdk'
+import { readPreview } from '../hosts/media.js'
+import { verifiedMedia } from '../media.js'
 
 export async function sendChunk(
   storage: Storage,
   channel: ChannelPlugin<unknown> | undefined,
   record: OutboundRecord,
   maximum: number,
-  signal: AbortSignal,
+  signal: AbortSignal
 ): Promise<SendResult> {
-  const chunk = record.chunks[record.currentChunk];
+  const chunk = record.chunks[record.currentChunk]
   if (!chunk) {
-    return { status: "rejected", errorCode: "invalid_chunk_index" };
+    return { status: 'rejected', errorCode: 'invalid_chunk_index' }
   }
   if (!channel) {
-    return { status: "rejected", errorCode: "plugin_missing" };
+    return { status: 'rejected', errorCode: 'plugin_missing' }
   }
-  let media;
-  let preview;
+  let media
+  let preview
   if (chunk.media) {
     if (!channel.capabilities.media?.send.includes(chunk.media.kind)) {
-      return { status: "rejected", errorCode: "media_not_supported" };
+      return { status: 'rejected', errorCode: 'media_not_supported' }
     }
-    const stored = await storage.media?.get(record.requestId, chunk.media.id);
+    const stored = await storage.media?.get(record.requestId, chunk.media.id)
     if (!stored) {
-      return { status: "rejected", errorCode: "media_not_found" };
+      return { status: 'rejected', errorCode: 'media_not_found' }
     }
     try {
-      media = verifiedMedia(stored, chunk.media, maximum);
-      preview = await readPreview(storage, record.requestId, media, maximum);
+      media = verifiedMedia(stored, chunk.media, maximum)
+      preview = await readPreview(storage, record.requestId, media, maximum)
     } catch {
-      return { status: "rejected", errorCode: "media_integrity_error" };
+      return { status: 'rejected', errorCode: 'media_integrity_error' }
     }
   }
   return channel.send({
@@ -41,6 +46,6 @@ export async function sendChunk(
     chunkIndex: record.currentChunk,
     ...(media ? { media } : {}),
     ...(preview ? { preview } : {}),
-    signal,
-  });
+    signal
+  })
 }

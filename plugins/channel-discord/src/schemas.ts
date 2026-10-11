@@ -1,14 +1,17 @@
-import { z } from "zod";
-import { platformIdSchema } from "./config.js";
+import { z } from 'zod'
+import { platformIdSchema } from './config.js'
 
-export const targetSchema = z.object({ botId: platformIdSchema, apiBaseUrl: z.string() });
+export const targetSchema = z.object({
+  botId: platformIdSchema,
+  apiBaseUrl: z.string()
+})
 
 export const packetSchema = z.looseObject({
   op: z.number().int(),
   d: z.unknown().optional(),
   s: z.number().int().nullable().optional(),
-  t: z.string().nullable().optional(),
-});
+  t: z.string().nullable().optional()
+})
 
 export const sessionSchema = z.object({
   session_id: platformIdSchema,
@@ -16,14 +19,14 @@ export const sessionSchema = z.object({
   seq: z.number().int(),
   botId: platformIdSchema,
   apiBaseUrl: z.string(),
-  gatewayUrl: z.string(),
-});
+  gatewayUrl: z.string()
+})
 
 export const readySchema = z.looseObject({
   session_id: platformIdSchema,
   resume_gateway_url: z.string(),
-  user: z.looseObject({ id: platformIdSchema }),
-});
+  user: z.looseObject({ id: platformIdSchema })
+})
 
 export const messageSchema = z.looseObject({
   id: platformIdSchema,
@@ -37,26 +40,28 @@ export const messageSchema = z.looseObject({
         filename: z.string().min(1),
         size: z.number().int().nonnegative(),
         url: z.url(),
-        content_type: z.string().optional(),
-      }),
+        content_type: z.string().optional()
+      })
     )
     .max(10)
     .default([]),
   author: z.looseObject({ id: platformIdSchema, bot: z.boolean().optional() }),
   webhook_id: platformIdSchema.optional(),
-  type: z.number().int(),
-});
+  type: z.number().int()
+})
 
-export const rateLimitResponseSchema = z.looseObject({ retry_after: z.number().nonnegative() });
+export const rateLimitResponseSchema = z.looseObject({
+  retry_after: z.number().nonnegative()
+})
 
-export const sendResponseSchema = z.looseObject({ id: platformIdSchema });
+export const sendResponseSchema = z.looseObject({ id: platformIdSchema })
 
 export const channelInfoSchema = z.looseObject({
   id: platformIdSchema,
   type: z.number().int(),
-  parent_id: platformIdSchema.nullable().optional(),
-});
+  parent_id: platformIdSchema.nullable().optional()
+})
 
 export const helloEventSchema = z.object({
-  heartbeat_interval: z.number().int().min(10).max(300_000),
-});
+  heartbeat_interval: z.number().int().min(10).max(300_000)
+})

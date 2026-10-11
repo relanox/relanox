@@ -1,18 +1,19 @@
-import type { Storage } from "@relanox/sdk";
-import type { DatabaseContext } from "./database.js";
+import type { Storage } from '@relanox/sdk'
+import type { DatabaseContext } from './database.js'
 
 export function createLifecycle(
-  context: Pick<DatabaseContext, "config" | "pool" | "transaction">,
-): Pick<Storage, "initialize" | "health" | "close"> {
-  const { config, pool, transaction } = context;
+  context: Pick<DatabaseContext, 'config' | 'pool' | 'transaction'>
+): Pick<Storage, 'initialize' | 'health' | 'close'> {
+  const { config, pool, transaction } = context
   return {
     async initialize() {
       await transaction(async (client) => {
         // Serialize concurrent startup; schema is a validated PostgreSQL identifier.
-        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
-          `relanox:initialize:${config.schema}`,
-        ]);
-        await client.query(`CREATE SCHEMA IF NOT EXISTS "${config.schema}"`);
+        await client.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+          [`relanox:initialize:${config.schema}`]
+        )
+        await client.query(`CREATE SCHEMA IF NOT EXISTS "${config.schema}"`)
         await client.query(`
           CREATE TABLE IF NOT EXISTS inbound(
             id TEXT COLLATE "C" PRIMARY KEY, channel TEXT NOT NULL, account TEXT NOT NULL,event TEXT NOT NULL,
@@ -33,22 +34,24 @@ export function createLifecycle(
           CREATE TABLE IF NOT EXISTS plugin_state(
             plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT COLLATE "C" NOT NULL,version INTEGER NOT NULL,
             expires_at BIGINT,record JSONB NOT NULL,PRIMARY KEY(plugin,owner,key));
-        `);
-      });
+        `)
+      })
     },
     async health() {
       try {
-        await pool.query("SELECT id,record,final_digest FROM inbound LIMIT 0");
-        await pool.query("SELECT id,record FROM outbound LIMIT 0");
-        await pool.query("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0");
-        await pool.query("SELECT id,reference,data FROM media LIMIT 0");
-        return { ok: true };
+        await pool.query('SELECT id,record,final_digest FROM inbound LIMIT 0')
+        await pool.query('SELECT id,record FROM outbound LIMIT 0')
+        await pool.query(
+          'SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0'
+        )
+        await pool.query('SELECT id,reference,data FROM media LIMIT 0')
+        return { ok: true }
       } catch {
-        return { ok: false, errorCode: "storage_unavailable" };
+        return { ok: false, errorCode: 'storage_unavailable' }
       }
     },
     async close() {
-      await pool.end();
-    },
-  };
+      await pool.end()
+    }
+  }
 }

@@ -1,12 +1,12 @@
-import { z } from "zod";
-import { platformIdSchema } from "./config.js";
+import { z } from 'zod'
+import { platformIdSchema } from './config.js'
 
 export const targetSchema = z.object({
   teamId: platformIdSchema,
   appId: platformIdSchema,
   botId: platformIdSchema,
-  apiBaseUrl: z.string(),
-});
+  apiBaseUrl: z.string()
+})
 
 export const fileSchema = z.looseObject({
   id: platformIdSchema,
@@ -14,8 +14,8 @@ export const fileSchema = z.looseObject({
   mimetype: z.string().optional(),
   size: z.number().int().nonnegative().optional(),
   url_private: z.url().optional(),
-  url_private_download: z.url().optional(),
-});
+  url_private_download: z.url().optional()
+})
 
 export const envelopeSchema = z.looseObject({
   type: z.string(),
@@ -23,8 +23,8 @@ export const envelopeSchema = z.looseObject({
   api_app_id: platformIdSchema.optional(),
   event_id: platformIdSchema.optional(),
   event: z.unknown().optional(),
-  challenge: platformIdSchema.optional(),
-});
+  challenge: platformIdSchema.optional()
+})
 
 export const messageSchema = z.looseObject({
   type: z.string(),
@@ -41,22 +41,22 @@ export const messageSchema = z.looseObject({
     .regex(/^\d+\.\d+$/u)
     .optional(),
   text: z.string().max(1_048_576).optional(),
-  files: z.array(fileSchema).max(10).default([]),
-});
+  files: z.array(fileSchema).max(10).default([])
+})
 
 export const socketOpenResponseSchema = z.looseObject({
   ok: z.boolean(),
-  url: z.string().optional(),
-});
+  url: z.string().optional()
+})
 
 export const socketFrameSchema = z.looseObject({
   type: z.string(),
   envelope_id: platformIdSchema.optional(),
-  payload: z.unknown().optional(),
-});
+  payload: z.unknown().optional()
+})
 
 export const sendResponseSchema = z.looseObject({
   ok: z.boolean(),
   ts: platformIdSchema.optional(),
-  error: z.string().optional(),
-});
+  error: z.string().optional()
+})

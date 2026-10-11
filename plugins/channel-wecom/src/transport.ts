@@ -1,54 +1,59 @@
-import type { ChannelHost, IngestInput } from "@relanox/sdk";
-import { WebSocket } from "ws";
-import type { RawData } from "ws";
-import { z } from "zod";
+import type { ChannelHost, IngestInput } from '@relanox/sdk'
+import { WebSocket } from 'ws'
+import type { RawData } from 'ws'
+import { z } from 'zod'
 
 export function wireText(data: RawData): string {
   if (Buffer.isBuffer(data)) {
-    return data.toString("utf8");
+    return data.toString('utf8')
   }
   if (Array.isArray(data)) {
-    return Buffer.concat(data).toString("utf8");
+    return Buffer.concat(data).toString('utf8')
   }
-  return Buffer.from(data).toString("utf8");
+  return Buffer.from(data).toString('utf8')
 }
 
 export function secret(ref: { env: string }): string {
-  const value = process.env[ref.env];
+  const value = process.env[ref.env]
   if (!value) {
-    throw new Error("missing_secret");
+    throw new Error('missing_secret')
   }
-  return value;
+  return value
 }
 
 /** Policy rejections discard input; storage/unknown failures must remain unacknowledged. */
-export async function ingestText(host: ChannelHost, input: IngestInput): Promise<void> {
+export async function ingestText(
+  host: ChannelHost,
+  input: IngestInput
+): Promise<void> {
   try {
-    await host.ingest(input);
+    await host.ingest(input)
   } catch (error) {
     const rejection = z
-      .object({ code: z.enum(["sender_not_allowed", "unbound_conversation"]) })
-      .safeParse(error);
+      .object({ code: z.enum(['sender_not_allowed', 'unbound_conversation']) })
+      .safeParse(error)
 
     if (!rejection.success) {
-      throw error;
+      throw error
     }
-    host.observe.log("info", "channel_input_discarded", { errorCode: rejection.data.code });
+    host.observe.log('info', 'channel_input_discarded', {
+      errorCode: rejection.data.code
+    })
   }
 }
 
 /** Each account owns exactly one socket. Initialization is short; recovery uses bounded delays. */
 export class JsonSocketConnection {
-  socket: WebSocket | undefined;
-  signal: AbortSignal = AbortSignal.abort();
-  private abortListener: (() => void) | undefined;
-  private controller: AbortController | undefined;
-  private reconnect: ReturnType<typeof setTimeout> | undefined;
-  private heartbeat: ReturnType<typeof setInterval> | undefined;
-  private authenticationDeadline: ReturnType<typeof setTimeout> | undefined;
-  private attempts = 0;
-  private queued = 0;
-  private active = false;
+  socket: WebSocket | undefined
+  signal: AbortSignal = AbortSignal.abort()
+  private abortListener: (() => void) | undefined
+  private controller: AbortController | undefined
+  private reconnect: ReturnType<typeof setTimeout> | undefined
+  private heartbeat: ReturnType<typeof setInterval> | undefined
+  private authenticationDeadline: ReturnType<typeof setTimeout> | undefined
+  private attempts = 0
+  private queued = 0
+  private active = false
 
   constructor(
     readonly host: ChannelHost,
@@ -56,187 +61,187 @@ export class JsonSocketConnection {
     readonly onOpen: () => Promise<void>,
     readonly onFrame: (frame: unknown) => Promise<void>,
     readonly onClose: (code?: number) => void,
-    readonly maxAttempts: number,
+    readonly maxAttempts: number
   ) {}
 
   async start(signal: AbortSignal): Promise<void> {
     if (this.active) {
-      throw new Error("already_started");
+      throw new Error('already_started')
     }
-    signal.throwIfAborted();
-    this.active = true;
-    this.attempts = 0;
-    this.controller = new AbortController();
-    this.signal = AbortSignal.any([signal, this.controller.signal]);
+    signal.throwIfAborted()
+    this.active = true
+    this.attempts = 0
+    this.controller = new AbortController()
+    this.signal = AbortSignal.any([signal, this.controller.signal])
     this.abortListener = () => {
-      void this.stop();
-    };
-    this.signal.addEventListener("abort", this.abortListener, { once: true });
+      void this.stop()
+    }
+    this.signal.addEventListener('abort', this.abortListener, { once: true })
     try {
-      await this.connect();
+      await this.connect()
     } catch {
-      this.host.connection("degraded", "connection_failed");
-      this.schedule();
+      this.host.connection('degraded', 'connection_failed')
+      this.schedule()
     }
   }
 
   private schedule(): void {
     if (!this.active || this.signal.aborted || this.reconnect) {
-      return;
+      return
     }
     if (this.attempts >= this.maxAttempts) {
-      this.host.connection("degraded", "reconnect_exhausted");
-      return;
+      this.host.connection('degraded', 'reconnect_exhausted')
+      return
     }
-    const delay = Math.min(1000 * 2 ** this.attempts++, 30_000);
+    const delay = Math.min(1000 * 2 ** this.attempts++, 30_000)
     this.reconnect = setTimeout(() => {
-      this.reconnect = undefined;
+      this.reconnect = undefined
       void this.connect().catch(() => {
-        this.host.connection("degraded", "connection_failed");
-        this.schedule();
-      });
-    }, delay);
+        this.host.connection('degraded', 'connection_failed')
+        this.schedule()
+      })
+    }, delay)
   }
 
   private async connect(): Promise<void> {
-    const address = await this.url(this.signal);
-    this.signal.throwIfAborted();
+    const address = await this.url(this.signal)
+    this.signal.throwIfAborted()
 
     const socket = new WebSocket(address, {
       handshakeTimeout: 10_000,
-      maxPayload: 1_048_576,
-    });
+      maxPayload: 1_048_576
+    })
 
-    this.socket = socket;
-    socket.on("error", () => {
-      this.host.connection("degraded", "socket_error");
-    });
-    socket.on("message", (bytes) => {
+    this.socket = socket
+    socket.on('error', () => {
+      this.host.connection('degraded', 'socket_error')
+    })
+    socket.on('message', (bytes) => {
       if (socket !== this.socket || !this.active) {
-        return;
+        return
       }
       if (this.queued >= 100) {
-        socket.terminate();
-        return;
+        socket.terminate()
+        return
       }
-      let frame: unknown;
+      let frame: unknown
       try {
-        frame = JSON.parse(wireText(bytes));
+        frame = JSON.parse(wireText(bytes))
       } catch {
-        this.host.observe.log("warn", "channel_invalid_frame");
-        return;
+        this.host.observe.log('warn', 'channel_invalid_frame')
+        return
       }
       // Protocol ACK/heartbeat frames must not wait behind durable message writes.
-      this.queued++;
+      this.queued++
       void this.onFrame(frame)
         .catch(() => {
-          this.host.connection("degraded", "frame_processing_failed");
-          socket.terminate();
+          this.host.connection('degraded', 'frame_processing_failed')
+          socket.terminate()
         })
         .finally(() => {
-          this.queued--;
-        });
-    });
-    socket.on("close", (code) => {
+          this.queued--
+        })
+    })
+    socket.on('close', (code) => {
       if (socket !== this.socket) {
-        return;
+        return
       }
-      this.socket = undefined;
-      this.clearHeartbeat();
-      this.onClose(code);
-      this.host.connection("disconnected");
-      this.schedule();
-    });
+      this.socket = undefined
+      this.clearHeartbeat()
+      this.onClose(code)
+      this.host.connection('disconnected')
+      this.schedule()
+    })
     await new Promise<void>((resolve, reject) => {
       const abort = () => {
-        socket.terminate();
-        reject(new Error("aborted"));
-      };
+        socket.terminate()
+        reject(new Error('aborted'))
+      }
 
-      this.signal.addEventListener("abort", abort, { once: true });
+      this.signal.addEventListener('abort', abort, { once: true })
 
       const cleanup = () => {
-        this.signal.removeEventListener("abort", abort);
-      };
+        this.signal.removeEventListener('abort', abort)
+      }
 
-      socket.once("open", () => {
-        cleanup();
-        resolve();
-      });
-      socket.once("error", () => {
-        cleanup();
-        reject(new Error("socket_open_failed"));
-      });
-      socket.once("close", () => {
-        cleanup();
-        reject(new Error("socket_closed"));
-      });
-    });
+      socket.once('open', () => {
+        cleanup()
+        resolve()
+      })
+      socket.once('error', () => {
+        cleanup()
+        reject(new Error('socket_open_failed'))
+      })
+      socket.once('close', () => {
+        cleanup()
+        reject(new Error('socket_closed'))
+      })
+    })
     this.authenticationDeadline = setTimeout(() => {
-      this.host.connection("degraded", "authentication_timeout");
-      socket.terminate();
-    }, 10_000);
+      this.host.connection('degraded', 'authentication_timeout')
+      socket.terminate()
+    }, 10_000)
     try {
-      await this.onOpen();
+      await this.onOpen()
     } catch (error) {
-      socket.terminate();
-      throw error;
+      socket.terminate()
+      throw error
     }
   }
 
   ready(): void {
     if (this.authenticationDeadline) {
-      clearTimeout(this.authenticationDeadline);
+      clearTimeout(this.authenticationDeadline)
     }
-    this.authenticationDeadline = undefined;
-    this.attempts = 0;
-    this.host.connection("connected");
+    this.authenticationDeadline = undefined
+    this.attempts = 0
+    this.host.connection('connected')
   }
 
   send(frame: unknown): void {
     if (this.signal.aborted || this.socket?.readyState !== WebSocket.OPEN) {
-      throw new Error("not_connected");
+      throw new Error('not_connected')
     }
-    this.socket.send(JSON.stringify(frame));
+    this.socket.send(JSON.stringify(frame))
   }
 
   setHeartbeat(ms: number, tick: () => void): void {
-    this.clearHeartbeat();
+    this.clearHeartbeat()
     this.heartbeat = setInterval(() => {
       try {
-        tick();
+        tick()
       } catch {
-        this.socket?.terminate();
+        this.socket?.terminate()
       }
-    }, ms);
+    }, ms)
   }
 
   private clearHeartbeat(): void {
     if (this.heartbeat) {
-      clearInterval(this.heartbeat);
+      clearInterval(this.heartbeat)
     }
-    this.heartbeat = undefined;
+    this.heartbeat = undefined
     if (this.authenticationDeadline) {
-      clearTimeout(this.authenticationDeadline);
+      clearTimeout(this.authenticationDeadline)
     }
-    this.authenticationDeadline = undefined;
+    this.authenticationDeadline = undefined
   }
 
   async stop(): Promise<void> {
-    this.active = false;
+    this.active = false
     if (this.abortListener) {
-      this.signal.removeEventListener("abort", this.abortListener);
+      this.signal.removeEventListener('abort', this.abortListener)
     }
-    this.controller?.abort();
+    this.controller?.abort()
     if (this.reconnect) {
-      clearTimeout(this.reconnect);
+      clearTimeout(this.reconnect)
     }
-    this.reconnect = undefined;
-    this.clearHeartbeat();
-    const socket = this.socket;
-    this.socket = undefined;
-    socket?.terminate();
-    this.onClose();
-    this.host.connection("disconnected");
+    this.reconnect = undefined
+    this.clearHeartbeat()
+    const socket = this.socket
+    this.socket = undefined
+    socket?.terminate()
+    this.onClose()
+    this.host.connection('disconnected')
   }
 }

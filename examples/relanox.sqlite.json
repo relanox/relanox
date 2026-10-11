@@ -34,7 +34,10 @@
         "endpointId": "grok-main"
       }
     ],
-    "storage": { "plugin": "sqlite", "config": { "filename": "relanox.sqlite" } },
+    "storage": {
+      "plugin": "sqlite",
+      "config": { "filename": "relanox.sqlite" }
+    },
     "observability": {
       "plugin": "standard",
       "config": { "logs": true, "metrics": true, "processMetrics": true }

@@ -1,14 +1,31 @@
-import { downloadMedia, mediaBlob, mediaKind } from "@relanox/media";
-import type { ChannelHost, MediaUpload, SendInput, StoredMedia } from "@relanox/sdk";
-import { z } from "zod";
-import type { FeishuConfig } from "./config.js";
-import { jsonResponse } from "./transport.js";
+import { downloadMedia, mediaBlob, mediaKind } from '@relanox/media'
+import type {
+  ChannelHost,
+  MediaUpload,
+  SendInput,
+  StoredMedia
+} from '@relanox/sdk'
+import { z } from 'zod'
+import type { FeishuConfig } from './config.js'
+import { jsonResponse } from './transport.js'
 
-import type { InboundContent } from "./inbound-content.js";
+import type { InboundContent } from './inbound-content.js'
 
-export { parseContent } from "./inbound-content.js";
-const nativeType = { image: "image", audio: "audio", video: "media", file: "file" };
-const fileType = { image: "stream", audio: "opus", video: "mp4", file: "stream" };
+export { parseContent } from './inbound-content.js'
+
+const nativeType = {
+  image: 'image',
+  audio: 'audio',
+  video: 'media',
+  file: 'file'
+}
+
+const fileType = {
+  image: 'stream',
+  audio: 'opus',
+  video: 'mp4',
+  file: 'stream'
+}
 
 export async function receiveMedia(
   messageId: string,
@@ -16,41 +33,47 @@ export async function receiveMedia(
   host: ChannelHost,
   config: FeishuConfig,
   base: string,
-  access: string,
+  access: string
 ): Promise<MediaUpload[]> {
   return Promise.all(
     content.resources.map(async (resource) => {
       const downloaded = await downloadMedia(
-        `${base.replace(/\/$/u, "")}/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(resource.key)}?type=${resource.type}`,
+        `${base.replace(/\/$/u, '')}/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(resource.key)}?type=${resource.type}`,
         {
-          maxBytes: Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, 100 * 1024 * 1024),
+          maxBytes: Math.min(
+            host.maxMediaBytes ?? 25 * 1024 * 1024,
+            100 * 1024 * 1024
+          ),
           signal: AbortSignal.timeout(config.timeoutMs),
           trustedOrigins: [new URL(base).origin],
           allowInsecureLocalhost: config.allowInsecureLoopback,
-          headers: { authorization: `Bearer ${access}` },
-        },
-      );
+          headers: { authorization: `Bearer ${access}` }
+        }
+      )
 
       const mimeType =
-        downloaded.mimeType === "application/octet-stream"
+        downloaded.mimeType === 'application/octet-stream'
           ? resource.fallbackMime
-          : downloaded.mimeType;
+          : downloaded.mimeType
 
       return {
         kind: mediaKind(mimeType),
         mimeType,
         fileName: resource.fileName ?? resource.key,
         data: downloaded.data,
-        ...(resource.durationMs ? { durationMs: resource.durationMs } : {}),
-      };
-    }),
-  );
+        ...(resource.durationMs ? { durationMs: resource.durationMs } : {})
+      }
+    })
+  )
 }
 
 const uploadSchema = z.looseObject({
   code: z.literal(0),
-  data: z.looseObject({ image_key: z.string().optional(), file_key: z.string().optional() }),
-});
+  data: z.looseObject({
+    image_key: z.string().optional(),
+    file_key: z.string().optional()
+  })
+})
 
 async function uploadAsset(
   media: StoredMedia,
@@ -58,82 +81,89 @@ async function uploadAsset(
   config: FeishuConfig,
   base: string,
   access: string,
-  signal: AbortSignal,
+  signal: AbortSignal
 ): Promise<string> {
-  const image = media.reference.kind === "image";
+  const image = media.reference.kind === 'image'
   if (
     media.data.byteLength >
-    Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, (image ? 10 : 30) * 1024 * 1024)
+    Math.min(
+      host.maxMediaBytes ?? 25 * 1024 * 1024,
+      (image ? 10 : 30) * 1024 * 1024
+    )
   ) {
-    throw new Error("media_too_large");
+    throw new Error('media_too_large')
   }
-  const body = new FormData();
+  const body = new FormData()
   if (image) {
-    body.set("image_type", "message");
+    body.set('image_type', 'message')
   } else {
-    body.set("file_type", fileType[media.reference.kind]);
-    body.set("file_name", media.reference.fileName);
+    body.set('file_type', fileType[media.reference.kind])
+    body.set('file_name', media.reference.fileName)
     if (media.reference.durationMs) {
-      body.set("duration", String(media.reference.durationMs));
+      body.set('duration', String(media.reference.durationMs))
     }
   }
-  body.set(image ? "image" : "file", mediaBlob(media), media.reference.fileName);
+  body.set(image ? 'image' : 'file', mediaBlob(media), media.reference.fileName)
 
   const response = await fetch(
-    `${base.replace(/\/$/u, "")}/open-apis/im/v1/${image ? "images" : "files"}`,
+    `${base.replace(/\/$/u, '')}/open-apis/im/v1/${image ? 'images' : 'files'}`,
     {
-      method: "POST",
+      method: 'POST',
       headers: { authorization: `Bearer ${access}` },
       body,
       signal: AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]),
-      redirect: "error",
-    },
-  );
+      redirect: 'error'
+    }
+  )
 
-  const uploaded = uploadSchema.parse(await jsonResponse(response));
+  const uploaded = uploadSchema.parse(await jsonResponse(response))
   if (!response.ok) {
-    throw new Error("media_upload_failed");
+    throw new Error('media_upload_failed')
   }
-  const key = image ? uploaded.data.image_key : uploaded.data.file_key;
+  const key = image ? uploaded.data.image_key : uploaded.data.file_key
   if (!key) {
-    throw new Error("missing_uploaded_key");
+    throw new Error('missing_uploaded_key')
   }
-  return key;
+  return key
 }
 
-export function mediaError(input: SendInput, host: ChannelHost): string | undefined {
+export function mediaError(
+  input: SendInput,
+  host: ChannelHost
+): string | undefined {
   if (!input.chunk.media) {
-    return undefined;
+    return undefined
   }
-  const media = input.media;
+  const media = input.media
   if (!media) {
-    return "missing_media";
+    return 'missing_media'
   }
   if (input.chunk.text) {
-    return "media_caption_unsupported";
+    return 'media_caption_unsupported'
   }
   if (
     media.data.byteLength >
     Math.min(
       host.maxMediaBytes ?? 25 * 1024 * 1024,
-      (media.reference.kind === "image" ? 10 : 30) * 1024 * 1024,
+      (media.reference.kind === 'image' ? 10 : 30) * 1024 * 1024
     )
   ) {
-    return "media_too_large";
+    return 'media_too_large'
   }
   if (
-    media.reference.kind === "video" &&
-    (media.reference.mimeType !== "video/mp4" || !media.reference.durationMs)
+    media.reference.kind === 'video' &&
+    (media.reference.mimeType !== 'video/mp4' || !media.reference.durationMs)
   ) {
-    return "video_requires_mp4_duration";
+    return 'video_requires_mp4_duration'
   }
   if (
-    media.reference.kind === "audio" &&
-    (!["audio/ogg", "audio/opus"].includes(media.reference.mimeType) || !media.reference.durationMs)
+    media.reference.kind === 'audio' &&
+    (!['audio/ogg', 'audio/opus'].includes(media.reference.mimeType) ||
+      !media.reference.durationMs)
   ) {
-    return "audio_requires_opus_duration";
+    return 'audio_requires_opus_duration'
   }
-  return undefined;
+  return undefined
 }
 
 export async function messageContent(
@@ -141,22 +171,35 @@ export async function messageContent(
   host: ChannelHost,
   config: FeishuConfig,
   base: string,
-  access: string,
+  access: string
 ): Promise<{ msg_type: string; content: string }> {
   if (!input.chunk.media) {
-    return { msg_type: "text", content: JSON.stringify({ text: input.chunk.text }) };
+    return {
+      msg_type: 'text',
+      content: JSON.stringify({ text: input.chunk.text })
+    }
   }
-  const media = input.media;
+  const media = input.media
   if (!media) {
-    throw new Error("missing_media");
+    throw new Error('missing_media')
   }
-  const key = await uploadAsset(media, host, config, base, access, input.signal);
+  const key = await uploadAsset(media, host, config, base, access, input.signal)
 
   const content: Record<string, string> =
-    media.reference.kind === "image" ? { image_key: key } : { file_key: key };
+    media.reference.kind === 'image' ? { image_key: key } : { file_key: key }
 
-  if (input.preview && media.reference.kind === "video") {
-    content.image_key = await uploadAsset(input.preview, host, config, base, access, input.signal);
+  if (input.preview && media.reference.kind === 'video') {
+    content.image_key = await uploadAsset(
+      input.preview,
+      host,
+      config,
+      base,
+      access,
+      input.signal
+    )
   }
-  return { msg_type: nativeType[media.reference.kind], content: JSON.stringify(content) };
+  return {
+    msg_type: nativeType[media.reference.kind],
+    content: JSON.stringify(content)
+  }
 }

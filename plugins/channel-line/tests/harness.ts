@@ -1,77 +1,100 @@
-import { createServer } from "node:http";
-import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
-import { createCore } from "@relanox/core";
-import type { AgentHost, AgentPlugin, ChannelPlugin, Json, ScopedAgentHost } from "@relanox/sdk";
-import { createSqliteStorage } from "@relanox/storage-sqlite";
+import { createServer } from 'node:http'
+import type {
+  IncomingHttpHeaders,
+  IncomingMessage,
+  ServerResponse
+} from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { createCore } from '@relanox/core'
+import type {
+  AgentHost,
+  AgentPlugin,
+  ChannelPlugin,
+  Json,
+  ScopedAgentHost
+} from '@relanox/sdk'
+import { createSqliteStorage } from '@relanox/storage-sqlite'
 
 export interface Traffic {
-  path: string;
-  body: string;
-  headers: IncomingHttpHeaders;
+  path: string
+  body: string
+  headers: IncomingHttpHeaders
 }
 
 export async function peer() {
-  const traffic: Traffic[] = [];
-  let status = 200;
-  let output: Json = {};
-  let headers: Record<string, string> = {};
-  let jwks: Json = {};
+  const traffic: Traffic[] = []
+  let status = 200
+  let output: Json = {}
+  let headers: Record<string, string> = {}
+  let jwks: Json = {}
 
-  async function receive(incoming: IncomingMessage, response: ServerResponse): Promise<void> {
-    const parts: Buffer[] = [];
+  async function receive(
+    incoming: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> {
+    const parts: Buffer[] = []
     for await (const part of incoming) {
-      parts.push(Buffer.isBuffer(part) ? part : Buffer.from(String(part)));
+      parts.push(Buffer.isBuffer(part) ? part : Buffer.from(String(part)))
     }
-    const path = incoming.url ?? "/";
-    traffic.push({ path, body: Buffer.concat(parts).toString("utf8"), headers: incoming.headers });
-    response.setHeader("content-type", "application/json");
-    if (path === "/keys") {
-      response.end(JSON.stringify(jwks));
-      return;
+    const path = incoming.url ?? '/'
+    traffic.push({
+      path,
+      body: Buffer.concat(parts).toString('utf8'),
+      headers: incoming.headers
+    })
+    response.setHeader('content-type', 'application/json')
+    if (path === '/keys') {
+      response.end(JSON.stringify(jwks))
+      return
     }
-    if (path === "/token") {
-      response.end(JSON.stringify({ access_token: "oauth-token", token_type: "Bearer" }));
-      return;
+    if (path === '/token') {
+      response.end(
+        JSON.stringify({ access_token: 'oauth-token', token_type: 'Bearer' })
+      )
+      return
     }
-    response.writeHead(status, headers);
-    response.end(JSON.stringify(output));
+    response.writeHead(status, headers)
+    response.end(JSON.stringify(output))
   }
 
   const server = createServer((incoming, response) => {
     void receive(incoming, response).catch(() => {
-      response.destroy();
-    });
-  });
+      response.destroy()
+    })
+  })
 
   await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address() as AddressInfo;
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address() as AddressInfo
   return {
     base: `http://127.0.0.1:${address.port}`,
     traffic,
-    respond(code: number, body: Json, responseHeaders: Record<string, string> = {}) {
-      status = code;
-      output = body;
-      headers = responseHeaders;
+    respond(
+      code: number,
+      body: Json,
+      responseHeaders: Record<string, string> = {}
+    ) {
+      status = code
+      output = body
+      headers = responseHeaders
     },
     keys(value: Json) {
-      jwks = value;
+      jwks = value
     },
     async close() {
-      server.closeAllConnections();
+      server.closeAllConnections()
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
-            reject(error);
+            reject(error)
           } else {
-            resolve();
+            resolve()
           }
-        });
-      });
-    },
-  };
+        })
+      })
+    }
+  }
 }
 
 export async function harness(
@@ -80,83 +103,95 @@ export async function harness(
   chat: string,
   sender: string,
   thread?: string,
-  filename = ":memory:",
+  filename = ':memory:'
 ) {
-  const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
-  await storage.initialize();
-  let host: AgentHost | undefined;
-  const dispatches: string[] = [];
+  const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+  await storage.initialize()
+  let host: AgentHost | undefined
+  const dispatches: string[] = []
 
   const agent: AgentPlugin = {
-    id: "agent-dot",
+    id: 'agent-dot',
     sdkMajor: 1,
-    runtime: "node",
-    kind: "agent",
-    agent: "dot",
+    runtime: 'node',
+    kind: 'agent',
+    agent: 'dot',
     validateConfig(value) {
-      return value as Json;
+      return value as Json
     },
     async setup(value) {
-      host = value;
+      host = value
     },
     async dispatch(input) {
-      dispatches.push(input.request.text);
-      return { status: "accepted" };
-    },
-  };
+      dispatches.push(input.request.text)
+      return { status: 'accepted' }
+    }
+  }
 
   const core = await createCore({
     storage,
-    channels: new Map([["business", plugin]]),
-    agents: new Map([["dot", agent]]),
+    channels: new Map([['business', plugin]]),
+    agents: new Map([['dot', agent]]),
     config: {
-      accounts: [{ id: "business", channel: plugin.channel, config, allowedSenders: [sender] }],
-      endpoints: [{ id: "agent", agent: "dot", config: {}, dispatchMode: "push" }],
+      accounts: [
+        {
+          id: 'business',
+          channel: plugin.channel,
+          config,
+          allowedSenders: [sender]
+        }
+      ],
+      endpoints: [
+        { id: 'agent', agent: 'dot', config: {}, dispatchMode: 'push' }
+      ],
       bindings: [
         {
-          accountId: "business",
+          accountId: 'business',
           chatId: chat,
           ...(thread ? { threadId: thread } : {}),
-          endpointId: "agent",
-        },
+          endpointId: 'agent'
+        }
       ],
-      storage: { plugin: "sqlite", config: {} },
-      observability: { plugin: "none", config: {} },
-    },
-  });
+      storage: { plugin: 'sqlite', config: {} },
+      observability: { plugin: 'none', config: {} }
+    }
+  })
 
   function principal(): ScopedAgentHost {
     if (!host) {
-      throw new Error("Agent not installed");
+      throw new Error('Agent not installed')
     }
-    return host.forPrincipal({ subject: "local-agent", endpointIds: ["agent"] });
+    return host.forPrincipal({ subject: 'local-agent', endpointIds: ['agent'] })
   }
 
-  async function complete(text = "answer") {
-    await core.processDue();
-    const scoped = principal();
-    const pending = await scoped.listPending(10);
-    const item = pending[0];
+  async function complete(text = 'answer') {
+    await core.processDue()
+    const scoped = principal()
+    const pending = await scoped.listPending(10)
+    const item = pending[0]
     if (!item) {
-      throw new Error("No pending inbound");
+      throw new Error('No pending inbound')
     }
-    const claim = await scoped.claim(item.requestId, "local-attempt");
-    if (claim.status !== "claimed") {
-      throw new Error("Claim failed");
+    const claim = await scoped.claim(item.requestId, 'local-attempt')
+    if (claim.status !== 'claimed') {
+      throw new Error('Claim failed')
     }
 
     const completion = await scoped.complete({
       requestId: item.requestId,
       claimToken: claim.claimToken,
-      resultId: "local-result",
-      text,
-    });
+      resultId: 'local-result',
+      text
+    })
 
-    if (completion.status !== "completed") {
-      throw new Error("Completion failed");
+    if (completion.status !== 'completed') {
+      throw new Error('Completion failed')
     }
-    await core.processDue();
-    return { request: item, delivery: await storage.getOutbound(completion.deliveryId) };
+    await core.processDue()
+    return {
+      request: item,
+      delivery: await storage.getOutbound(completion.deliveryId)
+    }
   }
 
   return {
@@ -165,7 +200,7 @@ export async function harness(
     dispatches,
     complete,
     async close() {
-      await storage.close();
-    },
-  };
+      await storage.close()
+    }
+  }
 }

@@ -1,80 +1,96 @@
-import { lookup } from "node:dns/promises";
-import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
-import { isIP } from "node:net";
-import type { CallbackConfig } from "./config.js";
+import { lookup } from 'node:dns/promises'
+import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
+import { isIP } from 'node:net'
+import type { CallbackConfig } from './config.js'
 
 export class CallbackError extends Error {
   constructor(
-    readonly reason: "forbidden_destination" | "timeout" | "network_error" | "response_too_large",
+    readonly reason:
+      | 'forbidden_destination'
+      | 'timeout'
+      | 'network_error'
+      | 'response_too_large'
   ) {
-    super(reason);
-    this.name = "CallbackError";
+    super(reason)
+    this.name = 'CallbackError'
   }
 }
 
 export function callbackUrl(value: string, config: CallbackConfig): URL {
-  const url = new URL(value);
-  if (url.username || url.password || url.hash || !config.allowedOrigins.includes(url.origin)) {
-    throw new CallbackError("forbidden_destination");
+  const url = new URL(value)
+  if (
+    url.username ||
+    url.password ||
+    url.hash ||
+    !config.allowedOrigins.includes(url.origin)
+  ) {
+    throw new CallbackError('forbidden_destination')
   }
-  const loopback = ["127.0.0.1", "[::1]"].includes(url.hostname);
-  if (config.transport === "loopback-http") {
-    if (!loopback || url.protocol !== "http:") {
-      throw new CallbackError("forbidden_destination");
+  const loopback = ['127.0.0.1', '[::1]'].includes(url.hostname)
+  if (config.transport === 'loopback-http') {
+    if (!loopback || url.protocol !== 'http:') {
+      throw new CallbackError('forbidden_destination')
     }
-  } else if (url.protocol !== "https:") {
-    throw new CallbackError("forbidden_destination");
+  } else if (url.protocol !== 'https:') {
+    throw new CallbackError('forbidden_destination')
   }
-  return url;
+  return url
 }
 
 function ipv4Number(address: string): number {
-  return address.split(".").reduce((value, part) => value * 256 + Number(part), 0);
+  return address
+    .split('.')
+    .reduce((value, part) => value * 256 + Number(part), 0)
 }
 
 const excludedIpv4Ranges = [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 16],
-  ["192.88.99.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 3],
-] as const;
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.0.0.0', 16],
+  ['192.88.99.0', 24],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['198.51.100.0', 24],
+  ['203.0.113.0', 24],
+  ['224.0.0.0', 3]
+] as const
 
 const excludedIpv4Bounds = excludedIpv4Ranges.map(([address, prefix]) => {
-  const start = ipv4Number(address);
-  return { start, end: start + 2 ** (32 - prefix) };
-});
+  const start = ipv4Number(address)
+  return { start, end: start + 2 ** (32 - prefix) }
+})
 
 /** Conservative global-unicast policy; mapped, transition and documentation ranges are excluded. */
 export function isPublicAddress(address: string): boolean {
   if (isIP(address) === 4) {
-    const value = ipv4Number(address);
-    return !excludedIpv4Bounds.some(({ start, end }) => value >= start && value < end);
+    const value = ipv4Number(address)
+    return !excludedIpv4Bounds.some(
+      ({ start, end }) => value >= start && value < end
+    )
   }
   if (isIP(address) === 6) {
-    const normalized = new URL(`http://[${address}]/`).hostname.slice(1, -1).toLowerCase();
-    const [firstPart = "0", secondPart = "0"] = normalized.split(":");
-    const first = Number.parseInt(firstPart, 16);
-    const second = Number.parseInt(secondPart || "0", 16);
+    const normalized = new URL(`http://[${address}]/`).hostname
+      .slice(1, -1)
+      .toLowerCase()
+
+    const [firstPart = '0', secondPart = '0'] = normalized.split(':')
+    const first = Number.parseInt(firstPart, 16)
+    const second = Number.parseInt(secondPart || '0', 16)
     return (
       first >= 0x20_00 &&
       first <= 0x3f_ff &&
-      !normalized.startsWith("2001:db8:") &&
+      !normalized.startsWith('2001:db8:') &&
       !(first === 0x20_01 && second < 0x02_00) &&
       first !== 0x20_02 &&
       first !== 0x3f_ff
-    );
+    )
   }
-  return false;
+  return false
 }
 
 /** Resolve immediately before connecting and pin that address; TLS still verifies the original hostname. */
@@ -84,40 +100,43 @@ export async function postCallback(
   body: string,
   headers: Record<string, string>,
   signal: AbortSignal,
-  responseMode: "body" | "headers",
+  responseMode: 'body' | 'headers'
 ): Promise<{
-  status: number;
-  body: string;
-  headers: Record<string, string | string[] | undefined>;
+  status: number
+  body: string
+  headers: Record<string, string | string[] | undefined>
 }> {
-  const url = callbackUrl(urlValue, config);
-  const hostname = url.hostname.replaceAll(/^\[|\]$/gu, "");
-  const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]);
+  const url = callbackUrl(urlValue, config)
+  const hostname = url.hostname.replaceAll(/^\[|\]$/gu, '')
+  const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)])
 
   async function resolveAddresses() {
-    let onAbort: (() => void) | undefined;
+    let onAbort: (() => void) | undefined
 
     const aborted = new Promise<never>((_resolve, reject) => {
       onAbort = () => {
-        reject(new CallbackError("timeout"));
-      };
-      if (bound.aborted) {
-        onAbort();
-      } else {
-        bound.addEventListener("abort", onAbort, { once: true });
+        reject(new CallbackError('timeout'))
       }
-    });
+      if (bound.aborted) {
+        onAbort()
+      } else {
+        bound.addEventListener('abort', onAbort, { once: true })
+      }
+    })
 
     try {
-      return await Promise.race([lookup(hostname, { all: true, order: "verbatim" }), aborted]);
+      return await Promise.race([
+        lookup(hostname, { all: true, order: 'verbatim' }),
+        aborted
+      ])
     } catch (error) {
       if (error instanceof CallbackError) {
-        throw error;
+        throw error
       }
-      throw new CallbackError("network_error");
+      throw new CallbackError('network_error')
     } finally {
       if (onAbort !== undefined) {
-        bound.removeEventListener("abort", onAbort);
+        bound.removeEventListener('abort', onAbort)
       }
     }
   }
@@ -125,70 +144,75 @@ export async function postCallback(
   const addresses =
     isIP(hostname) === 0
       ? await resolveAddresses()
-      : [{ address: hostname, family: isIP(hostname) }];
+      : [{ address: hostname, family: isIP(hostname) }]
 
   if (
-    config.transport === "public-https" &&
-    (addresses.length === 0 || addresses.some((resolved) => !isPublicAddress(resolved.address)))
+    config.transport === 'public-https' &&
+    (addresses.length === 0 ||
+      addresses.some((resolved) => !isPublicAddress(resolved.address)))
   ) {
-    throw new CallbackError("forbidden_destination");
+    throw new CallbackError('forbidden_destination')
   }
-  const address = addresses[0];
+  const address = addresses[0]
   if (!address) {
-    throw new CallbackError("forbidden_destination");
+    throw new CallbackError('forbidden_destination')
   }
   return new Promise((resolve, reject) => {
-    const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(
+    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
       url,
       {
-        method: "POST",
+        method: 'POST',
         headers: {
           ...headers,
-          "Content-Length": String(Buffer.byteLength(body)),
+          'Content-Length': String(Buffer.byteLength(body))
         },
         signal: bound,
         agent: false,
         lookup: (_host, options, done) => {
           if (options.all === true) {
-            done(null, [{ address: address.address, family: address.family }]);
+            done(null, [{ address: address.address, family: address.family }])
           } else {
-            done(null, address.address, address.family);
+            done(null, address.address, address.family)
           }
-        },
+        }
       },
       (res) => {
-        res.on("error", () => {
-          reject(new CallbackError(bound.aborted ? "timeout" : "network_error"));
-        });
-        if (responseMode === "headers") {
-          resolve({ status: res.statusCode ?? 500, body: "", headers: res.headers });
-          res.destroy();
-          return;
-        }
-        const chunks: Buffer[] = [];
-        let size = 0;
-        res.on("data", (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > 16_384) {
-            res.destroy();
-            reject(new CallbackError("response_too_large"));
-          } else {
-            chunks.push(chunk);
-          }
-        });
-        res.on("end", () => {
+        res.on('error', () => {
+          reject(new CallbackError(bound.aborted ? 'timeout' : 'network_error'))
+        })
+        if (responseMode === 'headers') {
           resolve({
             status: res.statusCode ?? 500,
-            body: Buffer.concat(chunks).toString("utf8"),
-            headers: res.headers,
-          });
-        });
-      },
-    );
+            body: '',
+            headers: res.headers
+          })
+          res.destroy()
+          return
+        }
+        const chunks: Buffer[] = []
+        let size = 0
+        res.on('data', (chunk: Buffer) => {
+          size += chunk.length
+          if (size > 16_384) {
+            res.destroy()
+            reject(new CallbackError('response_too_large'))
+          } else {
+            chunks.push(chunk)
+          }
+        })
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode ?? 500,
+            body: Buffer.concat(chunks).toString('utf8'),
+            headers: res.headers
+          })
+        })
+      }
+    )
 
-    req.on("error", () => {
-      reject(new CallbackError(bound.aborted ? "timeout" : "network_error"));
-    });
-    req.end(body);
-  });
+    req.on('error', () => {
+      reject(new CallbackError(bound.aborted ? 'timeout' : 'network_error'))
+    })
+    req.end(body)
+  })
 }

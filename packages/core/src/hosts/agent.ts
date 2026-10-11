@@ -8,25 +8,29 @@ import type {
   Json,
   Observability,
   ScopedAgentHost,
-  Storage,
-} from "@relanox/sdk";
-import { z } from "zod";
-import { chunkText } from "../chunk.js";
-import { CoreError } from "../errors.js";
-import { jsonSnapshot } from "../json.js";
-import { textId, limit, boundedText } from "../validation.js";
-import type { WorkerConfig } from "../worker/options.js";
-import { createAgentMedia, completionMedia, authorizedRequest } from "./media.js";
-import { createOperationTracer } from "./tracing.js";
+  Storage
+} from '@relanox/sdk'
+import { z } from 'zod'
+import { chunkText } from '../chunk.js'
+import { CoreError } from '../errors.js'
+import { jsonSnapshot } from '../json.js'
+import { textId, limit, boundedText } from '../validation.js'
+import type { WorkerConfig } from '../worker/options.js'
+import {
+  createAgentMedia,
+  completionMedia,
+  authorizedRequest
+} from './media.js'
+import { createOperationTracer } from './tracing.js'
 
 interface AgentHostOptions {
-  readonly agent: AgentId;
-  readonly agentEndpoints: readonly EndpointConfig[];
-  readonly common: CommonHost;
-  readonly storage: Storage;
-  readonly observe: Observability;
-  readonly worker: WorkerConfig;
-  readonly channels: ReadonlyMap<string, ChannelPlugin<unknown>>;
+  readonly agent: AgentId
+  readonly agentEndpoints: readonly EndpointConfig[]
+  readonly common: CommonHost
+  readonly storage: Storage
+  readonly observe: Observability
+  readonly worker: WorkerConfig
+  readonly channels: ReadonlyMap<string, ChannelPlugin<unknown>>
 }
 
 /** Intersects authenticated endpoint authority and keeps result destinations inside saved snapshots. */
@@ -37,90 +41,111 @@ export function createAgentHost({
   storage,
   observe,
   worker,
-  channels,
+  channels
 }: AgentHostOptions): AgentHost {
-  const traced = createOperationTracer(observe);
+  const traced = createOperationTracer(observe)
   return {
     ...common,
     forPrincipal(principal: AgentPrincipal): ScopedAgentHost {
-      textId.parse(principal.subject);
+      textId.parse(principal.subject)
 
       const scope = [...new Set(principal.endpointIds)].filter((id) =>
-        agentEndpoints.some((e) => e.id === id),
-      );
+        agentEndpoints.some((e) => e.id === id)
+      )
 
       return {
         media: createAgentMedia(storage, agent, scope, worker),
         listPending: (count) =>
-          storage.listPending({ agent, endpointIds: scope, limit: limit(count) }),
+          storage.listPending({
+            agent,
+            endpointIds: scope,
+            limit: limit(count)
+          }),
         claim: (requestId, claimKey) =>
-          traced("claim", () =>
+          traced('claim', () =>
             storage.claimRequest({
               requestId: textId.parse(requestId),
               endpointIds: scope,
               agent,
               claimKey: textId.parse(claimKey),
               claimToken: crypto.randomUUID(),
-              now: Date.now(),
-            }),
+              now: Date.now()
+            })
           ),
         async complete(input) {
-          textId.parse(input.requestId);
-          textId.parse(input.claimToken);
-          textId.parse(input.resultId);
-          boundedText(input.text, worker.maxTextBytes, !input.attachments?.length);
-          const request = await storage.getInbound(input.requestId);
+          textId.parse(input.requestId)
+          textId.parse(input.claimToken)
+          textId.parse(input.resultId)
+          boundedText(
+            input.text,
+            worker.maxTextBytes,
+            !input.attachments?.length
+          )
+          const request = await storage.getInbound(input.requestId)
           if (
             !request ||
             !scope.includes(request.snapshot.endpoint.id) ||
             request.snapshot.endpoint.agent !== agent
           ) {
-            return { status: "not_found" };
+            return { status: 'not_found' }
           }
-          if (input.attachments && !authorizedRequest(request, agent, scope, input.claimToken)) {
-            return { status: "unauthorized" };
+          if (
+            input.attachments &&
+            !authorizedRequest(request, agent, scope, input.claimToken)
+          ) {
+            return { status: 'unauthorized' }
           }
-          const media = await completionMedia(storage, input.requestId, input.attachments, worker);
-          const channelPlugin = channels.get(request.snapshot.target.accountId);
+
+          const media = await completionMedia(
+            storage,
+            input.requestId,
+            input.attachments,
+            worker
+          )
+
+          const channelPlugin = channels.get(request.snapshot.target.accountId)
           if (!channelPlugin) {
-            throw new CoreError("channel_plugin_missing");
+            throw new CoreError('channel_plugin_missing')
           }
           if (
             media.some(
-              (item) => !channelPlugin.capabilities.media?.send.includes(item.reference.kind),
+              (item) =>
+                !channelPlugin.capabilities.media?.send.includes(
+                  item.reference.kind
+                )
             )
           ) {
-            throw new CoreError("media_not_supported");
+            throw new CoreError('media_not_supported')
           }
-          const deliveryId = crypto.randomUUID();
-          const now = Date.now();
+          const deliveryId = crypto.randomUUID()
+          const now = Date.now()
 
           const chunks = (
             input.text
               ? chunkText(
                   input.text,
                   channelPlugin.capabilities.maxTextLength,
-                  channelPlugin.capabilities.lengthUnit,
+                  channelPlugin.capabilities.lengthUnit
                 )
               : []
           ).map((text, index) => ({
             text,
             idempotencyKey: `${deliveryId}:${index}`,
-            state: null as Json,
-          }));
+            state: null as Json
+          }))
 
           const deliveryChunks = [
             ...chunks,
             ...media.map((item, index) => ({
-              text: "",
+              text: '',
               media: item.reference,
               idempotencyKey: `${deliveryId}:${chunks.length + index}`,
-              state: null as Json,
-            })),
-          ];
+              state: null as Json
+            }))
+          ]
 
           const result = await traced(
-            "complete",
+            'complete',
             () =>
               storage.completeAndEnqueue({
                 requestId: input.requestId,
@@ -130,8 +155,10 @@ export function createAgentHost({
                 result: {
                   resultId: input.resultId,
                   text: input.text,
-                  ...(media.length > 0 ? { attachments: media.map((item) => item.reference) } : {}),
-                  completedAt: now,
+                  ...(media.length > 0
+                    ? { attachments: media.map((item) => item.reference) }
+                    : {}),
+                  completedAt: now
                 },
                 outbound: {
                   deliveryId,
@@ -141,33 +168,35 @@ export function createAgentHost({
                   chunks: deliveryChunks,
                   currentChunk: 0,
                   receipts: [],
-                  status: "pending",
+                  status: 'pending',
                   version: 1,
                   attempts: 0,
                   dueAt: now,
                   createdAt: now,
-                  ...(request.snapshot.trace ? { trace: request.snapshot.trace } : {}),
-                },
+                  ...(request.snapshot.trace
+                    ? { trace: request.snapshot.trace }
+                    : {})
+                }
               }),
-            request.snapshot.trace,
-          );
+            request.snapshot.trace
+          )
 
-          if (result.status === "completed" && !result.replay) {
+          if (result.status === 'completed' && !result.replay) {
             observe.record(
-              "relanox_result_duration_seconds",
+              'relanox_result_duration_seconds',
               Math.max(0, (now - request.snapshot.acceptedAt) / 1000),
-              { agent },
-            );
+              { agent }
+            )
           }
-          observe.log("info", "complete.completed", {
-            plugin: "core",
+          observe.log('info', 'complete.completed', {
+            plugin: 'core',
             requestId: input.requestId,
-            outcome: result.status === "completed" ? "ok" : result.status,
-          });
-          return result;
+            outcome: result.status === 'completed' ? 'ok' : result.status
+          })
+          return result
         },
         fail: (input) =>
-          traced("fail", () =>
+          traced('fail', () =>
             storage.fail({
               requestId: textId.parse(input.requestId),
               endpointIds: scope,
@@ -177,10 +206,10 @@ export function createAgentHost({
                 .string()
                 .regex(/^[a-zA-Z0-9_-]{1,128}$/u)
                 .parse(input.errorCode),
-              now: Date.now(),
-            }),
-          ),
-      };
-    },
-  };
+              now: Date.now()
+            })
+          )
+      }
+    }
+  }
 }

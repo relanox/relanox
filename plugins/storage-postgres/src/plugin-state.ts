@@ -1,12 +1,15 @@
-import type { Storage, StateEntry } from "@relanox/sdk";
-import type { DatabaseContext } from "./database.js";
-import { boundedLimit } from "./database.js";
-import { encodeDurableRecord } from "./record-codec.js";
+import type { Storage, StateEntry } from '@relanox/sdk'
+import type { DatabaseContext } from './database.js'
+import { boundedLimit } from './database.js'
+import { encodeDurableRecord } from './record-codec.js'
 
 export function createStateOperations(
-  context: Pick<DatabaseContext, "pool" | "query" | "transaction">,
-): Pick<Storage, "getState" | "listState" | "compareAndSetState" | "deleteState"> {
-  const { pool, query, transaction } = context;
+  context: Pick<DatabaseContext, 'pool' | 'query' | 'transaction'>
+): Pick<
+  Storage,
+  'getState' | 'listState' | 'compareAndSetState' | 'deleteState'
+> {
+  const { pool, query, transaction } = context
   return {
     async getState(ns, key) {
       return (
@@ -20,35 +23,35 @@ export function createStateOperations(
               AND key=$3
               AND record!='null'::jsonb
           `,
-          [ns.pluginId, ns.ownerId, key],
+          [ns.pluginId, ns.ownerId, key]
         )
-      )[0]?.record;
+      )[0]?.record
     },
     async listState(ns, input) {
-      const params: unknown[] = [ns.pluginId, ns.ownerId];
-      const where = ["plugin=$1", "owner=$2", "record!='null'::jsonb"];
+      const params: unknown[] = [ns.pluginId, ns.ownerId]
+      const where = ['plugin=$1', 'owner=$2', "record!='null'::jsonb"]
       if (input.prefix !== undefined) {
-        params.push(input.prefix);
-        where.push(`starts_with(key,$${params.length})`);
+        params.push(input.prefix)
+        where.push(`starts_with(key,$${params.length})`)
       }
       if (input.expiresBefore !== undefined) {
-        params.push(input.expiresBefore);
-        where.push(`expires_at<=$${params.length}`);
+        params.push(input.expiresBefore)
+        where.push(`expires_at<=$${params.length}`)
       }
-      params.push(boundedLimit(input.limit));
+      params.push(boundedLimit(input.limit))
       return (
         await query<{ record: StateEntry }>(
           pool,
           `
             SELECT record
             FROM plugin_state
-            WHERE ${where.join(" AND ")}
+            WHERE ${where.join(' AND ')}
             ORDER BY key
             LIMIT $${params.length}
           `,
-          params,
+          params
         )
-      ).map((row) => row.record);
+      ).map((row) => row.record)
     },
     async compareAndSetState(ns, input) {
       return transaction(async (client) => {
@@ -62,25 +65,27 @@ export function createStateOperations(
                 AND owner=$2
                 AND key=$3
             `,
-            [ns.pluginId, ns.ownerId, input.key],
+            [ns.pluginId, ns.ownerId, input.key]
           )
-        )[0];
+        )[0]
 
         if (
           input.expectedVersion === null
             ? old?.active
             : !old?.active || old.version !== input.expectedVersion
         ) {
-          return { status: "conflict" };
+          return { status: 'conflict' }
         }
-        const version = (old?.version ?? 0) + 1;
+        const version = (old?.version ?? 0) + 1
 
         const entry: StateEntry = {
           key: input.key,
           value: input.value,
           version,
-          ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
-        };
+          ...(input.expiresAt !== undefined
+            ? { expiresAt: input.expiresAt }
+            : {})
+        }
 
         const params = [
           ns.pluginId,
@@ -88,8 +93,8 @@ export function createStateOperations(
           input.key,
           version,
           input.expiresAt ?? null,
-          encodeDurableRecord(entry),
-        ];
+          encodeDurableRecord(entry)
+        ]
 
         const changed = !old
           ? await query(
@@ -100,7 +105,7 @@ export function createStateOperations(
                 ON CONFLICT DO NOTHING
                 RETURNING version
               `,
-              params,
+              params
             )
           : await query(
               client,
@@ -113,11 +118,13 @@ export function createStateOperations(
                   AND version=$7
                 RETURNING version
               `,
-              [...params, old.version],
-            );
+              [...params, old.version]
+            )
 
-        return changed.length > 0 ? { status: "updated", version } : { status: "conflict" };
-      });
+        return changed.length > 0
+          ? { status: 'updated', version }
+          : { status: 'conflict' }
+      })
     },
     async deleteState(ns, key, version) {
       return transaction(async (client) => {
@@ -132,15 +139,15 @@ export function createStateOperations(
                 AND key=$3
                 AND record!='null'::jsonb
             `,
-            [ns.pluginId, ns.ownerId, key],
+            [ns.pluginId, ns.ownerId, key]
           )
-        )[0];
+        )[0]
 
         if (!old) {
-          return { status: "not_found" };
+          return { status: 'not_found' }
         }
         if (old.version !== version) {
-          return { status: "conflict" };
+          return { status: 'conflict' }
         }
         await client.query(
           `
@@ -151,10 +158,10 @@ export function createStateOperations(
               AND key=$3
               AND version=$4
           `,
-          [ns.pluginId, ns.ownerId, key, version],
-        );
-        return { status: "updated", version: version + 1 };
-      });
-    },
-  };
+          [ns.pluginId, ns.ownerId, key, version]
+        )
+        return { status: 'updated', version: version + 1 }
+      })
+    }
+  }
 }

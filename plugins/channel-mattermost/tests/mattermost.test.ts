@@ -1,7 +1,7 @@
-import type { SendInput } from "@relanox/sdk";
-import { expect, it } from "vitest";
-import { WebSocketServer } from "ws";
-import { z } from "zod";
+import type { SendInput } from '@relanox/sdk'
+import { expect, it } from 'vitest'
+import { WebSocketServer } from 'ws'
+import { z } from 'zod'
 import {
   body,
   cleanup,
@@ -9,294 +9,334 @@ import {
   httpPeer,
   json,
   observations,
-  waitFor,
-} from "../../channel-matrix/tests/harness.js";
-import { createMattermostChannel } from "../src/index.js";
+  waitFor
+} from '../../channel-matrix/tests/harness.js'
+import { createMattermostChannel } from '../src/index.js'
 
 function config(base: string) {
   return {
     serverUrl: base,
-    botUserId: "self-bot",
-    token: { env: "MATTERMOST_TOKEN" },
+    botUserId: 'self-bot',
+    token: { env: 'MATTERMOST_TOKEN' },
     allowInsecureLocalhost: true,
-    reconnectMs: 100,
-  };
+    reconnectMs: 100
+  }
 }
 
-function posted(id: string, userId = "alice", channelId = "channel", rootId = "root") {
+function posted(
+  id: string,
+  userId = 'alice',
+  channelId = 'channel',
+  rootId = 'root'
+) {
   return {
-    event: "posted",
+    event: 'posted',
     data: {
       post: JSON.stringify({
         id,
         user_id: userId,
         channel_id: channelId,
         root_id: rootId,
-        message: "question",
+        message: 'question',
         create_at: 1_800_000_000_000,
-        type: "",
-      }),
+        type: ''
+      })
     },
-    seq: 2,
-  };
+    seq: 2
+  }
 }
 
 function sendInput(base: string): SendInput {
   return {
-    deliveryId: "delivery",
-    requestId: "request",
+    deliveryId: 'delivery',
+    requestId: 'request',
     target: {
-      channel: "mattermost",
-      accountId: "bot",
-      chatId: "channel",
-      threadId: "root",
-      data: { serverUrl: base, botUserId: "self-bot" },
+      channel: 'mattermost',
+      accountId: 'bot',
+      chatId: 'channel',
+      threadId: 'root',
+      data: { serverUrl: base, botUserId: 'self-bot' }
     },
-    chunk: { text: "answer", idempotencyKey: "delivery:0", state: null },
+    chunk: { text: 'answer', idempotencyKey: 'delivery:0', state: null },
     chunkIndex: 0,
-    signal: new AbortController().signal,
-  };
+    signal: new AbortController().signal
+  }
 }
 
 function sockets(peer: Awaited<ReturnType<typeof httpPeer>>) {
-  const server = new WebSocketServer({ server: peer.server, path: "/api/v4/websocket" });
+  const server = new WebSocketServer({
+    server: peer.server,
+    path: '/api/v4/websocket'
+  })
+
   cleanup(async () => {
     for (const socket of server.clients) {
-      socket.terminate();
+      socket.terminate()
     }
     await new Promise<void>((resolve) => {
       server.close(() => {
-        resolve();
-      });
-    });
-  });
-  return server;
+        resolve()
+      })
+    })
+  })
+  return server
 }
 
-it("authenticates WebSocket, deduplicates posted frames across reconnect and sends delayed thread posts", async () => {
-  const sent: { data: unknown; authorization: string | undefined }[] = [];
-  const dispatches: unknown[] = [];
-  const challenges: unknown[] = [];
+it('authenticates WebSocket, deduplicates posted frames across reconnect and sends delayed thread posts', async () => {
+  const sent: { data: unknown; authorization: string | undefined }[] = []
+  const dispatches: unknown[] = []
+  const challenges: unknown[] = []
 
   const peer = await httpPeer(async (request, response) => {
-    const data = await body(request);
-    if (request.url === "/api/v4/posts") {
-      sent.push({ data, authorization: request.headers.authorization });
-      json(response, { id: "outbound-post" }, 201);
+    const data = await body(request)
+    if (request.url === '/api/v4/posts') {
+      sent.push({ data, authorization: request.headers.authorization })
+      json(response, { id: 'outbound-post' }, 201)
     } else {
-      dispatches.push(data);
-      json(response, {});
+      dispatches.push(data)
+      json(response, {})
     }
-  });
+  })
 
-  const server = sockets(peer);
-  server.on("connection", (socket) => {
-    socket.once("message", (bytes) => {
+  const server = sockets(peer)
+  server.on('connection', (socket) => {
+    socket.once('message', (bytes) => {
       if (!Buffer.isBuffer(bytes)) {
-        throw new TypeError("Unexpected peer frame");
+        throw new TypeError('Unexpected peer frame')
       }
-      challenges.push(JSON.parse(bytes.toString("utf8")) as unknown);
-      socket.send(JSON.stringify({ status: "OK", seq_reply: 1, data: {} }));
+      challenges.push(JSON.parse(bytes.toString('utf8')) as unknown)
+      socket.send(JSON.stringify({ status: 'OK', seq_reply: 1, data: {} }))
       for (const frame of [
-        posted("post-1"),
-        posted("post-1"),
-        posted("post-own", "self-bot"),
-        posted("post-blocked", "mallory"),
-        posted("post-unbound", "alice", "unbound"),
+        posted('post-1'),
+        posted('post-1'),
+        posted('post-own', 'self-bot'),
+        posted('post-blocked', 'mallory'),
+        posted('post-unbound', 'alice', 'unbound')
       ]) {
-        socket.send(JSON.stringify(frame));
+        socket.send(JSON.stringify(frame))
       }
-    });
-  });
-  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "mattermost-access-secret" });
+    })
+  })
+
+  const plugin = createMattermostChannel({
+    MATTERMOST_TOKEN: 'mattermost-access-secret'
+  })
 
   const fixture = await harness(
     plugin,
     config(peer.base),
-    [{ chatId: "channel", threadId: "root" }],
-    ["alice"],
-    `${peer.base}/dispatch`,
-  );
+    [{ chatId: 'channel', threadId: 'root' }],
+    ['alice'],
+    `${peer.base}/dispatch`
+  )
 
-  await plugin.start?.(new AbortController().signal);
-  await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(
+    async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1
+  )
   for (const socket of server.clients) {
-    socket.terminate();
+    socket.terminate()
   }
-  await waitFor(() => challenges.length >= 2);
-  await plugin.stop?.();
+  await waitFor(() => challenges.length >= 2)
+  await plugin.stop?.()
   expect(challenges[0]).toEqual({
     seq: 1,
-    action: "authentication_challenge",
-    data: { token: "mattermost-access-secret" },
-  });
-  const requests = await fixture.storage.listInbound({ limit: 10 });
-  expect(requests).toHaveLength(1);
-  const request = requests[0];
+    action: 'authentication_challenge',
+    data: { token: 'mattermost-access-secret' }
+  })
+  const requests = await fixture.storage.listInbound({ limit: 10 })
+  expect(requests).toHaveLength(1)
+  const request = requests[0]
   if (!request) {
-    throw new Error("Missing request");
+    throw new Error('Missing request')
   }
   expect(request.snapshot.target).toEqual({
-    channel: "mattermost",
-    accountId: "bot",
-    chatId: "channel",
-    threadId: "root",
-    replyToId: "post-1",
-    data: { serverUrl: peer.base, botUserId: "self-bot" },
-  });
-  expect(JSON.stringify(request.snapshot)).not.toContain("mattermost-access-secret");
-  await fixture.runtime.processDue();
-  expect(dispatches).toEqual([{ requestId: request.snapshot.requestId, text: "question" }]);
-  const completed = await fixture.complete(request.snapshot.requestId);
-  await fixture.runtime.processDue();
+    channel: 'mattermost',
+    accountId: 'bot',
+    chatId: 'channel',
+    threadId: 'root',
+    replyToId: 'post-1',
+    data: { serverUrl: peer.base, botUserId: 'self-bot' }
+  })
+  expect(JSON.stringify(request.snapshot)).not.toContain(
+    'mattermost-access-secret'
+  )
+  await fixture.runtime.processDue()
+  expect(dispatches).toEqual([
+    { requestId: request.snapshot.requestId, text: 'question' }
+  ])
+  const completed = await fixture.complete(request.snapshot.requestId)
+  await fixture.runtime.processDue()
   expect(sent).toEqual([
     {
-      authorization: "Bearer mattermost-access-secret",
-      data: { channel_id: "channel", message: "delayed answer", root_id: "root" },
-    },
-  ]);
-  expect((await fixture.storage.getOutbound(completed.deliveryId))?.receipts).toEqual([
-    { platformMessageId: "outbound-post" },
-  ]);
-  expect(plugin.capabilities.idempotentSend).toBe(false);
-});
+      authorization: 'Bearer mattermost-access-secret',
+      data: {
+        channel_id: 'channel',
+        message: 'delayed answer',
+        root_id: 'root'
+      }
+    }
+  ])
+  expect(
+    (await fixture.storage.getOutbound(completed.deliveryId))?.receipts
+  ).toEqual([{ platformMessageId: 'outbound-post' }])
+  expect(plugin.capabilities.idempotentSend).toBe(false)
+})
 
-it("diagnoses failed authentication and refuses posted frames before an OK response", async () => {
-  const observation = observations();
+it('diagnoses failed authentication and refuses posted frames before an OK response', async () => {
+  const observation = observations()
 
   const peer = await httpPeer((_request, response) => {
-    json(response, {});
-  });
+    json(response, {})
+  })
 
-  const server = sockets(peer);
-  server.on("connection", (socket) => {
-    socket.once("message", () => {
-      socket.send(JSON.stringify({ status: "FAIL", seq_reply: 1, error: { id: "unauthorized" } }));
-      socket.send(JSON.stringify(posted("unauthenticated")));
-    });
-  });
-  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "invalid" });
+  const server = sockets(peer)
+  server.on('connection', (socket) => {
+    socket.once('message', () => {
+      socket.send(
+        JSON.stringify({
+          status: 'FAIL',
+          seq_reply: 1,
+          error: { id: 'unauthorized' }
+        })
+      )
+      socket.send(JSON.stringify(posted('unauthenticated')))
+    })
+  })
+  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'invalid' })
 
   const fixture = await harness(
     plugin,
     config(peer.base),
-    [{ chatId: "channel", threadId: "root" }],
-    ["alice"],
+    [{ chatId: 'channel', threadId: 'root' }],
+    ['alice'],
     `${peer.base}/dispatch`,
-    { observe: observation.observe },
-  );
+    { observe: observation.observe }
+  )
 
-  await plugin.start?.(new AbortController().signal);
+  await plugin.start?.(new AbortController().signal)
   await waitFor(() =>
-    observation.logs.some((entry) => entry.fields?.errorCode === "authentication_failed"),
-  );
-  await plugin.stop?.();
-  expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([]);
-  expect((await fixture.runtime.status()).connections["channels/bot"]).toBe("disconnected");
-});
+    observation.logs.some(
+      (entry) => entry.fields?.errorCode === 'authentication_failed'
+    )
+  )
+  await plugin.stop?.()
+  expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([])
+  expect((await fixture.runtime.status()).connections['channels/bot']).toBe(
+    'disconnected'
+  )
+})
 
-it("keeps an uncertain REST POST unknown without automatic resend", async () => {
-  let sends = 0;
+it('keeps an uncertain REST POST unknown without automatic resend', async () => {
+  let sends = 0
 
   const peer = await httpPeer(async (request, response) => {
-    if (request.url === "/api/v4/posts") {
-      await body(request);
-      sends += 1;
-      request.socket.destroy();
-      return;
+    if (request.url === '/api/v4/posts') {
+      await body(request)
+      sends += 1
+      request.socket.destroy()
+      return
     }
-    json(response, {});
-  });
+    json(response, {})
+  })
 
-  const server = sockets(peer);
-  server.on("connection", (socket) => {
-    socket.once("message", () => {
-      socket.send(JSON.stringify({ status: "OK", seq_reply: 1 }));
-      socket.send(JSON.stringify(posted("ambiguous")));
-    });
-  });
-  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "token" });
+  const server = sockets(peer)
+  server.on('connection', (socket) => {
+    socket.once('message', () => {
+      socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
+      socket.send(JSON.stringify(posted('ambiguous')))
+    })
+  })
+  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
 
   const fixture = await harness(
     plugin,
     config(peer.base),
-    [{ chatId: "channel", threadId: "root" }],
-    ["alice"],
-    `${peer.base}/dispatch`,
-  );
+    [{ chatId: 'channel', threadId: 'root' }],
+    ['alice'],
+    `${peer.base}/dispatch`
+  )
 
-  await plugin.start?.(new AbortController().signal);
-  await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
-  await plugin.stop?.();
-  const request = (await fixture.storage.listInbound({ limit: 10 }))[0];
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(
+    async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1
+  )
+  await plugin.stop?.()
+  const request = (await fixture.storage.listInbound({ limit: 10 }))[0]
   if (!request) {
-    throw new Error("Missing request");
+    throw new Error('Missing request')
   }
-  const completed = await fixture.complete(request.snapshot.requestId);
-  await fixture.runtime.processDue();
-  expect((await fixture.storage.getOutbound(completed.deliveryId))?.status).toBe("unknown");
-  await fixture.runtime.processDue();
-  expect(sends).toBe(1);
-});
+  const completed = await fixture.complete(request.snapshot.requestId)
+  await fixture.runtime.processDue()
+  expect(
+    (await fixture.storage.getOutbound(completed.deliveryId))?.status
+  ).toBe('unknown')
+  await fixture.runtime.processDue()
+  expect(sends).toBe(1)
+})
 
 it.each([
-  [429, "retryable"],
-  [403, "rejected"],
-  [503, "unknown"],
-] as const)("maps REST HTTP %i conservatively", async (status, outcome) => {
+  [429, 'retryable'],
+  [403, 'rejected'],
+  [503, 'unknown']
+] as const)('maps REST HTTP %i conservatively', async (status, outcome) => {
   const peer = await httpPeer((_request, response) => {
-    response.setHeader("Retry-After", "7");
-    json(response, {}, status);
-  });
+    response.setHeader('Retry-After', '7')
+    json(response, {}, status)
+  })
 
-  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "token" });
+  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
   await harness(
     plugin,
     config(peer.base),
-    [{ chatId: "channel", threadId: "root" }],
-    ["alice"],
-    `${peer.base}/dispatch`,
-  );
-  const result = await plugin.send(sendInput(peer.base));
-  expect(result.status).toBe(outcome);
-  if (result.status === "retryable") {
-    expect(result.retryAfterMs).toBe(7000);
+    [{ chatId: 'channel', threadId: 'root' }],
+    ['alice'],
+    `${peer.base}/dispatch`
+  )
+  const result = await plugin.send(sendInput(peer.base))
+  expect(result.status).toBe(outcome)
+  if (result.status === 'retryable') {
+    expect(result.retryAfterMs).toBe(7000)
   }
-});
+})
 
-it("validates protocol JSON instead of admitting malformed nested posts", async () => {
-  const observation = observations();
+it('validates protocol JSON instead of admitting malformed nested posts', async () => {
+  const observation = observations()
 
   const peer = await httpPeer((_request, response) => {
-    json(response, {});
-  });
+    json(response, {})
+  })
 
-  const server = sockets(peer);
-  server.on("connection", (socket) => {
-    socket.once("message", () => {
-      socket.send(JSON.stringify({ status: "OK", seq_reply: 1 }));
-      socket.send(JSON.stringify({ event: "posted", data: { post: "{invalid" } }));
-    });
-  });
-  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "token" });
+  const server = sockets(peer)
+  server.on('connection', (socket) => {
+    socket.once('message', () => {
+      socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
+      socket.send(
+        JSON.stringify({ event: 'posted', data: { post: '{invalid' } })
+      )
+    })
+  })
+  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
 
   const fixture = await harness(
     plugin,
     config(peer.base),
-    [{ chatId: "channel" }],
-    ["alice"],
+    [{ chatId: 'channel' }],
+    ['alice'],
     `${peer.base}/dispatch`,
-    { observe: observation.observe },
-  );
+    { observe: observation.observe }
+  )
 
-  await plugin.start?.(new AbortController().signal);
+  await plugin.start?.(new AbortController().signal)
   await waitFor(() =>
-    observation.logs.some((entry) => entry.fields?.errorCode === "receive_failed"),
-  );
-  await plugin.stop?.();
-  expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([]);
-  expect(() => plugin.validateConfig({ ...config(peer.base), token: "plaintext" })).toThrow(
-    z.ZodError,
-  );
-  expect(() => plugin.validateConfig(config("http://remote.example"))).toThrow();
-});
+    observation.logs.some(
+      (entry) => entry.fields?.errorCode === 'receive_failed'
+    )
+  )
+  await plugin.stop?.()
+  expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([])
+  expect(() =>
+    plugin.validateConfig({ ...config(peer.base), token: 'plaintext' })
+  ).toThrow(z.ZodError)
+  expect(() => plugin.validateConfig(config('http://remote.example'))).toThrow()
+})

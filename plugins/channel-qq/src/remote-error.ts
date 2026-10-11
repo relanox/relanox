@@ -1,12 +1,12 @@
-import type { SendResult } from "@relanox/sdk";
+import type { SendResult } from '@relanox/sdk'
 
 export class RemoteError extends Error {
-  override readonly name = "RemoteError";
+  override readonly name = 'RemoteError'
 
   constructor(
-    readonly result: Exclude<SendResult, { status: "sent" }>,
-    readonly body?: unknown,
+    readonly result: Exclude<SendResult, { status: 'sent' }>,
+    readonly body?: unknown
   ) {
-    super("remote_error");
+    super('remote_error')
   }
 }

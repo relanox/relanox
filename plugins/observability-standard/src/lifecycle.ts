@@ -2,40 +2,40 @@ export async function runWithLifecycleDeadline(
   signal: AbortSignal,
   timeoutMs: number,
   dropped: () => void,
-  operation: (boundedSignal: AbortSignal) => Promise<unknown>,
+  operation: (boundedSignal: AbortSignal) => Promise<unknown>
 ): Promise<void> {
   if (signal.aborted) {
-    return;
+    return
   }
-  const controller = new AbortController();
+  const controller = new AbortController()
 
   const abort = () => {
-    controller.abort();
-  };
+    controller.abort()
+  }
 
-  signal.addEventListener("abort", abort, { once: true });
-  const timer = setTimeout(abort, timeoutMs);
+  signal.addEventListener('abort', abort, { once: true })
+  const timer = setTimeout(abort, timeoutMs)
   try {
     await Promise.race([
       Promise.resolve()
         .then(() => operation(controller.signal))
         .catch(() => {
-          dropped();
+          dropped()
         }),
       new Promise<void>((resolve) => {
         controller.signal.addEventListener(
-          "abort",
+          'abort',
           () => {
-            resolve();
+            resolve()
           },
           {
-            once: true,
-          },
-        );
-      }),
-    ]);
+            once: true
+          }
+        )
+      })
+    ])
   } finally {
-    clearTimeout(timer);
-    signal.removeEventListener("abort", abort);
+    clearTimeout(timer)
+    signal.removeEventListener('abort', abort)
   }
 }

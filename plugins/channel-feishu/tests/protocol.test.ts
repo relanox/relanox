@@ -1,327 +1,363 @@
-import { createCipheriv, createHash } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
-import { createFeishuChannel } from "../src/index.js";
-import { peer, recorder, sendInput } from "./peer.js";
+import { createCipheriv, createHash } from 'node:crypto'
+import { afterEach, describe, expect, it } from 'vitest'
+import { createFeishuChannel } from '../src/index.js'
+import { peer, recorder, sendInput } from './peer.js'
 
 const environment = {
-  APPSECRET: "app-secret",
-  ROTATED: "rotated-secret",
-  ENCRYPT: "encrypt-key",
-  VERIFY: "verification-token",
-};
+  APPSECRET: 'app-secret',
+  ROTATED: 'rotated-secret',
+  ENCRYPT: 'encrypt-key',
+  VERIFY: 'verification-token'
+}
 
 const account = {
-  id: "fs",
-  channel: "feishu" as const,
+  id: 'fs',
+  channel: 'feishu' as const,
   config: null,
-  allowedSenders: ["ou_user"],
-};
+  allowedSenders: ['ou_user']
+}
 
 const target = {
-  channel: "feishu" as const,
-  accountId: "fs",
-  chatId: "oc_chat",
-  threadId: "omt_thread",
-  replyToId: "om_message",
+  channel: 'feishu' as const,
+  accountId: 'fs',
+  chatId: 'oc_chat',
+  threadId: 'omt_thread',
+  replyToId: 'om_message',
   data: {
-    tenantKey: "tenant-1",
-    appId: "cli_app",
-    botId: "ou_bot",
-    apiBaseUrl: "https://open.feishu.cn",
-  },
-};
+    tenantKey: 'tenant-1',
+    appId: 'cli_app',
+    botId: 'ou_bot',
+    apiBaseUrl: 'https://open.feishu.cn'
+  }
+}
 
 const event = {
-  schema: "2.0",
+  schema: '2.0',
   header: {
-    event_id: "event-42",
-    event_type: "im.message.receive_v1",
-    app_id: "cli_app",
-    tenant_key: "tenant-1",
-    token: "verification-token",
+    event_id: 'event-42',
+    event_type: 'im.message.receive_v1',
+    app_id: 'cli_app',
+    tenant_key: 'tenant-1',
+    token: 'verification-token'
   },
   event: {
     sender: {
-      sender_type: "user",
-      sender_id: { open_id: "ou_user" },
-      tenant_key: "tenant-1",
+      sender_type: 'user',
+      sender_id: { open_id: 'ou_user' },
+      tenant_key: 'tenant-1'
     },
     message: {
-      message_id: "om_message",
-      chat_id: "oc_chat",
-      chat_type: "group",
-      message_type: "text",
+      message_id: 'om_message',
+      chat_id: 'oc_chat',
+      chat_type: 'group',
+      message_type: 'text',
       content: '{"text":"hello"}',
-      create_time: "1700000000000",
-      thread_id: "omt_thread",
-    },
-  },
-};
+      create_time: '1700000000000',
+      thread_id: 'omt_thread'
+    }
+  }
+}
 
-const cleanup: (() => Promise<void>)[] = [];
+const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const close of cleanup.splice(0)) {
-    await close();
+    await close()
   }
-});
+})
 
 async function setup(
-  apiBaseUrl = "https://open.feishu.cn",
+  apiBaseUrl = 'https://open.feishu.cn',
   onIngest?: Parameters<typeof recorder>[0],
-  overrides: Record<string, unknown> = {},
+  overrides: Record<string, unknown> = {}
 ) {
-  const plugin = createFeishuChannel(environment);
-  const recorded = recorder(onIngest);
+  const plugin = createFeishuChannel(environment)
+  const recorded = recorder(onIngest)
   await plugin.setup(
     recorded.host,
     account,
     plugin.validateConfig({
-      appId: "cli_app",
-      appSecret: { env: "APPSECRET" },
-      encryptKey: { env: "ENCRYPT" },
-      verificationToken: { env: "VERIFY" },
-      tenantKey: "tenant-1",
-      botOpenId: "ou_bot",
+      appId: 'cli_app',
+      appSecret: { env: 'APPSECRET' },
+      encryptKey: { env: 'ENCRYPT' },
+      verificationToken: { env: 'VERIFY' },
+      tenantKey: 'tenant-1',
+      botOpenId: 'ou_bot',
       apiBaseUrl,
       allowInsecureLoopback: true,
-      ...overrides,
-    }),
-  );
+      ...overrides
+    })
+  )
   return {
     plugin,
     ...recorded,
     target: { ...target, data: { ...target.data, apiBaseUrl } },
-    handler: recorded.handlers.get("/events") as NonNullable<
+    handler: recorded.handlers.get('/events') as NonNullable<
       ReturnType<typeof recorded.handlers.get>
-    >,
-  };
+    >
+  }
 }
 
 function request(
   value: unknown,
   encrypted = false,
   forged = false,
-  timestamp = String(Math.floor(Date.now() / 1000)),
+  timestamp = String(Math.floor(Date.now() / 1000))
 ) {
-  let body = JSON.stringify(value);
+  let body = JSON.stringify(value)
   if (encrypted) {
-    const iv = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+    const iv = Buffer.from('00112233445566778899aabbccddeeff', 'hex')
 
     const cipher = createCipheriv(
-      "aes-256-cbc",
-      createHash("sha256").update("encrypt-key").digest(),
-      iv,
-    );
+      'aes-256-cbc',
+      createHash('sha256').update('encrypt-key').digest(),
+      iv
+    )
 
     body = JSON.stringify({
-      encrypt: Buffer.concat([iv, cipher.update(body, "utf8"), cipher.final()]).toString("base64"),
-    });
+      encrypt: Buffer.concat([
+        iv,
+        cipher.update(body, 'utf8'),
+        cipher.final()
+      ]).toString('base64')
+    })
   }
 
-  const signature = createHash("sha256")
+  const signature = createHash('sha256')
     .update(`${timestamp}nonce-1encrypt-key${body}`)
-    .digest("hex");
+    .digest('hex')
 
-  return new Request("https://relay.example/channels/fs/events", {
-    method: "POST",
+  return new Request('https://relay.example/channels/fs/events', {
+    method: 'POST',
     body,
     headers: {
-      "x-lark-request-timestamp": timestamp,
-      "x-lark-request-nonce": "nonce-1",
-      "x-lark-signature": forged ? "bad-signature" : signature,
-    },
-  });
+      'x-lark-request-timestamp': timestamp,
+      'x-lark-request-nonce': 'nonce-1',
+      'x-lark-signature': forged ? 'bad-signature' : signature
+    }
+  })
 }
 
-describe("feishu native HTTP protocol", () => {
-  it.each(["sender_not_allowed", "unbound_conversation"])(
-    "acknowledges terminal core policy rejection: %s",
+describe('feishu native HTTP protocol', () => {
+  it.each(['sender_not_allowed', 'unbound_conversation'])(
+    'acknowledges terminal core policy rejection: %s',
     async (code) => {
       const test = await setup(undefined, async () => {
-        throw Object.assign(new Error(code), { code });
-      });
+        throw Object.assign(new Error(code), { code })
+      })
 
-      expect((await test.handler(request(event))).status).toBe(204);
-      expect(test.received).toEqual([]);
-    },
-  );
+      expect((await test.handler(request(event))).status).toBe(204)
+      expect(test.received).toEqual([])
+    }
+  )
 
-  it.each(["identity", "server", "legacy"])(
-    "refuses a frozen target after %s changes",
+  it.each(['identity', 'server', 'legacy'])(
+    'refuses a frozen target after %s changes',
     async (change) => {
       const remote = await peer((input) => ({
-        body: input.path.includes("tenant_access_token")
-          ? { code: 0, tenant_access_token: "tenant-token", expire: 7200 }
-          : { code: 0, data: { message_id: "om_sent" } },
-      }));
+        body: input.path.includes('tenant_access_token')
+          ? { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+          : { code: 0, data: { message_id: 'om_sent' } }
+      }))
 
-      cleanup.push(remote.close);
-      const initial = await setup(remote.url);
-      await initial.handler(request(event));
-      const frozen = initial.received[0]?.target;
+      cleanup.push(remote.close)
+      const initial = await setup(remote.url)
+      await initial.handler(request(event))
+      const frozen = initial.received[0]?.target
       if (!frozen) {
-        throw new Error("Missing accepted reply target");
+        throw new Error('Missing accepted reply target')
       }
-      const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+
+      const nextBase =
+        change === 'server' ? `${remote.url}/different` : remote.url
 
       const restarted = await setup(
         nextBase,
         undefined,
-        change === "identity" ? { appId: "cli_other" } : {},
-      );
+        change === 'identity' ? { appId: 'cli_other' } : {}
+      )
 
       expect(
         await restarted.plugin.send(
-          sendInput(change === "legacy" ? { ...frozen, data: { tenantKey: "tenant-1" } } : frozen),
-        ),
+          sendInput(
+            change === 'legacy'
+              ? { ...frozen, data: { tenantKey: 'tenant-1' } }
+              : frozen
+          )
+        )
       ).toEqual({
-        status: "rejected",
-        errorCode: "invalid_target",
-      });
-      expect(remote.requests).toEqual([]);
-    },
-  );
+        status: 'rejected',
+        errorCode: 'invalid_target'
+      })
+      expect(remote.requests).toEqual([])
+    }
+  )
 
   it.each([false, true])(
-    "accepts unsigned token-authenticated URL challenges (encrypted=%s)",
+    'accepts unsigned token-authenticated URL challenges (encrypted=%s)',
     async (encrypted) => {
-      const test = await setup();
+      const test = await setup()
 
       const challenge = {
-        type: "url_verification",
-        token: "verification-token",
-        challenge: "registration-42",
-      };
+        type: 'url_verification',
+        token: 'verification-token',
+        challenge: 'registration-42'
+      }
 
-      const signed = request(challenge, encrypted);
-      const unsigned = new Request(signed.url, { method: "POST", body: await signed.text() });
-      const response = await test.handler(unsigned);
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ challenge: "registration-42" });
-      const wrong = request({ ...challenge, token: "wrong-token" }, encrypted);
-      expect(
-        (await test.handler(new Request(wrong.url, { method: "POST", body: await wrong.text() })))
-          .status,
-      ).toBe(401);
-      const unsignedEvent = request(event, encrypted);
+      const signed = request(challenge, encrypted)
+
+      const unsigned = new Request(signed.url, {
+        method: 'POST',
+        body: await signed.text()
+      })
+
+      const response = await test.handler(unsigned)
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ challenge: 'registration-42' })
+      const wrong = request({ ...challenge, token: 'wrong-token' }, encrypted)
       expect(
         (
           await test.handler(
-            new Request(unsignedEvent.url, { method: "POST", body: await unsignedEvent.text() }),
+            new Request(wrong.url, { method: 'POST', body: await wrong.text() })
           )
-        ).status,
-      ).toBe(401);
-      expect(test.received).toEqual([]);
-    },
-  );
+        ).status
+      ).toBe(401)
+      const unsignedEvent = request(event, encrypted)
+      expect(
+        (
+          await test.handler(
+            new Request(unsignedEvent.url, {
+              method: 'POST',
+              body: await unsignedEvent.text()
+            })
+          )
+        ).status
+      ).toBe(401)
+      expect(test.received).toEqual([])
+    }
+  )
 
-  it("keeps same-identity credential rotation and canonical URL spelling deliverable", async () => {
+  it('keeps same-identity credential rotation and canonical URL spelling deliverable', async () => {
     const remote = await peer((input) => ({
-      body: input.path.includes("tenant_access_token")
-        ? { code: 0, tenant_access_token: "tenant-token", expire: 7200 }
-        : { code: 0, data: { message_id: "om_sent" } },
-    }));
+      body: input.path.includes('tenant_access_token')
+        ? { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+        : { code: 0, data: { message_id: 'om_sent' } }
+    }))
 
-    cleanup.push(remote.close);
-    const initial = await setup(remote.url);
-    const restarted = await setup(`${remote.url}/`, undefined, { appSecret: { env: "ROTATED" } });
-    expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
-    expect(remote.requests).toHaveLength(2);
-  });
+    cleanup.push(remote.close)
+    const initial = await setup(remote.url)
 
-  it("bounds event bodies and keeps canceled token acquisition retryable", async () => {
+    const restarted = await setup(`${remote.url}/`, undefined, {
+      appSecret: { env: 'ROTATED' }
+    })
+
+    expect(
+      (await restarted.plugin.send(sendInput(initial.target))).status
+    ).toBe('sent')
+    expect(remote.requests).toHaveLength(2)
+  })
+
+  it('bounds event bodies and keeps canceled token acquisition retryable', async () => {
     const remote = await peer(() => ({
-      body: { code: 0, tenant_access_token: "tenant-token", expire: 7200 },
-    }));
+      body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+    }))
 
-    cleanup.push(remote.close);
-    const test = await setup(remote.url);
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
 
-    const oversized = new Request("https://relay.example/channels/fs/events", {
-      method: "POST",
+    const oversized = new Request('https://relay.example/channels/fs/events', {
+      method: 'POST',
       headers: {
-        "x-lark-request-timestamp": String(Math.floor(Date.now() / 1000)),
-        "x-lark-request-nonce": "nonce-1",
+        'x-lark-request-timestamp': String(Math.floor(Date.now() / 1000)),
+        'x-lark-request-nonce': 'nonce-1'
       },
-      body: "x".repeat(1_048_577),
-    });
+      body: 'x'.repeat(1_048_577)
+    })
 
-    expect((await test.handler(oversized)).status).toBe(413);
-    expect(test.received).toEqual([]);
-    const controller = new AbortController();
-    controller.abort();
-    expect(await test.plugin.send(sendInput(test.target, controller.signal))).toEqual({
-      status: "retryable",
-      errorCode: "tenant_token_transport_error",
-    });
-    expect(remote.requests).toEqual([]);
-  });
+    expect((await test.handler(oversized)).status).toBe(413)
+    expect(test.received).toEqual([])
+    const controller = new AbortController()
+    controller.abort()
+    expect(
+      await test.plugin.send(sendInput(test.target, controller.signal))
+    ).toEqual({
+      status: 'retryable',
+      errorCode: 'tenant_token_transport_error'
+    })
+    expect(remote.requests).toEqual([])
+  })
 
-  it("authenticates raw signature, freshness and encrypted URL challenge", async () => {
-    const test = await setup();
-    expect((await test.handler(request(event, false, true))).status).toBe(401);
-    expect((await test.handler(request(event, false, false, "1000000000"))).status).toBe(401);
+  it('authenticates raw signature, freshness and encrypted URL challenge', async () => {
+    const test = await setup()
+    expect((await test.handler(request(event, false, true))).status).toBe(401)
+    expect(
+      (await test.handler(request(event, false, false, '1000000000'))).status
+    ).toBe(401)
     expect(
       await (
         await test.handler(
           request(
             {
-              type: "url_verification",
-              token: "verification-token",
-              challenge: "challenge-1",
+              type: 'url_verification',
+              token: 'verification-token',
+              challenge: 'challenge-1'
             },
-            true,
-          ),
+            true
+          )
         )
-      ).json(),
-    ).toEqual({ challenge: "challenge-1" });
+      ).json()
+    ).toEqual({ challenge: 'challenge-1' })
     expect(
       (
         await test.handler(
           request(
             {
-              type: "url_verification",
-              token: "wrong-token",
-              challenge: "challenge-1",
+              type: 'url_verification',
+              token: 'wrong-token',
+              challenge: 'challenge-1'
             },
-            true,
-          ),
+            true
+          )
         )
-      ).status,
-    ).toBe(401);
-    expect(test.received).toHaveLength(0);
-  });
+      ).status
+    ).toBe(401)
+    expect(test.received).toHaveLength(0)
+  })
 
   it.each([false, true])(
-    "normalizes signed event text/tenant/thread (encrypted=%s)",
+    'normalizes signed event text/tenant/thread (encrypted=%s)',
     async (encrypted) => {
-      const test = await setup();
-      expect((await test.handler(request(event, encrypted))).status).toBe(204);
+      const test = await setup()
+      expect((await test.handler(request(event, encrypted))).status).toBe(204)
       expect(test.received[0]).toMatchObject({
-        source: { channel: "feishu", accountId: "fs", eventId: "event-42" },
-        senderId: "ou_user",
-        text: "hello",
+        source: { channel: 'feishu', accountId: 'fs', eventId: 'event-42' },
+        senderId: 'ou_user',
+        text: 'hello',
         target,
-        context: { tenantKey: "tenant-1" },
-      });
-    },
-  );
-
-  it("rejects foreign app/tenant/token and corrupted signed ciphertext", async () => {
-    const test = await setup();
-    for (const header of [
-      { ...event.header, tenant_key: "tenant-2" },
-      { ...event.header, app_id: "cli_other" },
-      { ...event.header, token: "wrong-token" },
-    ]) {
-      expect((await test.handler(request({ ...event, header }))).status).toBe(401);
+        context: { tenantKey: 'tenant-1' }
+      })
     }
-    expect((await test.handler(request({ encrypt: "AAAAAAAAAAAAAAAAAAAAAA==" }))).status).toBe(400);
-    expect(test.received).toHaveLength(0);
-  });
+  )
 
-  it("diagnoses unsupported sticker/bot events and never ACKs failed ingest", async () => {
-    const test = await setup();
+  it('rejects foreign app/tenant/token and corrupted signed ciphertext', async () => {
+    const test = await setup()
+    for (const header of [
+      { ...event.header, tenant_key: 'tenant-2' },
+      { ...event.header, app_id: 'cli_other' },
+      { ...event.header, token: 'wrong-token' }
+    ]) {
+      expect((await test.handler(request({ ...event, header }))).status).toBe(
+        401
+      )
+    }
+    expect(
+      (await test.handler(request({ encrypt: 'AAAAAAAAAAAAAAAAAAAAAA==' })))
+        .status
+    ).toBe(400)
+    expect(test.received).toHaveLength(0)
+  })
+
+  it('diagnoses unsupported sticker/bot events and never ACKs failed ingest', async () => {
+    const test = await setup()
     expect(
       (
         await test.handler(
@@ -329,12 +365,12 @@ describe("feishu native HTTP protocol", () => {
             ...event,
             event: {
               ...event.event,
-              message: { ...event.event.message, message_type: "sticker" },
-            },
-          }),
+              message: { ...event.event.message, message_type: 'sticker' }
+            }
+          })
         )
-      ).status,
-    ).toBe(204);
+      ).status
+    ).toBe(204)
     expect(
       (
         await test.handler(
@@ -342,157 +378,169 @@ describe("feishu native HTTP protocol", () => {
             ...event,
             event: {
               ...event.event,
-              sender: { ...event.event.sender, sender_type: "app" },
-            },
-          }),
+              sender: { ...event.event.sender, sender_type: 'app' }
+            }
+          })
         )
-      ).status,
-    ).toBe(204);
-    expect(test.received).toHaveLength(0);
+      ).status
+    ).toBe(204)
+    expect(test.received).toHaveLength(0)
 
     const failing = await setup(undefined, async () => {
-      throw new Error("db unavailable");
-    });
+      throw new Error('db unavailable')
+    })
 
-    expect((await failing.handler(request(event))).status).toBe(503);
-  });
+    expect((await failing.handler(request(event))).status).toBe(503)
+  })
 
   it.each([
-    { status: 503, body: {}, expected: "retryable" },
-    { status: 200, body: {}, expected: "retryable" },
-    { status: 403, body: {}, expected: "rejected" },
+    { status: 503, body: {}, expected: 'retryable' },
+    { status: 200, body: {}, expected: 'retryable' },
+    { status: 403, body: {}, expected: 'rejected' }
   ])(
-    "does not freeze unsent text after token endpoint HTTP $status",
+    'does not freeze unsent text after token endpoint HTTP $status',
     async ({ status, body, expected }) => {
-      const remote = await peer(() => ({ status, body }));
-      cleanup.push(remote.close);
-      const test = await setup(remote.url);
-      expect((await test.plugin.send(sendInput(test.target))).status).toBe(expected);
+      const remote = await peer(() => ({ status, body }))
+      cleanup.push(remote.close)
+      const test = await setup(remote.url)
+      expect((await test.plugin.send(sendInput(test.target))).status).toBe(
+        expected
+      )
       expect(remote.requests.map((input) => input.path)).toEqual([
-        "/open-apis/auth/v3/tenant_access_token/internal",
-      ]);
-    },
-  );
+        '/open-apis/auth/v3/tenant_access_token/internal'
+      ])
+    }
+  )
 
-  it("refreshes expiring tenant tokens and uses independent nested text reply wire", async () => {
-    let tokens = 0;
+  it('refreshes expiring tenant tokens and uses independent nested text reply wire', async () => {
+    let tokens = 0
 
     const remote = await peer((input) =>
-      input.path.includes("tenant_access_token")
+      input.path.includes('tenant_access_token')
         ? {
             body: {
               code: 0,
               tenant_access_token: `tenant-token-${++tokens}`,
-              expire: 30,
-            },
+              expire: 30
+            }
           }
-        : { body: { code: 0, data: { message_id: "om_sent" } } },
-    );
+        : { body: { code: 0, data: { message_id: 'om_sent' } } }
+    )
 
-    cleanup.push(remote.close);
-    const test = await setup(remote.url);
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
     expect(await test.plugin.send(sendInput(test.target))).toEqual({
-      status: "sent",
-      receipt: { platformMessageId: "om_sent" },
-    });
+      status: 'sent',
+      receipt: { platformMessageId: 'om_sent' }
+    })
     expect(remote.requests[0]).toMatchObject({
-      path: "/open-apis/auth/v3/tenant_access_token/internal",
-      body: { app_id: "cli_app", app_secret: "app-secret" },
-    });
+      path: '/open-apis/auth/v3/tenant_access_token/internal',
+      body: { app_id: 'cli_app', app_secret: 'app-secret' }
+    })
     expect(remote.requests[1]).toMatchObject({
-      path: "/open-apis/im/v1/messages/om_message/reply",
-      headers: { authorization: "Bearer tenant-token-1" },
+      path: '/open-apis/im/v1/messages/om_message/reply',
+      headers: { authorization: 'Bearer tenant-token-1' },
       body: {
-        msg_type: "text",
+        msg_type: 'text',
         content: '{"text":"hello @everyone <@U123>"}',
-        reply_in_thread: true,
-      },
-    });
-    await test.plugin.send(sendInput(test.target));
-    expect(tokens).toBe(2);
-  });
+        reply_in_thread: true
+      }
+    })
+    await test.plugin.send(sendInput(test.target))
+    expect(tokens).toBe(2)
+  })
 
-  it("uses chat-id create path when there is no referenced source message", async () => {
+  it('uses chat-id create path when there is no referenced source message', async () => {
     const remote = await peer((input) => ({
-      body: input.path.includes("tenant_access_token")
-        ? { code: 0, tenant_access_token: "tenant-token", expire: 7200 }
-        : { code: 0, data: { message_id: "om_sent" } },
-    }));
+      body: input.path.includes('tenant_access_token')
+        ? { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+        : { code: 0, data: { message_id: 'om_sent' } }
+    }))
 
-    cleanup.push(remote.close);
-    const test = await setup(remote.url);
-    const { replyToId: _reply, threadId: _thread, ...chatTarget } = test.target;
-    expect((await test.plugin.send(sendInput(chatTarget))).status).toBe("sent");
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+    const { replyToId: _reply, threadId: _thread, ...chatTarget } = test.target
+    expect((await test.plugin.send(sendInput(chatTarget))).status).toBe('sent')
     expect(remote.requests[1]).toMatchObject({
-      path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+      path: '/open-apis/im/v1/messages?receive_id_type=chat_id',
       body: {
-        receive_id: "oc_chat",
-        msg_type: "text",
-        content: '{"text":"hello @everyone <@U123>"}',
-      },
-    });
-  });
+        receive_id: 'oc_chat',
+        msg_type: 'text',
+        content: '{"text":"hello @everyone <@U123>"}'
+      }
+    })
+  })
 
   it.each([
     {
       status: 429,
       body: { code: 99_991_400 },
       expected: {
-        status: "retryable",
-        errorCode: "rate_limited",
-        retryAfterMs: 2000,
-      },
+        status: 'retryable',
+        errorCode: 'rate_limited',
+        retryAfterMs: 2000
+      }
     },
     {
       status: 200,
-      body: { code: 230_001, msg: "raw secret details" },
-      expected: { status: "rejected", errorCode: "feishu_api_error" },
+      body: { code: 230_001, msg: 'raw secret details' },
+      expected: { status: 'rejected', errorCode: 'feishu_api_error' }
     },
     {
       status: 200,
       body: { code: 0 },
-      expected: { status: "unknown", errorCode: "invalid_platform_response" },
-    },
-  ])("maps message API errors without raw fields", async ({ status, body, expected }) => {
-    const remote = await peer((input) =>
-      input.path.includes("tenant_access_token")
-        ? {
-            body: {
-              code: 0,
-              tenant_access_token: "tenant-token",
-              expire: 7200,
-            },
-          }
-        : { status, headers: { "retry-after": "2" }, body },
-    );
+      expected: { status: 'unknown', errorCode: 'invalid_platform_response' }
+    }
+  ])(
+    'maps message API errors without raw fields',
+    async ({ status, body, expected }) => {
+      const remote = await peer((input) =>
+        input.path.includes('tenant_access_token')
+          ? {
+              body: {
+                code: 0,
+                tenant_access_token: 'tenant-token',
+                expire: 7200
+              }
+            }
+          : { status, headers: { 'retry-after': '2' }, body }
+      )
 
-    cleanup.push(remote.close);
-    const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(test.target))).toEqual(expected);
-  });
+      cleanup.push(remote.close)
+      const test = await setup(remote.url)
+      expect(await test.plugin.send(sendInput(test.target))).toEqual(expected)
+    }
+  )
 
-  it("rejects literal credentials, insecure remote URL and foreign tenant targets", async () => {
-    const plugin = createFeishuChannel(environment);
-    expect(() => plugin.validateConfig({ appId: "cli_app", appSecret: "raw" })).toThrow();
+  it('rejects literal credentials, insecure remote URL and foreign tenant targets', async () => {
+    const plugin = createFeishuChannel(environment)
+    expect(() =>
+      plugin.validateConfig({ appId: 'cli_app', appSecret: 'raw' })
+    ).toThrow()
 
     const config = {
-      appId: "cli_app",
-      appSecret: { env: "APPSECRET" },
-      encryptKey: { env: "ENCRYPT" },
-      verificationToken: { env: "VERIFY" },
-      tenantKey: "tenant-1",
-      botOpenId: "ou_bot",
-    };
+      appId: 'cli_app',
+      appSecret: { env: 'APPSECRET' },
+      encryptKey: { env: 'ENCRYPT' },
+      verificationToken: { env: 'VERIFY' },
+      tenantKey: 'tenant-1',
+      botOpenId: 'ou_bot'
+    }
 
     expect(() =>
-      plugin.validateConfig({ ...config, apiBaseUrl: "http://remote.example" }),
-    ).toThrow();
-    expect(plugin.validateConfig({ ...config, domain: "lark" }).domain).toBe("lark");
-    const test = await setup();
+      plugin.validateConfig({ ...config, apiBaseUrl: 'http://remote.example' })
+    ).toThrow()
+    expect(plugin.validateConfig({ ...config, domain: 'lark' }).domain).toBe(
+      'lark'
+    )
+    const test = await setup()
     expect(
       await test.plugin.send(
-        sendInput({ ...test.target, data: { ...test.target.data, tenantKey: "tenant-2" } }),
-      ),
-    ).toEqual({ status: "rejected", errorCode: "invalid_target" });
-  });
-});
+        sendInput({
+          ...test.target,
+          data: { ...test.target.data, tenantKey: 'tenant-2' }
+        })
+      )
+    ).toEqual({ status: 'rejected', errorCode: 'invalid_target' })
+  })
+})

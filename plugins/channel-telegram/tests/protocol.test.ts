@@ -1,302 +1,332 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { createTelegramChannel } from "../src/index.js";
-import { peer, recorder, sendInput } from "./peer.js";
+import { afterEach, describe, expect, it } from 'vitest'
+import { createTelegramChannel } from '../src/index.js'
+import { peer, recorder, sendInput } from './peer.js'
 
 const environment = {
-  TOKEN: "123:abc_DEF",
-  SECRET: "webhook-secret",
-  OTHER_TOKEN: "456:changed",
-  ROTATED_TOKEN: "123:rotated",
-};
+  TOKEN: '123:abc_DEF',
+  SECRET: 'webhook-secret',
+  OTHER_TOKEN: '456:changed',
+  ROTATED_TOKEN: '123:rotated'
+}
 
 const account = {
-  id: "tg",
-  channel: "telegram" as const,
+  id: 'tg',
+  channel: 'telegram' as const,
   config: null,
-  allowedSenders: ["42"],
-};
+  allowedSenders: ['42']
+}
 
 const target = {
-  channel: "telegram" as const,
-  accountId: "tg",
-  chatId: "-1007",
-  threadId: "8",
-  replyToId: "9",
-  data: { botId: "123", apiBaseUrl: "https://api.telegram.org" },
-};
+  channel: 'telegram' as const,
+  accountId: 'tg',
+  chatId: '-1007',
+  threadId: '8',
+  replyToId: '9',
+  data: { botId: '123', apiBaseUrl: 'https://api.telegram.org' }
+}
 
-const cleanup: (() => Promise<void>)[] = [];
+const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const close of cleanup.splice(0)) {
-    await close();
+    await close()
   }
-});
+})
 
 async function setup(
-  apiBaseUrl = "https://api.telegram.org",
+  apiBaseUrl = 'https://api.telegram.org',
   onIngest?: Parameters<typeof recorder>[0],
-  overrides: Record<string, unknown> = {},
+  overrides: Record<string, unknown> = {}
 ) {
-  const plugin = createTelegramChannel(environment);
-  const recorded = recorder(onIngest);
+  const plugin = createTelegramChannel(environment)
+  const recorded = recorder(onIngest)
   await plugin.setup(
     recorded.host,
     account,
     plugin.validateConfig({
-      botToken: { env: "TOKEN" },
-      webhookSecret: { env: "SECRET" },
+      botToken: { env: 'TOKEN' },
+      webhookSecret: { env: 'SECRET' },
       apiBaseUrl,
       allowInsecureLoopback: true,
-      ...overrides,
-    }),
-  );
+      ...overrides
+    })
+  )
   return {
     plugin,
     ...recorded,
     target: { ...target, data: { ...target.data, apiBaseUrl } },
-    handler: recorded.handlers.get("/webhook") as NonNullable<
+    handler: recorded.handlers.get('/webhook') as NonNullable<
       ReturnType<typeof recorded.handlers.get>
-    >,
-  };
+    >
+  }
 }
 
-function webhook(secret = "webhook-secret", extra: Record<string, unknown> = {}) {
-  return new Request("https://relay.example/channels/tg/webhook", {
-    method: "POST",
-    headers: { "x-telegram-bot-api-secret-token": secret },
+function webhook(
+  secret = 'webhook-secret',
+  extra: Record<string, unknown> = {}
+) {
+  return new Request('https://relay.example/channels/tg/webhook', {
+    method: 'POST',
+    headers: { 'x-telegram-bot-api-secret-token': secret },
     body: JSON.stringify({
       update_id: 700,
       message: {
         message_id: 9,
         message_thread_id: 8,
         from: { id: 42, is_bot: false },
-        chat: { id: -1007, type: "supergroup" },
-        text: "hello",
-        ...extra,
-      },
-    }),
-  });
+        chat: { id: -1007, type: 'supergroup' },
+        text: 'hello',
+        ...extra
+      }
+    })
+  })
 }
 
-describe("telegram native protocol", () => {
-  it.each(["sender_not_allowed", "unbound_conversation"])(
-    "acknowledges terminal core policy rejection: %s",
+describe('telegram native protocol', () => {
+  it.each(['sender_not_allowed', 'unbound_conversation'])(
+    'acknowledges terminal core policy rejection: %s',
     async (code) => {
       const test = await setup(undefined, async () => {
-        throw Object.assign(new Error(code), { code });
-      });
+        throw Object.assign(new Error(code), { code })
+      })
 
-      expect((await test.handler(webhook())).status).toBe(204);
-      expect(test.received).toEqual([]);
-    },
-  );
+      expect((await test.handler(webhook())).status).toBe(204)
+      expect(test.received).toEqual([])
+    }
+  )
 
-  it.each(["identity", "server", "legacy"])(
-    "refuses a frozen target after %s changes",
+  it.each(['identity', 'server', 'legacy'])(
+    'refuses a frozen target after %s changes',
     async (change) => {
-      const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
-      cleanup.push(remote.close);
-      const initial = await setup(remote.url);
-      await initial.handler(webhook());
-      const frozen = initial.received[0]?.target;
+      const remote = await peer(() => ({
+        body: { ok: true, result: { message_id: 100 } }
+      }))
+
+      cleanup.push(remote.close)
+      const initial = await setup(remote.url)
+      await initial.handler(webhook())
+      const frozen = initial.received[0]?.target
       if (!frozen) {
-        throw new Error("Missing accepted reply target");
+        throw new Error('Missing accepted reply target')
       }
-      const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+
+      const nextBase =
+        change === 'server' ? `${remote.url}/different` : remote.url
 
       const restarted = await setup(
         nextBase,
         undefined,
-        change === "identity" ? { botToken: { env: "OTHER_TOKEN" } } : {},
-      );
+        change === 'identity' ? { botToken: { env: 'OTHER_TOKEN' } } : {}
+      )
 
       expect(
         await restarted.plugin.send(
-          sendInput(change === "legacy" ? { ...frozen, data: null } : frozen),
-        ),
+          sendInput(change === 'legacy' ? { ...frozen, data: null } : frozen)
+        )
       ).toEqual({
-        status: "rejected",
-        errorCode: "invalid_target",
-      });
-      expect(remote.requests).toEqual([]);
-    },
-  );
+        status: 'rejected',
+        errorCode: 'invalid_target'
+      })
+      expect(remote.requests).toEqual([])
+    }
+  )
 
-  it("keeps same-identity credential rotation and canonical URL spelling deliverable", async () => {
-    const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
-    cleanup.push(remote.close);
-    const initial = await setup(remote.url);
+  it('keeps same-identity credential rotation and canonical URL spelling deliverable', async () => {
+    const remote = await peer(() => ({
+      body: { ok: true, result: { message_id: 100 } }
+    }))
+
+    cleanup.push(remote.close)
+    const initial = await setup(remote.url)
 
     const restarted = await setup(`${remote.url}/`, undefined, {
-      botToken: { env: "ROTATED_TOKEN" },
-    });
+      botToken: { env: 'ROTATED_TOKEN' }
+    })
 
-    expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
-    expect(remote.requests).toHaveLength(1);
-  });
+    expect(
+      (await restarted.plugin.send(sendInput(initial.target))).status
+    ).toBe('sent')
+    expect(remote.requests).toHaveLength(1)
+  })
 
-  it("bounds authenticated payloads and preserves canceled-send uncertainty", async () => {
-    const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
-    cleanup.push(remote.close);
-    const test = await setup(remote.url);
+  it('bounds authenticated payloads and preserves canceled-send uncertainty', async () => {
+    const remote = await peer(() => ({
+      body: { ok: true, result: { message_id: 100 } }
+    }))
 
-    const oversized = new Request("https://relay.example/channels/tg/webhook", {
-      method: "POST",
-      headers: { "x-telegram-bot-api-secret-token": "webhook-secret" },
-      body: "x".repeat(1_048_577),
-    });
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
 
-    expect((await test.handler(oversized)).status).toBe(413);
-    expect(test.received).toEqual([]);
-    const controller = new AbortController();
-    controller.abort();
-    expect(await test.plugin.send(sendInput(test.target, controller.signal))).toEqual({
-      status: "unknown",
-      errorCode: "telegram_transport_error",
-    });
-    expect(remote.requests).toEqual([]);
-  });
+    const oversized = new Request('https://relay.example/channels/tg/webhook', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+      body: 'x'.repeat(1_048_577)
+    })
 
-  it("rejects missing/forged secret and delivers authenticated topic/reply identity", async () => {
-    const test = await setup();
-    expect((await test.handler(webhook("wrong"))).status).toBe(401);
-    expect(test.received).toEqual([]);
-    expect((await test.handler(webhook())).status).toBe(204);
+    expect((await test.handler(oversized)).status).toBe(413)
+    expect(test.received).toEqual([])
+    const controller = new AbortController()
+    controller.abort()
+    expect(
+      await test.plugin.send(sendInput(test.target, controller.signal))
+    ).toEqual({
+      status: 'unknown',
+      errorCode: 'telegram_transport_error'
+    })
+    expect(remote.requests).toEqual([])
+  })
+
+  it('rejects missing/forged secret and delivers authenticated topic/reply identity', async () => {
+    const test = await setup()
+    expect((await test.handler(webhook('wrong'))).status).toBe(401)
+    expect(test.received).toEqual([])
+    expect((await test.handler(webhook())).status).toBe(204)
     expect(test.received[0]).toMatchObject({
-      source: { channel: "telegram", accountId: "tg", eventId: "700" },
-      senderId: "42",
-      text: "hello",
+      source: { channel: 'telegram', accountId: 'tg', eventId: '700' },
+      senderId: '42',
+      text: 'hello',
       target,
-      context: { messageId: "9" },
-    });
-  });
+      context: { messageId: '9' }
+    })
+  })
 
-  it("holds ACK until handoff finishes and returns failure when ingest fails", async () => {
-    let finish: (() => void) | undefined;
+  it('holds ACK until handoff finishes and returns failure when ingest fails', async () => {
+    let finish: (() => void) | undefined
 
     const gate = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
+      finish = resolve
+    })
 
-    const test = await setup(undefined, async () => gate);
-    let acknowledged = false;
+    const test = await setup(undefined, async () => gate)
+    let acknowledged = false
 
     const pending = test.handler(webhook()).then((response) => {
-      acknowledged = true;
-      return response;
-    });
+      acknowledged = true
+      return response
+    })
 
     await new Promise((resolve) => {
-      setTimeout(resolve, 20);
-    });
-    expect(acknowledged).toBe(false);
-    finish?.();
-    expect((await pending).status).toBe(204);
+      setTimeout(resolve, 20)
+    })
+    expect(acknowledged).toBe(false)
+    finish?.()
+    expect((await pending).status).toBe(204)
 
     const failing = await setup(undefined, async () => {
-      throw new Error("storage unavailable");
-    });
+      throw new Error('storage unavailable')
+    })
 
-    expect((await failing.handler(webhook())).status).toBe(503);
-  });
+    expect((await failing.handler(webhook())).status).toBe(503)
+  })
 
-  it("filters bot/nontext input and rejects malformed protocol bodies", async () => {
-    const test = await setup();
-    expect(
-      (await test.handler(webhook("webhook-secret", { from: { id: 4, is_bot: true } }))).status,
-    ).toBe(204);
-    expect((await test.handler(webhook("webhook-secret", { text: undefined }))).status).toBe(204);
-    expect(test.received).toHaveLength(0);
+  it('filters bot/nontext input and rejects malformed protocol bodies', async () => {
+    const test = await setup()
     expect(
       (
         await test.handler(
-          new Request("https://relay.example/channels/tg/webhook", {
-            method: "POST",
-            headers: { "x-telegram-bot-api-secret-token": "webhook-secret" },
-            body: "{}",
-          }),
+          webhook('webhook-secret', { from: { id: 4, is_bot: true } })
         )
-      ).status,
-    ).toBe(400);
-  });
+      ).status
+    ).toBe(204)
+    expect(
+      (await test.handler(webhook('webhook-secret', { text: undefined })))
+        .status
+    ).toBe(204)
+    expect(test.received).toHaveLength(0)
+    expect(
+      (
+        await test.handler(
+          new Request('https://relay.example/channels/tg/webhook', {
+            method: 'POST',
+            headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+            body: '{}'
+          })
+        )
+      ).status
+    ).toBe(400)
+  })
 
-  it("sends plain text independently with durable topic/reply target", async () => {
+  it('sends plain text independently with durable topic/reply target', async () => {
     const remote = await peer(() => ({
-      body: { ok: true, result: { message_id: 100 } },
-    }));
+      body: { ok: true, result: { message_id: 100 } }
+    }))
 
-    cleanup.push(remote.close);
-    const test = await setup(remote.url);
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
     expect(await test.plugin.send(sendInput(test.target))).toEqual({
-      status: "sent",
-      receipt: { platformMessageId: "100" },
-    });
+      status: 'sent',
+      receipt: { platformMessageId: '100' }
+    })
     expect(remote.requests[0]).toMatchObject({
-      path: "/bot123:abc_DEF/sendMessage",
+      path: '/bot123:abc_DEF/sendMessage',
       body: {
-        chat_id: "-1007",
-        text: "hello @everyone <@U123>",
+        chat_id: '-1007',
+        text: 'hello @everyone <@U123>',
         message_thread_id: 8,
         reply_parameters: { message_id: 9, allow_sending_without_reply: true },
-        link_preview_options: { is_disabled: true },
-      },
-    });
+        link_preview_options: { is_disabled: true }
+      }
+    })
     expect(Object.keys(remote.requests[0]?.body as object).toSorted()).toEqual([
-      "chat_id",
-      "link_preview_options",
-      "message_thread_id",
-      "reply_parameters",
-      "text",
-    ]);
-  });
+      'chat_id',
+      'link_preview_options',
+      'message_thread_id',
+      'reply_parameters',
+      'text'
+    ])
+  })
 
   it.each([
     {
       body: { ok: false, error_code: 429, parameters: { retry_after: 7 } },
       result: {
-        status: "retryable",
-        errorCode: "rate_limited",
-        retryAfterMs: 7000,
-      },
+        status: 'retryable',
+        errorCode: 'rate_limited',
+        retryAfterMs: 7000
+      }
     },
     {
       body: {
         ok: false,
         error_code: 403,
-        description: "secret sensitive raw error",
+        description: 'secret sensitive raw error'
       },
-      result: { status: "rejected", errorCode: "telegram_api_error" },
+      result: { status: 'rejected', errorCode: 'telegram_api_error' }
     },
     {
       body: { ok: true },
-      result: { status: "unknown", errorCode: "invalid_platform_response" },
-    },
-  ])("maps Bot API outcome without leaking response fields", async ({ body, result }) => {
-    const remote = await peer(() => ({ body }));
-    cleanup.push(remote.close);
-    const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(test.target))).toEqual(result);
-  });
+      result: { status: 'unknown', errorCode: 'invalid_platform_response' }
+    }
+  ])(
+    'maps Bot API outcome without leaking response fields',
+    async ({ body, result }) => {
+      const remote = await peer(() => ({ body }))
+      cleanup.push(remote.close)
+      const test = await setup(remote.url)
+      expect(await test.plugin.send(sendInput(test.target))).toEqual(result)
+    }
+  )
 
-  it("validates env references, secure URLs and target/account scope", async () => {
-    const plugin = createTelegramChannel(environment);
+  it('validates env references, secure URLs and target/account scope', async () => {
+    const plugin = createTelegramChannel(environment)
     expect(() =>
       plugin.validateConfig({
-        botToken: "secret",
-        webhookSecret: { env: "SECRET" },
-      }),
-    ).toThrow();
+        botToken: 'secret',
+        webhookSecret: { env: 'SECRET' }
+      })
+    ).toThrow()
     expect(() =>
       plugin.validateConfig({
-        botToken: { env: "TOKEN" },
-        webhookSecret: { env: "SECRET" },
-        apiBaseUrl: "http://remote.example",
-      }),
-    ).toThrow();
-    const test = await setup();
-    expect(await test.plugin.send(sendInput({ ...test.target, accountId: "other" }))).toEqual({
-      status: "rejected",
-      errorCode: "invalid_target",
-    });
-  });
-});
+        botToken: { env: 'TOKEN' },
+        webhookSecret: { env: 'SECRET' },
+        apiBaseUrl: 'http://remote.example'
+      })
+    ).toThrow()
+    const test = await setup()
+    expect(
+      await test.plugin.send(sendInput({ ...test.target, accountId: 'other' }))
+    ).toEqual({
+      status: 'rejected',
+      errorCode: 'invalid_target'
+    })
+  })
+})

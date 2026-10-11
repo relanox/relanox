@@ -1,2 +1,2 @@
-export { createGoogleChatChannel } from "./channel.js";
-export type { GoogleChatConfig } from "./config.js";
+export { createGoogleChatChannel } from './channel.js'
+export type { GoogleChatConfig } from './config.js'

@@ -37,7 +37,7 @@ Dependency age and allowed install-script policies are defined in `pnpm-workspac
 
 ## Code quality and source organization
 
-Prettier owns formatting and type-aware Oxlint owns linting. Use the root scripts and configuration; do not add another formatter or bypass the tracked hook. CI builds workspace declarations first, then runs the same checks. New test directories need a discoverable TypeScript configuration.
+Prettier uses `prettier-config-standard` directly for JavaScript Standard Style formatting: two-space indentation, an 80-column print width, single quotes, no optional semicolons and no trailing commas. This shared configuration does not enable the full Standard ESLint rule set. Type-aware Oxlint owns linting. Use the root scripts and configuration; do not add another formatter or bypass the tracked hook. CI builds workspace declarations first, then runs the same checks. New test directories need a discoverable TypeScript configuration.
 
 Oxlint also enforces blank lines around function, class, interface, type and enum declarations, multiline exports and variable declarations, after imports, and between class methods. These spacing rules run through Oxlint's JavaScript plugin support. Prettier preserves declaration spacing but does not insert the required blank lines. Run `pnpm lint:fix` followed by `pnpm format` to apply spacing and formatting; `pnpm lint` and the pre-commit hook reject missing spacing. No separate ESLint command is needed.
 

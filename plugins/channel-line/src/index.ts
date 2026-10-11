@@ -1,2 +1,2 @@
-export { createLineChannel } from "./channel.js";
-export type { LineConfig } from "./config.js";
+export { createLineChannel } from './channel.js'
+export type { LineConfig } from './config.js'

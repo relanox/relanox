@@ -1,35 +1,42 @@
-import type { FinalResult } from "@relanox/sdk";
-import { createHash } from "node:crypto";
+import type { FinalResult } from '@relanox/sdk'
+import { createHash } from 'node:crypto'
 
 export const encodeDurableRecord = (value: unknown): string => {
-  const ancestors = new Set<object>();
+  const ancestors = new Set<object>()
 
   const validateJsonValue = (candidate: unknown): void => {
-    if (candidate === null || typeof candidate === "string" || typeof candidate === "boolean") {
-      return;
+    if (
+      candidate === null ||
+      typeof candidate === 'string' ||
+      typeof candidate === 'boolean'
+    ) {
+      return
     }
-    if (typeof candidate === "number" && Number.isFinite(candidate)) {
-      return;
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return
     }
-    if (typeof candidate !== "object" || ancestors.has(candidate)) {
-      throw new TypeError("Non-JSON durable value");
+    if (typeof candidate !== 'object' || ancestors.has(candidate)) {
+      throw new TypeError('Non-JSON durable value')
     }
-    if (!Array.isArray(candidate) && Object.getPrototypeOf(candidate) !== Object.prototype) {
-      throw new TypeError("Non-plain durable value");
+    if (
+      !Array.isArray(candidate) &&
+      Object.getPrototypeOf(candidate) !== Object.prototype
+    ) {
+      throw new TypeError('Non-plain durable value')
     }
-    ancestors.add(candidate);
+    ancestors.add(candidate)
     for (const child of Object.values(candidate)) {
-      validateJsonValue(child);
+      validateJsonValue(child)
     }
-    ancestors.delete(candidate);
-  };
+    ancestors.delete(candidate)
+  }
 
-  validateJsonValue(value);
-  return JSON.stringify(value);
-};
+  validateJsonValue(value)
+  return JSON.stringify(value)
+}
 
 export const resultDigest = (result: FinalResult): string =>
-  createHash("sha256")
+  createHash('sha256')
     .update(
       result.attachments?.length
         ? encodeDurableRecord([
@@ -40,27 +47,27 @@ export const resultDigest = (result: FinalResult): string =>
               ref.mimeType,
               ref.fileName,
               ref.size,
-              ref.sha256,
-            ]),
+              ref.sha256
+            ])
           ])
-        : result.text,
+        : result.text
     )
-    .digest("hex");
+    .digest('hex')
 
 export const equalDurableValues = (a: unknown, b: unknown): boolean => {
   const canonical = (value: unknown): unknown => {
     if (Array.isArray(value)) {
-      return value.map(canonical);
+      return value.map(canonical)
     }
-    if (value !== null && typeof value === "object") {
+    if (value !== null && typeof value === 'object') {
       return Object.fromEntries(
         Object.entries(value)
           .toSorted(([left], [right]) => left.localeCompare(right))
-          .map(([key, child]) => [key, canonical(child)]),
-      );
+          .map(([key, child]) => [key, canonical(child)])
+      )
     }
-    return value;
-  };
+    return value
+  }
 
-  return encodeDurableRecord(canonical(a)) === encodeDurableRecord(canonical(b));
-};
+  return encodeDurableRecord(canonical(a)) === encodeDurableRecord(canonical(b))
+}

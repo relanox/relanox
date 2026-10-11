@@ -1,23 +1,30 @@
-import type { RelanoxConfig, Observability, HttpRouteOptions } from "@relanox/sdk";
-import type { CoreOptions } from "../types.js";
-import type { WorkerConfig } from "../worker/options.js";
-import { CoreError } from "../errors.js";
-import { jsonSnapshot } from "../json.js";
-import type { Hono } from "hono";
-import { validatePluginConfigurations } from "../config/plugins.js";
-import { createCommonHostFactory } from "./common.js";
-import { createChannelHost } from "./channel.js";
-import { createAgentHost } from "./agent.js";
+import type {
+  RelanoxConfig,
+  Observability,
+  HttpRouteOptions
+} from '@relanox/sdk'
+import type { CoreOptions } from '../types.js'
+import type { WorkerConfig } from '../worker/options.js'
+import { CoreError } from '../errors.js'
+import { jsonSnapshot } from '../json.js'
+import type { Hono } from 'hono'
+import { validatePluginConfigurations } from '../config/plugins.js'
+import { createCommonHostFactory } from './common.js'
+import { createChannelHost } from './channel.js'
+import { createAgentHost } from './agent.js'
 
 interface HostSetupOptions {
-  readonly options: Pick<CoreOptions, "storage" | "channels" | "agents" | "media">;
-  readonly config: RelanoxConfig;
-  readonly worker: WorkerConfig;
-  readonly observe: Observability;
-  readonly app: Hono;
-  readonly httpRoutes: Map<string, HttpRouteOptions>;
-  readonly connections: Map<string, "connected" | "disconnected" | "degraded">;
-  isAccepting(this: void): boolean;
+  readonly options: Pick<
+    CoreOptions,
+    'storage' | 'channels' | 'agents' | 'media'
+  >
+  readonly config: RelanoxConfig
+  readonly worker: WorkerConfig
+  readonly observe: Observability
+  readonly app: Hono
+  readonly httpRoutes: Map<string, HttpRouteOptions>
+  readonly connections: Map<string, 'connected' | 'disconnected' | 'degraded'>
+  isAccepting(this: void): boolean
 }
 
 /** Validate the complete plugin graph before any setup callback can mount a route. */
@@ -29,9 +36,9 @@ export async function setupPluginHosts({
   app,
   httpRoutes,
   isAccepting,
-  connections,
+  connections
 }: HostSetupOptions): Promise<void> {
-  const storage = options.storage;
+  const storage = options.storage
 
   const { common, mediaPublisher } = createCommonHostFactory(
     storage,
@@ -41,22 +48,23 @@ export async function setupPluginHosts({
     connections,
     httpRoutes,
     options.media,
-    worker.maxMediaBytes,
-  );
+    worker.maxMediaBytes
+  )
 
-  const { accountValidated, endpoints, bindings } = validatePluginConfigurations(options, config);
+  const { accountValidated, endpoints, bindings } =
+    validatePluginConfigurations(options, config)
 
   // Populate every connection before setup callbacks can report aggregate plugin health.
   for (const account of config.accounts) {
-    if (options.channels.get(account.id)?.capabilities.transport !== "http") {
-      connections.set(`channels/${account.id}`, "disconnected");
+    if (options.channels.get(account.id)?.capabilities.transport !== 'http') {
+      connections.set(`channels/${account.id}`, 'disconnected')
     }
   }
 
   for (const account of config.accounts) {
-    const plugin = options.channels.get(account.id);
+    const plugin = options.channels.get(account.id)
     if (!plugin) {
-      throw new CoreError("channel_plugin_mismatch");
+      throw new CoreError('channel_plugin_mismatch')
     }
 
     const host = createChannelHost({
@@ -65,32 +73,47 @@ export async function setupPluginHosts({
       mediaKinds: plugin.capabilities.media?.receive ?? [],
       bindings,
       endpoints,
-      common: common({ pluginId: plugin.id, ownerId: account.id }, `/channels/${account.id}`),
+      common: common(
+        { pluginId: plugin.id, ownerId: account.id },
+        `/channels/${account.id}`
+      ),
       storage,
       observe,
       worker,
-      isAccepting,
-    });
+      isAccepting
+    })
 
-    await plugin.setup(host, jsonSnapshot(account), accountValidated.get(account.id));
+    await plugin.setup(
+      host,
+      jsonSnapshot(account),
+      accountValidated.get(account.id)
+    )
   }
-  for (const agent of new Set(config.endpoints.map((endpoint) => endpoint.agent))) {
-    const plugin = options.agents.get(agent);
+  for (const agent of new Set(
+    config.endpoints.map((endpoint) => endpoint.agent)
+  )) {
+    const plugin = options.agents.get(agent)
     if (!plugin) {
-      throw new CoreError("agent_plugin_mismatch");
+      throw new CoreError('agent_plugin_mismatch')
     }
-    const agentEndpoints = config.endpoints.filter((endpoint) => endpoint.agent === agent);
+
+    const agentEndpoints = config.endpoints.filter(
+      (endpoint) => endpoint.agent === agent
+    )
 
     const host = createAgentHost({
       agent,
       agentEndpoints,
-      common: common({ pluginId: plugin.id, ownerId: agent }, `/agents/${agent}`),
+      common: common(
+        { pluginId: plugin.id, ownerId: agent },
+        `/agents/${agent}`
+      ),
       storage,
       observe,
       worker,
-      channels: options.channels,
-    });
+      channels: options.channels
+    })
 
-    await plugin.setup(host, jsonSnapshot(agentEndpoints), {});
+    await plugin.setup(host, jsonSnapshot(agentEndpoints), {})
   }
 }

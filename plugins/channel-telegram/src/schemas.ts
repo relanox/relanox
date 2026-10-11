@@ -1,6 +1,9 @@
-import { z } from "zod";
+import { z } from 'zod'
 
-export const targetSchema = z.object({ botId: z.string(), apiBaseUrl: z.string() });
+export const targetSchema = z.object({
+  botId: z.string(),
+  apiBaseUrl: z.string()
+})
 
 const fileSchema = z.looseObject({
   file_id: z.string().min(1),
@@ -11,8 +14,8 @@ const fileSchema = z.looseObject({
     .number()
     .nonnegative()
     .max(Number.MAX_SAFE_INTEGER / 1000)
-    .optional(),
-});
+    .optional()
+})
 
 const messageSchema = z.looseObject({
   message_id: z.number().int().positive(),
@@ -20,7 +23,7 @@ const messageSchema = z.looseObject({
   from: z.looseObject({ id: z.number().int(), is_bot: z.boolean() }).optional(),
   chat: z.looseObject({
     id: z.number().int(),
-    type: z.enum(["private", "group", "supergroup", "channel"]),
+    type: z.enum(['private', 'group', 'supergroup', 'channel'])
   }),
   text: z.string().max(1_048_576).optional(),
   caption: z.string().max(1_048_576).optional(),
@@ -30,17 +33,19 @@ const messageSchema = z.looseObject({
   video: fileSchema.optional(),
   animation: fileSchema.optional(),
   video_note: fileSchema.optional(),
-  document: fileSchema.optional(),
-});
+  document: fileSchema.optional()
+})
 
 export const updateSchema = z.looseObject({
   update_id: z.number().int().nonnegative(),
-  message: messageSchema.optional(),
-});
+  message: messageSchema.optional()
+})
 
 export const responseSchema = z.looseObject({
   ok: z.boolean(),
   result: z.looseObject({ message_id: z.number().int() }).optional(),
   error_code: z.number().optional(),
-  parameters: z.looseObject({ retry_after: z.number().positive().optional() }).optional(),
-});
+  parameters: z
+    .looseObject({ retry_after: z.number().positive().optional() })
+    .optional()
+})

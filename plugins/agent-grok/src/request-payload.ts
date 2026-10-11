@@ -1,13 +1,15 @@
-import type { InboundSnapshot } from "@relanox/sdk";
+import type { InboundSnapshot } from '@relanox/sdk'
 
 export type AgentRequestPayload = Pick<
   InboundSnapshot,
-  "requestId" | "text" | "context" | "attachments"
+  'requestId' | 'text' | 'context' | 'attachments'
 > & {
-  readonly source: Pick<InboundSnapshot["source"], "channel" | "eventId">;
-};
+  readonly source: Pick<InboundSnapshot['source'], 'channel' | 'eventId'>
+}
 
-export function projectAgentRequest(request: InboundSnapshot): AgentRequestPayload {
+export function projectAgentRequest(
+  request: InboundSnapshot
+): AgentRequestPayload {
   return {
     requestId: request.requestId,
     text: request.text,
@@ -15,7 +17,7 @@ export function projectAgentRequest(request: InboundSnapshot): AgentRequestPaylo
     ...(request.attachments ? { attachments: request.attachments } : {}),
     source: {
       channel: request.source.channel,
-      eventId: request.source.eventId,
-    },
-  };
+      eventId: request.source.eventId
+    }
+  }
 }
