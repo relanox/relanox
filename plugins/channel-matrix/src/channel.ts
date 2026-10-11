@@ -5,6 +5,7 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
+import { messageContent, receiveMedia } from "./media.js";
 import type { z } from "zod";
 import { validateConfig, platformIdSchema, validateBaseUrl } from "./config.js";
 import type { MatrixConfig } from "./config.js";
@@ -43,7 +44,11 @@ export function createMatrixChannel(
   function headers() {
     return { Authorization: `Bearer ${secret(configured().config.accessToken, environment)}` };
   }
-  async function receive(room: string, event: z.infer<typeof eventSchema>): Promise<void> {
+  async function receive(
+    room: string,
+    event: z.infer<typeof eventSchema>,
+    signal: AbortSignal,
+  ): Promise<void> {
     const { host, account, config, base } = configured();
     if (event.sender === config.userId) {
       return;
@@ -55,12 +60,19 @@ export function createMatrixChannel(
     if (event.type !== "m.room.message") {
       return;
     }
+    if (!account.allowedSenders.includes(event.sender)) {
+      diagnose(host, "sender_not_allowed");
+      return;
+    }
     const parsed = textSchema.safeParse(event.content);
-    if (!parsed.success) {
+    const attachments = parsed.success
+      ? []
+      : await receiveMedia(event.content, host, config, base, headers(), signal);
+    if (!parsed.success && attachments.length === 0) {
       diagnose(host, "nontext_unsupported");
       return;
     }
-    const relation = parsed.data["m.relates_to"];
+    const relation = textSchema.shape["m.relates_to"].parse(event.content["m.relates_to"]);
     if (relation?.rel_type && relation.rel_type !== "m.thread") {
       diagnose(host, "relation_unsupported");
       return;
@@ -72,7 +84,8 @@ export function createMatrixChannel(
     await ingest(host, {
       source: { channel: "matrix", accountId: account.id, eventId: event.event_id },
       senderId: event.sender,
-      text: parsed.data.body,
+      text: parsed.success ? parsed.data.body : "",
+      ...(attachments.length > 0 ? { attachments } : {}),
       receivedAt: event.origin_server_ts ?? Date.now(),
       target: {
         channel: "matrix",
@@ -112,7 +125,7 @@ export function createMatrixChannel(
         throw new Error("sync_history_gap");
       }
       for (const event of value.timeline?.events ?? []) {
-        await receive(room, event);
+        await receive(room, event, signal);
       }
     }
     const saved = await host.state.compareAndSet({
@@ -190,6 +203,7 @@ export function createMatrixChannel(
     }
     try {
       const relation = outboundRelation(input.target);
+      const content = await messageContent(input, base, headers(), signal);
       const response = await fetch(
         `${base}/_matrix/client/v3/rooms/${room}/send/m.room.message/${encodeURIComponent(input.chunk.idempotencyKey)}`,
         {
@@ -198,8 +212,7 @@ export function createMatrixChannel(
           redirect: "error",
           signal,
           body: JSON.stringify({
-            msgtype: "m.text",
-            body: input.chunk.text,
+            ...content,
             ...(relation ? { "m.relates_to": relation } : {}),
           }),
         },
@@ -226,6 +239,10 @@ export function createMatrixChannel(
       maxTextLength: 16_000,
       lengthUnit: "utf8",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(host, account, config) {
