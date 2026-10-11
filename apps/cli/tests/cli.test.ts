@@ -195,6 +195,26 @@ test("validate rejects public management addresses before opening storage", asyn
   await expect(access(value.filename)).rejects.toThrow();
 });
 
+test("validates native media publication and byte limits before opening storage", async () => {
+  const value = await setup();
+  await value.save({
+    ...value.config,
+    media: { publicBaseUrl: "https://media.example.org", urlLifetimeMs: 60_000 },
+    mediaLimits: { maxMediaBytes: 1024, maxTotalMediaBytes: 2048, maxAttachments: 2 },
+  });
+  expect((await cli(value.configPath, ["validate"])).code).toBe(0);
+  for (const options of [
+    { media: { publicBaseUrl: "http://media.example.org" } },
+    { media: { publicBaseUrl: "https://media.example.org/private" } },
+    { mediaLimits: { maxMediaBytes: 209_715_201 } },
+    { mediaLimits: { maxAttachments: 11 } },
+  ]) {
+    await value.save({ ...value.config, ...options });
+    expect((await cli(value.configPath, ["validate"])).code).toBe(1);
+  }
+  await expect(access(value.filename)).rejects.toThrow();
+});
+
 test("run initializes a new database and preserves work on restart while diagnosis stays read-only", async () => {
   const value = await setup();
   const doctor = await cli(value.configPath, ["doctor"]);
