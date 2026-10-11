@@ -2,7 +2,7 @@
 
 Use an internal/self-built application with HTTP event subscription v2.0.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 ```json
 {
@@ -35,5 +35,3 @@ Optional config: `domain` (`feishu` or `lark`, default `feishu`), `apiBaseUrl` o
 ## Account changes
 
 Accepted targets freeze the application, tenant, bot open ID and canonical API base URL. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported.
-
-For unknown deliveries or targets lacking frozen account identity, follow the [configuration recovery rules](../configuration.md).

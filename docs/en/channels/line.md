@@ -2,7 +2,7 @@
 
 Use a LINE Messaging API Official Account with signed HTTP webhooks and independent push output.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 Create a LINE Official Account with a Messaging API channel, obtain its channel secret and access token, enable Webhooks and optionally webhook redelivery. Set the webhook URL to `/channels/<accountId>/webhook` on the public HTTPS listener. The bot must be a friend of the user or a member of the addressed group/room and have the relevant push permissions/quota.
 
@@ -31,5 +31,3 @@ Optional `apiBase` (default `https://api.line.me`) supports an explicitly author
 ## Account changes
 
 Accepted targets freeze the bot user and canonical API base URL. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported.
-
-For unknown deliveries or targets lacking frozen account identity, follow the [configuration recovery rules](../configuration.md).

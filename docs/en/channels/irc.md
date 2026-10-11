@@ -2,7 +2,7 @@
 
 Use a resident TLS IRC connection for channel/private PRIVMSG reception and independent text output.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 ```json
 {

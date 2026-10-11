@@ -2,7 +2,7 @@
 
 This integration requires a separately installed, registered and maintained unofficial signal-cli HTTP JSON-RPC/SSE daemon. Signal has no official Bot API here. Relanox does not install the daemon, register a number or manage its account/encryption/session storage.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 ```json
 {

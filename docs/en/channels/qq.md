@@ -2,7 +2,7 @@
 
 Enable an official QQ robot with GROUP_AND_C2C_EVENT permission. Only websocket transport, C2C text and group @robot text are supported; there is no Webhook or guild/channel reception.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 ```json
 {
@@ -33,6 +33,6 @@ When a fresh chunk has exhausted/expired passive permission, the default preserv
 
 `idempotentSend=false` applies to the account because proactive sends have no documented durable deduplication. Passive duplicate responses prove suppression, not a recoverable platform receipt, so `40054005` stays unknown instead of claiming success. HTTP 429 uses bounded Retry-After; documented temporary codes retry; window/permission/format codes reject; unclassified 5xx, malformed responses and broken connections stay unknown. An accepted response's actual `id` becomes platformMessageId.
 
-Accepted targets also freeze the app ID and normalized API base URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported. Restore matching account configuration before explicit recovery; see [configuration](../configuration.md) for unscoped targets.
+Accepted targets also freeze the app ID and normalized API base URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported.
 
 `maxReconnectAttempts` accepts 0–1,000 and defaults to 20.

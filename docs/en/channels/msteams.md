@@ -2,7 +2,7 @@
 
 Receive authenticated Teams activities and send independent conversation-reference replies.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 Register the bot's Microsoft application/Azure Bot resource, enable the Teams channel, publish/install the Teams app into its permitted users/teams, and configure the messaging endpoint as the public HTTPS `/channels/<accountId>/activities`. Proactive output needs a valid installed bot conversation and application credentials. This implementation uses the public Bot Connector issuer and `client_credentials` OAuth protocol; deployment administrators must choose a tenant/app credential configuration that is supported by their bot registration, including an appropriate token URL for single-tenant or sovereign deployments.
 
@@ -30,7 +30,7 @@ Optional `issuer`, `jwksUrl` and `tokenUrl` select trusted operator infrastructu
 
 Temporary OAuth acquisition failures are retryable before message submission; explicit token 4xx rejections remain rejected.
 
-Accepted targets also freeze the Microsoft application ID in addition to the existing bot, tenant and service URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported. Restore matching account configuration before explicit recovery; see [configuration](../configuration.md) for unscoped targets.
+Accepted targets also freeze the Microsoft application ID in addition to the existing bot, tenant and service URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported.
 
 If an operator removes a previously trusted service origin, an existing frozen target is explicitly rejected before OAuth or message traffic. This configuration refusal is not an uncertain external send; restoring the origin allows explicit delivery recovery.
 
