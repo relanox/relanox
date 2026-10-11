@@ -8,61 +8,75 @@ export function createInspectionOperations(
   Storage,
   "getInbound" | "getOutbound" | "listInbound" | "listOutbound" | "getStats" | "cleanup"
 > {
-  const { pool, query, transaction, inbound, outbound, saveInbound, saveOutbound } = context;
+  const { pool, query, transaction, readInbound, readOutbound, saveInbound, saveOutbound } =
+    context;
   return {
     async getInbound(id) {
-      return inbound(pool, id);
+      return readInbound(pool, id);
     },
     async getOutbound(id) {
-      return outbound(pool, id);
+      return readOutbound(pool, id);
     },
-    async listInbound(f) {
+    async listInbound(filter) {
       const where = ["1=1"];
       const params: unknown[] = [];
-      if (f.requestStatus !== undefined) {
-        params.push(f.requestStatus);
+      if (filter.requestStatus !== undefined) {
+        params.push(filter.requestStatus);
         where.push(`status=$${params.length}`);
       }
-      if (f.endpointId !== undefined) {
-        params.push(f.endpointId);
+      if (filter.endpointId !== undefined) {
+        params.push(filter.endpointId);
         where.push(`endpoint=$${params.length}`);
       }
-      if (f.afterId !== undefined) {
-        params.push(f.afterId);
+      if (filter.afterId !== undefined) {
+        params.push(filter.afterId);
         where.push(`id>$${params.length}`);
       }
-      params.push(boundedLimit(f.limit));
+      params.push(boundedLimit(filter.limit));
       return (
         await query<{ record: InboundRecord }>(
           pool,
-          `SELECT record FROM inbound WHERE ${where.join(" AND ")} ORDER BY id LIMIT $${params.length}`,
+          `
+            SELECT record
+            FROM inbound
+            WHERE ${where.join(" AND ")}
+            ORDER BY id
+            LIMIT $${params.length}
+          `,
           params,
         )
-      ).map((r) => r.record);
+      ).map((record) => record.record);
     },
-    async listOutbound(f) {
+    async listOutbound(filter) {
       const where = ["1=1"];
       const params: unknown[] = [];
-      if (f.deliveryStatus !== undefined) {
-        params.push(f.deliveryStatus);
-        where.push(`o.status=$${params.length}`);
+      if (filter.deliveryStatus !== undefined) {
+        params.push(filter.deliveryStatus);
+        where.push(`outbound_delivery.status=$${params.length}`);
       }
-      if (f.endpointId !== undefined) {
-        params.push(f.endpointId);
-        where.push(`i.endpoint=$${params.length}`);
+      if (filter.endpointId !== undefined) {
+        params.push(filter.endpointId);
+        where.push(`inbound_request.endpoint=$${params.length}`);
       }
-      if (f.afterId !== undefined) {
-        params.push(f.afterId);
-        where.push(`o.id>$${params.length}`);
+      if (filter.afterId !== undefined) {
+        params.push(filter.afterId);
+        where.push(`outbound_delivery.id>$${params.length}`);
       }
-      params.push(boundedLimit(f.limit));
+      params.push(boundedLimit(filter.limit));
       return (
         await query<{ record: OutboundRecord }>(
           pool,
-          `SELECT o.record FROM outbound o JOIN inbound i ON i.id=o.request_id WHERE ${where.join(" AND ")} ORDER BY o.id LIMIT $${params.length}`,
+          `
+            SELECT outbound_delivery.record
+            FROM outbound outbound_delivery
+            JOIN inbound inbound_request ON inbound_request.id=outbound_delivery.request_id
+            WHERE ${where.join(" AND ")}
+            ORDER BY outbound_delivery.id
+            LIMIT $${params.length}
+          `,
           params,
         )
-      ).map((r) => r.record);
+      ).map((record) => record.record);
     },
     async getStats() {
       const row = (
@@ -75,10 +89,16 @@ export function createInspectionOperations(
         }>(
           pool,
           `
-        SELECT COUNT(*) FILTER(WHERE status='pending') pending,COUNT(*) FILTER(WHERE status='claimed') claimed,
-          MIN(accepted_at) FILTER(WHERE status='pending') oldest,
-          (SELECT COUNT(*) FROM outbound WHERE status!='sent') undelivered,
-          COUNT(*) FILTER(WHERE status='pending' AND record#>>'{dispatch,status}'='unknown')+(SELECT COUNT(*) FROM outbound WHERE status='unknown') unknown FROM inbound`,
+            SELECT
+              COUNT(*) FILTER(WHERE status='pending') pending,
+              COUNT(*) FILTER(WHERE status='claimed') claimed,
+              MIN(accepted_at) FILTER(WHERE status='pending') oldest,
+              (SELECT COUNT(*) FROM outbound WHERE status!='sent') undelivered,
+              COUNT(*) FILTER(
+                WHERE status='pending' AND record#>>'{dispatch,status}'='unknown'
+              ) + (SELECT COUNT(*) FROM outbound WHERE status='unknown') unknown
+            FROM inbound
+          `,
         )
       )[0];
       if (!row) {
@@ -100,31 +120,39 @@ export function createInspectionOperations(
         }>(
           client,
           `
-          SELECT i.record inbound_record,o.record outbound_record FROM inbound i LEFT JOIN outbound o ON o.request_id=i.id
-          WHERE i.accepted_at<$1 AND i.record->'redactedAt' IS NULL AND (i.status='failed' OR (i.status='completed' AND o.status='sent'))
-          ORDER BY i.accepted_at,i.id LIMIT $2`,
+            SELECT inbound_request.record inbound_record,outbound_delivery.record outbound_record
+            FROM inbound inbound_request
+            LEFT JOIN outbound outbound_delivery ON outbound_delivery.request_id=inbound_request.id
+            WHERE inbound_request.accepted_at<$1
+              AND inbound_request.record->'redactedAt' IS NULL
+              AND (inbound_request.status='failed'
+                OR (inbound_request.status='completed'
+                  AND outbound_delivery.status='sent'))
+            ORDER BY inbound_request.accepted_at,inbound_request.id
+            LIMIT $2
+          `,
           [input.before, boundedLimit(input.limit)],
         );
-        for (const { inbound_record: r, outbound_record: o } of rows) {
+        for (const { inbound_record: record, outbound_record: delivery } of rows) {
           await saveInbound(
             client,
             {
-              ...r,
-              snapshot: { ...r.snapshot, text: "", context: null },
-              ...(r.result ? { result: { ...r.result, text: "" } } : {}),
+              ...record,
+              snapshot: { ...record.snapshot, text: "", context: null },
+              ...(record.result ? { result: { ...record.result, text: "" } } : {}),
               redactedAt: input.before,
             },
-            r.version,
+            record.version,
           );
-          if (o) {
+          if (delivery) {
             await saveOutbound(
               client,
               {
-                ...o,
-                chunks: o.chunks.map((c) => ({ ...c, text: "", state: null })),
-                receipts: o.receipts.map(() => ({})),
+                ...delivery,
+                chunks: delivery.chunks.map((c) => ({ ...c, text: "", state: null })),
+                receipts: delivery.receipts.map(() => ({})),
               },
-              o.version,
+              delivery.version,
             );
           }
         }

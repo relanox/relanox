@@ -57,7 +57,12 @@ export function createStateOperations(
           ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
         };
         db.prepare(
-          "INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record) VALUES(?,?,?,?,?,?) ON CONFLICT(plugin,owner,key) DO UPDATE SET version=excluded.version,expires_at=excluded.expires_at,record=excluded.record",
+          `
+            INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record)
+            VALUES(?,?,?,?,?,?)
+            ON CONFLICT(plugin,owner,key) DO UPDATE
+            SET version=excluded.version,expires_at=excluded.expires_at,record=excluded.record
+          `,
         ).run(ns.pluginId, ns.ownerId, input.key, version, input.expiresAt ?? null, encode(entry));
         return { status: "updated", version };
       });
@@ -76,7 +81,13 @@ export function createStateOperations(
           return { status: "conflict" };
         }
         db.prepare(
-          "UPDATE plugin_state SET record='null',expires_at=NULL,version=version+1 WHERE plugin=? AND owner=? AND key=?",
+          `
+            UPDATE plugin_state
+            SET record='null',expires_at=NULL,version=version+1
+            WHERE plugin=?
+              AND owner=?
+              AND key=?
+          `,
         ).run(ns.pluginId, ns.ownerId, key);
         return { status: "updated", version: version + 1 };
       });

@@ -7,7 +7,7 @@ import { matchesInitialResult, isRequestInScope } from "./record-contracts.js";
 export function createRequestOperations(
   context: DatabaseContext,
 ): Pick<Storage, "acceptInbound" | "listPending" | "claimRequest" | "completeAndEnqueue" | "fail"> {
-  const { pool, query, transaction, inbound, saveInbound, isEndpointHead } = context;
+  const { pool, query, transaction, readInbound, saveInbound, isEndpointHead } = context;
   return {
     async acceptInbound(snapshot) {
       return transaction(async (client) => {
@@ -21,7 +21,7 @@ export function createRequestOperations(
         if (existing) {
           return { requestId: existing.id, duplicate: true };
         }
-        const r: InboundRecord = {
+        const record: InboundRecord = {
           snapshot,
           status: "pending",
           version: 1,
@@ -29,7 +29,12 @@ export function createRequestOperations(
         };
         const inserted = await query<{ id: string }>(
           client,
-          "INSERT INTO inbound(id,channel,account,event,endpoint,accepted_at,status,version,record) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT(channel,account,event) DO NOTHING RETURNING id",
+          `
+            INSERT INTO inbound(id,channel,account,event,endpoint,accepted_at,status,version,record)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+            ON CONFLICT(channel,account,event) DO NOTHING
+            RETURNING id
+          `,
           [
             snapshot.requestId,
             snapshot.source.channel,
@@ -37,9 +42,9 @@ export function createRequestOperations(
             snapshot.source.eventId,
             snapshot.endpoint.id,
             snapshot.acceptedAt,
-            r.status,
+            record.status,
             1,
-            encode(r),
+            encode(record),
           ],
         );
         if (inserted.length > 0) {
@@ -62,39 +67,47 @@ export function createRequestOperations(
       return (
         await query<{ record: InboundRecord }>(
           pool,
-          "SELECT record FROM inbound WHERE status='pending' AND endpoint=ANY($1::text[]) AND record#>>'{snapshot,endpoint,agent}'=$3 ORDER BY accepted_at,id LIMIT $2",
+          `
+            SELECT record
+            FROM inbound
+            WHERE status='pending'
+              AND endpoint=ANY($1::text[])
+              AND record#>>'{snapshot,endpoint,agent}'=$3
+            ORDER BY accepted_at,id
+            LIMIT $2
+          `,
           [input.endpointIds, boundedLimit(input.limit), input.agent],
         )
-      ).map((r) => r.record.snapshot);
+      ).map((record) => record.record.snapshot);
     },
     async claimRequest(input) {
       return transaction(async (client) => {
-        const r = await inbound(client, input.requestId);
-        if (!r || !isRequestInScope(r, input)) {
+        const record = await readInbound(client, input.requestId);
+        if (!record || !isRequestInScope(record, input)) {
           return { status: "not_found" };
         }
-        if (r.status === "claimed") {
-          return r.claim?.key === input.claimKey
+        if (record.status === "claimed") {
+          return record.claim?.key === input.claimKey
             ? {
                 status: "claimed",
-                request: r.snapshot,
-                claimToken: r.claim.token,
+                request: record.snapshot,
+                claimToken: record.claim.token,
                 replay: true,
               }
             : { status: "busy" };
         }
-        if (r.status !== "pending") {
+        if (record.status !== "pending") {
           return { status: "not_pending" };
         }
-        if (!(await isEndpointHead(client, r))) {
+        if (!(await isEndpointHead(client, record))) {
           return { status: "busy" };
         }
-        const dispatch = { ...r.dispatch };
+        const dispatch = { ...record.dispatch };
         delete dispatch.lease;
         await saveInbound(client, {
-          ...r,
+          ...record,
           status: "claimed",
-          version: r.version + 1,
+          version: record.version + 1,
           dispatch,
           claim: {
             key: input.claimKey,
@@ -104,7 +117,7 @@ export function createRequestOperations(
         });
         return {
           status: "claimed",
-          request: r.snapshot,
+          request: record.snapshot,
           claimToken: input.claimToken,
           replay: false,
         };
@@ -112,14 +125,14 @@ export function createRequestOperations(
     },
     async completeAndEnqueue(input) {
       return transaction(async (client) => {
-        const r = await inbound(client, input.requestId);
-        if (!r) {
+        const record = await readInbound(client, input.requestId);
+        if (!record) {
           return { status: "not_found" };
         }
-        if (!isRequestInScope(r, input) || r.claim?.token !== input.claimToken) {
+        if (!isRequestInScope(record, input) || record.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
         }
-        if (r.status === "completed") {
+        if (record.status === "completed") {
           const row = (
             await query<{ final_digest: string }>(
               client,
@@ -127,73 +140,90 @@ export function createRequestOperations(
               [input.requestId],
             )
           )[0];
-          const o = (
+          const delivery = (
             await query<{ id: string }>(client, "SELECT id FROM outbound WHERE request_id=$1", [
               input.requestId,
             ])
           )[0];
-          return r.result?.resultId === input.result.resultId &&
+          return record.result?.resultId === input.result.resultId &&
             row?.final_digest === resultDigest(input.result.text) &&
-            o
-            ? { status: "completed", deliveryId: o.id, replay: true }
+            delivery
+            ? { status: "completed", deliveryId: delivery.id, replay: true }
             : { status: "conflict" };
         }
-        if (r.status !== "claimed") {
+        if (record.status !== "claimed") {
           return { status: "conflict" };
         }
-        const o = input.outbound;
-        if (!matchesInitialResult(o, r, input)) {
+        const delivery = input.outbound;
+        if (!matchesInitialResult(delivery, record, input)) {
           return { status: "conflict" };
         }
         const inserted = await query(
           client,
-          "INSERT INTO outbound(id,request_id,result_id,status,version,record) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING RETURNING id",
-          [o.deliveryId, o.requestId, o.resultId, o.status, 1, encode(o)],
+          `
+            INSERT INTO outbound(id,request_id,result_id,status,version,record)
+            VALUES($1,$2,$3,$4,$5,$6::jsonb)
+            ON CONFLICT DO NOTHING
+            RETURNING id
+          `,
+          [
+            delivery.deliveryId,
+            delivery.requestId,
+            delivery.resultId,
+            delivery.status,
+            1,
+            encode(delivery),
+          ],
         );
         if (inserted.length === 0) {
           return { status: "conflict" };
         }
-        const dispatch = { ...r.dispatch };
+        const dispatch = { ...record.dispatch };
         delete dispatch.lease;
         await saveInbound(client, {
-          ...r,
+          ...record,
           status: "completed",
-          version: r.version + 1,
+          version: record.version + 1,
           result: input.result,
           dispatch,
         });
         await client.query(
           "UPDATE inbound SET final_id=$1,final_digest=$2 WHERE id=$3 AND version=$4",
-          [input.result.resultId, resultDigest(input.result.text), input.requestId, r.version + 1],
+          [
+            input.result.resultId,
+            resultDigest(input.result.text),
+            input.requestId,
+            record.version + 1,
+          ],
         );
-        return { status: "completed", deliveryId: o.deliveryId, replay: false };
+        return { status: "completed", deliveryId: delivery.deliveryId, replay: false };
       });
     },
     async fail(input) {
       return transaction(async (client) => {
-        const r = await inbound(client, input.requestId);
-        if (!r) {
+        const record = await readInbound(client, input.requestId);
+        if (!record) {
           return { status: "not_found" };
         }
-        if (!isRequestInScope(r, input) || r.claim?.token !== input.claimToken) {
+        if (!isRequestInScope(record, input) || record.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
         }
-        if (r.status === "failed" && r.errorCode === input.errorCode) {
-          return { status: "updated", version: r.version };
+        if (record.status === "failed" && record.errorCode === input.errorCode) {
+          return { status: "updated", version: record.version };
         }
-        if (r.status !== "claimed") {
+        if (record.status !== "claimed") {
           return { status: "conflict" };
         }
-        const dispatch = { ...r.dispatch };
+        const dispatch = { ...record.dispatch };
         delete dispatch.lease;
         await saveInbound(client, {
-          ...r,
+          ...record,
           status: "failed",
-          version: r.version + 1,
+          version: record.version + 1,
           errorCode: input.errorCode,
           dispatch,
         });
-        return { status: "updated", version: r.version + 1 };
+        return { status: "updated", version: record.version + 1 };
       });
     },
   };
