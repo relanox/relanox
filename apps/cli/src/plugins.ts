@@ -1,12 +1,39 @@
 import { createDotAgentPlugin } from "@relanox/agent-dot";
 import { createGrokAgentPlugin } from "@relanox/agent-grok";
 import type { AgentId, AgentPlugin, ChannelId, ChannelPlugin, RelanoxConfig } from "@relanox/sdk";
-import { httpChannelFactories } from "./http-channels.js";
-import { connectedChannelFactories } from "./connected-channels.js";
+import { createTelegramChannel } from "@relanox/channel-telegram";
+import { createFeishuChannel } from "@relanox/channel-feishu";
+import { createTeamsChannel } from "@relanox/channel-msteams";
+import { createWhatsAppChannel } from "@relanox/channel-whatsapp";
+import { createGoogleChatChannel } from "@relanox/channel-googlechat";
+import { createLineChannel } from "@relanox/channel-line";
+
+import { createDiscordChannel } from "@relanox/channel-discord";
+import { createSlackChannel } from "@relanox/channel-slack";
+import { createWeComChannel } from "@relanox/channel-wecom";
+import { createDingTalkChannel } from "@relanox/channel-dingtalk";
+import { createQqChannel } from "@relanox/channel-qq";
+import { createMatrixChannel } from "@relanox/channel-matrix";
+import { createMattermostChannel } from "@relanox/channel-mattermost";
+import { createSignalChannel } from "@relanox/channel-signal";
+import { createIrcChannel } from "@relanox/channel-irc";
 
 const channelFactories: Record<ChannelId, () => ChannelPlugin<unknown>> = {
-  ...httpChannelFactories,
-  ...connectedChannelFactories,
+  telegram: createTelegramChannel,
+  discord: createDiscordChannel,
+  slack: createSlackChannel,
+  feishu: createFeishuChannel,
+  wecom: createWeComChannel,
+  dingtalk: createDingTalkChannel,
+  qq: createQqChannel,
+  msteams: createTeamsChannel,
+  whatsapp: createWhatsAppChannel,
+  matrix: createMatrixChannel,
+  googlechat: createGoogleChatChannel,
+  line: createLineChannel,
+  mattermost: createMattermostChannel,
+  signal: createSignalChannel,
+  irc: createIrcChannel,
 };
 const agentFactories: Record<AgentId, () => AgentPlugin<unknown>> = {
   dot: createDotAgentPlugin,

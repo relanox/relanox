@@ -3,6 +3,12 @@ import { noopObservability } from "@relanox/sdk";
 import { postgresStoragePlugin } from "@relanox/storage-postgres";
 import { sqliteStoragePlugin } from "@relanox/storage-sqlite";
 
+export async function requireHealthy(storage: Storage): Promise<void> {
+  if (!(await storage.health()).ok) {
+    throw new Error("storage_unavailable");
+  }
+}
+
 export function validateStorage(config: RelanoxConfig["storage"]): void {
   if (config.plugin === "sqlite") {
     sqliteStoragePlugin.validateConfig(config.config);

@@ -1,14 +1,14 @@
 import { createCore, safeObservability } from "@relanox/core";
 import { createStandardObservability } from "@relanox/observability-standard";
 import { noopObservability } from "@relanox/sdk";
-import type { ObservabilityRuntime, Storage } from "@relanox/sdk";
+import type { ObservabilityRuntime } from "@relanox/sdk";
 import { appConfigSchema } from "./config.js";
 import type { AppConfig } from "./config.js";
 import { deadline } from "./deadline.js";
 import { createLifecycle } from "./lifecycle.js";
 import { createListeners, listen } from "./listeners.js";
 import { loadPlugins } from "./plugins.js";
-import { openStorage, validateStorage } from "./storage.js";
+import { openStorage, requireHealthy, validateStorage } from "./storage.js";
 import { createWorker } from "./worker.js";
 
 const noopRuntime: ObservabilityRuntime = {
@@ -25,11 +25,7 @@ export function validateApp(input: unknown): AppConfig {
   loadPlugins(config.relay);
   return config;
 }
-export async function requireHealthy(storage: Storage): Promise<void> {
-  if (!(await storage.health()).ok) {
-    throw new Error("storage_unavailable");
-  }
-}
+export { requireHealthy } from "./storage.js";
 async function setupObservability(config: AppConfig): Promise<ObservabilityRuntime> {
   if (config.relay.observability.plugin === "none") {
     return noopRuntime;
