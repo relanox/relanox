@@ -22,4 +22,4 @@ Relanox 是面向 **dot 和 Grok Bot** 的自托管消息网关。它接收文�
 
 ## 许可证
 
-采用 [MIT](LICENSE) 许可证。第三方许可证全文见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。
+采用 [MIT](LICENSE) 许可证。

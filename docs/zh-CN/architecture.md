@@ -18,9 +18,11 @@ Relanox 是常驻消息网关：将渠道文字和媒体持久交给已有的 do
 
 Core 和插件依赖 SDK，CLI 装配具体实现。渠道和 Agent 只接收限定范围的 Host 与命名空间协议状态，不直接接收 Storage。Storage 执行原子条件，Core 决定业务转换。
 
-`channel-media` 只依赖 SDK 契约。媒体授权、发布与持久化仍由 Core 和 Storage 负责；各渠道保留平台原生的上传下载协议。
+`channel-media` 依赖 SDK 契约和共享的 `transport` 基础实现。媒体授权、发布与持久化仍由 Core 和 Storage 负责；各渠道保留平台原生的上传下载协议。
 
 `agent-mcp` 负责 dot 和 Grok 共用的 MCP 配置、鉴权、任务工具、媒体传输凭证与请求投影，只依赖 SDK 契约和 MCP 服务端库，不依赖 Core 或具体 Agent 插件。dot 保留订阅与 webhook 通知，Grok 保留 Routine 分发。共享包是实现库，不作为插件注册进 CLI 目录。
+
+`transport` 共享 HTTP 请求体读取、限时请求、签名校验、WebSocket 辅助和公网地址分类；平台错误映射、凭据策略与 DNS 信任决策仍由调用方负责。`storage-support` 在两个数据库插件间共享持久 JSON 编码、结果/媒体摘要和记录/媒体条件判断，SQL、事务与数据库特有的解码保留在各后端。
 
 ## 持久消息流
 
@@ -54,6 +56,8 @@ Storage 是持久工作的唯一事实源，不需要独立队列。启动继续
 | `packages/sdk/src`                   | values/config/messages/state/storage/observability 和插件 Host |
 | `packages/channel-media/src`         | 渠道有界下载、MIME 分类与原生上传辅助                          |
 | `packages/agent-mcp/src`             | 托管 Agent 共用的 MCP 鉴权、任务工具、媒体传输与请求投影       |
+| `packages/transport/src`             | 共享 HTTP、签名、WebSocket 与地址基础实现                      |
+| `packages/storage-support/src`       | 持久值编码、摘要与存储条件判断                                 |
 | `packages/core/src/config`           | 配置结构、引用关系、插件校验和路由索引                         |
 | `packages/core/src/hosts`            | 渠道/Agent 授权 Host、命名空间、连接观测和 setup               |
 | `packages/core/src/worker`           | 有期限的顺序执行、结果校验和重试策略                           |

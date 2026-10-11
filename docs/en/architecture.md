@@ -18,9 +18,11 @@ Channel → Core → Agent → hosted dot/Grok; Core ↔ Storage; CLI manages li
 
 Core and plugins depend on SDK. CLI assembles concrete implementations. Channels and agents receive scoped Hosts and namespaced protocol state, never direct Storage access. Storage enforces atomic predicates; Core chooses business transitions.
 
-`channel-media` depends only on SDK contracts. It does not own media authorization, publication or persistence; those remain in Core and Storage. Channels keep their native platform upload/download protocols.
+`channel-media` depends on SDK contracts and the shared `transport` primitives. It does not own media authorization, publication or persistence; those remain in Core and Storage. Channels keep their native platform upload/download protocols.
 
 `agent-mcp` owns the MCP configuration, authentication guard, task tools, media transfer tickets and shared request projection used by dot and Grok. It depends on SDK contracts and the MCP server library, never Core or a concrete agent plugin. dot retains subscriptions and webhook dispatch; Grok retains Routine dispatch. The shared packages are libraries, not plugins registered in the CLI catalog.
+
+`transport` contains shared HTTP body readers, bounded requests, signature checks, WebSocket helpers and public-address classification. Platform error mapping, credential policy and DNS trust decisions remain in the callers. `storage-support` shares durable JSON codecs, result/media digests and record/media predicates between the database plugins; SQL, transactions and database-specific decoding remain in each backend.
 
 ## Durable message flow
 
@@ -54,6 +56,8 @@ Package entrypoints are stable public boundaries. Internal modules import concre
 | `packages/sdk/src`                   | Values, config, messages, state, storage, observability and plugin hosts                  |
 | `packages/channel-media/src`         | Bounded channel downloads, MIME classification and native upload helpers                  |
 | `packages/agent-mcp/src`             | Shared hosted-agent MCP authentication, task tools, media transfer and request projection |
+| `packages/transport/src`             | Shared HTTP, signature, WebSocket and address primitives                                  |
+| `packages/storage-support/src`       | Durable value encoding, digests and storage predicates                                    |
 | `packages/core/src/config`           | Shape, reference relationships, plugin validation and route indexes                       |
 | `packages/core/src/hosts`            | Scoped channel/agent hosts, namespaces, connection telemetry and setup                    |
 | `packages/core/src/worker`           | Bounded sequential execution, outcome validation and retry policy                         |

@@ -22,4 +22,4 @@ The [documentation site](https://relanox.github.io/) is available in English and
 
 ## License
 
-[MIT](LICENSE). Third-party license texts are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+[MIT](LICENSE).
