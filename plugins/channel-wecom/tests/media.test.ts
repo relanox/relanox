@@ -1,9 +1,12 @@
-import { createCipheriv } from 'node:crypto'
+import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
 import { expect, test, vi } from 'vitest'
+import { createCipheriv } from 'node:crypto'
 import { z } from 'zod'
 import { createWeComChannel } from '../src/index.js'
 import { wireText } from '../src/transport.js'
 import { assemble, peer, records, temporaryDatabase } from './test-support.js'
+
+installPeerNetwork()
 
 test('WeCom decrypts pure-media input into SQLite and uploads original bytes after restart', async () => {
   vi.stubEnv('WECOM_MEDIA_SECRET', 'secret')
@@ -51,10 +54,7 @@ test('WeCom decrypts pure-media input into SQLite and uploads original bytes aft
 
   const config = {
     botId: 'robot',
-    secret: { env: 'WECOM_MEDIA_SECRET' },
-    wsUrl: remote.ws,
-    mediaOrigins: [remote.http],
-    allowInsecureLoopback: true
+    secret: { env: 'WECOM_MEDIA_SECRET' }
   }
 
   const filename = await temporaryDatabase()

@@ -6,10 +6,6 @@ const secretRefSchema = z.strictObject({
 
 export const platformIdSchema = z.string().min(1).max(256)
 
-const transportOptions = {
-  allowInsecureLoopback: z.boolean().default(false)
-}
-
 export function validateTransportUrl(
   value: string,
   insecure: boolean,
@@ -45,19 +41,13 @@ const configSchema = z.strictObject({
   verificationToken: secretRefSchema,
   encryptKey: secretRefSchema,
   tenantKey: platformIdSchema,
-  botOpenId: platformIdSchema,
-  domain: z.enum(['feishu', 'lark']).default('feishu'),
-  apiBaseUrl: z.string().optional(),
-  ...transportOptions
+  domain: z.enum(['feishu', 'lark']).default('feishu')
 })
 
 export type FeishuConfig = z.infer<typeof configSchema>
 
 export function validateConfig(input: unknown): FeishuConfig {
   const parsed = configSchema.parse(input)
-  if (parsed.apiBaseUrl) {
-    validateTransportUrl(parsed.apiBaseUrl, parsed.allowInsecureLoopback)
-  }
   return parsed
 }
 

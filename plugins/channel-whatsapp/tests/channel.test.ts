@@ -1,3 +1,8 @@
+import {
+  routePlatform,
+  installPeerNetwork
+} from '../../channel-wecom/tests/network.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CoreRuntime } from '../../../packages/core/src/index.js'
 import { createHmac } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -10,9 +15,10 @@ import type {
   InboundSnapshot,
   OutboundRecord
 } from '@relanox/sdk'
-import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWhatsAppChannel } from '../src/index.js'
-import { harness, peer } from './harness.js'
+import { harness, peer, legacyTargetOrigin } from './harness.js'
+
+installPeerNetwork()
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -22,15 +28,12 @@ afterEach(async () => {
   vi.unstubAllEnvs()
 })
 
-const config = (base: string): Json => ({
+const config = (): Json => ({
   phoneNumberId: 'phone',
   businessAccountId: 'business-1',
   appSecret: { env: 'WA_SECRET' },
   verifyToken: { env: 'WA_VERIFY' },
-  accessToken: { env: 'WA_TOKEN' },
-  apiVersion: 'v25.0',
-  apiBase: base,
-  allowLoopback: true
+  accessToken: { env: 'WA_TOKEN' }
 })
 
 function webhook(
@@ -110,7 +113,7 @@ async function setup(filename = ':memory:'): Promise<{
 
   const local = await harness(
     plugin,
-    config(remote.base),
+    config(),
     'customer',
     'customer',
     undefined,
@@ -134,6 +137,9 @@ describe('native WhatsApp Cloud', () => {
       expect((await local.core.fetch(incoming(webhook()))).status).toBe(200)
       await local.close()
       cleanup.pop()
+      if (change === 'server') {
+        legacyTargetOrigin(filename)
+      }
       const replacement = await peer()
       cleanup.push(replacement.close)
       replacement.respond(200, {
@@ -142,9 +148,9 @@ describe('native WhatsApp Cloud', () => {
       })
       const plugin = createWhatsAppChannel()
 
-      const next = plugin.validateConfig(
-        config(change === 'server' ? replacement.base : `${local.remote.base}/`)
-      )
+      routePlatform('https://graph.facebook.com', local.remote.base)
+
+      const next = plugin.validateConfig(config())
 
       if (change === 'business') {
         next.businessAccountId = 'business-2'
@@ -193,7 +199,7 @@ describe('native WhatsApp Cloud', () => {
     await local.close()
     cleanup.pop()
     const plugin = createWhatsAppChannel()
-    const next = plugin.validateConfig(config(local.remote.base))
+    const next = plugin.validateConfig(config())
     next.phoneNumberId = 'replacement-phone'
 
     const restarted = await harness(
@@ -349,7 +355,7 @@ describe('native WhatsApp Cloud', () => {
     expect(local.remote.traffic).toHaveLength(1)
   })
 
-  it('requires SecretRefs and explicit loopback permission', () => {
+  it('requires SecretRefs and rejects hosted endpoint overrides', () => {
     const plugin = createWhatsAppChannel()
     expect(() =>
       plugin.validateConfig({
@@ -357,8 +363,7 @@ describe('native WhatsApp Cloud', () => {
         businessAccountId: 'business-1',
         appSecret: 'secret',
         verifyToken: 'verify',
-        accessToken: 'token',
-        apiVersion: 'v25.0'
+        accessToken: 'token'
       })
     ).toThrow()
     expect(() =>
@@ -368,9 +373,8 @@ describe('native WhatsApp Cloud', () => {
         appSecret: { env: 'SECRET' },
         verifyToken: { env: 'VERIFY' },
         accessToken: { env: 'TOKEN' },
-        apiVersion: 'v25.0',
-        apiBase: 'http://127.0.0.1'
+        apiBase: 'http://127.0.0.1:1234'
       })
-    ).toThrow('unsafe_endpoint')
+    ).toThrow()
   })
 })

@@ -1,4 +1,4 @@
-import { REQUEST_TIMEOUT_MS } from './config.js'
+import { REQUEST_TIMEOUT_MS, API_BASE_URL } from './config.js'
 import { createHash } from 'node:crypto'
 import { mediaBlob } from '@relanox/channel-media'
 import type { ChannelHost, SendInput } from '@relanox/sdk'
@@ -44,7 +44,7 @@ export async function sendMessage(
       : {})
   }
 
-  const url = `${config.apiBaseUrl.replace(/\/$/u, '')}/channels/${input.target.threadId ?? input.target.chatId}/messages`
+  const url = `${API_BASE_URL.replace(/\/$/u, '')}/channels/${input.target.threadId ?? input.target.chatId}/messages`
   const headers = { authorization: `Bot ${token}` }
   if (!input.chunk.media) {
     return postJson(url, headers, payload, input.signal, REQUEST_TIMEOUT_MS)

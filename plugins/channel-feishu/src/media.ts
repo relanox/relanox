@@ -47,7 +47,7 @@ export async function receiveMedia(
           ),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           trustedOrigins: [new URL(base).origin],
-          allowInsecureLocalhost: config.allowInsecureLoopback,
+          allowInsecureLocalhost: false,
           headers: { authorization: `Bearer ${access}` }
         }
       )

@@ -29,20 +29,16 @@ const configSchema = z.strictObject({
   businessAccountId: platformIdSchema,
   appSecret: secretRefSchema,
   verifyToken: secretRefSchema,
-  accessToken: secretRefSchema,
-  apiVersion: z.string().regex(/^v[0-9]+\.[0-9]+$/u),
-  apiBase: z.url().default('https://graph.facebook.com'),
-  allowLoopback: z.boolean().default(false)
+  accessToken: secretRefSchema
 })
 
 export type WhatsAppConfig = z.infer<typeof configSchema>
 
 export function validateConfig(value: unknown): WhatsAppConfig {
   const config = configSchema.parse(value)
-  const apiBase = validateEndpointUrl(config.apiBase, config.allowLoopback)
-  if (/[?#]/u.test(apiBase.href)) {
-    throw new Error('invalid_api_base')
-  }
-  config.apiBase = apiBase.href.replace(/\/+$/u, '')
   return config
 }
+
+export const API_BASE = 'https://graph.facebook.com'
+
+export const API_VERSION = 'v25.0'

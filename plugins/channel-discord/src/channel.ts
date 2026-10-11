@@ -1,5 +1,6 @@
+import { discoverIdentity } from './identity.js'
 import type { AccountConfig, ChannelHost, ChannelPlugin } from '@relanox/sdk'
-import { validateConfig } from './config.js'
+import { validateConfig, API_BASE_URL } from './config.js'
 import type { DiscordConfig } from './config.js'
 import { sendMessage, mediaError } from './media.js'
 import type { DiscordGateway } from './gateway.js'
@@ -15,13 +16,14 @@ export function createDiscordChannel(
   environment: NodeJS.ProcessEnv = process.env
 ): ChannelPlugin<DiscordConfig> {
   let config: DiscordConfig
+  let botUserId: string
   let host: ChannelHost
   let account: AccountConfig
   let gateway: DiscordGateway
 
   const identity = (): { botId: string; apiBaseUrl: string } => ({
-    botId: config.botUserId,
-    apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, '')
+    botId: botUserId,
+    apiBaseUrl: new URL(API_BASE_URL).toString().replace(/\/$/u, '')
   })
 
   return {
@@ -46,8 +48,19 @@ export function createDiscordChannel(
       host = nextHost
       account = nextAccount
       config = nextConfig
-      credential(config.botToken, environment)
-      gateway = createDiscordGateway(config, host, account, environment)
+
+      const discovered = await discoverIdentity(
+        credential(config.botToken, environment)
+      )
+
+      botUserId = discovered.botId
+      gateway = createDiscordGateway(
+        config,
+        discovered,
+        host,
+        account,
+        environment
+      )
     },
     async start(signal) {
       await gateway.start(signal)

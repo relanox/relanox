@@ -1,11 +1,18 @@
+import {
+  routePlatform,
+  registerPeer,
+  installPeerNetwork
+} from '../../channel-wecom/tests/network.js'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { HttpHandler, ChannelHost, IngestInput } from '@relanox/sdk'
 import { createHmac } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
-import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
 import type { RawData } from 'ws'
 import { createSlackChannel } from '../src/index.js'
 import { peer, recorder, sendInput } from './peer.js'
+
+installPeerNetwork()
 
 const environment = {
   BOT: 'xoxb-secret',
@@ -86,6 +93,15 @@ async function setup(
   connections: string[]
   plugin: ReturnType<typeof createSlackChannel>
 }> {
+  if (apiBaseUrl === 'https://slack.com/api') {
+    const discovery = await peer(() => ({
+      body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+    }))
+
+    cleanup.push(discovery.close)
+  } else {
+    routePlatform('https://slack.com/api', apiBaseUrl)
+  }
   const plugin = createSlackChannel(environment)
   const recorded = recorder(onIngest)
   await plugin.setup(
@@ -93,21 +109,17 @@ async function setup(
     account,
     plugin.validateConfig({
       botToken: { env: 'BOT' },
-      botUserId: 'UBOT',
-      teamId: 'T1',
       appId: 'A1',
-      apiBaseUrl,
-      allowInsecureLoopback: true,
       ...overrides,
       ...(socket
-        ? { receiveMode: 'socket', appToken: { env: 'APP' } }
-        : { receiveMode: 'http', signingSecret: { env: 'SIGN' } })
+        ? { appToken: { env: 'APP' } }
+        : { signingSecret: { env: 'SIGN' } })
     })
   )
   return {
     plugin,
     ...recorded,
-    target: { ...target, data: { ...target.data, apiBaseUrl } },
+    target: { ...target, data: { ...target.data } },
     handler: recorded.handlers.get('/events') as NonNullable<
       ReturnType<typeof recorded.handlers.get>
     >
@@ -133,6 +145,56 @@ function request(
 }
 
 describe('slack native protocol', () => {
+  it.each(['failed', 'incomplete'])(
+    'does not mount or receive after %s authenticated identity discovery',
+    async (failure) => {
+      const remote = await peer(() => ({
+        body: { code: 0, tenant_access_token: 'startup-token', expire: 7200 }
+      }))
+
+      cleanup.push(remote.close)
+      remote.identity(
+        { ok: true, user_id: '' },
+        failure === 'failed' ? 503 : 200
+      )
+      const plugin = createSlackChannel(environment)
+      const recorded = recorder()
+      await expect(
+        plugin.setup(
+          recorded.host,
+          account,
+          plugin.validateConfig({
+            botToken: { env: 'BOT' },
+            appId: 'A1',
+            signingSecret: { env: 'SIGN' }
+          })
+        )
+      ).rejects.toThrow()
+      expect(recorded.handlers.size).toBe(0)
+      expect(recorded.received).toEqual([])
+      expect(recorded.connections).not.toContain('connected')
+      expect(remote.discoveryRequests.length).toBeGreaterThan(0)
+    }
+  )
+
+  it('validates minimal credentials offline without identity traffic', async () => {
+    const remote = await peer(() => ({ body: {} }))
+    cleanup.push(remote.close)
+    expect(
+      createSlackChannel(environment).validateConfig({
+        botToken: { env: 'BOT' },
+        appId: 'A1',
+        signingSecret: { env: 'SIGN' }
+      })
+    ).toEqual({
+      botToken: { env: 'BOT' },
+      appId: 'A1',
+      signingSecret: { env: 'SIGN' }
+    })
+    expect(remote.discoveryRequests).toEqual([])
+    expect(remote.requests).toEqual([])
+  })
+
   it.each(['sender_not_allowed', 'unbound_conversation'])(
     'acknowledges terminal core policy rejection: %s',
     async (code) => {
@@ -160,23 +222,27 @@ describe('slack native protocol', () => {
         throw new Error('Missing accepted reply target')
       }
 
+      if (change === 'identity') {
+        remote.identity({ user_id: 'UOTHER' })
+      }
+
       const nextBase =
         change === 'server' ? `${remote.url}/different` : remote.url
 
-      const restarted = await setup(
-        nextBase,
-        false,
-        undefined,
-        change === 'identity' ? { botUserId: 'UOTHER' } : {}
-      )
+      const restarted = await setup(nextBase, false, undefined, {})
 
-      expect(
-        await restarted.plugin.send(
-          sendInput(
-            change === 'legacy' ? { ...frozen, data: { teamId: 'T1' } } : frozen
-          )
-        )
-      ).toEqual({
+      let replyTarget = frozen
+      if (change === 'legacy') {
+        replyTarget = { ...frozen, data: { teamId: 'T1' } }
+      }
+      if (change === 'server') {
+        replyTarget = {
+          ...frozen,
+          data: { ...target.data, apiBaseUrl: 'https://foreign.example' }
+        }
+      }
+
+      expect(await restarted.plugin.send(sendInput(replyTarget))).toEqual({
         status: 'rejected',
         errorCode: 'invalid_target'
       })
@@ -348,7 +414,11 @@ describe('slack native protocol', () => {
     await new Promise<void>((resolve) => {
       wss.once('listening', resolve)
     })
-    const wsUrl = `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`
+
+    const wsUrl = registerPeer(
+      `http://127.0.0.1:${(wss.address() as AddressInfo).port}`
+    ).replace('https:', 'wss:')
+
     const frames: unknown[] = []
     let connected = 0
     const remote = await peer(() => ({ body: { ok: true, url: wsUrl } }))

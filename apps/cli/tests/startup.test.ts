@@ -1,3 +1,8 @@
+import {
+  installPeerNetwork,
+  registerPeer,
+  routePlatform
+} from '../../../plugins/channel-wecom/tests/network.js'
 import { rm } from 'node:fs/promises'
 import type {
   EndpointConfig,
@@ -19,6 +24,8 @@ import {
   routinePeer,
   sqliteWriteLock
 } from './startup-peer.js'
+
+installPeerNetwork()
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -73,6 +80,9 @@ test("accepts native text during another channel's initialization while manageme
   vi.stubEnv('START_WECOM_SECRET', 'secret')
   vi.stubEnv('START_DING_SECRET', 'secret')
   const peers = await nativePeers()
+  const publicOrigin = registerPeer(peers.origin)
+  routePlatform('https://api.dingtalk.com', publicOrigin)
+  routePlatform('wss://openws.work.weixin.qq.com', `${publicOrigin}/wecom`)
   cleanups.push(peers.close)
   const managementPort = await freeManagementPort()
 
@@ -91,9 +101,7 @@ test("accepts native text during another channel's initialization while manageme
           allowedSenders: ['user'],
           config: {
             botId: 'robot',
-            secret: { env: 'START_WECOM_SECRET' },
-            wsUrl: `${peers.origin.replace('http:', 'ws:')}/wecom`,
-            allowInsecureLoopback: true
+            secret: { env: 'START_WECOM_SECRET' }
           }
         },
         {
@@ -103,9 +111,7 @@ test("accepts native text during another channel's initialization while manageme
           config: {
             clientId: 'app',
             clientSecret: { env: 'START_DING_SECRET' },
-            robotCode: 'robot',
-            apiBase: peers.origin,
-            allowInsecureLoopback: true
+            robotCode: 'robot'
           }
         }
       ],
@@ -353,6 +359,9 @@ test('shutdown waits for the asynchronously launched first batch to settle in re
 test('contains a real first-scan SQLite lock failure and recovers readiness after unlock', async () => {
   const value = await databaseFixture()
   const peers = await nativePeers()
+  const publicOrigin = registerPeer(peers.origin)
+  routePlatform('https://api.dingtalk.com', publicOrigin)
+  routePlatform('wss://openws.work.weixin.qq.com', `${publicOrigin}/wecom`)
   cleanups.push(peers.close)
   vi.stubEnv('START_DING_SECRET', 'secret')
 
@@ -373,9 +382,7 @@ test('contains a real first-scan SQLite lock failure and recovers readiness afte
           config: {
             clientId: 'app',
             clientSecret: { env: 'START_DING_SECRET' },
-            robotCode: 'robot',
-            apiBase: peers.origin,
-            allowInsecureLoopback: true
+            robotCode: 'robot'
           }
         }
       ]

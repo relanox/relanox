@@ -1,8 +1,11 @@
-import { wireText } from '../../channel-wecom/src/transport.js'
+import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
 import { expect, test, vi } from 'vitest'
+import { wireText } from '../../channel-wecom/src/transport.js'
 import { z } from 'zod'
 import { createWeComChannel } from '../src/index.js'
 import { assemble, peer, records, sendInput } from './test-support.js'
+
+installPeerNetwork()
 
 test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends independent escaped Markdown', async () => {
   vi.stubEnv('WECOM_SECRET', 'private-value')
@@ -29,9 +32,7 @@ test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
     plugin,
     {
       botId: 'robot',
-      secret: { env: 'WECOM_SECRET' },
-      wsUrl: remote.ws,
-      allowInsecureLoopback: true
+      secret: { env: 'WECOM_SECRET' }
     },
     [
       { chatId: 'user', senderId: 'user' },
@@ -112,7 +113,7 @@ test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
   const result = await plugin.send(
     sendInput('wecom', 'group', {
       chattype: 'group',
-      scope: { botId: 'robot', wsUrl: new URL(remote.ws).href }
+      scope: { botId: 'robot', wsUrl: 'wss://openws.work.weixin.qq.com/' }
     })
   )
 
@@ -160,9 +161,7 @@ test('WeCom correlates heartbeats and preserves uncertain sends when the socket 
     plugin,
     {
       botId: 'robot',
-      secret: { env: 'WECOM_SECRET' },
-      wsUrl: remote.ws,
-      allowInsecureLoopback: true
+      secret: { env: 'WECOM_SECRET' }
     },
     [{ chatId: 'user', senderId: 'user' }]
   )
@@ -193,7 +192,7 @@ test('WeCom correlates heartbeats and preserves uncertain sends when the socket 
     await plugin.send(
       sendInput('wecom', 'user', {
         chattype: 'single',
-        scope: { botId: 'robot', wsUrl: new URL(remote.ws).href }
+        scope: { botId: 'robot', wsUrl: 'wss://openws.work.weixin.qq.com/' }
       })
     )
   ).toEqual({
@@ -217,8 +216,7 @@ test('WeCom rejects raw secrets and insecure nonlocal endpoints', () => {
     plugin.validateConfig({
       botId: 'robot',
       secret: { env: 'SECRET' },
-      wsUrl: 'ws://remote.example',
-      allowInsecureLoopback: true
+      wsUrl: 'ws://remote.example'
     })
   ).toThrow()
 })
@@ -245,9 +243,7 @@ test('WeCom stops recovery after the platform replaces this bot connection', asy
     plugin,
     {
       botId: 'robot',
-      secret: { env: 'WECOM_SECRET' },
-      wsUrl: remote.ws,
-      allowInsecureLoopback: true
+      secret: { env: 'WECOM_SECRET' }
     },
     [{ chatId: 'user', senderId: 'user' }]
   )
@@ -275,7 +271,7 @@ test('WeCom stops recovery after the platform replaces this bot connection', asy
     await plugin.send(
       sendInput('wecom', 'user', {
         chattype: 'single',
-        scope: { botId: 'robot', wsUrl: new URL(remote.ws).href }
+        scope: { botId: 'robot', wsUrl: 'wss://openws.work.weixin.qq.com/' }
       })
     )
   ).toMatchObject({
@@ -313,9 +309,7 @@ test.each(['missing credential', 'rejected subscription'])(
       plugin,
       {
         botId: 'robot',
-        secret: { env: 'WECOM_SECRET' },
-        wsUrl: remote.ws,
-        allowInsecureLoopback: true
+        secret: { env: 'WECOM_SECRET' }
       },
       [{ chatId: 'user', senderId: 'user' }]
     )
@@ -326,7 +320,7 @@ test.each(['missing credential', 'rejected subscription'])(
       await plugin.send(
         sendInput('wecom', 'user', {
           chattype: 'single',
-          scope: { botId: 'robot', wsUrl: new URL(remote.ws).href }
+          scope: { botId: 'robot', wsUrl: 'wss://openws.work.weixin.qq.com/' }
         })
       )
     ).toMatchObject({

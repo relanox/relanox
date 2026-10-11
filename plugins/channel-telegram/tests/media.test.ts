@@ -1,3 +1,7 @@
+import {
+  registerPeer,
+  installPeerNetwork
+} from '../../channel-wecom/tests/network.js'
 import { connectLinePeer } from './line-network.js'
 import { afterEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -10,6 +14,8 @@ import type { MediaReply, MediaTraffic } from './media-peer.js'
 import { mediaRuntime } from './media-runtime.js'
 import { dispatchedMedia, readMedia } from './media-tools.js'
 import type { Cleanup } from './media-runtime.js'
+
+installPeerNetwork()
 
 const cleanups: Cleanup[] = []
 afterEach(async () => {
@@ -62,6 +68,20 @@ function nativeReply(
   origin: string,
   mimeType: string
 ): MediaReply {
+  if (traffic.path === '/auth.test') {
+    return {
+      json: { ok: true, team_id: 'T999', user_id: 'U999', bot_id: 'B999' }
+    }
+  }
+  if (traffic.path === '/users/@me') {
+    return { json: { id: '999', bot: true } }
+  }
+  if (traffic.path === '/gateway/bot') {
+    return { json: { url: 'wss://gateway.discord.gg' } }
+  }
+  if (traffic.path === '/open-apis/bot/v3/info') {
+    return { json: { code: 0, bot: { open_id: 'ou_999' } } }
+  }
   if (channel === 'line' && traffic.path === '/v2/bot/info') {
     return { json: { userId: 'U999' } }
   }
@@ -92,7 +112,11 @@ function nativeReply(
   }
   if (traffic.path.endsWith('/files.getUploadURLExternal')) {
     return {
-      json: { ok: true, upload_url: `${origin}/upload`, file_id: 'FGENERATED' }
+      json: {
+        ok: true,
+        upload_url: 'https://files.slack.com/upload',
+        file_id: 'FGENERATED'
+      }
     }
   }
   if (traffic.path.endsWith('/upload')) {
@@ -236,6 +260,10 @@ async function assertNativeOutput(
   }
 }
 
+function peerOrigin(channel: PrimaryChannel, origin: string): string {
+  return ['telegram', 'line'].includes(channel) ? origin : registerPeer(origin)
+}
+
 it.each(cases)(
   '$channel relays pure native $kind bytes through authenticated media reads and SQLite to the frozen reply',
   async ({ channel, kind }) => {
@@ -259,7 +287,7 @@ it.each(cases)(
       return nativeReply(channel, traffic, origin, mimeType)
     })
 
-    origin = remote.origin
+    origin = peerOrigin(channel, remote.origin)
     cleanups.push(remote.close)
     if (channel === 'line') {
       cleanups.push(connectLinePeer(origin))

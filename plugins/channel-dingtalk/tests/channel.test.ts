@@ -1,3 +1,4 @@
+import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
 import { expect, test, vi } from 'vitest'
 import {
   assemble,
@@ -6,6 +7,8 @@ import {
   sendInput
 } from '../../channel-wecom/tests/test-support.js'
 import { createDingTalkChannel } from '../src/index.js'
+
+installPeerNetwork()
 
 const message = {
   msgId: 'stable-message',
@@ -68,9 +71,7 @@ test('DingTalk authenticates Stream, ACKs durable stable messages and sends to s
     {
       clientId: 'app',
       clientSecret: { env: 'DING_SECRET' },
-      robotCode: 'robot-code',
-      apiBase: remote.http,
-      allowInsecureLoopback: true
+      robotCode: 'robot-code'
     },
     [
       { chatId: 'staff', senderId: 'platform-sender' },
@@ -142,7 +143,7 @@ test('DingTalk authenticates Stream, ACKs durable stable messages and sends to s
         scope: {
           clientId: 'app',
           robotCode: 'robot-code',
-          apiBase: new URL(remote.http).href
+          apiBase: 'https://api.dingtalk.com/'
         }
       })
     )
@@ -163,7 +164,7 @@ test('DingTalk authenticates Stream, ACKs durable stable messages and sends to s
             scope: {
               clientId: 'app',
               robotCode: 'robot-code',
-              apiBase: new URL(remote.http).href
+              apiBase: 'https://api.dingtalk.com/'
             }
           },
           'delivery:1'
@@ -219,9 +220,7 @@ test('DingTalk never acknowledges text after a failed durable write; unmentioned
     {
       clientId: 'app',
       clientSecret: { env: 'DING_SECRET' },
-      robotCode: 'robot-code',
-      apiBase: remote.http,
-      allowInsecureLoopback: true
+      robotCode: 'robot-code'
     },
     [{ chatId: 'staff', senderId: 'platform-sender' }]
   )
@@ -308,7 +307,7 @@ test.each([
   async ({ reply, result }) => {
     vi.stubEnv('DING_SECRET', 'secret')
 
-    const remote = await peer((request) =>
+    await peer((request) =>
       request.path === '/v1.0/oauth2/accessToken'
         ? { body: { accessToken: 'token', expireIn: 7200 } }
         : reply
@@ -320,9 +319,7 @@ test.each([
       {
         clientId: 'app',
         clientSecret: { env: 'DING_SECRET' },
-        robotCode: 'robot-code',
-        apiBase: remote.http,
-        allowInsecureLoopback: true
+        robotCode: 'robot-code'
       },
       [{ chatId: 'staff', senderId: 'platform-sender' }]
     )
@@ -334,7 +331,7 @@ test.each([
           scope: {
             clientId: 'app',
             robotCode: 'robot-code',
-            apiBase: new URL(remote.http).href
+            apiBase: 'https://api.dingtalk.com/'
           }
         })
       )

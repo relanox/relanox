@@ -5,7 +5,7 @@ import type {
   ChannelPlugin,
   SendResult
 } from '@relanox/sdk'
-import type { z } from 'zod'
+import { z } from 'zod'
 import { validateConfig, REQUEST_TIMEOUT_MS } from './config.js'
 import type { FeishuConfig } from './config.js'
 import {
@@ -34,19 +34,24 @@ import {
   postJson
 } from './transport.js'
 
+const botInfoSchema = z.object({
+  code: z.literal(0),
+  bot: z.object({ open_id: z.string().min(1) })
+})
+
 export function createFeishuChannel(
   environment: NodeJS.ProcessEnv = process.env
 ): ChannelPlugin<FeishuConfig> {
   let host: ChannelHost
   let account: AccountConfig
   let config: FeishuConfig
+  let botOpenId: string
   let token: { value: string; until: number; secretDigest: string } | undefined
 
   const base = (): string =>
-    config.apiBaseUrl ??
-    (config.domain === 'lark'
+    config.domain === 'lark'
       ? 'https://open.larksuite.com'
-      : 'https://open.feishu.cn')
+      : 'https://open.feishu.cn'
 
   const identity = (): {
     tenantKey: string
@@ -56,7 +61,7 @@ export function createFeishuChannel(
   } => ({
     tenantKey: config.tenantKey,
     appId: config.appId,
-    botId: config.botOpenId,
+    botId: botOpenId,
     apiBaseUrl: new URL(base()).toString().replace(/\/$/u, '')
   })
 
@@ -223,7 +228,7 @@ export function createFeishuChannel(
     const { message, sender } = messageEvent.data
     if (
       sender.sender_type !== 'user' ||
-      sender.sender_id.open_id === config.botOpenId ||
+      sender.sender_id.open_id === botOpenId ||
       !['text', 'image', 'audio', 'media', 'file', 'post'].includes(
         message.message_type
       ) ||
@@ -318,6 +323,26 @@ export function createFeishuChannel(
       credential(config.appSecret, environment)
       credential(config.encryptKey, environment)
       credential(config.verificationToken, environment)
+
+      const tenantToken = await accessToken(
+        AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      )
+
+      if (typeof tenantToken !== 'string') {
+        throw new TypeError('feishu_identity_unavailable')
+      }
+
+      const response = await fetch(`${base()}/open-apis/bot/v3/info`, {
+        redirect: 'error',
+        headers: { authorization: `Bearer ${tenantToken}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      })
+
+      if (!response.ok) {
+        await response.body?.cancel()
+        throw new Error('feishu_identity_unavailable')
+      }
+      botOpenId = botInfoSchema.parse(await jsonResponse(response)).bot.open_id
       host.mountHttp('/events', async (request) => {
         const value = await verifyRequest(request)
         if (value instanceof Response) {

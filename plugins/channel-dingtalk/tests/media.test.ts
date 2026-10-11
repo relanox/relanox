@@ -1,3 +1,4 @@
+import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
 import { expect, test, vi } from 'vitest'
 import { createDingTalkChannel } from '../src/index.js'
 import {
@@ -5,6 +6,8 @@ import {
   peer,
   records
 } from '../../channel-wecom/tests/test-support.js'
+
+installPeerNetwork()
 
 test('DingTalk downloads a pure picture before durable ACK and uploads original multipart bytes', async () => {
   vi.stubEnv('DING_MEDIA_SECRET', 'secret')
@@ -40,11 +43,7 @@ test('DingTalk downloads a pure picture before durable ACK and uploads original 
     {
       clientId: 'app',
       clientSecret: { env: 'DING_MEDIA_SECRET' },
-      robotCode: 'robot',
-      apiBase: remote.http,
-      uploadBase: remote.http,
-      mediaOrigins: [remote.http],
-      allowInsecureLoopback: true
+      robotCode: 'robot'
     },
     [{ chatId: 'staff', senderId: 'sender' }]
   )

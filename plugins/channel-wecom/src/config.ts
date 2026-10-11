@@ -31,33 +31,14 @@ export function validateTransportUrl(
 export const configSchema = z
   .object({
     botId: z.string().min(1),
-    secret: secretRefSchema,
-    wsUrl: z.url().default('wss://openws.work.weixin.qq.com'),
-    allowInsecureLoopback: z.boolean().default(false),
-    mediaOrigins: z.array(z.url()).default([])
+    secret: secretRefSchema
   })
   .strict()
-  .superRefine((config, context) => {
-    for (const origin of config.mediaOrigins) {
-      if (new URL(origin).origin !== origin) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Media origins must be exact origins'
-        })
-      }
-    }
-    try {
-      validateTransportUrl(config.wsUrl, true, config.allowInsecureLoopback)
-    } catch {
-      context.addIssue({
-        code: 'custom',
-        message: 'Invalid secure WebSocket URL'
-      })
-    }
-  })
 
 export type WeComConfig = z.infer<typeof configSchema>
 
 export const HEARTBEAT_MS = 30_000
 
 export const MAX_RECONNECT_ATTEMPTS = 20
+
+export const WEBSOCKET_URL = 'wss://openws.work.weixin.qq.com'

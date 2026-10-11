@@ -1,4 +1,4 @@
-import { REQUEST_TIMEOUT_MS } from './config.js'
+import { REQUEST_TIMEOUT_MS, API_BASE_URL } from './config.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -7,17 +7,15 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import { z } from 'zod'
-import type { SlackConfig } from './config.js'
 import { fileSchema } from './schemas.js'
 import type { messageSchema } from './schemas.js'
 import { failure, jsonResponse, postJson } from './transport.js'
 import { apiError } from './client.js'
 
-export { sendOutcome } from './client.js'
+export { sendOutcome, discoverIdentity } from './client.js'
 
 async function fileMetadata(
   file: z.infer<typeof fileSchema>,
-  config: SlackConfig,
   token: string
 ): Promise<{
   [x: string]: unknown
@@ -33,7 +31,7 @@ async function fileMetadata(
   }
 
   const response = await fetch(
-    `${config.apiBaseUrl.replace(/\/$/u, '')}/files.info?file=${encodeURIComponent(file.id)}`,
+    `${API_BASE_URL.replace(/\/$/u, '')}/files.info?file=${encodeURIComponent(file.id)}`,
     {
       headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -54,12 +52,11 @@ async function fileMetadata(
 export async function receiveMedia(
   files: z.infer<typeof messageSchema>['files'],
   host: ChannelHost,
-  config: SlackConfig,
   token: string
 ): Promise<MediaUpload[]> {
   return Promise.all(
     files.map(async (eventFile) => {
-      const file = await fileMetadata(eventFile, config, token)
+      const file = await fileMetadata(eventFile, token)
       if ((file.size ?? 0) > (host.maxMediaBytes ?? 25 * 1024 * 1024)) {
         throw new Error('media_too_large')
       }
@@ -73,9 +70,9 @@ export async function receiveMedia(
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         trustedOrigins: [
           'https://files.slack.com',
-          new URL(config.apiBaseUrl).origin
+          new URL(API_BASE_URL).origin
         ],
-        allowInsecureLocalhost: config.allowInsecureLoopback,
+        allowInsecureLocalhost: false,
         headers: { authorization: `Bearer ${token}` }
       })
 
@@ -111,13 +108,12 @@ function uploadFailure(result: SendResult): SendResult {
 
 async function prepareUpload(
   input: SendInput,
-  config: SlackConfig,
   token: string
 ): Promise<{ file_id: string } | SendResult> {
   if (!input.media) {
     return { status: 'rejected', errorCode: 'missing_media' }
   }
-  const base = config.apiBaseUrl.replace(/\/$/u, '')
+  const base = API_BASE_URL.replace(/\/$/u, '')
   const headers = { authorization: `Bearer ${token}` }
   try {
     const requested = await fetch(`${base}/files.getUploadURLExternal`, {
@@ -179,7 +175,6 @@ async function prepareUpload(
 export async function sendMedia(
   input: SendInput,
   host: ChannelHost,
-  config: SlackConfig,
   token: string
 ): Promise<SendResult> {
   if (
@@ -188,9 +183,9 @@ export async function sendMedia(
   ) {
     return { status: 'rejected', errorCode: 'media_limit_exceeded' }
   }
-  const base = config.apiBaseUrl.replace(/\/$/u, '')
+  const base = API_BASE_URL.replace(/\/$/u, '')
   const headers = { authorization: `Bearer ${token}` }
-  const prepared = await prepareUpload(input, config, token)
+  const prepared = await prepareUpload(input, token)
   if ('status' in prepared) {
     return prepared
   }

@@ -1,3 +1,10 @@
+import {
+  API_BASE,
+  UPLOAD_BASE,
+  configSchema,
+  validateTransportUrl,
+  MAX_RECONNECT_ATTEMPTS
+} from './config.js'
 import { receiveParts, mediaMessage, uploadFailure } from './media.js'
 import type {
   AccountConfig,
@@ -7,11 +14,6 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import type { z } from 'zod'
-import {
-  configSchema,
-  validateTransportUrl,
-  MAX_RECONNECT_ATTEMPTS
-} from './config.js'
 import type { DingTalkConfig } from './config.js'
 import {
   streamOpenResponseSchema,
@@ -42,8 +44,8 @@ function matchesScope(
   return (
     scope.clientId === config.clientId &&
     scope.robotCode === config.robotCode &&
-    scope.apiBase === new URL(config.apiBase).href &&
-    (!media || scope.uploadBase === new URL(config.uploadBase).href)
+    scope.apiBase === new URL(API_BASE).href &&
+    (!media || scope.uploadBase === new URL(UPLOAD_BASE).href)
   )
 }
 
@@ -58,8 +60,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
 
   let tokenFlight: Promise<string> | undefined
 
-  const api = (path: string): string =>
-    `${config.apiBase.replace(/\/$/u, '')}${path}`
+  const api = (path: string): string => `${API_BASE.replace(/\/$/u, '')}${path}`
 
   async function getAccessToken(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret)
@@ -168,8 +169,8 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
     const scope = {
       clientId: config.clientId,
       robotCode: config.robotCode,
-      apiBase: new URL(config.apiBase).href,
-      uploadBase: new URL(config.uploadBase).href
+      apiBase: new URL(API_BASE).href,
+      uploadBase: new URL(UPLOAD_BASE).href
     }
 
     const group = message.conversationType === '2'
@@ -236,13 +237,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
             )
           )
 
-          const url = new URL(
-            validateTransportUrl(
-              body.endpoint,
-              true,
-              config.allowInsecureLoopback
-            )
-          )
+          const url = new URL(validateTransportUrl(body.endpoint, true, false))
 
           url.searchParams.set('ticket', body.ticket)
           return url.toString()

@@ -1,3 +1,5 @@
+import { afterEach, vi } from 'vitest'
+import { registerPeer, routePlatform } from './network.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingHttpHeaders } from 'node:http'
@@ -15,10 +17,8 @@ import type {
   InboundRecord
 } from '@relanox/sdk'
 import { sqliteStoragePlugin } from '@relanox/storage-sqlite'
-import { afterEach, vi } from 'vitest'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { wireText } from '../src/transport.js'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -106,7 +106,11 @@ export async function peer(
   ws.on('connection', (socket) => {
     sockets.push(socket)
     socket.on('message', (data) => {
-      frames.push(JSON.parse(wireText(data)) as unknown)
+      if (!Buffer.isBuffer(data)) {
+        throw new TypeError('unexpected_peer_frame')
+      }
+
+      frames.push(JSON.parse(data.toString('utf8')) as unknown)
     })
     connected(socket)
   })
@@ -117,6 +121,17 @@ export async function peer(
   if (address === null || typeof address === 'string') {
     throw new Error('Missing local peer address')
   }
+  const publicOrigin = registerPeer(`http://127.0.0.1:${address.port}`)
+  for (const origin of [
+    'https://api.dingtalk.com',
+    'https://oapi.dingtalk.com',
+    'https://bots.qq.com',
+    'https://api.sgroup.qq.com',
+    'https://sandbox.api.sgroup.qq.com'
+  ]) {
+    routePlatform(origin, publicOrigin)
+  }
+  routePlatform('wss://openws.work.weixin.qq.com', publicOrigin)
   cleanup.push(async () => {
     for (const socket of sockets) {
       socket.terminate()
@@ -140,8 +155,8 @@ export async function peer(
     requests,
     frames,
     sockets,
-    http: `http://127.0.0.1:${address.port}`,
-    ws: `ws://127.0.0.1:${address.port}`
+    http: publicOrigin,
+    ws: publicOrigin.replace('https:', 'wss:')
   }
 }
 

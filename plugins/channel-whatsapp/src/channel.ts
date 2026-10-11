@@ -1,3 +1,9 @@
+import {
+  API_VERSION,
+  API_BASE,
+  validateConfig,
+  validateEndpointUrl
+} from './config.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -7,7 +13,6 @@ import type {
 } from '@relanox/sdk'
 import { receiveMedia, uploadMedia } from './media.js'
 import { z } from 'zod'
-import { validateConfig, validateEndpointUrl } from './config.js'
 import type { WhatsAppConfig } from './config.js'
 import {
   failure,
@@ -23,7 +28,7 @@ import { webhookSchema, targetSchema, responseSchema } from './schemas.js'
 import type { messageSchema } from './schemas.js'
 
 function windowKey(config: WhatsAppConfig, customer: string): string {
-  return `window:${JSON.stringify([config.apiBase, config.businessAccountId, config.phoneNumberId, customer])}`
+  return `window:${JSON.stringify([API_BASE, config.businessAccountId, config.phoneNumberId, customer])}`
 }
 
 async function updateWindow(
@@ -92,7 +97,7 @@ async function receiveMessage(
       data: {
         phoneNumberId: config.phoneNumberId,
         businessAccountId: config.businessAccountId,
-        apiBase: config.apiBase,
+        apiBase: API_BASE,
         customer: message.from,
         windowUntil
       }
@@ -152,7 +157,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
     }
     if (
       target.businessAccountId !== config.businessAccountId ||
-      target.apiBase !== config.apiBase
+      target.apiBase !== API_BASE
     ) {
       return { status: 'rejected', errorCode: 'target_identity_changed' }
     }
@@ -178,8 +183,8 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
 
       const response = await request(
         validateEndpointUrl(
-          `${config.apiBase}/${config.apiVersion}/${encodeURIComponent(target.phoneNumberId)}/messages`,
-          config.allowLoopback
+          `${API_BASE}/${API_VERSION}/${encodeURIComponent(target.phoneNumberId)}/messages`,
+          false
         ),
         {
           method: 'POST',

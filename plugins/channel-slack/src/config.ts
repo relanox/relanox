@@ -6,10 +6,6 @@ const secretRefSchema = z.strictObject({
 
 export const platformIdSchema = z.string().min(1).max(256)
 
-const transportOptions = {
-  allowInsecureLoopback: z.boolean().default(false)
-}
-
 export function validateTransportUrl(
   value: string,
   insecure: boolean,
@@ -41,22 +37,16 @@ export function validateTransportUrl(
 
 const common = {
   botToken: secretRefSchema,
-  botUserId: platformIdSchema,
-  teamId: platformIdSchema,
-  appId: platformIdSchema,
-  apiBaseUrl: z.string().default('https://slack.com/api'),
-  ...transportOptions
+  appId: platformIdSchema
 }
 
-const configSchema = z.discriminatedUnion('receiveMode', [
+const configSchema = z.union([
   z.strictObject({
     ...common,
-    receiveMode: z.literal('http'),
     signingSecret: secretRefSchema
   }),
   z.strictObject({
     ...common,
-    receiveMode: z.literal('socket'),
     appToken: secretRefSchema
   })
 ])
@@ -65,10 +55,11 @@ export type SlackConfig = z.infer<typeof configSchema>
 
 export function validateConfig(input: unknown): SlackConfig {
   const parsed = configSchema.parse(input)
-  validateTransportUrl(parsed.apiBaseUrl, parsed.allowInsecureLoopback)
   return parsed
 }
 
 export const REQUEST_TIMEOUT_MS = 10_000
 
 export const RECONNECT_DELAY_MS = 1000
+
+export const API_BASE_URL = 'https://slack.com/api'

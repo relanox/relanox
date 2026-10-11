@@ -1,13 +1,16 @@
+import { installPeerNetwork, routePlatform } from './network.js'
+import { expect, test, vi } from 'vitest'
 import type WebSocket from 'ws'
 import type { HttpRequest } from './test-support.js'
 import type { ChannelPlugin, Json, SendInput } from '@relanox/sdk'
-import { expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { createDingTalkChannel } from '../../channel-dingtalk/src/index.js'
 import { createQqChannel } from '../../channel-qq/src/index.js'
 import { createWeComChannel } from '../src/index.js'
 import { wireText } from '../src/transport.js'
 import { assemble, peer, records, temporaryDatabase } from './test-support.js'
+
+installPeerNetwork()
 
 type Kind = 'wecom' | 'dingtalk' | 'qq'
 
@@ -94,32 +97,36 @@ function configFor(
   remote: Awaited<ReturnType<typeof nativePeer>>,
   changed = false
 ): Record<string, Json> {
+  const platforms = {
+    wecom: ['wss://openws.work.weixin.qq.com'],
+    dingtalk: ['https://api.dingtalk.com', 'https://oapi.dingtalk.com'],
+    qq: ['https://bots.qq.com', 'https://api.sgroup.qq.com']
+  }
+
+  for (const platform of platforms[kind]) {
+    routePlatform(platform, kind === 'wecom' ? remote.ws : remote.http)
+  }
+
   const identity = changed ? 'replacement' : 'original'
   const secret = { env: 'ENTERPRISE_SECRET' }
   switch (kind) {
     case 'wecom': {
       return {
         botId: identity,
-        secret,
-        wsUrl: remote.ws,
-        allowInsecureLoopback: true
+        secret
       }
     }
     case 'dingtalk': {
       return {
         clientId: 'client',
         robotCode: identity,
-        clientSecret: secret,
-        apiBase: remote.http,
-        allowInsecureLoopback: true
+        clientSecret: secret
       }
     }
     case 'qq': {
       return {
         appId: identity,
-        clientSecret: secret,
-        apiBase: remote.http,
-        allowInsecureLoopback: true
+        clientSecret: secret
       }
     }
     default: {
@@ -260,7 +267,30 @@ test.each([
       chunk: { text: 'answer', idempotencyKey: 'delivery:0', state: null }
     }
 
-    expect(await changed.send(input)).toMatchObject({ status: 'rejected' })
+    const frozenData = z.record(z.string(), z.json()).parse(input.target.data)
+    const frozenScope = z.record(z.string(), z.json()).parse(frozenData.scope)
+
+    const rejectionInput =
+      change === 'server'
+        ? {
+            ...input,
+            target: {
+              ...input.target,
+              data: {
+                ...frozenData,
+                scope: {
+                  ...frozenScope,
+                  [kind === 'wecom' ? 'wsUrl' : 'apiBase']:
+                    'https://foreign.example/'
+                }
+              }
+            }
+          }
+        : input
+
+    expect(await changed.send(rejectionInput)).toMatchObject({
+      status: 'rejected'
+    })
     expect(sentCount(original) + sentCount(replacement)).toBe(0)
     await changed.stop?.()
     await nextHost.storage.close()
