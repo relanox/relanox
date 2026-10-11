@@ -61,7 +61,7 @@ export const dispatchRoutine: AgentPlugin<GrokConfig>['dispatch'] = async ({
     sentAt: new Date(request.acceptedAt).toISOString()
   })
 
-  if (Buffer.byteLength(body) > config.maxBodyBytes) {
+  if (Buffer.byteLength(body) > 1_048_576) {
     return { status: 'rejected', errorCode: 'grok_body_too_large' }
   }
   try {
@@ -73,7 +73,7 @@ export const dispatchRoutine: AgentPlugin<GrokConfig>['dispatch'] = async ({
         Authorization: authorization
       },
       body,
-      signal: AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)])
+      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)])
     })
 
     try {

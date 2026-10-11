@@ -61,7 +61,7 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
 4. 通过连接的 Events 功能开启 `relanox.message_available` 订阅。在连接中开启自动续订，使它持续接收新消息。
 5. 将聊天绑定的 `endpointId` 设为 `dot-main`，加入下方指令，然后在该聊天发送消息。
 
-`callback` 整段可省略。Relanox 默认使用 `https://connectors.api.openai.com`、HTTPS 投递和 10 秒超时。使用自定义接收端时，可在 `callback.allowedOrigins` 填写准确来源，它会替换默认列表；也可以单独覆盖 `callback.timeoutMs` 或 `callback.transport`。`loopback-http` 用于本地协议测试。
+`callback` 整段可省略。Relanox 默认使用 `https://connectors.api.openai.com`、HTTPS 投递和 10 秒超时。使用自定义接收端时，可在 `callback.allowedOrigins` 填写准确来源，它会替换默认列表；也可以单独覆盖 `callback.transport`。回调、MCP 和 Grok Routine 请求的超时固定为 10 秒；MCP 和 Grok Routine 请求体限制为 1 MiB。dot 订阅最长保留 24 小时，签名密钥轮换后保留旧密钥签名 60 秒。`loopback-http` 用于本地协议测试。
 
 保持订阅续期开启，默认有效期为一天。状态显示 `dot_no_active_subscription` 时重新连接或续订；来信已耗尽重试次数时，按[部署与备份](operations.md#查找并恢复卡住的消息)恢复。
 
