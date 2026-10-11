@@ -1,3 +1,4 @@
+import { whatsAppMarkdown, splitWhatsAppMarkdown } from './markdown.js'
 import {
   API_VERSION,
   API_BASE,
@@ -179,7 +180,13 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
 
       const content = media
         ? { type: media.type, [media.type]: media.value }
-        : { type: 'text', text: { body: input.chunk.text, preview_url: false } }
+        : {
+            type: 'text',
+            text: {
+              body: whatsAppMarkdown(input.chunk.text),
+              preview_url: false
+            }
+          }
 
       const response = await request(
         validateEndpointUrl(
@@ -234,6 +241,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       }
     },
     validateConfig,
+    splitText: splitWhatsAppMarkdown,
     async setup(host, account, config) {
       runtime = { host, account, config }
       host.mountHttp('/webhook', async (incoming) => {

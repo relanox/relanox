@@ -23,7 +23,9 @@ import {
   receiveMedia,
   sendMedia,
   sendOutcome,
-  discoverIdentity
+  discoverIdentity,
+  slackMarkdown,
+  splitSlackMarkdown
 } from './media.js'
 import {
   bytes,
@@ -288,6 +290,7 @@ export function createSlackChannel(
       }
     },
     validateConfig,
+    splitText: splitSlackMarkdown,
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount
@@ -405,10 +408,7 @@ export function createSlackChannel(
           },
           {
             channel: input.target.chatId,
-            text: input.chunk.text
-              .replaceAll('&', '&amp;')
-              .replaceAll('<', '&lt;')
-              .replaceAll('>', '&gt;'),
+            ...slackMarkdown(input.chunk.text),
             mrkdwn: false,
             parse: 'none',
             unfurl_links: false,

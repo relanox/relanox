@@ -121,6 +121,77 @@ function sendInput(
   }
 }
 
+it('renders Markdown using IRC controls and budgets styled UTF-8 text with the actual target', async () => {
+  const tcp = await tcpPeer(register)
+
+  const http = await httpPeer((_request, response) => {
+    json(response, {})
+  })
+
+  const plugin = createIrcChannel({ IRC_SASL: 'password' })
+  await harness(
+    plugin,
+    config(tcp.port),
+    [{ chatId: '#room' }],
+    ['account:alice'],
+    `${http.base}/dispatch`
+  )
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(() => tcp.lines.includes('JOIN #room'))
+  expect(
+    (
+      await plugin.send(
+        sendInput(
+          tcp.port,
+          '#room',
+          '😀 **bold** _ital_ ~~gone~~ `x*y` [site](https://example.com)'
+        )
+      )
+    ).status
+  ).toBe('sent')
+  await waitFor(() => tcp.lines.some((line) => line.startsWith('PRIVMSG ')))
+  expect(tcp.lines.find((line) => line.startsWith('PRIVMSG '))).toBe(
+    'PRIVMSG #room :😀 \u0002bold\u000F \u001Dital\u000F \u001Egone\u000F \u0011x*y\u000F site (https://example.com/)'
+  )
+  const recipient = `#${'x'.repeat(89)}`
+  const input = sendInput(tcp.port, recipient)
+
+  const parts =
+    plugin.splitText?.(`**${'界😀'.repeat(100)}**`, input.target) ?? []
+
+  expect(parts.length).toBeGreaterThan(1)
+  for (const [index, text] of parts.entries()) {
+    expect(
+      (
+        await plugin.send({
+          ...input,
+          chunkIndex: index,
+          chunk: { ...input.chunk, text }
+        })
+      ).status
+    ).toBe('sent')
+  }
+  await waitFor(
+    () =>
+      tcp.lines.filter((line) => line.startsWith(`PRIVMSG ${recipient} :`))
+        .length === parts.length
+  )
+
+  const sent = tcp.lines.filter((line) =>
+    line.startsWith(`PRIVMSG ${recipient} :`)
+  )
+
+  const texts: string[] = []
+  for (const line of sent) {
+    expect(Buffer.byteLength(`${line}\r\n`, 'utf8')).toBeLessThanOrEqual(512)
+    const text = line.slice(`PRIVMSG ${recipient} :`.length)
+    expect(text.startsWith('\u0002') && text.endsWith('\u000F')).toBe(true)
+    texts.push(text.replaceAll('\u0002', '').replaceAll('\u000F', ''))
+  }
+  expect(texts.join('')).toBe('界😀'.repeat(100))
+  await plugin.stop?.()
+})
+
 it('negotiates SASL and tags, ingests channel/private text and independently writes delayed replies', async () => {
   const tcp = await tcpPeer((line, socket) => {
     register(line, socket)

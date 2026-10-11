@@ -98,6 +98,88 @@ function webhook(
 }
 
 describe('telegram native protocol', () => {
+  it('renders Markdown as native entities with UTF-16 ranges and preserves code literals', async () => {
+    const remote = await peer(() => ({
+      body: { ok: true, result: { message_id: 100 } }
+    }))
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+    const input = sendInput(test.target)
+    expect(
+      (
+        await test.plugin.send({
+          ...input,
+          chunk: {
+            ...input.chunk,
+            text: '😀 **bold _italic_** ~~gone~~ [site](https://example.com) `x*y`\n\n```ts\nlet x = 1\n```'
+          }
+        })
+      ).status
+    ).toBe('sent')
+    expect(remote.requests[0]?.body).toMatchObject({
+      text: '😀 bold italic gone site x*y\n\nlet x = 1',
+      entities: [
+        { type: 'bold', offset: 3, length: 5 },
+        { type: 'bold', offset: 8, length: 6 },
+        { type: 'italic', offset: 8, length: 6 },
+        { type: 'strikethrough', offset: 15, length: 4 },
+        {
+          type: 'text_link',
+          offset: 20,
+          length: 4,
+          url: 'https://example.com/'
+        },
+        { type: 'code', offset: 25, length: 3 },
+        { type: 'pre', offset: 30, length: 9, language: 'ts' }
+      ]
+    })
+  })
+
+  it('sends split styled emoji text without exceeding visible limits or losing entity offsets', async () => {
+    const remote = await peer(() => ({
+      body: { ok: true, result: { message_id: 100 } }
+    }))
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+
+    const parts =
+      test.plugin.splitText?.(`**${'😀'.repeat(4500)}**`, test.target) ?? []
+
+    expect(parts.length).toBeGreaterThan(1)
+    for (const [index, text] of parts.entries()) {
+      const input = sendInput(test.target)
+      expect(
+        (
+          await test.plugin.send({
+            ...input,
+            chunkIndex: index,
+            chunk: { ...input.chunk, text }
+          })
+        ).status
+      ).toBe('sent')
+    }
+
+    const messages = remote.requests.map(
+      (item) =>
+        item.body as {
+          text: string
+          entities: { type: string; offset: number; length: number }[]
+        }
+    )
+
+    expect(messages.map((item) => item.text).join('')).toBe('😀'.repeat(4500))
+    for (const message of messages) {
+      expect(
+        Array.from(message.text, (character) => character).length
+      ).toBeLessThanOrEqual(4096)
+      expect(message.entities).toEqual([
+        { type: 'bold', offset: 0, length: message.text.length }
+      ])
+    }
+  })
+
   it.each(['sender_not_allowed', 'unbound_conversation'])(
     'acknowledges terminal core policy rejection: %s',
     async (code) => {

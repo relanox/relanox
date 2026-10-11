@@ -1,3 +1,4 @@
+import { ircMarkdown, splitIrcMarkdown } from './markdown.js'
 import { requestTimeoutMs, reconnectDelayMs } from './constants.js'
 import { randomUUID } from 'node:crypto'
 import { createConnection } from 'node:net'
@@ -385,7 +386,7 @@ export function createIrcChannel(
     }
     let line: string
     try {
-      const text = input.chunk.text.replaceAll(/\r\n|[\r\n]/gu, ' ')
+      const text = ircMarkdown(input.chunk.text)
       line = wireLine(`PRIVMSG ${target.data.recipient} :${text}`)
     } catch {
       return { status: 'rejected', errorCode: 'invalid_irc_text' }
@@ -435,6 +436,7 @@ export function createIrcChannel(
       media: { receive: [], send: [] }
     },
     validateConfig,
+    splitText: splitIrcMarkdown,
     async setup(host, account, config) {
       if (runtime) {
         throw new Error('already_setup')

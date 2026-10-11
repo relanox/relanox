@@ -232,7 +232,11 @@ describe('native LINE', () => {
     )
     expect((await local.core.fetch(incoming(webhook()))).status).toBe(200)
     expect((await local.storage.getStats()).pending).toBe(1)
-    const completed = await local.sendReply()
+
+    const completed = await local.sendReply(
+      '**bold** _ital_ ~~gone~~ [site](https://example.com) `x*y`'
+    )
+
     expect(local.dispatches).toEqual(['hello'])
     expect(completed.delivery?.status).toBe('sent')
     expect(completed.request.target).toEqual({
@@ -252,9 +256,106 @@ describe('native LINE', () => {
     expect(sent?.headers.authorization).toBe('Bearer token')
     expect(JSON.parse(sent?.body ?? 'null') as unknown).toEqual({
       to: 'group',
-      messages: [{ type: 'text', text: 'answer' }]
+      messages: [
+        {
+          type: 'flex',
+          altText: 'bold ital gone site x*y',
+          contents: {
+            type: 'bubble',
+            body: {
+              type: 'box',
+              layout: 'vertical',
+              contents: [
+                {
+                  type: 'text',
+                  wrap: true,
+                  contents: [
+                    { type: 'span', text: 'bold', weight: 'bold' },
+                    { type: 'span', text: ' ' },
+                    { type: 'span', text: 'ital', style: 'italic' },
+                    { type: 'span', text: ' ' },
+                    { type: 'span', text: 'gone', decoration: 'line-through' },
+                    { type: 'span', text: ' ' }
+                  ]
+                },
+                {
+                  type: 'text',
+                  wrap: true,
+                  contents: [{ type: 'span', text: 'site' }],
+                  action: { type: 'uri', uri: 'https://example.com/' }
+                },
+                {
+                  type: 'text',
+                  wrap: true,
+                  contents: [
+                    { type: 'span', text: ' ' },
+                    { type: 'span', text: 'x*y' }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
     })
     expect(sent?.headers['x-line-retry-key']).toMatch(/^[0-9a-f-]{36}$/u)
+  })
+
+  it('splits styled Flex contents by serialized bytes and bounds notification previews', async () => {
+    const local = await setup()
+    await local.core.fetch(incoming(webhook()))
+    const completed = await local.sendReply('**😀** '.repeat(700))
+    expect(completed.delivery?.status).toBe('sent')
+
+    const payloads = local.remote.traffic.map((item) =>
+      z
+        .object({
+          messages: z.array(
+            z.object({
+              type: z.literal('flex'),
+              altText: z.string(),
+              contents: z.object({
+                body: z.object({
+                  contents: z.array(
+                    z.object({
+                      contents: z.array(
+                        z.object({
+                          text: z.string(),
+                          weight: z.string().optional()
+                        })
+                      )
+                    })
+                  )
+                })
+              })
+            })
+          )
+        })
+        .parse(JSON.parse(item.body))
+    )
+
+    expect(payloads.length).toBeGreaterThan(1)
+    const texts: string[] = []
+    for (const payload of payloads) {
+      const message = payload.messages[0]
+      if (!message) {
+        throw new Error('missing_flex')
+      }
+      expect(
+        Buffer.byteLength(JSON.stringify(message.contents), 'utf8')
+      ).toBeLessThanOrEqual(30_000)
+      expect(message.altText.length).toBeLessThanOrEqual(1500)
+      expect(message.altText.isWellFormed()).toBe(true)
+      for (const component of message.contents.body.contents) {
+        for (const run of component.contents) {
+          texts.push(run.text)
+          if (run.text.includes('😀')) {
+            expect(run.weight).toBe('bold')
+          }
+        }
+      }
+    }
+    expect(texts.join('').replaceAll(/\s/gu, '')).toBe('😀'.repeat(700))
   })
 
   it('reuses a persisted push retry UUID across a SQLite close/reopen and accepts 409 receipts', async () => {

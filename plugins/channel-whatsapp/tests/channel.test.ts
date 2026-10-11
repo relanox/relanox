@@ -125,6 +125,50 @@ async function setup(filename = ':memory:'): Promise<{
 }
 
 describe('native WhatsApp Cloud', () => {
+  it('converts Markdown to WhatsApp styles and preserves explicit link targets', async () => {
+    const local = await setup()
+    await local.core.fetch(incoming(webhook()))
+
+    const completed = await local.sendReply(
+      '😀 **bold _both_** _ital_ ~~gone~~ `x*y` [site](https://example.com)'
+    )
+
+    expect(completed.delivery?.status).toBe('sent')
+    expect(
+      JSON.parse(local.remote.traffic[0]?.body ?? 'null') as unknown
+    ).toMatchObject({
+      type: 'text',
+      text: {
+        body: '😀 *bold* *_both_* _ital_ ~gone~ ```x*y``` site (https://example.com/)',
+        preview_url: false
+      }
+    })
+  })
+
+  it('budgets generated code delimiters before sending split WhatsApp replies', async () => {
+    const local = await setup()
+    await local.core.fetch(incoming(webhook()))
+
+    const completed = await local.sendReply(
+      `\`\`\`ts\n${'界😀'.repeat(1500)}\n\`\`\``
+    )
+
+    expect(completed.delivery?.status).toBe('sent')
+
+    const sent = local.remote.traffic.map(
+      (item) => (JSON.parse(item.body) as { text: { body: string } }).text.body
+    )
+
+    expect(sent.length).toBeGreaterThan(1)
+    for (const text of sent) {
+      expect(text.length).toBeLessThanOrEqual(4096)
+      expect(text.startsWith('```') && text.endsWith('```')).toBe(true)
+    }
+    expect(sent.map((text) => text.slice(3, -3)).join('')).toBe(
+      '界😀'.repeat(1500)
+    )
+  })
+
   it.each(['business', 'server', 'rotation'] as const)(
     'preserves pending reply identity across restart: %s',
     async (change) => {

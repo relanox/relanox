@@ -145,6 +145,96 @@ function request(
 }
 
 describe('slack native protocol', () => {
+  it('sends Markdown styles as rich text while keeping escaped literals and mention syntax ordinary text', async () => {
+    const remote = await peer(() => ({
+      body: { ok: true, ts: '1700000002.004' }
+    }))
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+    const input = sendInput(test.target)
+    expect(
+      (
+        await test.plugin.send({
+          ...input,
+          chunk: {
+            ...input.chunk,
+            text: '\\*literal\\* **bold** _italic_ ~~gone~~ [site](https://example.com) `x*y` <@U123>\n\n```ts\nx < y\n```'
+          }
+        })
+      ).status
+    ).toBe('sent')
+    expect(remote.requests[0]?.body).toMatchObject({
+      text: '*literal* bold italic gone site (https://example.com/) x*y &lt;@U123&gt;\n\nx &lt; y',
+      mrkdwn: false,
+      parse: 'none',
+      blocks: [
+        {
+          type: 'rich_text',
+          elements: [
+            {
+              type: 'rich_text_section',
+              elements: [
+                { type: 'text', text: '*literal* ' },
+                { type: 'text', text: 'bold', style: { bold: true } },
+                { type: 'text', text: ' ' },
+                { type: 'text', text: 'italic', style: { italic: true } },
+                { type: 'text', text: ' ' },
+                { type: 'text', text: 'gone', style: { strike: true } },
+                { type: 'text', text: ' ' },
+                { type: 'link', text: 'site', url: 'https://example.com/' },
+                { type: 'text', text: ' ' },
+                { type: 'text', text: 'x*y', style: { code: true } },
+                { type: 'text', text: ' <@U123>\n\n' }
+              ]
+            },
+            {
+              type: 'rich_text_preformatted',
+              elements: [{ type: 'text', text: 'x < y' }]
+            }
+          ]
+        }
+      ]
+    })
+  })
+
+  it('budgets rich-text run overhead before sending every split fragment', async () => {
+    const remote = await peer(() => ({
+      body: { ok: true, ts: '1700000002.004' }
+    }))
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+
+    const parts =
+      test.plugin.splitText?.('**x** '.repeat(150), test.target) ?? []
+
+    expect(parts.length).toBeGreaterThan(1)
+    for (const [index, text] of parts.entries()) {
+      const input = sendInput(test.target)
+      expect(
+        (
+          await test.plugin.send({
+            ...input,
+            chunkIndex: index,
+            chunk: { ...input.chunk, text }
+          })
+        ).status
+      ).toBe('sent')
+    }
+    for (const item of remote.requests) {
+      expect(
+        Buffer.byteLength(JSON.stringify(item.body), 'utf8')
+      ).toBeLessThanOrEqual(4000)
+    }
+
+    const visible = remote.requests
+      .map((item) => (item.body as { text: string }).text)
+      .join('')
+
+    expect(visible.replaceAll(/\s/gu, '')).toBe('x'.repeat(150))
+  })
+
   it.each(['failed', 'incomplete'])(
     'does not mount or receive after %s authenticated identity discovery',
     async (failure) => {

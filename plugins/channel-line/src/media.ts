@@ -1,3 +1,4 @@
+import { lineMarkdown } from './markdown.js'
 import { contentApiBase } from './constants.js'
 import { downloadMedia, mediaKind } from '@relanox/channel-media'
 import type { ChannelHost, Json, MediaUpload, SendInput } from '@relanox/sdk'
@@ -134,12 +135,14 @@ export function mediaError(
   return undefined
 }
 
+export { splitLineMarkdown } from './markdown.js'
+
 export async function messages(
   input: SendInput,
   host: ChannelHost
 ): Promise<Json[]> {
   if (!input.chunk.media) {
-    return [{ type: 'text', text: input.chunk.text }]
+    return [lineMarkdown(input.chunk.text)]
   }
   if (!input.media || !host.media) {
     throw new Error('public_media_unavailable')
@@ -163,6 +166,6 @@ export async function messages(
       : originalContentUrl
   }
   return input.chunk.text
-    ? [{ type: 'text', text: input.chunk.text }, message]
+    ? [lineMarkdown(input.chunk.text), message]
     : [message]
 }
