@@ -15,6 +15,9 @@ const digest = (media: StoredMedia): string =>
         media.reference.fileName,
         media.reference.size,
         media.reference.sha256,
+        ...(media.reference.durationMs === undefined && media.reference.previewMediaId === undefined
+          ? []
+          : [media.reference.durationMs ?? null, media.reference.previewMediaId ?? null]),
       ]),
     )
     .digest("hex");

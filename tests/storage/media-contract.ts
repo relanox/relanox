@@ -146,6 +146,14 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
           media: incoming.reference,
           replay: true,
         });
+        for (const metadata of [{ durationMs: 1500 }, { previewMediaId: "preview" }]) {
+          expect(
+            await media.put({
+              ...claim,
+              media: { ...incoming, reference: { ...incoming.reference, ...metadata } },
+            }),
+          ).toEqual({ status: "conflict" });
+        }
         expect(await media.put({ ...claim, media: asset("asset", [1, 2]) })).toEqual({
           status: "conflict",
         });
