@@ -4,9 +4,9 @@
 
 私聊/群附件持久保存为字节后才推进 gateway 游标，支持纯媒体。下载限制 DNS 地址与字节、禁止跳转；`mediaOrigins` 可配置准确私有服务 origin，回环 HTTP 还需开启 `allowInsecureLoopback:true`。
 
-中继顶层配置 `media.publicBaseUrl`，允许 QQ 获取输出字节。调用对应 `/v2/users/<id>/files` 或 `/v2/groups/<id>/files`，固定 `srv_send_msg:false`，再以 `msg_type:7` 和 `media.file_info` 输出，沿用持久被动回复序号。每次尝试获取新的 file_info 避免 TTL 过期，不混用私聊/群上传令牌。说明文字先独立发送，公开下载 URL 有期限并限定账号/请求。
+输出使用原生分片直传，不需要 `media.publicBaseUrl`。向对应会话的 `upload_prepare` 提交文件大小及协议要求的 MD5/SHA1 校验值，将原始字节分片 PUT 到返回的签名 URL，每片通过 `upload_part_finish` 确认，然后以 `upload_id` 和固定 `srv_send_msg:false` 调用 `/v2/users/<id>/files` 或 `/v2/groups/<id>/files` 合并。最后以 `msg_type:7` 和 `media.file_info` 输出，沿用持久被动回复序号。该流程同时处理小文件和超过另一种二进制 JSON 直传 5 MB 上限的文件。每次重试重新申请上传，避免签名 URL 或 file_info 过期，不混用私聊/群上传令牌。上传失败不会发送收件人消息；签名上传 URL 不携带 QQ 凭据，且拒绝重定向。说明文字先独立发送。
 
-当前原生协议支持 PNG/JPEG 图片、MP4 视频、SILK 音频与普通文件（`file_type:4`），不自动转码。平台软上限：图片/音频 20 MiB、视频 30 MiB、文件 200 MiB，仍受中继默认 25 MiB 上限限制。上传不会隐式产生主动消息。
+当前原生协议支持 PNG/JPEG 图片、MP4 视频、SILK 音频与普通文件（`file_type:4`），不自动转码。平台软上限：图片/音频 20 MB、视频 30 MB、文件 200 MB，仍受中继默认 25 MiB 上限限制。上传不会隐式产生主动消息。
 
 协议依据：[富媒体](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/rich-media.html)、[群上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_files.post.html)。本地 HTTP、socket、SQLite 测试不代表实账号兼容性已验证。
 
@@ -42,3 +42,5 @@
 冻结应用 ID 和规范化 API 地址，令牌仅在内存缓存。
 
 [媒体传输](../media.md)
+
+[分片预上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_id_upload_prepare.post.html) · [分片确认](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_id_upload_part_finish.post.html)

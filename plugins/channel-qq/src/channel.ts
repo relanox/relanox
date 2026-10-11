@@ -1,5 +1,6 @@
 import { downloadAttachments } from "./media.js";
-import { z as schema } from "zod";
+import { apiError } from "./api-error.js";
+import { uploadMedia } from "./upload.js";
 import type {
   AccountConfig,
   ChannelHost,
@@ -36,21 +37,6 @@ import {
 interface ReplyAllocation {
   mode: "passive" | "proactive";
   seq: number;
-}
-
-function apiError(raw: unknown): SendResult | undefined {
-  const error = errorSchema.safeParse(raw);
-  if (!error.success || error.data.code === 0) {
-    return undefined;
-  }
-  const code = error.data.code;
-  if (code === 40_054_005) {
-    return { status: "unknown", errorCode: "qq_duplicate_effect" };
-  }
-  if ([40_034_100, 50_055_001, 50_055_006].includes(code)) {
-    return { status: "retryable", errorCode: `qq_${code}`, retryAfterMs: 1000 };
-  }
-  return { status: "rejected", errorCode: `qq_${code}` };
 }
 
 export function createQqChannel(): ChannelPlugin<QqConfig> {
@@ -101,51 +87,6 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     } finally {
       tokenFlight = undefined;
     }
-  }
-  async function uploadMedia(
-    input: SendInput,
-    type: "group" | "c2c",
-    credential: string,
-  ): Promise<string | SendResult | undefined> {
-    if (!input.chunk.media) {
-      return undefined;
-    }
-    if (!input.media || !host.media) {
-      return { status: "rejected", errorCode: "media_publication_unavailable" };
-    }
-    const { kind, mimeType, fileName, id } = input.media.reference;
-    const formats: Record<string, readonly string[]> = {
-      image: ["image/png", "image/jpeg"],
-      audio: ["audio/silk", "audio/x-silk"],
-      video: ["video/mp4"],
-    };
-    if (kind !== "file" && !formats[kind]?.includes(mimeType)) {
-      return { status: "rejected", errorCode: "unsupported_media_format" };
-    }
-    const published = await host.media.publish({ requestId: input.requestId, mediaId: id });
-    const response = await httpJson(
-      api(
-        `/v2/${type === "c2c" ? "users" : "groups"}/${encodeURIComponent(input.target.chatId)}/files`,
-      ),
-      jsonPostRequest(
-        {
-          file_type: { image: 1, video: 2, audio: 3, file: 4 }[kind],
-          url: published,
-          file_name: fileName,
-          srv_send_msg: false,
-        },
-        { Authorization: `QQBot ${credential}` },
-      ),
-      input.signal,
-    );
-    const failure = apiError(response);
-    if (failure) {
-      return failure;
-    }
-    // Fresh upload on every attempt avoids stale file_info and C2C/group token confusion.
-    return schema
-      .object({ file_info: schema.string().min(1), ttl: schema.number().int().nonnegative() })
-      .parse(response).file_info;
   }
   const heartbeat = () => {
     if (awaitingHeartbeat) {
@@ -356,7 +297,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   ): Promise<SendResult> {
     let transmitting = false;
     try {
-      const media = await uploadMedia(input, target.type, credential);
+      const media = await uploadMedia(input, target.type, credential, config);
       if (typeof media !== "string" && media !== undefined) {
         return media;
       }
@@ -398,6 +339,9 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         if (failure) {
           return failure;
         }
+      }
+      if (!transmitting && error instanceof RemoteError && error.result.status === "rejected") {
+        return error.result;
       }
       return transmitting
         ? sendFailure(error)
