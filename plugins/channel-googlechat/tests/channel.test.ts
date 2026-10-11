@@ -159,6 +159,47 @@ describe("native Google Chat", () => {
   });
 
   it.each([
+    [503, "pending"],
+    [429, "pending"],
+    [401, "rejected"],
+  ] as const)("classifies OAuth HTTP %s before sending as %s", async (status, expected) => {
+    const local = await setup();
+    await local.core.fetch(await local.incoming());
+    local.remote.token(status, { error: "temporarily_unavailable" });
+    const completed = await local.complete();
+    expect(completed.delivery?.status).toBe(expected);
+    expect(local.remote.traffic.filter((request) => request.path.startsWith("/v1/"))).toHaveLength(
+      0,
+    );
+    if (expected === "pending") {
+      local.remote.token(200, { access_token: "recovered-token" });
+      await expect
+        .poll(
+          async () => {
+            await local.core.processDue();
+            return (await local.storage.getOutbound(completed.delivery?.deliveryId ?? "missing"))
+              ?.status;
+          },
+          { timeout: 5000 },
+        )
+        .toBe("sent");
+      expect(
+        local.remote.traffic.filter((request) => request.path.startsWith("/v1/")),
+      ).toHaveLength(1);
+    }
+  });
+
+  it("forwards opaque OAuth tokens longer than entity identifiers intact", async () => {
+    const local = await setup();
+    const token = `opaque-token-${"a".repeat(2048)}`;
+    local.remote.token(200, { access_token: token });
+    await local.core.fetch(await local.incoming());
+    expect((await local.complete()).delivery?.status).toBe("sent");
+    const sent = local.remote.traffic.find((request) => request.path.startsWith("/v1/"));
+    expect(sent?.headers.authorization).toBe(`Bearer ${token}`);
+  });
+
+  it.each([
     [429, "pending"],
     [403, "rejected"],
     [503, "unknown"],

@@ -88,6 +88,6 @@ export function unavailable(): SendResult {
   return { status: "unknown", errorCode: "transport_or_response_unknown" };
 }
 export const oauthResponse = z.object({
-  access_token: identifier,
+  access_token: z.string().min(1),
   token_type: z.string().optional(),
 });
