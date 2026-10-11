@@ -559,6 +559,10 @@
   }
 }
 @media (max-width: 767px) {
+  .channel-choice {
+    gap: 6px;
+    padding-inline: 6px;
+  }
   .Layout.connection-page {
     height: auto;
     min-height: 100dvh;
