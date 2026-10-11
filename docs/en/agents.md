@@ -19,17 +19,16 @@ Protect the Routine URL, Authorization value and MCP address: they may contain c
 
 1. In the configurator, add a dot Agent and select it for your chat.
 2. Open the generated setup guide. Save its authorization password and set the listed environment variable to that value. [Quick start](getting-started.md) covers starting Relanox with your downloaded configuration.
-3. With Relanox running at your public HTTPS address, copy the dot MCP address from the guide into dot's connection settings. Select **OAuth**; if asked for the registration method, select **Dynamic Client Registration (DCR)**.
-4. On the Relanox authorization page, enter the generated password and allow access.
-5. Through the connection's Events support, enable the `relanox.message_available` subscription and automatic renewal.
-6. Send a short message from an allowed sender in the selected chat and check that the answer arrives there.
+3. In ChatGPT, open **Plugins → Add → Add custom MCP server**. Enter a name such as `Relanox`, paste the dot MCP address from the guide into **Server URL**, and keep **OAuth** selected for authentication. Relanox must be reachable at that address.
+4. Review the notice and choose **Create as plugin**. When the Relanox authorization page opens, enter the generated password and allow access.
+5. Send a short message from an allowed sender in the selected chat and check that the answer arrives there.
 
-If you change the authorization password, restart Relanox and reconnect dot. If dot stops receiving new messages, check that its subscription is still active and renew or reconnect it.
+If you change the authorization password, restart Relanox and reconnect dot. If dot stops receiving new messages, check the plugin connection and Relanox message status.
 
 ## Check the connection
 
 You do not need to copy a separate reply prompt into the Bot or Routine. After updating Relanox, refresh or reconnect the Agent's MCP connection, then send another message to check the reply.
 
-If no reply arrives, first check that the chat uses the intended Agent and that the sender is allowed. Compare the connection address and password with the generated guide. For Grok, also compare the Routine URL and complete Authorization value; for dot, check authorization and Events renewal. Use [message status and recovery](reference/core.md) to find where a message stopped.
+If no reply arrives, first check that the chat uses the intended Agent and that the sender is allowed. Compare the connection address and password with the generated guide. For Grok, also compare the Routine URL and complete Authorization value; for dot, check the plugin connection and authorization. Use [message status and recovery](reference/core.md) to find where a message stopped.
 
 For manual JSON setup, authentication details and MCP tool contracts, see [Agent configuration and protocol](reference/agents.md). For attachments, see [Send pictures and files](media.md).

@@ -57,9 +57,9 @@ The Routine Authorization variable holds exactly the supplied value, including a
 }
 ```
 
-3. Restart Relanox and connect dot to `https://relay.example.com/agents/dot/mcp/agent-1` using OAuth. If asked, select **Dynamic Client Registration (DCR)**. Discovery is automatic. Enter `RELANOX_AGENT_1_MCP_TOKEN` as the password on the Relanox consent page, then allow access. It is not a static Bearer access token.
-4. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
-5. Set your conversation binding's `endpointId` to `agent-1` and send a message through that conversation.
+3. Restart Relanox and follow [Connect dot](../agents.md#connect-dot) to add `https://relay.example.com/agents/dot/mcp/agent-1` as a custom MCP server in ChatGPT using OAuth. On the Relanox authorization page, enter the value of `RELANOX_AGENT_1_MCP_TOKEN`. This value is the authorization password, not a static Bearer access token.
+
+4. Set your conversation binding's `endpointId` to `agent-1` and send a message through that conversation.
 
 dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens rotate on use, with a 30-day lifetime from the initial authorization. Grants persist in your configured database. Reusing an old refresh token revokes its authorization; changing the configured password and restarting requires reconnecting dot.
 
@@ -69,7 +69,7 @@ dot provides its callback URL when it subscribes through MCP. Relanox accepts th
 
 Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MiB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds.
 
-Keep subscription renewal enabled. The default lifetime is one day. If status reports `dot_no_active_subscription`, reconnect or renew; if the request exhausted retries, use [Operations](../operations.md#find-and-recover-a-stalled-message) to recover it.
+Relanox requires an active `relanox.message_available` subscription to notify dot. The default lifetime is one day. The inspected ChatGPT custom MCP form exposes no Events subscription or renewal switch; automatic subscription and renewal have not been verified end to end with a live account. `dot_no_active_subscription` means Relanox has no active subscription, even if OAuth succeeded. Inspect the plugin connection and runtime logs; if the request exhausted retries, use [Operations](../operations.md#find-and-recover-a-stalled-message) to recover it.
 
 ## Reply guidance comes with MCP
 

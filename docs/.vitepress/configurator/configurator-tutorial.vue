@@ -245,8 +245,8 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
               {{
                 connection.auth === 'oauth'
                   ? text(
-                      'Choose OAuth and dynamic client registration in dot, then enter the generated password on the Relanox authorization page and approve access.',
-                      '在 dot 选择 OAuth 与动态客户端注册，随后在 Relanox 授权页面输入生成的密码并确认授权。'
+                      'In ChatGPT, open Plugins → Add → Add custom MCP server. Enter a name, paste this address into Server URL, and keep OAuth selected.',
+                      '在 ChatGPT 打开“插件 → 添加 → 添加自定义 MCP 服务器”，填写名称，将此地址粘贴到“服务器 URL”，身份验证保持 OAuth。'
                     )
                   : text(
                       'Paste the complete MCP address into Grok and choose no additional authentication.',
@@ -259,8 +259,8 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
                 state.agents.find((agent) => agent.id === connection.id)
                   ?.type === 'dot'
                   ? text(
-                      'Enable the relanox.message_available Events subscription and automatic renewal in dot.',
-                      '在 dot 开启 relanox.message_available Events 订阅与自动续订。'
+                      'Review the notice and choose Create as plugin. When the Relanox authorization page opens, enter the generated password and allow access.',
+                      '阅读提示后选择“创建为插件”。出现 Relanox 授权页时，输入生成的密码并允许访问。'
                     )
                   : text(
                       'Configure a webhook-triggered Routine in Grok, using the same Routine URL and Authorization values as the environment variables.',
