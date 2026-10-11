@@ -59,6 +59,16 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       await a.migrate();
       expect(await b.health()).toEqual({ ok: true });
       await a.acceptInbound(snapshot());
+      const legacy = new Pool({ connectionString: process.env.RELANOX_TEST_POSTGRES_URL });
+      try {
+        await legacy.query(`DELETE FROM "${schema}".migration_metadata WHERE version=2`);
+      } finally {
+        await legacy.end();
+      }
+      expect(await a.health()).toEqual({ ok: false, errorCode: "migration_required" });
+      await a.migrate();
+      expect(await a.health()).toEqual({ ok: true });
+      expect((await a.getInbound("r1"))?.snapshot.text).toBe("question");
       const input = {
         now: 100,
         leaseMs: 10,

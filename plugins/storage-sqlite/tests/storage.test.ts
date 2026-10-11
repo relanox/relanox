@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { expect, it } from "vitest";
 import { required, snapshot, storageContract } from "../../../tests/contracts/storage-contract.js";
 import { createSqliteStorage } from "../src/index.js";
@@ -24,6 +25,13 @@ it("requires explicit migration and persists fenced claims/leases across indepen
     await a.migrate();
     expect(await a.health()).toEqual({ ok: true });
     await a.acceptInbound(snapshot());
+    const legacy = new Database(filename);
+    legacy.prepare("DELETE FROM migration_metadata WHERE version=2").run();
+    legacy.close();
+    expect(await a.health()).toEqual({ ok: false, errorCode: "migration_required" });
+    await a.migrate();
+    expect(await a.health()).toEqual({ ok: true });
+    expect((await a.getInbound("r1"))?.snapshot.text).toBe("question");
     b = open();
     const input = {
       now: 100,

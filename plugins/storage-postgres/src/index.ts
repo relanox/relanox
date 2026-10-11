@@ -269,7 +269,7 @@ export function createPostgresStorage(
           CREATE TABLE IF NOT EXISTS plugin_state(
             plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT COLLATE "C" NOT NULL,version INTEGER NOT NULL,
             expires_at BIGINT,record JSONB NOT NULL,PRIMARY KEY(plugin,owner,key));
-          INSERT INTO migration_metadata(version) VALUES(1) ON CONFLICT DO NOTHING;
+          INSERT INTO migration_metadata(version) VALUES(1),(2) ON CONFLICT DO NOTHING;
         `);
       });
     },
@@ -284,7 +284,7 @@ export function createPostgresStorage(
         await pool.query("SELECT id,record,final_digest FROM inbound LIMIT 0");
         await pool.query("SELECT id,record FROM outbound LIMIT 0");
         await pool.query("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0");
-        return r?.version === 1 ? { ok: true } : { ok: false, errorCode: "migration_required" };
+        return r?.version === 2 ? { ok: true } : { ok: false, errorCode: "migration_required" };
       } catch (error) {
         return {
           ok: false,
@@ -683,14 +683,14 @@ export function createPostgresStorage(
       return (
         await query<{ record: StateEntry }>(
           pool,
-          "SELECT record FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3",
+          "SELECT record FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3 AND record!='null'::jsonb",
           [ns.pluginId, ns.ownerId, key],
         )
       )[0]?.record;
     },
     async listState(ns, input) {
       const params: unknown[] = [ns.pluginId, ns.ownerId];
-      const where = ["plugin=$1", "owner=$2"];
+      const where = ["plugin=$1", "owner=$2", "record!='null'::jsonb"];
       if (input.prefix !== undefined) {
         params.push(input.prefix);
         where.push(`starts_with(key,$${params.length})`);
@@ -710,7 +710,21 @@ export function createPostgresStorage(
     },
     async compareAndSetState(ns, input) {
       return transaction(async (client) => {
-        const version = (input.expectedVersion ?? 0) + 1;
+        const old = (
+          await query<{ version: number; active: boolean }>(
+            client,
+            "SELECT version,record!='null'::jsonb AS active FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3",
+            [ns.pluginId, ns.ownerId, input.key],
+          )
+        )[0];
+        if (
+          input.expectedVersion === null
+            ? old?.active
+            : !old?.active || old.version !== input.expectedVersion
+        ) {
+          return { status: "conflict" };
+        }
+        const version = (old?.version ?? 0) + 1;
         const entry: StateEntry = {
           key: input.key,
           value: input.value,
@@ -725,18 +739,17 @@ export function createPostgresStorage(
           input.expiresAt ?? null,
           encode(entry),
         ];
-        const changed =
-          input.expectedVersion === null
-            ? await query(
-                client,
-                "INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING RETURNING version",
-                params,
-              )
-            : await query(
-                client,
-                "UPDATE plugin_state SET version=$4,expires_at=$5,record=$6::jsonb WHERE plugin=$1 AND owner=$2 AND key=$3 AND version=$7 RETURNING version",
-                [...params, input.expectedVersion],
-              );
+        const changed = !old
+          ? await query(
+              client,
+              "INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT DO NOTHING RETURNING version",
+              params,
+            )
+          : await query(
+              client,
+              "UPDATE plugin_state SET version=$4,expires_at=$5,record=$6::jsonb WHERE plugin=$1 AND owner=$2 AND key=$3 AND version=$7 RETURNING version",
+              [...params, old.version],
+            );
         return changed.length > 0 ? { status: "updated", version } : { status: "conflict" };
       });
     },
@@ -745,7 +758,7 @@ export function createPostgresStorage(
         const old = (
           await query<{ version: number }>(
             client,
-            "SELECT version FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3",
+            "SELECT version FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3 AND record!='null'::jsonb",
             [ns.pluginId, ns.ownerId, key],
           )
         )[0];
@@ -756,7 +769,7 @@ export function createPostgresStorage(
           return { status: "conflict" };
         }
         await client.query(
-          "DELETE FROM plugin_state WHERE plugin=$1 AND owner=$2 AND key=$3 AND version=$4",
+          "UPDATE plugin_state SET record='null'::jsonb,expires_at=NULL,version=version+1 WHERE plugin=$1 AND owner=$2 AND key=$3 AND version=$4",
           [ns.pluginId, ns.ownerId, key, version],
         );
         return { status: "updated", version: version + 1 };
