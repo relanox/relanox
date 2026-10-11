@@ -7,7 +7,7 @@ Connect a Telegram bot to a Grok Bot, send a message, and receive the answer in 
 Have these ready:
 
 - A Telegram bot token from BotFather, your user ID and the destination chat ID. For a private conversation, the chat ID is normally your user ID. See [Telegram](channels/telegram.md) for groups and topics.
-- A Grok Bot with a webhook-triggered Routine, its complete webhook URL and Authorization value, and an MCP connection.
+- The Grok Bot desktop app, signed in with your paid Cursor account. You will create its webhook Routine below.
 - A machine that can keep Relanox running and a public HTTPS address, such as `https://relay.example.com`. [Operations](operations.md) shows a reverse proxy setup.
 - Git, Node.js 26.11.1 and pnpm 12.11.2 for the source installation below. [Operations](operations.md) also covers Docker.
 
@@ -23,6 +23,12 @@ pnpm build
 Open the [connection configurator](connect.md). Enter your public HTTPS address, change the default Agent from dot to Grok, and enable Telegram. Fill in your allowed Telegram user ID and private chat ID, then select your Grok Agent for that chat. Keep the generated environment variable names and download `relanox.json` to the repository root.
 
 Open **Your setup guide** and save the generated MCP password before closing or reloading the page. Complete any draft warnings. The guide lists the variables and connection addresses for your choices. For manual setup using the shipped example, see [Configuration reference](reference/configuration.md).
+
+Before setting the environment variables, create the Grok Routine. In the Bot conversation that should answer your Telegram messages, ask:
+
+> Create a routine triggered only by a webhook. Process incoming user messages using the Relanox MCP instructions. Do not add a schedule.
+
+Click the Bot name and open **Details → Routines**, then open the new Routine. Copy **POST to** from its **Webhook** section as the Routine URL. Its Authorization value is `Bearer <key>`; remove the `Authorization:` label if you copy the displayed header. Keep these values for the next step.
 
 ## 3. Supply the environment variables
 
@@ -78,7 +84,7 @@ Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$($env:TELEGRAM
 
 Telegram should return `ok: true`. Keep tokens out of shared screenshots and output.
 
-Follow [Connect Grok](agents.md#connect-grok) to create a webhook routine in the Grok Bot desktop app and add the generated MCP address through the Cursor dashboard's **Plugins & MCPs** page. The Routine Authorization value is `Bearer <key>`, without the `Authorization:` field name.
+Connect the Routine you created in step 2 to Relanox. In the same Cursor account's dashboard, open **Plugins & MCPs → Add → Custom MCP**. Keep **URL** selected and paste the complete Grok MCP address from **Your setup guide** into **Server URL**. Leave **HTTP headers**, **Client ID** and **Client Secret** empty, then click **Add MCP**. In Grok Bot, open **Connect apps → Your plugins** and confirm the connection is ready. See [Connect Grok](agents.md#connect-grok) for details.
 
 Restart Relanox after changing its configuration or environment.
 

@@ -10,6 +10,8 @@ Send a small image in the chat you selected in the [connection configurator](con
 
 ## Receive a file from the Agent
 
+Try: “Create a small text file containing today’s checklist and send it as an attachment in this chat.” You should receive a downloadable file in the original chat, rather than only a filename or a message saying the file is ready.
+
 Ask the Agent to send its generated file back to the chat. dot can pass files from its workspace through the MCP file parameter. Grok Bot can upload a file from its cloud computer to Relanox, then send it as an attachment. A direct public HTTPS download link also works.
 
 After updating Relanox, refresh or reconnect the Agent's MCP connection so it sees the file tools. The connection supplies the upload instructions; no separate file service or prompt is required. Uploading saves the file, and the Agent must then send it to your chat.

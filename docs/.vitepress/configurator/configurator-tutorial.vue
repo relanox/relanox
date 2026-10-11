@@ -176,6 +176,14 @@ onUnmounted(() => {
               )
             }}
           </p>
+          <p v-if="state.agents.some((agent) => agent.type === 'grok')">
+            {{
+              text(
+                'Create the Grok Routine before setting its variables. In the Bot chat, ask for a webhook-only routine that processes incoming messages using the Relanox MCP instructions, without a schedule. Click the Bot name, then open Details → Routines. Copy POST to as the Routine URL and use Bearer followed by a space and the key as Authorization. Remove the Authorization: label if you copy the header.',
+                '设置 Routine 变量前，先在 Grok Bot 对话中让它创建仅由 webhook 触发、按 Relanox MCP 说明处理来信的例行任务，不添加定时计划。点击 Bot 名称，打开“详情 → 例行任务”。Routine URL 使用“POST 到”，Authorization 使用 Bearer 加空格再加密钥。如果复制标头，去掉 Authorization: 字段名。'
+              )
+            }}
+          </p>
           <div
             v-for="connection in connections"
             :key="connection.id"
@@ -259,12 +267,12 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
                 state.agents.find((agent) => agent.id === connection.id)
                   ?.type === 'dot'
                   ? text(
-                      'Review the notice and choose Create as plugin. When the Relanox authorization page opens, enter the generated password and allow access.',
-                      '阅读提示后选择“创建为插件”。出现 Relanox 授权页时，输入生成的密码并允许访问。'
+                      'Review the notice and choose Create as plugin. On the Relanox authorization page, enter the generated password and allow access. Then enable the plugin in dot and ask it to subscribe to incoming Relanox messages and reply to each event’s original chat.',
+                      '阅读提示后选择“创建为插件”。在 Relanox 授权页输入生成的密码并允许访问。然后在 dot 中启用插件，请它订阅 Relanox 来信，并回复每个事件对应的原聊天。'
                     )
                   : text(
-                      'Ask Grok Bot to create a webhook-only routine that processes incoming messages using the Relanox MCP instructions. Open the routine from the Bot details: use POST to as the Routine URL and Bearer followed by the key as Authorization, without the Authorization: label.',
-                      '在 Grok Bot 聊天中让它创建仅由 webhook 触发、按 Relanox MCP 说明处理来信的例行任务。点击 Bot 名称打开任务详情：Routine URL 使用“POST 到”，Authorization 使用 Bearer 加空格再加密钥，不要包含 Authorization: 字段名。'
+                      'In Grok Bot, open Connect apps → Your plugins and confirm the MCP connection is ready. Use the Bot whose Routine URL you set above.',
+                      '在 Grok Bot 打开“连接应用 → 你的插件”，确认 MCP 连接已就绪。使用上面设置 Routine URL 时选定的 Bot。'
                     )
               }}
             </p>

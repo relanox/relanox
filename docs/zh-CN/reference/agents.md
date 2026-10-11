@@ -59,7 +59,8 @@ Routine Authorization 变量保存 `Bearer <密钥>`，不包含 `Authorization:
 
 3. 重启 Relanox，按[连接 dot](../agents.md#连接-dot)在 ChatGPT 添加自定义 MCP 服务器，服务器 URL 为 `https://relay.example.com/agents/dot/mcp/agent-1`，身份验证选择 OAuth。在 Relanox 授权页输入 `RELANOX_AGENT_1_MCP_TOKEN` 的值；它是授权密码，不是固定 Bearer access token。
 
-4. 将聊天绑定的 `endpointId` 设为 `agent-1`，然后在该聊天发送消息。
+4. 在 dot 中启用插件，请它订阅 Relanox 来信，并回复每个事件对应的原聊天。
+5. 将聊天绑定的 `endpointId` 设为 `agent-1`，在该聊天发送消息，确认回信出现在同一个聊天。
 
 dot OAuth 要求公网 HTTPS `publicUrl`。Relanox 使用 PKCE S256，支持 ChatGPT OAuth 跳转地址 `https://chatgpt.com/connector_platform_oauth_redirect` 和 `https://chatgpt.com/connector/oauth/<id>`，它们与 Events 回调不同。access token 有效期一小时；refresh token 使用时轮换，授权总有效期为首次授权起 30 天。授权保存在配置的数据库中。重用旧 refresh token 会撤销对应授权；修改配置的口令并重启后，需要重新连接 dot。
 
