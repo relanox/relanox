@@ -9,6 +9,7 @@ import {
 import { readConfig } from './config.js'
 import type { AppConfig } from './config.js'
 import { startRuntime, validateApp } from './runtime.js'
+import { discoverConversations } from './discovery.js'
 
 export function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`)
@@ -182,6 +183,50 @@ function addRecovery(program: Command): void {
     })
 }
 
+function addDiscovery(program: Command): void {
+  program
+    .command('discover')
+    .description(
+      'Discover authenticated WeCom conversation IDs without relaying messages'
+    )
+    .requiredOption('--account <id>', 'WeCom account ID from relay.accounts')
+    .option(
+      '--timeout <seconds>',
+      'Bounded discovery duration (1–600 seconds)',
+      '120'
+    )
+    .action(async (_options: unknown, command: Command) => {
+      const options = z
+        .object({
+          config: z.string().min(1),
+          account: z.string().min(1),
+          timeout: numberOption(1, 600)
+        })
+        .parse(command.optsWithGlobals())
+
+      const controller = new AbortController()
+
+      const stop = (): void => {
+        controller.abort()
+      }
+
+      process.on('SIGINT', stop)
+      process.on('SIGTERM', stop)
+      try {
+        await discoverConversations({
+          configPath: options.config,
+          accountId: options.account,
+          timeoutSeconds: options.timeout,
+          signal: controller.signal,
+          output: printJson
+        })
+      } finally {
+        process.removeListener('SIGINT', stop)
+        process.removeListener('SIGTERM', stop)
+      }
+    })
+}
+
 export function createProgram(): Command {
   const program = new Command()
     .name('relanox')
@@ -251,5 +296,6 @@ export function createProgram(): Command {
     })
   addStatus(program)
   addRecovery(program)
+  addDiscovery(program)
   return program
 }

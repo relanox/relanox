@@ -131,6 +131,11 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       throw new Error('missing_group_address')
     }
 
+    if (host.discoverConversation) {
+      host.discoverConversation({ chatId, senderId: message.from.userid })
+      return
+    }
+
     const { text, attachments } = await receiveParts(
       message,
       host,

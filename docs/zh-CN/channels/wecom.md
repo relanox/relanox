@@ -35,9 +35,32 @@
 }
 ```
 
-请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
+## 发现用户和群组 ID
 
-`allowedSenders` 填消息中的 `from.userid`。私聊绑定的 `chatId` 填成员 userid；群聊填回调的 `chatid`。从机器人经过认证的消息事件取得这些值，使用 ID 而非显示名称。
+首次配置时，先将企业微信条目保存到 `relanox.json` 草稿的 `relay.accounts`，填写真实 `botId` 和密钥环境变量引用。发现期间可以将 `allowedSenders` 留空、暂不完成绑定。在终端环境中设置 `WECOM_BOT_SECRET`；此命令不需要 Agent 凭据或数据库配置。
+
+开始前先停止使用同一机器人的服务：企业微信会在新进程连接时替换原有连接。运行：
+
+```sh
+relanox discover --config relanox.json --account wecom-main --timeout 120
+```
+
+等待终端显示 `discovery_connected` 事件，再向机器人发送私聊消息，或在目标群中 @ 机器人。终端会为每个不同的会话和发送者打印一行 JSON：
+
+```json
+{
+  "ok": true,
+  "event": "conversation",
+  "accountId": "wecom-main",
+  "channel": "wecom",
+  "chatId": "group-chatid",
+  "senderId": "staff-userid"
+}
+```
+
+将 `senderId` 填入 `allowedSenders`，将 `chatId` 填入绑定。私聊使用成员 userid，群聊使用已认证回调中的 `chatid`。需要其他成员的 userid 时，让相应成员各发送一条消息。使用这些 ID，而非显示名称。
+
+发现命令目前只支持企业微信，默认 120 秒后停止；`--timeout` 接受 1–600 秒，也可按 Ctrl+C 提前停止。终端只显示账号、会话与发送者 ID，不包含消息正文、媒体 URL 或凭据。命令不下载附件、不保存消息，也不向 Agent 派发。正常服务仍要求完成绑定与发送者允许列表。补全配置后运行 `relanox validate --config relanox.json`，再启动服务。
 
 ## 启用连接
 
@@ -54,3 +77,5 @@
 ## 常见问题
 
 连接被替换时，停止使用同一机器人的其他进程，再重启本实例。群组提问没有响应时，检查机器人是否在群内并 @ 它。更换密钥后更新服务的环境变量，再重启服务。
+
+发现命令未输出会话时，核对 Bot ID 与密钥、成员访问权限和群组成员关系，并在命令运行期间重新发送消息。仅正常超时退出不能证明平台认证成功。
