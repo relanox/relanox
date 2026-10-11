@@ -1,0 +1,128 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type {
+  AgentHost,
+  AgentPlugin,
+  ChannelHost,
+  ChannelPlugin,
+  MediaKind,
+  RelanoxConfig,
+  SendInput,
+} from "../../packages/sdk/src/index.js";
+import { createCore } from "../../packages/core/src/index.js";
+import { createSqliteStorage } from "../../plugins/storage-sqlite/src/index.js";
+
+export async function mediaFixture(sendKinds: readonly MediaKind[] = ["image", "file"]) {
+  const directory = await mkdtemp(join(tmpdir(), "relanox-core-media-"));
+  const filename = join(directory, "relay.sqlite");
+  const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
+  const close = async () => {
+    await storage.close();
+    await rm(directory, { recursive: true, force: true });
+  };
+  await storage.initialize();
+  let channelHost: ChannelHost | undefined;
+  let agentHost: AgentHost | undefined;
+  const sent: SendInput[] = [];
+  const channel: ChannelPlugin = {
+    id: "channel-telegram",
+    kind: "channel",
+    channel: "telegram",
+    sdkMajor: 1,
+    runtime: "node",
+    capabilities: {
+      receive: true,
+      transport: "http",
+      maxTextLength: 3,
+      lengthUnit: "codepoint",
+      idempotentSend: false,
+      media: { receive: ["image", "file"], send: sendKinds },
+    },
+    validateConfig: () => null,
+    async setup(host) {
+      channelHost = host;
+    },
+    async send(input) {
+      sent.push(input);
+      return { status: "sent", receipt: { platformMessageId: String(sent.length) } };
+    },
+  };
+  const agent: AgentPlugin = {
+    id: "agent-grok",
+    kind: "agent",
+    agent: "grok",
+    sdkMajor: 1,
+    runtime: "node",
+    validateConfig: () => null,
+    async setup(host) {
+      agentHost = host;
+      host.mountHttp("/json", async (request) => new Response(await request.arrayBuffer()));
+      host.mountHttp("/media/*", async (request) => new Response(await request.arrayBuffer()), {
+        maxBodyBytes: 16,
+        authorize: async (request) =>
+          request.headers.get("authorization") === "Bearer test"
+            ? undefined
+            : new Response(null, { status: 401 }),
+      });
+    },
+    async dispatch() {
+      return { status: "accepted" };
+    },
+  };
+  const config: RelanoxConfig = {
+    accounts: [{ id: "bot", channel: "telegram", config: null, allowedSenders: ["alice"] }],
+    endpoints: [
+      { id: "first", agent: "grok", config: null, dispatchMode: "pull" },
+      { id: "other", agent: "grok", config: null, dispatchMode: "pull" },
+    ],
+    bindings: [{ accountId: "bot", chatId: "chat", endpointId: "first" }],
+    storage: { plugin: "sqlite", config: {} },
+    observability: { plugin: "none", config: {} },
+  };
+  try {
+    const runtime = await createCore({
+      config,
+      storage,
+      channels: new Map([["bot", channel]]),
+      agents: new Map([["grok", agent]]),
+      worker: { maxHttpBodyBytes: 8, maxMediaBytes: 16, maxTotalMediaBytes: 24, maxAttachments: 2 },
+    });
+    if (!channelHost || !agentHost) {
+      throw new Error("Hosts not initialized");
+    }
+    return {
+      storage,
+      filename,
+      close,
+      runtime,
+      channel: requireHost<ChannelHost>(channelHost),
+      agent: requireHost<AgentHost>(agentHost),
+      sent,
+    };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
+export const incoming = {
+  source: { channel: "telegram" as const, accountId: "bot", eventId: "media-event" },
+  senderId: "alice",
+  text: "",
+  target: { channel: "telegram" as const, accountId: "bot", chatId: "chat", data: null },
+  context: null,
+  receivedAt: 1,
+};
+export const picture = {
+  kind: "image" as const,
+  mimeType: "image/png",
+  fileName: "picture.png",
+  data: new Uint8Array([1, 2, 3]),
+};
+
+function requireHost<T>(host: T | undefined): T {
+  if (host === undefined) {
+    throw new Error("Host missing");
+  }
+  return host;
+}

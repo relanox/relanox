@@ -7,6 +7,7 @@ import type {
   IngestInput,
   Observability,
   Storage,
+  MediaKind,
 } from "@relanox/sdk";
 import type { WorkerConfig } from "../worker/options.js";
 import { bindingKey } from "../config/relations.js";
@@ -24,6 +25,7 @@ interface ChannelHostOptions {
   readonly storage: Storage;
   readonly observe: Observability;
   readonly worker: WorkerConfig;
+  readonly mediaKinds?: readonly MediaKind[];
   isAccepting(this: void): boolean;
 }
 
@@ -36,6 +38,7 @@ export function createChannelHost({
   storage,
   observe,
   worker,
+  mediaKinds,
   isAccepting,
 }: ChannelHostOptions): ChannelHost {
   const traced = createOperationTracer(observe);
@@ -84,7 +87,11 @@ export function createChannelHost({
         worker.maxMediaBytes,
         worker.maxAttachments,
         Boolean(storage.media),
+        worker.maxTotalMediaBytes,
       );
+      if (media.some((item) => !mediaKinds?.includes(item.reference.kind))) {
+        throw new CoreError("media_not_supported");
+      }
       const receipt = await traced(
         "ingest",
         (trace) =>

@@ -24,7 +24,7 @@ export function storeUpload(upload: MediaUpload, id: string, maximum: number): S
   if (valid.data.byteLength < 1 || valid.data.byteLength > maximum) {
     throw new CoreError("media_too_large");
   }
-  if (valid.kind !== "file" && !valid.mimeType.startsWith(`${valid.kind}/`)) {
+  if (valid.kind !== "file" && !valid.mimeType.toLowerCase().startsWith(`${valid.kind}/`)) {
     throw new CoreError("invalid_media_type");
   }
   const data = new Uint8Array(valid.data);
@@ -78,11 +78,19 @@ export function inboundMedia(
   maximum: number,
   count: number,
   supported: boolean,
+  totalMaximum: number,
 ): readonly StoredMedia[] {
   validateMediaCount(uploads?.length ?? 0, count);
   const media = (uploads ?? []).map((upload) => storeUpload(upload, crypto.randomUUID(), maximum));
+  validateMediaTotal(media, totalMaximum);
   if (media.length > 0 && !supported) {
     throw new CoreError("media_storage_missing");
   }
   return media;
+}
+
+export function validateMediaTotal(media: readonly StoredMedia[], maximum: number): void {
+  if (media.reduce((total, item) => total + item.data.byteLength, 0) > maximum) {
+    throw new CoreError("media_total_too_large");
+  }
 }

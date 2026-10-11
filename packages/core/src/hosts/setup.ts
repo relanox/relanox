@@ -56,6 +56,7 @@ export async function setupPluginHosts({
     }
     const host = createChannelHost({
       account,
+      mediaKinds: plugin.capabilities.media?.receive ?? [],
       bindings,
       endpoints,
       common: common({ pluginId: plugin.id, ownerId: account.id }, `/channels/${account.id}`),
