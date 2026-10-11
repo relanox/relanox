@@ -21,6 +21,7 @@ export function validateBaseUrl(value: string, allowInsecureLocalhost: boolean):
 }
 
 export const platformIdSchema = z.string().min(1).max(1024);
+
 const configSchema = z.strictObject({
   serverUrl: z.url(),
   botUserId: platformIdSchema,
@@ -29,6 +30,7 @@ const configSchema = z.strictObject({
   timeoutMs: requestTimeoutSchema,
   reconnectMs: z.number().int().min(100).max(60_000).default(1000),
 });
+
 export type MattermostConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): MattermostConfig {

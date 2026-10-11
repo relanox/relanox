@@ -10,18 +10,22 @@ export interface Traffic {
   body: string;
   headers: IncomingHttpHeaders;
 }
+
 export async function peer() {
   const traffic: Traffic[] = [];
+
   const routes = new Map<
     string,
     { status: number; body: Json | Uint8Array; headers: Record<string, string> }
   >();
+
   let status = 200;
   let output: Json = {};
   let headers: Record<string, string> = {};
   let jwks: Json = {};
   let tokenStatus = 200;
   let tokenBody: Json = { access_token: "oauth-token", token_type: "Bearer" };
+
   async function receive(incoming: IncomingMessage, response: ServerResponse): Promise<void> {
     const parts: Buffer[] = [];
     for await (const part of incoming) {
@@ -48,11 +52,13 @@ export async function peer() {
     response.writeHead(status, headers);
     response.end(JSON.stringify(output));
   }
+
   const server = createServer((incoming, response) => {
     void receive(incoming, response).catch(() => {
       response.destroy();
     });
   });
+
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
@@ -94,6 +100,7 @@ export async function peer() {
     },
   };
 }
+
 export async function harness(
   plugin: ChannelPlugin<unknown>,
   config: Json,
@@ -107,6 +114,7 @@ export async function harness(
   await storage.initialize();
   let host: AgentHost | undefined;
   const dispatches: string[] = [];
+
   const agent: AgentPlugin = {
     id: "agent-dot",
     sdkMajor: 1,
@@ -124,6 +132,7 @@ export async function harness(
       return { status: "accepted" };
     },
   };
+
   const core = await createCore({
     ...(publicBaseUrl ? { media: { publicBaseUrl, allowInsecureLocalhost: true } } : {}),
     storage,
@@ -144,12 +153,14 @@ export async function harness(
       observability: { plugin: "none", config: {} },
     },
   });
+
   function principal(): ScopedAgentHost {
     if (!host) {
       throw new Error("Agent not installed");
     }
     return host.forPrincipal({ subject: "local-agent", endpointIds: ["agent"] });
   }
+
   async function complete(text = "answer") {
     await core.processDue();
     const scoped = principal();
@@ -162,18 +173,21 @@ export async function harness(
     if (claim.status !== "claimed") {
       throw new Error("Claim failed");
     }
+
     const completion = await scoped.complete({
       requestId: item.requestId,
       claimToken: claim.claimToken,
       resultId: "local-result",
       text,
     });
+
     if (completion.status !== "completed") {
       throw new Error("Completion failed");
     }
     await core.processDue();
     return { request: item, delivery: await storage.getOutbound(completion.deliveryId) };
   }
+
   return {
     core,
     storage,

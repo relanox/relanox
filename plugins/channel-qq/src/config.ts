@@ -56,4 +56,5 @@ export const configSchema = z
       context.addIssue({ code: "custom", message: "Invalid secure API URL" });
     }
   });
+
 export type QqConfig = z.infer<typeof configSchema>;

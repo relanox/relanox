@@ -7,9 +7,11 @@ import type { updateSchema } from "./schemas.js";
 import { jsonResponse, postJson } from "./transport.js";
 
 type Message = NonNullable<z.infer<typeof updateSchema>["message"]>;
+
 export function hasMedia(message: Message): boolean {
   return selectedFile(message) !== undefined;
 }
+
 function selectedFile(message: Message) {
   return (
     message.photo?.at(-1) ??
@@ -21,6 +23,7 @@ function selectedFile(message: Message) {
     message.document
   );
 }
+
 function fallbackMime(message: Message): string {
   if (message.photo?.length) {
     return "image/jpeg";
@@ -36,9 +39,11 @@ function fallbackMime(message: Message): string {
   }
   return "application/octet-stream";
 }
+
 function codepointLength(text: string): number {
   return text.match(/[\s\S]/gu)?.length ?? 0;
 }
+
 export async function receiveMedia(
   message: Message,
   host: ChannelHost,
@@ -55,6 +60,7 @@ export async function receiveMedia(
   }
   const signal = AbortSignal.timeout(config.timeoutMs);
   const base = config.apiBaseUrl.replace(/\/$/u, "");
+
   const response = await postJson(
     `${base}/bot${token}/getFile`,
     {},
@@ -62,12 +68,14 @@ export async function receiveMedia(
     signal,
     config.timeoutMs,
   );
+
   const result = z
     .looseObject({
       ok: z.literal(true),
       result: z.looseObject({ file_path: z.string().min(1), file_size: z.number().optional() }),
     })
     .parse(await jsonResponse(response));
+
   if (!response.ok || (result.result.file_size ?? 0) > maximum) {
     throw new Error("media_download_failed");
   }
@@ -78,16 +86,20 @@ export async function receiveMedia(
   ) {
     throw new Error("invalid_file_path");
   }
+
   const downloaded = await downloadMedia(`${base}/file/bot${token}/${path}`, {
     maxBytes: maximum,
     signal,
     trustedOrigins: [new URL(base).origin],
     allowInsecureLocalhost: config.allowInsecureLoopback,
   });
+
   const fallback = fallbackMime(message);
+
   const mimeType =
     file.mime_type ??
     (downloaded.mimeType === "application/octet-stream" ? fallback : downloaded.mimeType);
+
   return [
     {
       kind: mediaKind(mimeType),
@@ -98,6 +110,7 @@ export async function receiveMedia(
     },
   ];
 }
+
 export async function sendMedia(
   input: SendInput,
   host: ChannelHost,
@@ -116,10 +129,12 @@ export async function sendMedia(
   if (kind === "image" && media.reference.mimeType === "image/gif") {
     field = "animation";
   }
+
   const maximum = Math.min(
     host.maxMediaBytes ?? 25 * 1024 * 1024,
     (kind === "image" ? 10 : 50) * 1024 * 1024,
   );
+
   if (media.data.byteLength > maximum || codepointLength(input.chunk.text) > 1024) {
     return { status: "rejected", errorCode: "media_limit_exceeded" };
   }
@@ -147,6 +162,7 @@ export async function sendMedia(
     body.set("duration", String(Math.ceil(media.reference.durationMs / 1000)));
   }
   body.set(field, mediaBlob(media), media.reference.fileName);
+
   const response = await fetch(
     `${config.apiBaseUrl.replace(/\/$/u, "")}/bot${token}/send${field[0]?.toUpperCase()}${field.slice(1)}`,
     {
@@ -156,5 +172,6 @@ export async function sendMedia(
       redirect: "error",
     },
   );
+
   return sendOutcome(response);
 }

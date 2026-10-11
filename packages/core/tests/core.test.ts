@@ -24,25 +24,30 @@ it.each(["before", "during"])("cancels an inbound body aborted %s reading", asyn
       agents: new Map(),
       worker: { callTimeoutMs: 1000, leaseMs: 2000 },
     });
+
     const controller = new AbortController();
     if (timing === "before") {
       controller.abort();
     }
+
     const body = new ReadableStream<Uint8Array>({
       cancel() {
         cancelled = true;
       },
     });
+
     const init: RequestInit & { duplex: "half" } = {
       method: "POST",
       body,
       signal: controller.signal,
       duplex: "half",
     };
+
     const response = runtime.fetch(new Request("http://localhost/aborted", init));
     if (timing === "during") {
       controller.abort();
     }
+
     const bounded = Promise.race([
       response,
       new Promise<{ status: number }>((resolve) => {
@@ -51,6 +56,7 @@ it.each(["before", "during"])("cancels an inbound body aborted %s reading", asyn
         }, 100);
       }),
     ]);
+
     await vi.advanceTimersByTimeAsync(100);
     expect((await bounded).status).toBe(408);
     expect(cancelled).toBe(true);
@@ -92,6 +98,7 @@ const config: RelanoxConfig = {
   storage: { plugin: "sqlite", config: {} },
   observability: { plugin: "none", config: {} },
 };
+
 const incoming = {
   source: { channel: "telegram" as const, accountId: "bot", eventId: "event" },
   senderId: "alice",
@@ -105,6 +112,7 @@ const incoming = {
   receivedAt: 1,
   context: null,
 };
+
 const snapshot: InboundSnapshot = {
   ...incoming,
   requestId: "req",
@@ -119,6 +127,7 @@ const snapshot: InboundSnapshot = {
   },
   acceptedAt: 1,
 };
+
 /** Records specified IO only. Any unplanned storage method throws; no storage state machine exists here. */
 function recordingStorage(methods: Partial<Storage>): Storage {
   return new Proxy(methods, {
@@ -133,11 +142,13 @@ function recordingStorage(methods: Partial<Storage>): Storage {
     },
   }) as Storage;
 }
+
 function plugins(
   dispatch = vi.fn<AgentPlugin["dispatch"]>().mockResolvedValue({ status: "accepted" }),
 ) {
   let channelHost: ChannelHost | undefined;
   let agentHost: AgentHost | undefined;
+
   const channel: ChannelPlugin = {
     id: "channel-telegram",
     sdkMajor: 1,
@@ -158,6 +169,7 @@ function plugins(
     },
     send: vi.fn().mockResolvedValue({ status: "sent", receipt: {} }),
   };
+
   const grok: AgentPlugin = {
     id: "agent-grok",
     sdkMajor: 1,
@@ -171,12 +183,14 @@ function plugins(
     },
     dispatch,
   };
+
   const dot: AgentPlugin = {
     ...grok,
     id: "agent-dot",
     agent: "dot",
     setup: async () => {},
   };
+
   return {
     channel,
     grok,
@@ -200,6 +214,7 @@ function plugins(
     },
   };
 }
+
 describe("configuration boundary", () => {
   it("rejects ambiguous/missing references and empty sender authorization; resolves explicit secrets only", () => {
     expect(() =>
@@ -271,6 +286,7 @@ it.each([
 
 it("binds accounts, intersects principals, preserves snapshots and isolates routes", async () => {
   const accepted: InboundSnapshot[] = [];
+
   const complete = vi
     .fn<(input: CompleteInput) => ReturnType<Storage["completeAndEnqueue"]>>()
     .mockResolvedValue({
@@ -278,8 +294,10 @@ it("binds accounts, intersects principals, preserves snapshots and isolates rout
       deliveryId: "recorded",
       replay: false,
     });
+
   const listPending = vi.fn<Storage["listPending"]>().mockResolvedValue([]);
   const p = plugins();
+
   const runtime = await createCore({
     config,
     channels: p.channels,
@@ -313,6 +331,7 @@ it("binds accounts, intersects principals, preserves snapshots and isolates rout
       completeAndEnqueue: complete,
     }),
   });
+
   await expect(
     p.channelHost.ingest({
       ...incoming,
@@ -334,10 +353,12 @@ it("binds accounts, intersects principals, preserves snapshots and isolates rout
   incoming.target.data.durable = "mutated";
   expect(accepted[0]?.target.data).toEqual({ durable: "address" });
   incoming.target.data.durable = "address";
+
   const scope = p.agentHost.forPrincipal({
     subject: "verified",
     endpointIds: ["first", "other", "invented", "first"],
   });
+
   await scope.listPending(10);
   expect(listPending).toHaveBeenCalledWith({
     agent: "grok",
@@ -376,12 +397,14 @@ it("binds accounts, intersects principals, preserves snapshots and isolates rout
     await (await runtime.fetch(new Request("https://relay.test/agents/grok/mcp"))).text(),
   ).toBe("agent");
   expect((await runtime.fetch(new Request("https://relay.test/webhook"))).status).toBe(404);
+
   const bytesResponse = await runtime.fetch(
     new Request("https://relay.test/channels/bot/bytes", {
       method: "POST",
       body: new Uint8Array([0, 255, 123]),
     }),
   );
+
   expect([...new Uint8Array(await bytesResponse.arrayBuffer())]).toEqual([0, 255, 123]);
   expect(
     (
@@ -490,6 +513,7 @@ it("validates every endpoint before registering any traffic and keeps setup conf
 
 it("passes lease fences, clamps retry delay, enforces budgets and isolates observers", async () => {
   const lease = { token: "lease", version: 7, expiresAt: Date.now() + 30_000 };
+
   const takeDue = vi
     .fn<Storage["takeDue"]>()
     .mockResolvedValueOnce([
@@ -505,7 +529,9 @@ it("passes lease fences, clamps retry delay, enforces budgets and isolates obser
       },
     ])
     .mockResolvedValue([]);
+
   const settlements: Settlement[] = [];
+
   const p = plugins(
     vi.fn().mockResolvedValue({
       status: "retryable",
@@ -513,6 +539,7 @@ it("passes lease fences, clamps retry delay, enforces budgets and isolates obser
       retryAfterMs: 999_999,
     }),
   );
+
   const runtime = await createCore({
     config,
     channels: p.channels,
@@ -546,6 +573,7 @@ it("passes lease fences, clamps retry delay, enforces budgets and isolates obser
       },
     },
   });
+
   expect(await runtime.processDue()).toEqual({ processed: 1, conflicts: 0 });
   expect(settlements[0]?.lease).toEqual(lease);
   expect((settlements[0]?.nextDueAt ?? 0) - (settlements[0]?.now ?? 0)).toBe(5000);
@@ -574,6 +602,7 @@ it("aborts bounded transport calls and preserves unknown effects", async () => {
   vi.useFakeTimers();
   try {
     const lease = { token: "lease", version: 7, expiresAt: Date.now() + 30_000 };
+
     const takeDue = vi
       .fn<Storage["takeDue"]>()
       .mockResolvedValueOnce([
@@ -589,11 +618,14 @@ it("aborts bounded transport calls and preserves unknown effects", async () => {
         },
       ])
       .mockResolvedValue([]);
+
     const settleAttempt = vi
       .fn<Storage["settleAttempt"]>()
       .mockResolvedValue({ status: "updated", version: 8 });
+
     const dispatch = vi.fn<AgentPlugin["dispatch"]>().mockReturnValue(new Promise(() => {}));
     const p = plugins(dispatch);
+
     const runtime = await createCore({
       config,
       channels: p.channels,
@@ -610,6 +642,7 @@ it("aborts bounded transport calls and preserves unknown effects", async () => {
       }),
       worker: { callTimeoutMs: 20 },
     });
+
     const processing = runtime.processDue();
     await vi.advanceTimersByTimeAsync(21);
     await processing;

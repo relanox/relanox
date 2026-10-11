@@ -7,6 +7,7 @@ export const targetSchema = z.object({
   botId: platformIdSchema,
   apiBaseUrl: z.string(),
 });
+
 export const fileSchema = z.looseObject({
   id: platformIdSchema,
   name: z.string().optional(),
@@ -15,6 +16,7 @@ export const fileSchema = z.looseObject({
   url_private: z.url().optional(),
   url_private_download: z.url().optional(),
 });
+
 export const envelopeSchema = z.looseObject({
   type: z.string(),
   team_id: platformIdSchema.optional(),
@@ -23,6 +25,7 @@ export const envelopeSchema = z.looseObject({
   event: z.unknown().optional(),
   challenge: platformIdSchema.optional(),
 });
+
 export const messageSchema = z.looseObject({
   type: z.string(),
   subtype: z.string().optional(),

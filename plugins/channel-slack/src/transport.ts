@@ -9,12 +9,14 @@ export function credential(ref: SecretRef, environment: NodeJS.ProcessEnv): stri
   }
   return value;
 }
+
 export function equal(a: string, b: string): boolean {
   return timingSafeEqual(
     createHash("sha256").update(a).digest(),
     createHash("sha256").update(b).digest(),
   );
 }
+
 async function readBounded(
   body: ReadableStream<Uint8Array> | null,
   max = 1_048_576,
@@ -42,12 +44,15 @@ async function readBounded(
     throw error;
   }
 }
+
 export function bytes(request: Request, max = 1_048_576): Promise<Buffer> {
   return readBounded(request.body, max);
 }
+
 export async function jsonResponse(response: Response): Promise<unknown> {
   return JSON.parse((await readBounded(response.body)).toString("utf8"));
 }
+
 export async function postJson(
   url: string,
   headers: Record<string, string>,
@@ -63,6 +68,7 @@ export async function postJson(
     redirect: "error",
   });
 }
+
 export function failure(response: Response): SendResult {
   if (response.status === 429) {
     const delay = Number(response.headers.get("retry-after"));
@@ -77,6 +83,7 @@ export function failure(response: Response): SendResult {
     errorCode: "platform_http_error",
   };
 }
+
 export function fresh(value: string | null): boolean {
   return (
     value !== null && /^\d+$/u.test(value) && Math.abs(Date.now() - Number(value) * 1000) <= 300_000

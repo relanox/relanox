@@ -11,12 +11,14 @@ import { createDiscordChannel } from "../src/index.js";
 import { peer, recorder, sendInput } from "./peer.js";
 
 const environment = { BOT: "discord-token", ROTATED: "rotated-token" };
+
 const account = {
   id: "dc",
   channel: "discord" as const,
   config: null,
   allowedSenders: ["42"],
 };
+
 const target = {
   channel: "discord" as const,
   accountId: "dc",
@@ -24,7 +26,9 @@ const target = {
   replyToId: "789",
   data: { botId: "999", apiBaseUrl: "https://discord.com/api/v10" },
 };
+
 const cleanup: (() => Promise<void>)[] = [];
+
 function readFrame(raw: RawData): Record<string, unknown> {
   if (!Buffer.isBuffer(raw)) {
     throw new TypeError("unexpected_gateway_frame_bytes");
@@ -35,11 +39,13 @@ function readFrame(raw: RawData): Record<string, unknown> {
   }
   return frame as Record<string, unknown>;
 }
+
 afterEach(async () => {
   for (const close of cleanup.splice(0)) {
     await close();
   }
 });
+
 async function setup(
   apiBaseUrl = "https://discord.com/api/v10",
   gatewayUrl = "wss://gateway.discord.gg",
@@ -55,6 +61,7 @@ async function setup(
     cleanup.push(() => db.close());
   }
   const namespace = { pluginId: "channel-discord", ownerId: "dc" };
+
   const host: ChannelHost = {
     ...recorded.host,
     state: {
@@ -64,6 +71,7 @@ async function setup(
       delete: (key, version) => db.deleteState(namespace, key, version),
     },
   };
+
   await plugin.setup(
     host,
     account,
@@ -79,6 +87,7 @@ async function setup(
   );
   return { plugin, db, ...recorded, target: { ...target, data: { ...target.data, apiBaseUrl } } };
 }
+
 async function gateway() {
   const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise<void>((resolve) => {
@@ -97,16 +106,19 @@ async function gateway() {
   });
   return { wss, url };
 }
+
 describe("discord native Gateway and REST", () => {
   it.each(["sender_not_allowed", "unbound_conversation"])(
     "continues the Gateway after terminal core policy rejection: %s",
     async (code) => {
       const remote = await gateway();
+
       const test = await setup(undefined, remote.url, async (input) => {
         if (input.source.eventId === "788") {
           throw Object.assign(new Error(code), { code });
         }
       });
+
       cleanup.unshift(async () => {
         await test.plugin.stop?.();
       });
@@ -178,6 +190,7 @@ describe("discord native Gateway and REST", () => {
       const initial = await setup(remote.url);
       const frozen = initial.target;
       const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+
       const restarted = await setup(
         nextBase,
         undefined,
@@ -185,6 +198,7 @@ describe("discord native Gateway and REST", () => {
         undefined,
         change === "identity" ? { botUserId: "998" } : {},
       );
+
       expect(
         await restarted.plugin.send(
           sendInput(change === "legacy" ? { ...frozen, data: null } : frozen),
@@ -242,12 +256,14 @@ describe("discord native Gateway and REST", () => {
       .toMatchObject({ session_id: "origin-session" });
     await initial.plugin.stop?.();
     frames.length = 0;
+
     const restarted = await setup(
       "https://new-proxy.example/api/v10",
       remote.url,
       undefined,
       initial.db,
     );
+
     cleanup.unshift(async () => {
       await restarted.plugin.stop?.();
     });
@@ -263,9 +279,11 @@ describe("discord native Gateway and REST", () => {
     const remote = await peer(() => ({ body: { id: "900" } }));
     cleanup.push(remote.close);
     const initial = await setup(remote.url);
+
     const restarted = await setup(`${remote.url}/`, undefined, undefined, undefined, {
       botToken: { env: "ROTATED" },
     });
+
     expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
     expect(remote.requests).toHaveLength(1);
   });
@@ -450,12 +468,14 @@ describe("discord native Gateway and REST", () => {
   it("does not advance resume cursor when ingestion fails", async () => {
     const remote = await gateway();
     let attempts = 0;
+
     const test = await setup(undefined, remote.url, async () => {
       attempts++;
       if (attempts === 1) {
         throw new Error("commit failed");
       }
     });
+
     cleanup.unshift(async () => {
       await test.plugin.stop?.();
     });
@@ -524,10 +544,12 @@ describe("discord native Gateway and REST", () => {
 
   it("resolves guild thread parent for binding and sends to the frozen thread channel", async () => {
     const remoteGateway = await gateway();
+
     const remoteApi = await peer((input) => ({
       body:
         input.path === "/channels/456" ? { id: "456", type: 11, parent_id: "123" } : { id: "900" },
     }));
+
     const test = await setup(remoteApi.url, remoteGateway.url);
     cleanup.unshift(async () => {
       await test.plugin.stop?.();

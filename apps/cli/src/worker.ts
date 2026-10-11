@@ -9,6 +9,7 @@ export function createWorker(core: CoreRuntime, intervalMs: number, observe: Obs
   let stopping = false;
   let failed = false;
   let lastSuccess = 0;
+
   const tick = async () => {
     try {
       await core.processDue();
@@ -30,6 +31,7 @@ export function createWorker(core: CoreRuntime, intervalMs: number, observe: Obs
       }
     }
   };
+
   return {
     start() {
       if (started || stopping) {

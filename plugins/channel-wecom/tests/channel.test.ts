@@ -6,6 +6,7 @@ import { assemble, peer, records, sendInput } from "./test-support.js";
 
 test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends independent escaped Markdown", async () => {
   vi.stubEnv("WECOM_SECRET", "private-value");
+
   const remote = await peer(
     () => ({ status: 404 }),
     (socket) => {
@@ -16,11 +17,14 @@ test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
             headers: z.object({ req_id: z.string() }),
           })
           .parse(JSON.parse(wireText(data)));
+
         socket.send(JSON.stringify({ headers: frame.headers, errcode: 0 }));
       });
     },
   );
+
   const plugin = createWeComChannel();
+
   const host = await assemble(
     plugin,
     {
@@ -34,6 +38,7 @@ test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
       { chatId: "group", senderId: "user" },
     ],
   );
+
   await host.start();
   expect(remote.frames[0]).toMatchObject({
     cmd: "aibot_subscribe",
@@ -43,6 +48,7 @@ test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
   if (!socket) {
     throw new Error("Peer not connected");
   }
+
   const body = {
     msgid: "stable-1",
     aibotid: "robot",
@@ -52,6 +58,7 @@ test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
     text: { content: "question" },
     response_url: "https://secret.invalid/token",
   };
+
   socket.send(
     JSON.stringify({
       cmd: "aibot_msg_callback",
@@ -100,12 +107,14 @@ test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
   ]);
   expect(accepted.map((item) => item.snapshot.target.chatId).toSorted()).toEqual(["group", "user"]);
   expect(JSON.stringify(accepted)).not.toContain("secret.invalid");
+
   const result = await plugin.send(
     sendInput("wecom", "group", {
       chattype: "group",
       scope: { botId: "robot", wsUrl: new URL(remote.ws).href },
     }),
   );
+
   expect(result).toEqual({ status: "sent", receipt: {} });
   expect(remote.frames.at(-1)).toMatchObject({
     cmd: "aibot_send_msg",
@@ -120,6 +129,7 @@ test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
 
 test("WeCom correlates heartbeats and preserves uncertain sends when the socket closes before ACK", async () => {
   vi.stubEnv("WECOM_SECRET", "secret");
+
   const remote = await peer(
     () => ({ status: 404 }),
     (socket) => {
@@ -130,6 +140,7 @@ test("WeCom correlates heartbeats and preserves uncertain sends when the socket 
             headers: z.object({ req_id: z.string() }),
           })
           .parse(JSON.parse(wireText(data)));
+
         if (frame.cmd === "aibot_send_msg") {
           socket.send(JSON.stringify({ headers: { req_id: "unrelated" }, errcode: 0 }));
           socket.close();
@@ -139,7 +150,9 @@ test("WeCom correlates heartbeats and preserves uncertain sends when the socket 
       });
     },
   );
+
   const plugin = createWeComChannel();
+
   const host = await assemble(
     plugin,
     {
@@ -151,6 +164,7 @@ test("WeCom correlates heartbeats and preserves uncertain sends when the socket 
     },
     [{ chatId: "user", senderId: "user" }],
   );
+
   await host.start();
   await expect
     .poll(
@@ -195,6 +209,7 @@ test("WeCom rejects raw secrets and insecure nonlocal endpoints", () => {
 
 test("WeCom stops recovery after the platform replaces this bot connection", async () => {
   vi.stubEnv("WECOM_SECRET", "secret");
+
   const remote = await peer(
     () => ({ status: 404 }),
     (socket) => {
@@ -202,11 +217,14 @@ test("WeCom stops recovery after the platform replaces this bot connection", asy
         const frame = z
           .object({ headers: z.object({ req_id: z.string() }) })
           .parse(JSON.parse(wireText(data)));
+
         socket.send(JSON.stringify({ headers: frame.headers, errcode: 0 }));
       });
     },
   );
+
   const plugin = createWeComChannel();
+
   const host = await assemble(
     plugin,
     {
@@ -217,6 +235,7 @@ test("WeCom stops recovery after the platform replaces this bot connection", asy
     },
     [{ chatId: "user", senderId: "user" }],
   );
+
   await host.start();
   const socket = remote.sockets[0];
   if (!socket) {
@@ -253,6 +272,7 @@ test.each(["missing credential", "rejected subscription"])(
   "WeCom closes an unauthenticated socket after %s",
   async (scenario) => {
     vi.stubEnv("WECOM_SECRET", scenario === "missing credential" ? "" : "secret");
+
     const remote = await peer(
       () => ({ status: 404 }),
       (socket) => {
@@ -260,11 +280,14 @@ test.each(["missing credential", "rejected subscription"])(
           const frame = z
             .object({ headers: z.object({ req_id: z.string() }) })
             .parse(JSON.parse(wireText(data)));
+
           socket.send(JSON.stringify({ headers: frame.headers, errcode: 40_001 }));
         });
       },
     );
+
     const plugin = createWeComChannel();
+
     const host = await assemble(
       plugin,
       {
@@ -276,6 +299,7 @@ test.each(["missing credential", "rejected subscription"])(
       },
       [{ chatId: "user", senderId: "user" }],
     );
+
     await host.start();
     await expect.poll(() => remote.sockets[0]?.readyState).toBe(3);
     expect(

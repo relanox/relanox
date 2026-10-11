@@ -33,6 +33,7 @@ const configSchema = z.strictObject({
   tokenUrl: z.url().default("https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token"),
   allowLoopback: z.boolean().default(false),
 });
+
 export type TeamsConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): TeamsConfig {

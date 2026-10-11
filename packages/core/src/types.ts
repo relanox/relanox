@@ -26,11 +26,13 @@ export interface WorkerOptions {
   readonly maxContextBytes?: number;
   readonly maxHttpBodyBytes?: number;
 }
+
 export interface MediaPublisherOptions {
   readonly publicBaseUrl: string;
   readonly urlLifetimeMs?: number;
   readonly allowInsecureLocalhost?: boolean;
 }
+
 export interface CoreOptions {
   readonly media?: MediaPublisherOptions;
   readonly config: unknown;
@@ -40,6 +42,7 @@ export interface CoreOptions {
   readonly observe?: Observability;
   readonly worker?: WorkerOptions;
 }
+
 export interface CoreRuntime {
   readonly config: RelanoxConfig;
   fetch(request: Request): Promise<Response>;

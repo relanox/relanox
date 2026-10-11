@@ -16,12 +16,14 @@ export async function downloadAttachments(
       throw new Error("missing_attachment_url");
     }
     const url = attachment.url.startsWith("//") ? `https:${attachment.url}` : attachment.url;
+
     const downloaded = await downloadMedia(url, {
       maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
       signal,
       trustedOrigins: config.mediaOrigins,
       allowInsecureLocalhost: config.allowInsecureLoopback,
     });
+
     const mimeType = attachment.content_type ?? downloaded.mimeType;
     uploads.push({
       ...downloaded,

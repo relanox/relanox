@@ -12,6 +12,7 @@ export class CallbackError extends Error {
     this.name = "CallbackError";
   }
 }
+
 export function callbackUrl(value: string, config: CallbackConfig): URL {
   const url = new URL(value);
   if (url.username || url.password || url.hash || !config.allowedOrigins.includes(url.origin)) {
@@ -27,9 +28,11 @@ export function callbackUrl(value: string, config: CallbackConfig): URL {
   }
   return url;
 }
+
 function ipv4Number(address: string): number {
   return address.split(".").reduce((value, part) => value * 256 + Number(part), 0);
 }
+
 const excludedIpv4Ranges = [
   ["0.0.0.0", 8],
   ["10.0.0.0", 8],
@@ -45,10 +48,12 @@ const excludedIpv4Ranges = [
   ["203.0.113.0", 24],
   ["224.0.0.0", 3],
 ] as const;
+
 const excludedIpv4Bounds = excludedIpv4Ranges.map(([address, prefix]) => {
   const start = ipv4Number(address);
   return { start, end: start + 2 ** (32 - prefix) };
 });
+
 /** Conservative global-unicast policy; mapped, transition and documentation ranges are excluded. */
 export function isPublicAddress(address: string): boolean {
   if (isIP(address) === 4) {
@@ -71,6 +76,7 @@ export function isPublicAddress(address: string): boolean {
   }
   return false;
 }
+
 /** Resolve immediately before connecting and pin that address; TLS still verifies the original hostname. */
 export async function postCallback(
   urlValue: string,
@@ -87,8 +93,10 @@ export async function postCallback(
   const url = callbackUrl(urlValue, config);
   const hostname = url.hostname.replaceAll(/^\[|\]$/gu, "");
   const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]);
+
   async function resolveAddresses() {
     let onAbort: (() => void) | undefined;
+
     const aborted = new Promise<never>((_resolve, reject) => {
       onAbort = () => {
         reject(new CallbackError("timeout"));
@@ -99,6 +107,7 @@ export async function postCallback(
         bound.addEventListener("abort", onAbort, { once: true });
       }
     });
+
     try {
       return await Promise.race([lookup(hostname, { all: true, order: "verbatim" }), aborted]);
     } catch (error) {
@@ -112,10 +121,12 @@ export async function postCallback(
       }
     }
   }
+
   const addresses =
     isIP(hostname) === 0
       ? await resolveAddresses()
       : [{ address: hostname, family: isIP(hostname) }];
+
   if (
     config.transport === "public-https" &&
     (addresses.length === 0 || addresses.some((resolved) => !isPublicAddress(resolved.address)))
@@ -174,6 +185,7 @@ export async function postCallback(
         });
       },
     );
+
     req.on("error", () => {
       reject(new CallbackError(bound.aborted ? "timeout" : "network_error"));
     });

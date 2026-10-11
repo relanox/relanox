@@ -33,12 +33,14 @@ export function createWorkOperations(
           ) {
             return { status: "conflict" };
           }
+
           const next = {
             ...record,
             status: "pending" as const,
             version: record.version + 1,
             dispatch: { status: "due" as const, attempts: 0, dueAt: input.now },
           };
+
           delete next.claim;
           delete next.errorCode;
           await saveInbound(client, next);
@@ -55,6 +57,7 @@ export function createWorkOperations(
         ) {
           return { status: "conflict" };
         }
+
         const next = {
           ...record,
           status: "pending" as const,
@@ -62,6 +65,7 @@ export function createWorkOperations(
           attempts: 0,
           dueAt: input.now,
         };
+
         delete next.lease;
         delete next.errorCode;
         await saveOutbound(client, next);
@@ -72,6 +76,7 @@ export function createWorkOperations(
       const limit = boundedLimit(input.limit);
       return transaction(async (client) => {
         const work: DueWork[] = [];
+
         // Expiry recovery and executable selection are separate bounded scans. Unknown effects never auto-repeat.
         const expiredRequests = await query<{ record: InboundRecord }>(
           client,
@@ -86,15 +91,18 @@ export function createWorkOperations(
           `,
           [input.now, limit],
         );
+
         for (const { record } of expiredRequests) {
           const dispatch = {
             ...record.dispatch,
             status: "unknown" as const,
             errorCode: "lease_expired",
           };
+
           delete dispatch.lease;
           await saveInbound(client, { ...record, version: record.version + 1, dispatch });
         }
+
         const expiredDeliveries = await query<{ record: OutboundRecord }>(
           client,
           `
@@ -107,6 +115,7 @@ export function createWorkOperations(
           `,
           [input.now, limit],
         );
+
         for (const { record } of expiredDeliveries) {
           const next = {
             ...record,
@@ -116,9 +125,11 @@ export function createWorkOperations(
               : ("unknown" as const),
             errorCode: "lease_expired",
           };
+
           delete next.lease;
           await saveOutbound(client, next);
         }
+
         const requests = await query<{ record: InboundRecord }>(
           client,
           `
@@ -145,20 +156,24 @@ export function createWorkOperations(
           `,
           [input.now, limit],
         );
+
         for (const { record } of requests) {
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: record.version + 1,
             expiresAt: input.now + input.leaseMs,
           };
+
           const next = {
             ...record,
             version: lease.version,
             dispatch: { ...record.dispatch, lease },
           };
+
           await saveInbound(client, next);
           work.push({ kind: "dispatch", record: next, lease });
         }
+
         const deliveries = await query<{ record: OutboundRecord }>(
           client,
           `
@@ -172,12 +187,14 @@ export function createWorkOperations(
           `,
           [input.now, limit - work.length],
         );
+
         for (const { record } of deliveries) {
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: record.version + 1,
             expiresAt: input.now + input.leaseMs,
           };
+
           const next = { ...record, version: lease.version, lease };
           await saveOutbound(client, next);
           work.push({ kind: "send", record: next, lease });
@@ -200,12 +217,14 @@ export function createWorkOperations(
             return { status: "conflict" };
           }
           const outcome = input.outcome;
+
           const dispatch = {
             status: outcome.status === "retryable" ? ("due" as const) : outcome.status,
             attempts: record.dispatch.attempts + 1,
             dueAt: input.nextDueAt,
             ...("errorCode" in outcome ? { errorCode: outcome.errorCode } : {}),
           };
+
           await saveInbound(client, { ...record, version: record.version + 1, dispatch });
           return { status: "updated", version: record.version + 1 };
         }
@@ -220,12 +239,14 @@ export function createWorkOperations(
         ) {
           return { status: "conflict" };
         }
+
         const next = {
           ...record,
           version: record.version + 1,
           attempts: record.attempts + 1,
           dueAt: input.nextDueAt,
         };
+
         delete next.lease;
         delete next.errorCode;
         if (input.outcome.status === "sent") {

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { platformIdSchema } from "./config.js";
 
 const identitySchema = z.object({ id: platformIdSchema });
+
 export const activitySchema = z.object({
   type: z.string(),
   id: platformIdSchema.optional(),
@@ -30,6 +31,7 @@ export const activitySchema = z.object({
   channelData: z.object({ tenant: z.object({ id: platformIdSchema }) }),
   replyToId: platformIdSchema.optional(),
 });
+
 export const targetSchema = z.strictObject({
   appId: platformIdSchema,
   serviceUrl: z.url(),
@@ -40,11 +42,13 @@ export const targetSchema = z.strictObject({
   replyToId: platformIdSchema.optional(),
   personal: z.boolean().optional(),
 });
+
 export const keysSchema = z.object({
   keys: z.array(
     z.object({ kid: platformIdSchema.optional(), endorsements: z.array(z.string()).optional() }),
   ),
 });
+
 export const receiptSchema = z.object({ id: platformIdSchema });
 
 export const oauthTokenResponseSchema = z.object({

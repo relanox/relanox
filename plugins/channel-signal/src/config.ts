@@ -21,6 +21,7 @@ export function validateBaseUrl(value: string, allowInsecureLocalhost: boolean):
 }
 
 export const platformIdSchema = z.string().min(1).max(240);
+
 const configSchema = z.strictObject({
   serviceUrl: z.url(),
   account: platformIdSchema,
@@ -30,6 +31,7 @@ const configSchema = z.strictObject({
   timeoutMs: requestTimeoutSchema,
   reconnectMs: z.number().int().min(100).max(60_000).default(1000),
 });
+
 export type SignalConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): SignalConfig {

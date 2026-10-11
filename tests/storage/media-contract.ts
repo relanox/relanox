@@ -17,6 +17,7 @@ export const asset = (id = "asset", bytes = [0, 255, 10]): StoredMedia => {
     },
   };
 };
+
 export function mediaContract(name: string, open: () => Promise<Storage>) {
   describe(name, () => {
     it("commits input bytes with snapshots, deduplicates without orphan assets and rejects invalid metadata atomically", async () => {
@@ -64,12 +65,14 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
         const media = required(s.media);
         const incoming = asset("incoming");
         await s.acceptInbound({ ...snapshot(), attachments: [incoming.reference] }, [incoming]);
+
         const claim = {
           requestId: "r1",
           agent: "grok" as const,
           endpointIds: ["ep"],
           claimToken: "token",
         };
+
         await s.claimRequest({ ...claim, claimKey: "key", now: 105 });
         const first = asset("first");
         const put = { ...claim, maxCount: 2, maxTotalBytes: 6, media: first };
@@ -93,10 +96,12 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
         ).toEqual({ status: "conflict" });
         expect(await media.get("r1", "bytes-overflow")).toBeUndefined();
         expect(await media.get("r1", "count-overflow")).toBeUndefined();
+
         const competing = await Promise.all([
           media.put({ ...put, maxCount: 3, maxTotalBytes: 7, media: asset("race-one", [1]) }),
           media.put({ ...put, maxCount: 3, maxTotalBytes: 7, media: asset("race-two", [2]) }),
         ]);
+
         expect(competing.filter((result) => result.status === "stored")).toHaveLength(1);
         expect(competing.filter((result) => result.status === "conflict")).toHaveLength(1);
       } finally {
@@ -111,12 +116,14 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
         const media = required(s.media);
         await s.acceptInbound(snapshot());
         await s.acceptInbound(snapshot("r2", 101, "ep2"));
+
         const claim = {
           requestId: "r1",
           agent: "grok" as const,
           endpointIds: ["ep"],
           claimToken: "token",
         };
+
         await s.claimRequest({ ...claim, claimKey: "key", now: 105 });
         await s.claimRequest({
           ...claim,
@@ -165,6 +172,7 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
         const second = asset("second");
         await media.put({ ...claim, media: second });
         const original = completion();
+
         const withMedia = {
           ...original,
           result: { ...original.result, attachments: [incoming.reference, second.reference] },
@@ -177,6 +185,7 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
             ],
           },
         };
+
         expect(
           await s.completeAndEnqueue({
             ...withMedia,
@@ -219,6 +228,7 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
         expect(await s.completeAndEnqueue(original)).toEqual({ status: "conflict" });
         expect(await s.cleanup({ before: 200, limit: 10 })).toEqual({ redacted: 0 });
         expect(await media.get("r1", "asset")).toEqual(incoming);
+
         const uncertain = required(
           (
             await s.takeDue({
@@ -230,6 +240,7 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
             })
           ).find((item) => item.kind === "send"),
         );
+
         await s.settleAttempt({
           kind: "send",
           id: "d-r1",
@@ -260,6 +271,7 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
               })
             ).find((item) => item.kind === "send"),
           );
+
           await s.settleAttempt({
             kind: "send",
             id: "d-r1",

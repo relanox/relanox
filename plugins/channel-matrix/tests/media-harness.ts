@@ -14,6 +14,7 @@ const referenceSchema = z.object({
   fileName: z.string(),
   durationMs: z.number().optional(),
 });
+
 export async function mediaRelay(
   plugin: ChannelPlugin<unknown>,
   config: Json,
@@ -24,6 +25,7 @@ export async function mediaRelay(
   const storage = createSqliteStorage({ filename: await databaseFile(), busyTimeoutMs: 5000 });
   await storage.initialize();
   cleanup(async () => storage.close());
+
   const business = await httpPeer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) {
@@ -35,6 +37,7 @@ export async function mediaRelay(
         headers.set(key, Array.isArray(value) ? value.join(",") : value);
       }
     }
+
     const result = await runtime.fetch(
       new Request(`${business.base}${request.url ?? "/"}`, {
         method: request.method ?? "GET",
@@ -44,14 +47,17 @@ export async function mediaRelay(
           : { body: Buffer.concat(chunks) }),
       }),
     );
+
     response.writeHead(result.status, Object.fromEntries(result.headers));
     response.end(new Uint8Array(await result.arrayBuffer()));
   });
+
   vi.stubEnv("OPEN_MEDIA_MCP_TOKEN", "media-agent-secret");
   vi.stubEnv("OPEN_MEDIA_ROUTINE", `${business.base}/routine`);
   vi.stubEnv("OPEN_MEDIA_ROUTINE_AUTH", "Bearer routine-secret");
   const agent = createGrokAgentPlugin();
   cleanup(async () => agent.stop?.());
+
   const runtime = await createCore({
     storage,
     channels: new Map([["bot", plugin]]),
@@ -80,17 +86,21 @@ export async function mediaRelay(
       observability: { plugin: "none", config: {} },
     },
   });
+
   cleanup(async () => plugin.stop?.());
+
   const client = new Client(
     { name: "native-media-test", version: "1.0.0" },
     { versionNegotiation: { mode: { pin: "2026-07-28" } } },
   );
+
   cleanup(async () => client.close());
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`${business.base}/agents/grok/mcp/worker`), {
       requestInit: { headers: { Authorization: "Bearer media-agent-secret" } },
     }),
   );
+
   async function turn(requestId: string, uploads?: readonly MediaUpload[]) {
     const claim = z
       .object({
@@ -106,6 +116,7 @@ export async function mediaRelay(
           })
         ).structuredContent,
       );
+
     const inbound = [];
     for (const reference of claim.request.attachments) {
       const transferred = z.object({ url: z.string() }).parse(
@@ -121,6 +132,7 @@ export async function mediaRelay(
           })
         ).structuredContent,
       );
+
       const response = await fetch(transferred.url);
       if (!response.ok) {
         throw new Error("Media download failed");
@@ -131,6 +143,7 @@ export async function mediaRelay(
     for (const upload of uploads ?? []) {
       const { data, ...metadata } = upload;
       const id = crypto.randomUUID();
+
       const transferred = z.object({ url: z.string() }).parse(
         (
           await client.callTool({
@@ -145,12 +158,16 @@ export async function mediaRelay(
           })
         ).structuredContent,
       );
+
       const response = await fetch(transferred.url, { method: "PUT", body: new Uint8Array(data) });
+
       const stored = z
         .object({ status: z.literal("stored"), media: referenceSchema })
         .parse(await response.json());
+
       ids.push(stored.media.id);
     }
+
     const completed = z.object({ status: z.literal("completed"), deliveryId: z.string() }).parse(
       (
         await client.callTool({
@@ -165,7 +182,9 @@ export async function mediaRelay(
         })
       ).structuredContent,
     );
+
     return { inbound, deliveryId: completed.deliveryId };
   }
+
   return { storage, runtime, businessUrl: business.base, client, turn };
 }

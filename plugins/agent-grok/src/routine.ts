@@ -27,6 +27,7 @@ function classifyReceipt(response: Response): DispatchResult {
   }
   return { status: "rejected", errorCode: `grok_http_${response.status}` };
 }
+
 export const dispatchRoutine: AgentPlugin<GrokConfig>["dispatch"] = async ({ request, signal }) => {
   const config = configSchema.parse(request.endpoint.config);
   let url: URL;
@@ -48,11 +49,13 @@ export const dispatchRoutine: AgentPlugin<GrokConfig>["dispatch"] = async ({ req
     return { status: "rejected", errorCode: "grok_routine_url_invalid" };
   }
   const content = JSON.stringify(projectAgentRequest(request));
+
   const body = JSON.stringify({
     content,
     source: "relanox",
     sentAt: new Date(request.acceptedAt).toISOString(),
   });
+
   if (Buffer.byteLength(body) > config.maxBodyBytes) {
     return { status: "rejected", errorCode: "grok_body_too_large" };
   }
@@ -67,6 +70,7 @@ export const dispatchRoutine: AgentPlugin<GrokConfig>["dispatch"] = async ({ req
       body,
       signal: AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]),
     });
+
     try {
       await response.body?.cancel();
     } catch {

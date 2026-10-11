@@ -14,11 +14,13 @@ export async function sqliteWriteLock(filename: string) {
     [fileURLToPath(new URL("sqlite-lock-peer.mts", import.meta.url)), filename],
     { windowsHide: true, stdio: ["ignore", "ignore", "pipe", "ipc"] },
   );
+
   let diagnostics = "";
   child.stderr?.on("data", (part: Buffer) => {
     diagnostics += part.toString("utf8");
   });
   let rejectAcquisition: (reason: Error) => void = () => {};
+
   const acquired = new Promise<void>((resolve, reject) => {
     rejectAcquisition = reject;
     child.once("message", (message: unknown) => {
@@ -30,6 +32,7 @@ export async function sqliteWriteLock(filename: string) {
     });
     child.once("error", reject);
   });
+
   const finished = new Promise<void>((resolve, reject) => {
     child.once("close", (code) => {
       rejectAcquisition(new Error(`sqlite_lock_peer_exited: ${code} ${diagnostics}`));
@@ -40,7 +43,9 @@ export async function sqliteWriteLock(filename: string) {
       }
     });
   });
+
   void finished.catch(() => {});
+
   async function close() {
     if (child.connected) {
       child.send("release", (error) => {
@@ -60,6 +65,7 @@ export async function sqliteWriteLock(filename: string) {
       throw error;
     }
   }
+
   try {
     await deadline(acquired, 1000);
   } catch (error) {
@@ -71,9 +77,11 @@ export async function sqliteWriteLock(filename: string) {
 
 export function gate() {
   let release = () => {};
+
   const waiting = new Promise<void>((resolve) => {
     release = resolve;
   });
+
   return { waiting, release };
 }
 
@@ -101,6 +109,7 @@ export async function nativePeers() {
   let origin = "";
   let fastSocket: WebSocket | undefined;
   let closed = false;
+
   const server = createServer((_request, response) => {
     discovered.release();
     void discovery.waiting.then(() => {
@@ -110,6 +119,7 @@ export async function nativePeers() {
       );
     });
   });
+
   const sockets = new WebSocketServer({ server });
   sockets.on("connection", (socket, incoming) => {
     if (incoming.url !== "/wecom") {
@@ -123,6 +133,7 @@ export async function nativePeers() {
       const frame = z
         .object({ cmd: z.string(), headers: z.object({ req_id: z.string() }) })
         .parse(JSON.parse(wireText(data)) as unknown);
+
       socket.send(JSON.stringify({ headers: frame.headers, errcode: 0 }));
       if (frame.cmd === "ping") {
         authenticated.release();
@@ -177,6 +188,7 @@ export async function routinePeer() {
   const receipt = gate();
   const received = gate();
   const requests: { path: string; body: string }[] = [];
+
   async function handle(incoming: IncomingMessage, response: ServerResponse): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const part of incoming) {
@@ -188,11 +200,13 @@ export async function routinePeer() {
     response.writeHead(202);
     response.end();
   }
+
   const server = createServer((incoming, response) => {
     void handle(incoming, response).catch(() => {
       response.destroy();
     });
   });
+
   const origin = await listen(server, 0, "127.0.0.1");
   return {
     origin,

@@ -30,6 +30,7 @@ const configSchema = z.strictObject({
   apiBase: z.url().default("https://graph.facebook.com"),
   allowLoopback: z.boolean().default(false),
 });
+
 export type WhatsAppConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): WhatsAppConfig {

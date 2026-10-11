@@ -6,5 +6,6 @@ export type Json =
   | string
   | readonly Json[]
   | { readonly [key: string]: Json };
+
 export type EpochMs = number;
 export const SDK_MAJOR = 1 as const;

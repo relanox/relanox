@@ -15,7 +15,9 @@ const mediaSchema = z
       .optional(),
   })
   .refine((value) => value.filename !== undefined || value.body.length <= 255);
+
 const uploadResponse = z.object({ content_uri: z.string() });
+
 const kinds = {
   "m.image": "image",
   "m.audio": "audio",
@@ -30,6 +32,7 @@ function contentUri(value: string): { server: string; id: string } {
   }
   return { server: match.server, id: match.id };
 }
+
 export async function receiveMedia(
   content: unknown,
   host: ChannelHost,
@@ -47,6 +50,7 @@ export async function receiveMedia(
   }
   const data = parsed.data;
   const uri = contentUri(data.url);
+
   const downloaded = await downloadMedia(
     `${base}/_matrix/client/v1/media/download/${encodeURIComponent(uri.server)}/${encodeURIComponent(uri.id)}`,
     {
@@ -57,6 +61,7 @@ export async function receiveMedia(
       allowInsecureLocalhost: config.allowInsecureLocalhost,
     },
   );
+
   return [
     {
       kind: kinds[data.msgtype],
@@ -67,12 +72,14 @@ export async function receiveMedia(
     },
   ];
 }
+
 export function mediaCaption(content: unknown): string {
   const parsed = mediaSchema.safeParse(content);
   return parsed.success && parsed.data.filename && parsed.data.body !== parsed.data.filename
     ? parsed.data.body
     : "";
 }
+
 async function upload(
   base: string,
   headers: Readonly<Record<string, string>>,
@@ -82,6 +89,7 @@ async function upload(
   try {
     const url = new URL(`${base}/_matrix/media/v3/upload`);
     url.searchParams.set("filename", media.reference.fileName);
+
     const response = await fetch(url, {
       method: "POST",
       redirect: "error",
@@ -89,6 +97,7 @@ async function upload(
       headers: { ...headers, "Content-Type": media.reference.mimeType },
       body: mediaBlob(media),
     });
+
     if (!response.ok) {
       await response.body?.cancel();
       const result = httpFailure(response);
@@ -103,6 +112,7 @@ async function upload(
     return { status: "retryable", errorCode: "media_upload_failed" };
   }
 }
+
 export async function messageContent(
   input: SendInput,
   base: string,
@@ -117,9 +127,11 @@ export async function messageContent(
   if (typeof url !== "string") {
     return url;
   }
+
   const thumbnailUrl = input.preview
     ? await upload(base, headers, input.preview, signal)
     : undefined;
+
   if (thumbnailUrl !== undefined && typeof thumbnailUrl !== "string") {
     return thumbnailUrl;
   }

@@ -26,6 +26,7 @@ export function createCommonHostFactory(
 ) {
   const routes = new Set<string>();
   const componentPlugins = new Map<string, string>();
+
   function commonHost(namespace: StateNamespace, prefix: string): CommonHost {
     componentPlugins.set(prefix.slice(1), namespace.pluginId);
     return {
@@ -72,9 +73,11 @@ export function createCommonHostFactory(
       },
       connection(status, errorCode) {
         connections.set(prefix.slice(1), status);
+
         const allConnected = [...connections]
           .filter(([component]) => componentPlugins.get(component) === namespace.pluginId)
           .every(([, componentStatus]) => componentStatus === "connected");
+
         observe.record("relanox_connection_status", allConnected ? 1 : 0, {
           plugin: namespace.pluginId,
         });

@@ -21,9 +21,11 @@ export interface Traffic {
   headers: IncomingHttpHeaders;
   url: string;
 }
+
 export function parseWire(text: string): unknown {
   return JSON.parse(text) as unknown;
 }
+
 export async function peer(
   reply: (traffic: Traffic) =>
     | { status: number; body?: string; headers?: Record<string, string> }
@@ -34,6 +36,7 @@ export async function peer(
       }>,
 ) {
   const traffic: Traffic[] = [];
+
   async function receive(req: IncomingMessage, res: ServerResponse) {
     const chunks: Buffer[] = [];
     for await (const streamChunk of req) {
@@ -43,11 +46,13 @@ export async function peer(
       }
       chunks.push(Buffer.from(new Uint8Array(chunk)));
     }
+
     const record = {
       body: Buffer.concat(chunks).toString(),
       headers: req.headers,
       url: req.url ?? "",
     };
+
     traffic.push(record);
     const result = await reply(record);
     res.writeHead(result.status, {
@@ -56,9 +61,11 @@ export async function peer(
     });
     res.end(result.body ?? "{}");
   }
+
   const server = createServer((req, res) => {
     void handle(req, res);
   });
+
   async function handle(req: IncomingMessage, res: ServerResponse) {
     try {
       await receive(req, res);
@@ -66,6 +73,7 @@ export async function peer(
       res.destroy(error instanceof Error ? error : new Error("peer_failed"));
     }
   }
+
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
@@ -89,6 +97,7 @@ export async function peer(
       }),
   };
 }
+
 export async function fixture(
   agent: AgentId,
   plugin: AgentPlugin<unknown>,
@@ -102,6 +111,7 @@ export async function fixture(
   await storage.initialize();
   let channelHost: ChannelHost | undefined;
   const sent: unknown[] = [];
+
   const channel: ChannelPlugin = {
     id: "test-channel",
     kind: "channel",
@@ -128,12 +138,14 @@ export async function fixture(
       return { status: "sent", receipt: { platformMessageId: "reply-1" } };
     },
   };
+
   const endpoints: EndpointConfig[] = configs.map((config, i) => ({
     id: `endpoint${i}`,
     agent,
     config,
     dispatchMode: push ? "push" : "pull",
   }));
+
   const config = {
     accounts: [{ id: "bot", channel: "telegram", config: {}, allowedSenders: ["alice"] }],
     endpoints,
@@ -145,6 +157,7 @@ export async function fixture(
     storage: { plugin: "sqlite", config: {} },
     observability: { plugin: "none", config: {} },
   };
+
   const build = (agentPlugin: AgentPlugin<unknown>) =>
     createCore({
       config,
@@ -152,6 +165,7 @@ export async function fixture(
       channels: new Map([["bot", channel]]),
       agents: new Map([[agent, agentPlugin]]),
     });
+
   let core = await build(plugin);
   const clients: Client[] = [];
   const wire: unknown[] = [];
@@ -199,6 +213,7 @@ export async function fixture(
         { name: "protocol-test", version: "1.0.0" },
         modern ? { versionNegotiation: { mode: { pin: "2026-07-28" } } } : {},
       );
+
       clients.push(client);
       await client.connect(
         new StreamableHTTPClientTransport(
@@ -240,6 +255,7 @@ export async function fixture(
     },
   };
 }
+
 export function mcp(token = "AGENT_TEST_TOKEN_0") {
   return {
     token: { env: token },

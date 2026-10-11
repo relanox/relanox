@@ -16,6 +16,7 @@ export function validateStorage(config: RelanoxConfig["storage"]): void {
     postgresStoragePlugin.validateConfig(config.config);
   }
 }
+
 export async function openStorage(
   config: RelanoxConfig["storage"],
   observe: Observability = noopObservability,

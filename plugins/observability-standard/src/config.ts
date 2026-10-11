@@ -14,12 +14,14 @@ export interface StandardConfig {
     readonly exportTimeoutMs: number;
   };
 }
+
 function readConfigObject(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("invalid observability configuration");
   }
   return value as Record<string, unknown>;
 }
+
 function rejectUnknownConfigFields(
   value: Record<string, unknown>,
   allowed: readonly string[],
@@ -28,6 +30,7 @@ function rejectUnknownConfigFields(
     throw new Error("unknown observability configuration field");
   }
 }
+
 function readNumericConfig(
   value: unknown,
   fallback: number,
@@ -47,6 +50,7 @@ function readNumericConfig(
   }
   return result;
 }
+
 function readBooleanConfig(value: unknown, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
@@ -56,6 +60,7 @@ function readBooleanConfig(value: unknown, fallback: boolean): boolean {
   }
   return value;
 }
+
 export function validateStandardConfig(input: unknown): StandardConfig {
   const raw = readConfigObject(input);
   rejectUnknownConfigFields(raw, [

@@ -46,15 +46,18 @@ async function peer(handler: (request: IncomingMessage, response: ServerResponse
 it("downloads exact binary bytes from an explicitly configured native API origin", async () => {
   const bytes = Buffer.from([0, 255, 12, 128]);
   let authorization: string | undefined;
+
   const { origin, options } = await peer((request, response) => {
     authorization = request.headers.authorization;
     response.writeHead(200, { "content-type": "image/png; charset=binary" });
     response.end(bytes);
   });
+
   const media = await downloadMedia(`${origin}/file`, {
     ...options,
     headers: { Authorization: "Bearer native-test" },
   });
+
   expect(Buffer.from(media.data)).toEqual(bytes);
   expect(media.mimeType).toBe("image/png");
   expect(authorization).toBe("Bearer native-test");
@@ -62,10 +65,12 @@ it("downloads exact binary bytes from an explicitly configured native API origin
 
 it("rejects message-controlled loopback URLs before contacting them", async () => {
   let requests = 0;
+
   const { origin, options } = await peer((_request, response) => {
     requests += 1;
     response.end("private");
   });
+
   await expect(
     downloadMedia(`${origin}/private`, { maxBytes: 16, signal: options.signal }),
   ).rejects.toMatchObject({ code: "forbidden_destination" });
@@ -74,14 +79,17 @@ it("rejects message-controlled loopback URLs before contacting them", async () =
 
 it("does not forward authenticated download redirects", async () => {
   let leakedRequests = 0;
+
   const destination = await peer((_request, response) => {
     leakedRequests += 1;
     response.end("unexpected");
   });
+
   const { origin, options } = await peer((_request, response) => {
     response.writeHead(302, { location: `${destination.origin}/secret` });
     response.end();
   });
+
   await expect(
     downloadMedia(origin, { ...options, headers: { Authorization: "Bearer native-test" } }),
   ).rejects.toMatchObject({ code: "media_download_failed", status: 302 });
@@ -93,6 +101,7 @@ it.each([true, false])("bounds actual response bytes with content-length=%s", as
     response.writeHead(200, declared ? { "content-length": "32" } : {});
     response.end(Buffer.alloc(32, 1));
   });
+
   await expect(downloadMedia(origin, options)).rejects.toMatchObject({ code: "media_too_large" });
 });
 
@@ -101,6 +110,7 @@ it("cancels a stalled authenticated response at the caller deadline", async () =
     response.writeHead(200);
     response.write("one");
   });
+
   await expect(
     downloadMedia(origin, { ...options, signal: AbortSignal.timeout(50) }),
   ).rejects.toMatchObject({ code: "media_timeout" });

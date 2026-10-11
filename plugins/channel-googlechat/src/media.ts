@@ -6,6 +6,7 @@ import type { GoogleChatConfig } from "./config.js";
 import type { eventSchema } from "./schemas.js";
 
 type Message = NonNullable<z.infer<typeof eventSchema>["message"]>;
+
 export async function downloadAttachments(
   message: Message,
   space: string,
@@ -24,6 +25,7 @@ export async function downloadAttachments(
       if (!name || !name.startsWith(`${space}/`) || name.includes("..") || /[?#]/u.test(name)) {
         throw new Error("unsupported_attachment_reference");
       }
+
       const downloaded = await downloadMedia(`${config.apiBase}/v1/media/${name}?alt=media`, {
         maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
         signal,
@@ -31,6 +33,7 @@ export async function downloadAttachments(
         allowInsecureLocalhost: config.allowLoopback,
         headers: { authorization: `Bearer ${token}` },
       });
+
       const mimeType = attachment.contentType ?? downloaded.mimeType;
       attachments.push({
         ...downloaded,
@@ -42,16 +45,19 @@ export async function downloadAttachments(
   }
   return attachments;
 }
+
 export async function mediaCards(input: SendInput, host: ChannelHost) {
   let cardsV2;
   if (input.chunk.media) {
     if (!input.media || !host.media) {
       throw new Error("media_publication_unavailable");
     }
+
     const url = await host.media.publish({
       requestId: input.requestId,
       mediaId: input.media.reference.id,
     });
+
     const { kind, fileName } = input.media.reference;
     cardsV2 = [
       {

@@ -11,6 +11,7 @@ import { mediaPeer } from "./media-peer.js";
 
 export type MediaRuntime = Awaited<ReturnType<typeof startRuntime>>;
 export type Cleanup = () => Promise<void>;
+
 export async function mediaRuntime(
   cleanups: Cleanup[],
   channel: ChannelId,
@@ -26,6 +27,7 @@ export async function mediaRuntime(
   vi.stubEnv("MEDIA_AGENT_TOKEN", "media-agent-token");
   vi.stubEnv("MEDIA_ROUTINE_URL", `${routine.origin}/routine`);
   vi.stubEnv("MEDIA_ROUTINE_AUTH", "Bearer media-routine-token");
+
   const app = validateApp({
     relay: {
       accounts: [{ id: "business", channel, config, allowedSenders: ["42"] }],
@@ -60,16 +62,19 @@ export async function mediaRuntime(
       ? { media: { publicBaseUrl: `http://127.0.0.1:${port}`, allowInsecureLocalhost: true } }
       : {}),
   });
+
   const start = async () => {
     const runtime = await startRuntime(app);
     cleanups.push(runtime.stop);
     return runtime;
   };
+
   const client = async (runtime: MediaRuntime) => {
     const connected = new Client(
       { name: "native-media-wire", version: "1.0.0" },
       { versionNegotiation: { mode: { pin: "2026-07-28" } } },
     );
+
     cleanups.push(async () => connected.close());
     await connected.connect(
       new StreamableHTTPClientTransport(new URL(`${runtime.businessUrl}/agents/grok/mcp/media`), {
@@ -80,8 +85,10 @@ export async function mediaRuntime(
     );
     return connected;
   };
+
   return { start, client, routine };
 }
+
 export const mediaRequestSchema = z.looseObject({
   requestId: z.string(),
   text: z.string(),
@@ -95,16 +102,19 @@ export const mediaRequestSchema = z.looseObject({
     }),
   ),
 });
+
 export async function claimMedia(client: Client) {
   const pending = z
     .object({ requests: z.array(mediaRequestSchema) })
     .parse(
       (await client.callTool({ name: "relanox_list_pending", arguments: {} })).structuredContent,
     );
+
   const request = pending.requests[0];
   if (!request) {
     throw new Error("missing_media_request");
   }
+
   const claim = z.looseObject({ status: z.literal("claimed"), claimToken: z.string() }).parse(
     (
       await client.callTool({
@@ -113,8 +123,10 @@ export async function claimMedia(client: Client) {
       })
     ).structuredContent,
   );
+
   return { request, claimToken: claim.claimToken };
 }
+
 export async function mediaUrl(
   client: Client,
   requestId: string,
@@ -133,5 +145,6 @@ export async function mediaUrl(
       ...(metadata === undefined ? {} : { metadata }),
     },
   });
+
   return z.object({ url: z.url() }).parse(result.structuredContent).url;
 }

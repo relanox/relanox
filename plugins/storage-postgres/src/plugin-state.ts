@@ -65,6 +65,7 @@ export function createStateOperations(
             [ns.pluginId, ns.ownerId, input.key],
           )
         )[0];
+
         if (
           input.expectedVersion === null
             ? old?.active
@@ -73,12 +74,14 @@ export function createStateOperations(
           return { status: "conflict" };
         }
         const version = (old?.version ?? 0) + 1;
+
         const entry: StateEntry = {
           key: input.key,
           value: input.value,
           version,
           ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
         };
+
         const params = [
           ns.pluginId,
           ns.ownerId,
@@ -87,6 +90,7 @@ export function createStateOperations(
           input.expiresAt ?? null,
           encodeDurableRecord(entry),
         ];
+
         const changed = !old
           ? await query(
               client,
@@ -111,6 +115,7 @@ export function createStateOperations(
               `,
               [...params, old.version],
             );
+
         return changed.length > 0 ? { status: "updated", version } : { status: "conflict" };
       });
     },
@@ -130,6 +135,7 @@ export function createStateOperations(
             [ns.pluginId, ns.ownerId, key],
           )
         )[0];
+
         if (!old) {
           return { status: "not_found" };
         }

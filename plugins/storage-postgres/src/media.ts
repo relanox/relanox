@@ -22,6 +22,7 @@ const digest = (media: StoredMedia): string =>
       ]),
     )
     .digest("hex");
+
 export async function readMedia(
   context: DatabaseContext,
   client: Pool | PoolClient,
@@ -35,8 +36,10 @@ export async function readMedia(
       [requestId, mediaId],
     )
   )[0];
+
   return row ? { reference: row.reference, data: new Uint8Array(row.data) } : undefined;
 }
+
 export async function insertIncomingMedia(
   context: DatabaseContext,
   client: PoolClient,
@@ -56,6 +59,7 @@ export async function insertIncomingMedia(
     );
   }
 }
+
 export function createMediaOperations(context: DatabaseContext): MediaStorage {
   return {
     async get(requestId, mediaId) {
@@ -73,6 +77,7 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
         if (record.status !== "claimed" || !validMedia(input.media)) {
           return { status: "conflict" };
         }
+
         const existing = (
           await context.query<{ request_id: string; digest: string }>(
             client,
@@ -80,11 +85,13 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
             [input.media.reference.id],
           )
         )[0];
+
         if (existing) {
           return existing.request_id === input.requestId && existing.digest === digest(input.media)
             ? { status: "stored", media: input.media.reference, replay: true }
             : { status: "conflict" };
         }
+
         const usage = (
           await context.query<{ count: string; bytes: string }>(
             client,
@@ -92,9 +99,11 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
             [input.requestId],
           )
         )[0];
+
         if (!usage || !withinMediaBudget(input, Number(usage.count), Number(usage.bytes))) {
           return { status: "conflict" };
         }
+
         const inserted = await context.query(
           client,
           "INSERT INTO media(id,request_id,reference,data,digest) VALUES($1,$2,$3::jsonb,$4,$5) ON CONFLICT DO NOTHING RETURNING id",
@@ -106,6 +115,7 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
             digest(input.media),
           ],
         );
+
         if (inserted.length === 0) {
           return { status: "conflict" };
         }

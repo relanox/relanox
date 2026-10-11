@@ -10,6 +10,7 @@ const kinds = [
   ["video", "video/mp4", "clip.mp4"],
   ["file", "application/pdf", "report.pdf"],
 ] as const;
+
 const rpcSchema = z.object({
   id: z.string(),
   method: z.string(),
@@ -21,6 +22,7 @@ it.each(kinds)(
   async (kind, mimeType, fileName) => {
     const downloads: unknown[] = [];
     const sends: unknown[] = [];
+
     const peer = await httpPeer(async (request, response) => {
       if (request.url?.startsWith("/api/v1/events")) {
         response.writeHead(200, { "Content-Type": "text/event-stream" });
@@ -43,7 +45,9 @@ it.each(kinds)(
         });
       }
     });
+
     const plugin = createSignalChannel({ SIGNAL_AUTH: "Bearer signal-secret" });
+
     const fixture = await mediaRelay(
       plugin,
       {
@@ -56,6 +60,7 @@ it.each(kinds)(
       [{ chatId: "group:GROUP=" }],
       ["alice-uuid"],
     );
+
     await plugin.start?.(new AbortController().signal);
     await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
     await plugin.stop?.();
@@ -63,9 +68,11 @@ it.each(kinds)(
     if (!record) {
       throw new Error("Expected inbound");
     }
+
     const turn = await fixture.turn(record.snapshot.requestId, [
       { kind, mimeType, fileName, data: new Uint8Array([9, 8, 7]) },
     ]);
+
     expect(turn.inbound[0]?.reference).toMatchObject({ kind, mimeType, fileName });
     expect(turn.inbound[0]?.data).toEqual(new Uint8Array([1, 2, 3]));
     expect(downloads).toEqual([{ account: "+10000000001", id: "original", groupId: "GROUP=" }]);
@@ -88,6 +95,7 @@ it.each(kinds)(
 
 it("rejects over-limit Signal attachment data without advancing the event cursor", async () => {
   let read = false;
+
   const peer = await httpPeer(async (request, response) => {
     if (request.url?.startsWith("/api/v1/events")) {
       response.writeHead(200, { "Content-Type": "text/event-stream" });
@@ -104,7 +112,9 @@ it("rejects over-limit Signal attachment data without advancing the event cursor
       });
     }
   });
+
   const plugin = createSignalChannel();
+
   const fixture = await mediaRelay(
     plugin,
     {
@@ -117,6 +127,7 @@ it("rejects over-limit Signal attachment data without advancing the event cursor
     ["alice"],
     16,
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(() => read);
   await plugin.stop?.();

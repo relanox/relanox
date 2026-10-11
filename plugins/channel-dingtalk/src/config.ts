@@ -57,4 +57,5 @@ export const configSchema = z
       context.addIssue({ code: "custom", message: "Invalid secure API URL" });
     }
   });
+
 export type DingTalkConfig = z.infer<typeof configSchema>;

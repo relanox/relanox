@@ -7,6 +7,7 @@ import type { McpConfig } from "./config.js";
 import { equalSecret, resolveAgentSecret } from "./secrets.js";
 
 const id = z.string().min(1).max(1024);
+
 const metadata = z.strictObject({
   durationMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   previewMediaId: z.uuid().optional(),
@@ -25,6 +26,7 @@ const metadata = z.strictObject({
       "Invalid file name",
     ),
 });
+
 const ticketSchema = z.strictObject({
   endpointId: id,
   requestId: id,
@@ -34,6 +36,7 @@ const ticketSchema = z.strictObject({
   expiresAt: z.number(),
   metadata: metadata.optional(),
 });
+
 type Ticket = z.infer<typeof ticketSchema>;
 
 export function createMediaTransport(
@@ -43,23 +46,28 @@ export function createMediaTransport(
   agent: "dot" | "grok",
 ) {
   const context = new AsyncLocalStorage<string>();
+
   const sign = (payload: string) =>
     createHmac("sha256", resolveAgentSecret(config.token))
       .update(`relanox-media-v1:${payload}`)
       .digest("base64url");
+
   function issue(ticket: Ticket): string {
     const origin = context.getStore();
     if (!origin) {
       throw new Error("media_request_origin_missing");
     }
     const payload = Buffer.from(JSON.stringify(ticket)).toString("base64url");
+
     const url = new URL(
       `/agents/${agent}/media/${encodeURIComponent(endpointId)}/${encodeURIComponent(ticket.requestId)}/${encodeURIComponent(ticket.mediaId)}`,
       origin,
     );
+
     url.searchParams.set("ticket", `${payload}.${sign(payload)}`);
     return url.href;
   }
+
   function decode(request: Request): Ticket | undefined {
     const url = new URL(request.url);
     const origin = request.headers.get("origin");
@@ -84,6 +92,7 @@ export function createMediaTransport(
       const result = ticketSchema.safeParse(
         JSON.parse(Buffer.from(parts[0], "base64url").toString()),
       );
+
       if (!result.success) {
         return undefined;
       }
@@ -99,8 +108,10 @@ export function createMediaTransport(
       return undefined;
     }
   }
+
   const authorize = async (request: Request): Promise<Response | undefined> =>
     decode(request) ? undefined : Response.json({ error: "unauthorized" }, { status: 401 });
+
   async function fetch(request: Request): Promise<Response> {
     const ticket = decode(request);
     if (!ticket || !host.media) {
@@ -127,6 +138,7 @@ export function createMediaTransport(
     if (bytes.byteLength > host.media.maxBytes) {
       return Response.json({ error: "body_too_large" }, { status: 413 });
     }
+
     const result = await host.media.upload({
       requestId: ticket.requestId,
       claimToken: ticket.claimToken,
@@ -144,11 +156,13 @@ export function createMediaTransport(
         data: bytes,
       },
     });
+
     return Response.json(result, {
       status: result.status === "stored" ? 200 : 403,
       headers: { "Cache-Control": "no-store" },
     });
   }
+
   function register(server: McpServer) {
     if (!host.media) {
       return;
@@ -181,12 +195,14 @@ export function createMediaTransport(
           };
         }
         const expiresAt = Date.now() + 300_000;
+
         const value = {
           url: issue({ ...input, endpointId, expiresAt }),
           method: input.method,
           expiresAt,
           maxBytes: mediaHost.maxBytes,
         };
+
         return {
           content: [{ type: "text", text: JSON.stringify(value) }],
           structuredContent: value,
@@ -229,12 +245,14 @@ export function createMediaTransport(
             ],
           };
         }
+
         const uri = issue({
           ...input,
           endpointId,
           method: "GET",
           expiresAt: Date.now() + 300_000,
         });
+
         return {
           content: [
             {
@@ -249,6 +267,7 @@ export function createMediaTransport(
       },
     );
   }
+
   return {
     authorize,
     fetch,

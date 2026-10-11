@@ -16,6 +16,7 @@ import { serviceSchema, eventSchema, targetSchema, receiptSchema } from "./schem
 
 export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
   let runtime: { host: ChannelHost; account: AccountConfig; config: GoogleChatConfig } | undefined;
+
   async function send(input: SendInput): Promise<SendResult> {
     if (
       !runtime ||
@@ -67,9 +68,11 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         `${config.apiBase}/v1/${target.space}/messages`,
         config.allowLoopback,
       );
+
       if (target.thread) {
         url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_OR_FAIL");
       }
+
       const response = await request(
         url,
         {
@@ -83,6 +86,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         },
         input.signal,
       );
+
       if (!response.ok) {
         return failure(response);
       }
@@ -94,6 +98,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       return unavailable();
     }
   }
+
   return {
     id: "channel-googlechat",
     sdkMajor: 1,
@@ -114,10 +119,12 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     validateConfig,
     async setup(host, account, config) {
       runtime = { host, account, config };
+
       const keys = createRemoteJWKSet(validateEndpointUrl(config.jwksUrl, config.allowLoopback), {
         timeoutDuration: 5000,
         cacheMaxAge: 3_600_000,
       });
+
       host.mountHttp("/webhook", async (incoming) => {
         if (incoming.method !== "POST") {
           return new Response(null, { status: 405 });
@@ -133,6 +140,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
             audience: config.audience,
             requiredClaims: ["exp", "iat", "email", "email_verified"],
           });
+
           if (payload.email !== config.callerEmail || payload.email_verified !== true) {
             return new Response(null, { status: 401 });
           }

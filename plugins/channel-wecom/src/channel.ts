@@ -22,6 +22,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
   let connection: JsonSocketConnection;
   let authenticated = false;
   const pending = new Map<string, { resolve(frame: Frame): void; reject(): void }>();
+
   async function request(cmd: string, body: unknown, signal: AbortSignal): Promise<Frame> {
     const id = randomUUID();
     signal.throwIfAborted();
@@ -30,11 +31,13 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
         cleanup();
         reject(new Error("request_uncertain"));
       };
+
       const cleanup = () => {
         clearTimeout(timer);
         signal.removeEventListener("abort", fail);
         pending.delete(id);
       };
+
       const timer = setTimeout(fail, 10_000);
       pending.set(id, {
         resolve: (frame) => {
@@ -55,6 +58,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       }
     });
   }
+
   async function receive(raw: unknown): Promise<void> {
     const frame = frameSchema.parse(raw);
     if (frame.errcode !== undefined) {
@@ -116,6 +120,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       context: null,
     });
   }
+
   return {
     id: "channel-wecom",
     sdkMajor: 1,
@@ -145,6 +150,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
             { bot_id: config.botId, secret: secret(config.secret) },
             connection.signal,
           );
+
           if (result.errcode !== 0) {
             connection.socket?.terminate();
             throw new Error("authentication_failed");
@@ -215,10 +221,13 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
         if (input.chunk.media && !input.media) {
           return { status: "rejected", errorCode: "missing_media" };
         }
+
         const mediaId = input.media
           ? await uploadResource(input.media, request, input.signal)
           : undefined;
+
         transmitting = true;
+
         const response = await request(
           "aibot_send_msg",
           {
@@ -228,6 +237,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
           },
           input.signal,
         );
+
         if (response.errcode === 0) {
           return { status: "sent", receipt: {} };
         }

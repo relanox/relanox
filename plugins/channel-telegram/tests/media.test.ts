@@ -20,17 +20,20 @@ const inputBytes = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10, 0, 255, 128);
 const outputBytes = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10, 255, 128, 0, 19);
 const outputId = "1316d1be-378d-4aba-ac19-6c3b8fa78f15";
 const channels: PrimaryChannel[] = ["telegram", "discord", "slack", "feishu", "line"];
+
 const cases = channels.flatMap((channel) =>
   (["image", "audio", "video", "file"] as const)
     .filter((kind) => channel !== "line" || kind !== "file")
     .map((kind) => ({ channel, kind })),
 );
+
 const mimes = {
   image: "image/png",
   audio: "audio/mpeg",
   video: "video/mp4",
   file: "application/pdf",
 };
+
 function nativeReply(
   channel: PrimaryChannel,
   traffic: MediaTraffic,
@@ -85,6 +88,7 @@ function nativeReply(
   }
   throw new Error("unsupported_test_channel");
 }
+
 function firstEffect(traffic: MediaTraffic[], channel: PrimaryChannel): MediaTraffic | undefined {
   const paths = {
     telegram: "/send",
@@ -93,8 +97,10 @@ function firstEffect(traffic: MediaTraffic[], channel: PrimaryChannel): MediaTra
     feishu: "/reply",
     line: "/message/push",
   };
+
   return traffic.find((item) => item.method === "POST" && item.path.includes(paths[channel]));
 }
+
 async function assertNativeOutput(
   channel: PrimaryChannel,
   traffic: MediaTraffic[],
@@ -107,10 +113,12 @@ async function assertNativeOutput(
   }
   if (channel === "telegram" || channel === "discord") {
     const form = await multipart(effect);
+
     const field =
       channel === "discord"
         ? "files[0]"
         : { image: "photo", audio: "audio", video: "video", file: "document" }[kind];
+
     const file = form.get(field);
     if (!(file instanceof File)) {
       throw new Error("missing_native_binary");
@@ -144,6 +152,7 @@ async function assertNativeOutput(
     const upload = traffic.find((item) =>
       item.path.endsWith(kind === "image" ? "/images" : "/files"),
     );
+
     if (!upload) {
       throw new Error("missing_feishu_upload");
     }
@@ -165,6 +174,7 @@ async function assertNativeOutput(
         messages: z.array(z.looseObject({ type: z.string(), originalContentUrl: z.url() })),
       })
       .parse(trafficJson(effect));
+
     expect(payload.to).toBe("42");
     const media = payload.messages[0];
     if (!media) {
@@ -184,6 +194,7 @@ it.each(cases)(
     const mimeType = channel === "feishu" && kind === "audio" ? "audio/ogg" : mimes[kind];
     let origin = "";
     let uploads = 0;
+
     const remote = await mediaPeer((traffic) => {
       if (channel === "slack" && kind === "audio" && traffic.path === "/upload") {
         uploads += 1;
@@ -193,6 +204,7 @@ it.each(cases)(
       }
       return nativeReply(channel, traffic, origin, mimeType);
     });
+
     origin = remote.origin;
     cleanups.push(remote.close);
     const gateway = channel === "discord" ? await discordPeer() : undefined;
@@ -200,6 +212,7 @@ it.each(cases)(
       cleanups.push(gateway.close);
     }
     const destination = nativeTargets[channel];
+
     const fixture = await mediaRuntime(
       cleanups,
       channel,
@@ -207,6 +220,7 @@ it.each(cases)(
       destination.chat,
       "thread" in destination ? destination.thread : undefined,
     );
+
     let runtime = await fixture.start();
     const caption = kind === "image" && channel !== "line" ? "native caption" : "";
     if (gateway) {
@@ -257,6 +271,7 @@ it.each(cases)(
     if (!inbound) {
       throw new Error("missing_input_asset");
     }
+
     const readUrl = await mediaUrl(
       client,
       claimed.request.requestId,
@@ -264,6 +279,7 @@ it.each(cases)(
       inbound.id,
       "GET",
     );
+
     expect(new Uint8Array(await (await fetch(readUrl)).arrayBuffer())).toEqual(inputBytes);
     const previewId = "8d690587-788a-4851-8cba-1aa26a3b634e";
     if (kind === "video" && channel === "line") {
@@ -275,8 +291,10 @@ it.each(cases)(
         "PUT",
         { kind: "image", mimeType: "image/png", fileName: "preview.png" },
       );
+
       expect((await fetch(previewUrl, { method: "PUT", body: outputBytes })).status).toBe(200);
     }
+
     const uploadUrl = await mediaUrl(
       client,
       claimed.request.requestId,
@@ -295,7 +313,9 @@ it.each(cases)(
           : {}),
       },
     );
+
     expect((await fetch(uploadUrl, { method: "PUT", body: outputBytes })).status).toBe(200);
+
     const complete = await client.callTool({
       name: "relanox_complete",
       arguments: {
@@ -306,6 +326,7 @@ it.each(cases)(
         attachments: [outputId],
       },
     });
+
     expect(complete).toMatchObject({ isError: false, structuredContent: { status: "completed" } });
     await expect
       .poll(async () => (await runtime.core.status()).deliveries[0]?.status, { timeout: 5000 })

@@ -15,6 +15,7 @@ import { createIrcChannel } from "../src/index.js";
 async function tcpPeer(onLine: (line: string, socket: Socket) => void) {
   const lines: string[] = [];
   const sockets: Socket[] = [];
+
   const server = createServer((socket) => {
     sockets.push(socket);
     // A peer reset is expected when the reconnect and shutdown cases close a live connection.
@@ -35,6 +36,7 @@ async function tcpPeer(onLine: (line: string, socket: Socket) => void) {
       }
     });
   });
+
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
@@ -58,6 +60,7 @@ async function tcpPeer(onLine: (line: string, socket: Socket) => void) {
   });
   return { port: address.port, lines, sockets };
 }
+
 function config(port: number) {
   return {
     server: "127.0.0.1",
@@ -70,6 +73,7 @@ function config(port: number) {
     reconnectMs: 100,
   };
 }
+
 function register(line: string, socket: Socket): void {
   if (line === "CAP LS 302") {
     socket.write(
@@ -89,6 +93,7 @@ function register(line: string, socket: Socket): void {
     socket.write(":server 001 relay :Welcome\r\n");
   }
 }
+
 function sendInput(port: number, recipient = "#room", text = "answer"): SendInput {
   return {
     deliveryId: "delivery",
@@ -125,11 +130,14 @@ it("negotiates SASL and tags, ingests channel/private text and independently wri
       socket.write(":Alice!u@h PRIVMSG #room :missing account\r\n");
     }
   });
+
   const http = await httpPeer((_request, response) => {
     json(response, {});
   });
+
   const observation = observations();
   const plugin = createIrcChannel({ IRC_SASL: "sasl-password" });
+
   const fixture = await harness(
     plugin,
     config(tcp.port),
@@ -138,6 +146,7 @@ it("negotiates SASL and tags, ingests channel/private text and independently wri
     `${http.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(
     async () =>
@@ -148,9 +157,11 @@ it("negotiates SASL and tags, ingests channel/private text and independently wri
   expect(tcp.lines).toContain("CAP REQ :account-tag server-time message-tags sasl");
   expect(tcp.lines).toContain("NICK relay");
   expect(tcp.lines).toContain("USER relay 0 * :Relanox");
+
   const sasl = tcp.lines.find(
     (line) => line.startsWith("AUTHENTICATE ") && line !== "AUTHENTICATE PLAIN",
   );
+
   if (!sasl) {
     throw new Error("Missing SASL response");
   }
@@ -214,10 +225,13 @@ it("reconnects and relies on durable msgid dedup while retaining configured acco
       socket.write("@account=alice;msgid=stable :Alice!u@h PRIVMSG #room :same event\r\n");
     }
   });
+
   const http = await httpPeer((_request, response) => {
     json(response, {});
   });
+
   const plugin = createIrcChannel({ IRC_SASL: "password" });
+
   const fixture = await harness(
     plugin,
     config(tcp.port),
@@ -225,6 +239,7 @@ it("reconnects and relies on durable msgid dedup while retaining configured acco
     ["account:alice"],
     `${http.base}/dispatch`,
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
   tcp.sockets[0]?.destroy();
@@ -235,10 +250,13 @@ it("reconnects and relies on durable msgid dedup while retaining configured acco
 
 it("enforces UTF-8 wire size, renders CRLF as message text and rejects NUL before writing", async () => {
   const tcp = await tcpPeer(register);
+
   const http = await httpPeer((_request, response) => {
     json(response, {});
   });
+
   const plugin = createIrcChannel({ IRC_SASL: "password" });
+
   const fixture = await harness(
     plugin,
     config(tcp.port),
@@ -246,6 +264,7 @@ it("enforces UTF-8 wire size, renders CRLF as message text and rejects NUL befor
     ["account:alice"],
     `${http.base}/dispatch`,
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(
     async () => (await fixture.runtime.status()).connections["channels/bot"] === "connected",
@@ -277,15 +296,19 @@ it("enforces UTF-8 wire size, renders CRLF as message text and rejects NUL befor
 
 it("requires SASL when configured and never joins after authentication failure", async () => {
   const observation = observations();
+
   const tcp = await tcpPeer((line, socket) => {
     if (line === "CAP LS 302") {
       socket.write(":server CAP relay LS :account-tag\r\n");
     }
   });
+
   const http = await httpPeer((_request, response) => {
     json(response, {});
   });
+
   const plugin = createIrcChannel({ IRC_SASL: "password" });
+
   const fixture = await harness(
     plugin,
     config(tcp.port),
@@ -294,6 +317,7 @@ it("requires SASL when configured and never joins after authentication failure",
     `${http.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(() =>
     observation.logs.some((entry) => entry.fields?.errorCode === "receive_failed"),
@@ -305,16 +329,20 @@ it("requires SASL when configured and never joins after authentication failure",
 
 it("allows explicit nickname fallback with a diagnostic and keeps secure defaults", async () => {
   const observation = observations();
+
   const tcp = await tcpPeer((line, socket) => {
     register(line, socket);
     if (line === "JOIN #room") {
       socket.write(":Alice!u@h PRIVMSG #room :legacy server\r\n");
     }
   });
+
   const http = await httpPeer((_request, response) => {
     json(response, {});
   });
+
   const plugin = createIrcChannel({ IRC_SASL: "password" });
+
   const fixture = await harness(
     plugin,
     { ...config(tcp.port), allowNickFallback: true },
@@ -323,6 +351,7 @@ it("allows explicit nickname fallback with a diagnostic and keeps secure default
     `${http.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
   await plugin.stop?.();

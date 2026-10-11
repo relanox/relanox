@@ -10,6 +10,7 @@ const infoSchema = z.object({
   mime_type: z.string().min(1).max(128),
   size: z.number().int().nonnegative(),
 });
+
 export async function receiveFiles(
   ids: readonly string[],
   host: ChannelHost,
@@ -22,11 +23,13 @@ export async function receiveFiles(
   const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]);
   for (const id of ids) {
     const url = `${base}/api/v4/files/${encodeURIComponent(id)}`;
+
     const response = await fetch(`${url}/info`, {
       headers: { Authorization: authorization },
       redirect: "error",
       signal: bound,
     });
+
     if (!response.ok) {
       await response.body?.cancel();
       throw new Error("media_metadata_failed");
@@ -35,6 +38,7 @@ export async function receiveFiles(
     if (info.id !== id || info.size > (host.maxMediaBytes ?? 16_777_216)) {
       throw new Error("invalid_media_metadata");
     }
+
     const downloaded = await downloadMedia(url, {
       maxBytes: host.maxMediaBytes ?? 16_777_216,
       signal: bound,
@@ -42,6 +46,7 @@ export async function receiveFiles(
       trustedOrigins: [new URL(base).origin],
       allowInsecureLocalhost: config.allowInsecureLocalhost,
     });
+
     attachments.push({
       kind: mediaKind(info.mime_type),
       mimeType: info.mime_type,
@@ -51,6 +56,7 @@ export async function receiveFiles(
   }
   return attachments;
 }
+
 export async function uploadFile(
   input: SendInput,
   base: string,
@@ -71,6 +77,7 @@ export async function uploadFile(
       redirect: "error",
       signal,
     });
+
     if (!response.ok) {
       await response.body?.cancel();
       const result = httpFailure(response);
@@ -78,9 +85,11 @@ export async function uploadFile(
         ? { status: "retryable", errorCode: "media_upload_failed" }
         : result;
     }
+
     const uploaded = z
       .object({ file_infos: z.array(z.object({ id: z.string().min(1).max(1024) })).length(1) })
       .parse(await readJson(response));
+
     const file = uploaded.file_infos[0];
     if (!file) {
       throw new Error("media_upload_failed");

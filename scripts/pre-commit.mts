@@ -21,6 +21,7 @@ const staged = run("git", ["diff", "--cached", "--name-only", "-z"], {
 })
   .split("\0")
   .filter(Boolean);
+
 if (staged.length > 0) {
   // Never rewrite or auto-stage a developer's partially staged changes.
   const unstaged = new Set(
@@ -30,6 +31,7 @@ if (staged.length > 0) {
       .split("\0")
       .filter(Boolean),
   );
+
   if (staged.some((file) => unstaged.has(file))) {
     process.stderr.write(
       "Partially staged files detected. Stage the reviewed formatting changes or restore the unstaged part before committing.\n",

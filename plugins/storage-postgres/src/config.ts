@@ -13,4 +13,5 @@ export const configSchema = z
     statementTimeoutMs: z.number().int().min(1).max(300_000).default(10_000),
   })
   .strict();
+
 export type PostgresConfig = z.infer<typeof configSchema>;

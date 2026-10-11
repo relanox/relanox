@@ -19,6 +19,7 @@ export function createInspectionOperations(
 > {
   const { pool, query, transaction, readInbound, readOutbound, saveInbound, saveOutbound } =
     context;
+
   return {
     async getInbound(id) {
       return readInbound(pool, id);
@@ -110,6 +111,7 @@ export function createInspectionOperations(
           `,
         )
       )[0];
+
       if (!row) {
         throw new Error("Storage aggregates unavailable");
       }
@@ -142,6 +144,7 @@ export function createInspectionOperations(
           `,
           [input.before, boundedLimit(input.limit)],
         );
+
         for (const { inbound_record: record, outbound_record: delivery } of rows) {
           await saveInbound(
             client,

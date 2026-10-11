@@ -14,10 +14,12 @@ export function createTelegramChannel(
   let host: ChannelHost;
   let account: AccountConfig;
   let config: TelegramConfig;
+
   const identity = () => ({
     botId: credential(config.botToken, environment).split(":")[0] ?? "",
     apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, ""),
   });
+
   return {
     id: "channel-telegram",
     sdkMajor: 1,
@@ -141,6 +143,7 @@ export function createTelegramChannel(
         if (input.chunk.media) {
           return await sendMedia(input, host, config, token);
         }
+
         const response = await postJson(
           `${config.apiBaseUrl.replace(/\/$/u, "")}/bot${token}/sendMessage`,
           {},
@@ -161,6 +164,7 @@ export function createTelegramChannel(
           input.signal,
           config.timeoutMs,
         );
+
         return await sendOutcome(response);
       } catch {
         return { status: "unknown", errorCode: "telegram_transport_error" };

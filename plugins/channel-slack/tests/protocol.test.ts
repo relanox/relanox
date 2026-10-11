@@ -12,12 +12,14 @@ const environment = {
   SIGN: "signing-secret",
   APP: "xapp-secret",
 };
+
 const account = {
   id: "sl",
   channel: "slack" as const,
   config: null,
   allowedSenders: ["U42"],
 };
+
 const target = {
   channel: "slack" as const,
   accountId: "sl",
@@ -26,6 +28,7 @@ const target = {
   replyToId: "1700000000.002",
   data: { teamId: "T1", appId: "A1", botId: "UBOT", apiBaseUrl: "https://slack.com/api" },
 };
+
 const event = {
   type: "event_callback",
   team_id: "T1",
@@ -40,18 +43,22 @@ const event = {
     text: "hello",
   },
 };
+
 const cleanup: (() => Promise<void>)[] = [];
+
 function readFrame(raw: RawData): unknown {
   if (!Buffer.isBuffer(raw)) {
     throw new TypeError("unexpected_socket_frame_bytes");
   }
   return JSON.parse(raw.toString("utf8"));
 }
+
 afterEach(async () => {
   for (const close of cleanup.splice(0)) {
     await close();
   }
 });
+
 async function setup(
   apiBaseUrl = "https://slack.com/api",
   socket = false,
@@ -86,6 +93,7 @@ async function setup(
     >,
   };
 }
+
 function request(
   value: unknown,
   timestamp = String(Math.floor(Date.now() / 1000)),
@@ -103,6 +111,7 @@ function request(
     },
   });
 }
+
 describe("slack native protocol", () => {
   it.each(["sender_not_allowed", "unbound_conversation"])(
     "acknowledges terminal core policy rejection: %s",
@@ -110,6 +119,7 @@ describe("slack native protocol", () => {
       const test = await setup(undefined, false, async () => {
         throw Object.assign(new Error(code), { code });
       });
+
       expect((await test.handler(request(event))).status).toBe(204);
       expect(test.received).toEqual([]);
     },
@@ -127,12 +137,14 @@ describe("slack native protocol", () => {
         throw new Error("Missing accepted reply target");
       }
       const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+
       const restarted = await setup(
         nextBase,
         false,
         undefined,
         change === "identity" ? { botUserId: "UOTHER" } : {},
       );
+
       expect(
         await restarted.plugin.send(
           sendInput(change === "legacy" ? { ...frozen, data: { teamId: "T1" } } : frozen),
@@ -149,9 +161,11 @@ describe("slack native protocol", () => {
     const remote = await peer(() => ({ body: { ok: true, ts: "1700000002.004" } }));
     cleanup.push(remote.close);
     const initial = await setup(remote.url);
+
     const restarted = await setup(`${remote.url}/`, false, undefined, {
       botToken: { env: "ROTATED" },
     });
+
     expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
     expect(remote.requests).toHaveLength(1);
   });
@@ -160,11 +174,13 @@ describe("slack native protocol", () => {
     const remote = await peer(() => ({ body: { ok: true, ts: "1700000002.004" } }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
+
     const oversized = new Request("https://relay.example/channels/sl/events", {
       method: "POST",
       headers: { "x-slack-request-timestamp": String(Math.floor(Date.now() / 1000)) },
       body: "x".repeat(1_048_577),
     });
+
     expect((await test.handler(oversized)).status).toBe(413);
     expect(test.received).toEqual([]);
     const controller = new AbortController();
@@ -218,6 +234,7 @@ describe("slack native protocol", () => {
     const test = await setup(undefined, false, async () => {
       throw new Error("storage down");
     });
+
     expect((await test.handler(request(event))).status).toBe(503);
   });
 
@@ -225,6 +242,7 @@ describe("slack native protocol", () => {
     const remote = await peer(() => ({
       body: { ok: true, ts: "1700000002.004" },
     }));
+
     cleanup.push(remote.close);
     const test = await setup(remote.url);
     expect(await test.plugin.send(sendInput(test.target))).toEqual({
@@ -286,9 +304,11 @@ describe("slack native protocol", () => {
     let connected = 0;
     const remote = await peer(() => ({ body: { ok: true, url: wsUrl } }));
     let release: (() => void) | undefined;
+
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+
     const test = await setup(remote.url, true, async () => gate);
     cleanup.push(async () => {
       await test.plugin.stop?.();
@@ -341,16 +361,20 @@ describe("slack native protocol", () => {
     await new Promise<void>((resolve) => {
       wss.once("listening", resolve);
     });
+
     const remote = await peer(() => ({
       body: {
         ok: true,
         url: `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`,
       },
     }));
+
     const frames: unknown[] = [];
+
     const test = await setup(remote.url, true, async () => {
       throw new Error("failed commit");
     });
+
     cleanup.push(async () => {
       await test.plugin.stop?.();
       for (const ws of wss.clients) {

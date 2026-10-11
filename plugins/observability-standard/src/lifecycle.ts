@@ -8,9 +8,11 @@ export async function runWithLifecycleDeadline(
     return;
   }
   const controller = new AbortController();
+
   const abort = () => {
     controller.abort();
   };
+
   signal.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(abort, timeoutMs);
   try {

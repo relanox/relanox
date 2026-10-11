@@ -15,11 +15,13 @@ const canonical = (value: unknown): string =>
       ? Object.fromEntries(Object.entries(v).toSorted(([a], [b]) => a.localeCompare(b)))
       : v,
   );
+
 function identity(owner: string, url: string, eventArgs: unknown): string {
   return `sub_${createHash("sha256")
     .update(canonical({ owner, url, name, arguments: eventArgs }))
     .digest("hex")}`;
 }
+
 export function signedHeaders(
   sub: Subscription,
   body: string,
@@ -38,9 +40,11 @@ export function signedHeaders(
     "X-MCP-Subscription-Id": sub.id,
   };
 }
+
 function callbackProtocolError(reason: string): ProtocolError {
   return new ProtocolError(-32_015, "CallbackEndpointError", { reason });
 }
+
 function rotationFields(
   old: Subscription | undefined,
   secret: string,
@@ -55,6 +59,7 @@ function rotationFields(
   }
   return {};
 }
+
 async function verifySubscription(sub: Subscription, config: DotConfig): Promise<void> {
   const challenge = randomBytes(32).toString("base64url");
   const challengeBody = JSON.stringify({ type: "verification", challenge });
@@ -67,6 +72,7 @@ async function verifySubscription(sub: Subscription, config: DotConfig): Promise
       AbortSignal.timeout(config.callback.timeoutMs),
       "body",
     );
+
     const echoed = z.strictObject({ challenge: z.string() }).safeParse(JSON.parse(response.body));
     if (
       response.status < 200 ||
@@ -83,12 +89,14 @@ async function verifySubscription(sub: Subscription, config: DotConfig): Promise
     throw callbackProtocolError(error instanceof CallbackError ? error.reason : "challenge_failed");
   }
 }
+
 export interface SubscriptionReceipt {
   readonly id: string;
   readonly refreshBefore: string;
   readonly cursor: null;
   readonly truncated: false;
 }
+
 export interface SubscriptionStore {
   activeEntries(this: void, endpointId: string): Promise<readonly StateEntry[]>;
   subscribe(
@@ -103,6 +111,7 @@ export interface SubscriptionStore {
     input: z.infer<typeof unsubscribeParams>,
   ): Promise<Record<string, never>>;
 }
+
 export function createSubscriptions(state: AgentHost["state"]): SubscriptionStore {
   async function activeEntries(endpointId: string): Promise<readonly StateEntry[]> {
     return state.list({
@@ -110,6 +119,7 @@ export function createSubscriptions(state: AgentHost["state"]): SubscriptionStor
       limit: 1000,
     });
   }
+
   async function checkSubscriptionCapacity(owner: string, now: number): Promise<void> {
     const entries = await activeEntries(owner);
     for (const entry of entries) {
@@ -121,6 +131,7 @@ export function createSubscriptions(state: AgentHost["state"]): SubscriptionStor
       throw new ProtocolError(-32_000, "subscription_limit");
     }
   }
+
   async function subscribe(
     endpoint: EndpointConfig,
     config: DotConfig,
@@ -138,9 +149,12 @@ export function createSubscriptions(state: AgentHost["state"]): SubscriptionStor
     const existing = await state.get(key);
     const old = existing ? subscriptionSchema.parse(existing.value) : undefined;
     const now = Date.now();
+
     const expiresAt =
       now + Math.min(input.ttlMs ?? config.subscriptionTtlMs, config.subscriptionTtlMs);
+
     const replacement = old !== undefined && old.secret !== input.delivery.secret;
+
     const sub: Subscription = {
       id,
       owner,
@@ -153,6 +167,7 @@ export function createSubscriptions(state: AgentHost["state"]): SubscriptionStor
       verifiedAt: now,
       ...rotationFields(old, input.delivery.secret, now, config),
     };
+
     // Verification cache is durable, short-lived and bound to owner, URL AND signing key.
     if (!old || old.expiresAt <= now || replacement || now - old.verifiedAt > 60_000) {
       await verifySubscription(sub, config);
@@ -162,12 +177,14 @@ export function createSubscriptions(state: AgentHost["state"]): SubscriptionStor
     if (!existing) {
       await checkSubscriptionCapacity(owner, now);
     }
+
     const mutation = await state.compareAndSet({
       key,
       expectedVersion: existing?.version ?? null,
       value: JSON.parse(JSON.stringify(sub)) as Json,
       expiresAt,
     });
+
     if (mutation.status !== "updated") {
       throw new ProtocolError(-32_000, "subscription_conflict");
     }
@@ -178,6 +195,7 @@ export function createSubscriptions(state: AgentHost["state"]): SubscriptionStor
       truncated: false,
     };
   }
+
   async function unsubscribe(
     endpoint: EndpointConfig,
     input: z.infer<typeof unsubscribeParams>,
@@ -190,5 +208,6 @@ export function createSubscriptions(state: AgentHost["state"]): SubscriptionStor
     }
     return {};
   }
+
   return { activeEntries, subscribe, unsubscribe };
 }

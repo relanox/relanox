@@ -32,6 +32,7 @@ export async function setupPluginHosts({
   connections,
 }: HostSetupOptions): Promise<void> {
   const storage = options.storage;
+
   const { common, mediaPublisher } = createCommonHostFactory(
     storage,
     observe,
@@ -42,6 +43,7 @@ export async function setupPluginHosts({
     options.media,
     worker.maxMediaBytes,
   );
+
   const { accountValidated, endpoints, bindings } = validatePluginConfigurations(options, config);
 
   // Populate every connection before setup callbacks can report aggregate plugin health.
@@ -56,6 +58,7 @@ export async function setupPluginHosts({
     if (!plugin) {
       throw new CoreError("channel_plugin_mismatch");
     }
+
     const host = createChannelHost({
       account,
       ...(mediaPublisher ? { mediaPublisher: mediaPublisher(account.id) } : {}),
@@ -68,6 +71,7 @@ export async function setupPluginHosts({
       worker,
       isAccepting,
     });
+
     await plugin.setup(host, jsonSnapshot(account), accountValidated.get(account.id));
   }
   for (const agent of new Set(config.endpoints.map((endpoint) => endpoint.agent))) {
@@ -76,6 +80,7 @@ export async function setupPluginHosts({
       throw new CoreError("agent_plugin_mismatch");
     }
     const agentEndpoints = config.endpoints.filter((endpoint) => endpoint.agent === agent);
+
     const host = createAgentHost({
       agent,
       agentEndpoints,
@@ -85,6 +90,7 @@ export async function setupPluginHosts({
       worker,
       channels: options.channels,
     });
+
     await plugin.setup(host, jsonSnapshot(agentEndpoints), {});
   }
 }

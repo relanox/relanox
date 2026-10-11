@@ -9,10 +9,12 @@ const requestTimeoutSchema = z.number().int().min(100).max(120_000).default(10_0
 export const nicknameSchema = z
   .string()
   .regex(/^[A-Za-z_[\]\\`^{}|][A-Za-z0-9_[\]\\`^{}|-]{0,29}$/u);
+
 export const channelSchema = z
   .string()
   .regex(/^[#&][^\s,:\0\r\n]{1,89}$/u)
   .refine((value) => Buffer.byteLength(value) <= 90);
+
 const configSchema = z.strictObject({
   server: z
     .string()
@@ -39,6 +41,7 @@ const configSchema = z.strictObject({
   timeoutMs: requestTimeoutSchema,
   reconnectMs: z.number().int().min(100).max(60_000).default(1000),
 });
+
 export type IrcConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): IrcConfig {

@@ -28,6 +28,7 @@ export function createPostgresStorage(
     ...createInspectionOperations(context),
   };
 }
+
 export const postgresStoragePlugin: StoragePlugin<PostgresConfig> = {
   id: "postgres",
   kind: "storage",

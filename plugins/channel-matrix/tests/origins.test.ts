@@ -12,6 +12,7 @@ interface OriginCase {
   config(base: string): Json;
   readonly data: Json;
 }
+
 const cases: readonly OriginCase[] = [
   {
     name: "matrix",
@@ -58,10 +59,12 @@ it.each(cases)(
   "rejects a frozen $name target when the configured server changes",
   async (example) => {
     let effects = 0;
+
     const peer = await httpPeer((_request, response) => {
       effects += 1;
       json(response, {});
     });
+
     const plugin = example.plugin();
     await harness(
       plugin,
@@ -70,6 +73,7 @@ it.each(cases)(
       ["sender"],
       `${peer.base}/dispatch`,
     );
+
     const input: SendInput = {
       deliveryId: "delivery",
       requestId: "request",
@@ -78,6 +82,7 @@ it.each(cases)(
       chunkIndex: 0,
       signal: new AbortController().signal,
     };
+
     expect(await plugin.send(input)).toEqual({ status: "rejected", errorCode: "target_mismatch" });
     expect(effects).toBe(0);
   },

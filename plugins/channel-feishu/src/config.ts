@@ -47,6 +47,7 @@ const configSchema = z.strictObject({
   apiBaseUrl: z.string().optional(),
   ...transportOptions,
 });
+
 export type FeishuConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(input: unknown): FeishuConfig {

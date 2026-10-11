@@ -2,6 +2,7 @@ import { validateConfig, validateMediaOptions } from "@relanox/core";
 import { z } from "zod";
 
 const port = z.number().int().min(0).max(65_535);
+
 export const appConfigSchema = z
   .strictObject({
     relay: z.unknown().transform(validateConfig),
@@ -31,4 +32,5 @@ export const appConfigSchema = z
       ctx.addIssue({ code: "custom", message: "Worker stale limit must exceed interval" });
     }
   });
+
 export type AppConfig = z.infer<typeof appConfigSchema>;

@@ -15,6 +15,7 @@ const message = {
   sessionWebhook: "https://secret.invalid/short-token",
   sessionWebhookExpiredTime: 1,
 };
+
 const robotFrame = (messageId: string, body: unknown) => ({
   specVersion: "1.0",
   type: "CALLBACK",
@@ -29,6 +30,7 @@ const robotFrame = (messageId: string, body: unknown) => ({
 test("DingTalk authenticates Stream, ACKs durable stable messages and sends to staff/group via OpenAPI", async () => {
   vi.stubEnv("DING_SECRET", "first-secret");
   let address = "";
+
   const remote = await peer((request) => {
     if (request.path === "/v1.0/gateway/connections/open") {
       return { body: { endpoint: address, ticket: "once-ticket" } };
@@ -44,8 +46,10 @@ test("DingTalk authenticates Stream, ACKs durable stable messages and sends to s
       },
     };
   });
+
   address = remote.ws;
   const plugin = createDingTalkChannel();
+
   const host = await assemble(
     plugin,
     {
@@ -60,6 +64,7 @@ test("DingTalk authenticates Stream, ACKs durable stable messages and sends to s
       { chatId: "group-conversation", senderId: "platform-sender" },
     ],
   );
+
   await host.start();
   expect(remote.requests[0]?.body).toEqual({
     clientId: "app",
@@ -147,9 +152,11 @@ test("DingTalk authenticates Stream, ACKs durable stable messages and sends to s
     { appKey: "app", appSecret: "first-secret" },
     { appKey: "app", appSecret: "rotated-secret" },
   ]);
+
   const single = remote.requests.find(
     (request) => request.path === "/v1.0/robot/oToMessages/batchSend",
   );
+
   expect(single?.headers["x-acs-dingtalk-access-token"]).toBe("cloud-token");
   expect(single?.body).toEqual({
     robotCode: "robot-code",
@@ -170,11 +177,14 @@ test("DingTalk authenticates Stream, ACKs durable stable messages and sends to s
 test("DingTalk never acknowledges text after a failed durable write; unmentioned groups/media/bots create no task", async () => {
   vi.stubEnv("DING_SECRET", "secret");
   let address = "";
+
   const remote = await peer(() => ({
     body: { endpoint: address, ticket: "ticket" },
   }));
+
   address = remote.ws;
   const plugin = createDingTalkChannel();
+
   const host = await assemble(
     plugin,
     {
@@ -186,6 +196,7 @@ test("DingTalk never acknowledges text after a failed durable write; unmentioned
     },
     [{ chatId: "staff", senderId: "platform-sender" }],
   );
+
   await host.start();
   const socket = remote.sockets[0];
   if (!socket) {
@@ -257,11 +268,13 @@ test.each([
   },
 ])("DingTalk preserves the remote outcome $result.errorCode", async ({ reply, result }) => {
   vi.stubEnv("DING_SECRET", "secret");
+
   const remote = await peer((request) =>
     request.path === "/v1.0/oauth2/accessToken"
       ? { body: { accessToken: "token", expireIn: 7200 } }
       : reply,
   );
+
   const plugin = createDingTalkChannel();
   await assemble(
     plugin,

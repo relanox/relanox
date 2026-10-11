@@ -18,6 +18,7 @@ afterEach(async () => {
 const issuer = "https://accounts.google.com";
 const audience = "https://relay.example/channels/business/webhook";
 const caller = "chat@system.gserviceaccount.com";
+
 const body = JSON.stringify({
   type: "MESSAGE",
   space: { name: "spaces/space" },
@@ -29,6 +30,7 @@ const body = JSON.stringify({
     thread: { name: "spaces/space/threads/thread" },
   },
 });
+
 async function setup(filename = ":memory:", baseSuffix = "") {
   const remote = await peer();
   cleanup.push(remote.close);
@@ -44,6 +46,7 @@ async function setup(filename = ":memory:", baseSuffix = "") {
     }),
   );
   remote.respond(200, { name: "spaces/space/messages/sent" });
+
   const config: Json = {
     audience,
     serviceAccount: { env: "CHAT_SERVICE" },
@@ -52,7 +55,9 @@ async function setup(filename = ":memory:", baseSuffix = "") {
     jwksUrl: `${remote.base}/keys`,
     allowLoopback: true,
   };
+
   const plugin = createGoogleChatChannel();
+
   const local = await harness(
     plugin,
     config,
@@ -62,7 +67,9 @@ async function setup(filename = ":memory:", baseSuffix = "") {
     filename,
     remote.base,
   );
+
   cleanup.push(local.close);
+
   async function token(
     overrides: {
       iss?: string;
@@ -83,6 +90,7 @@ async function setup(filename = ":memory:", baseSuffix = "") {
       .setExpirationTime(overrides.exp ?? "5m")
       .sign(keys.privateKey);
   }
+
   async function incoming(overrides?: Parameters<typeof token>[0], data = body) {
     return new Request("http://local/channels/business/webhook", {
       method: "POST",
@@ -90,6 +98,7 @@ async function setup(filename = ":memory:", baseSuffix = "") {
       body: data,
     });
   }
+
   return { remote, keys, config, plugin, incoming, ...local };
 }
 
@@ -112,11 +121,13 @@ describe("native Google Chat", () => {
       if (!assertion) {
         throw new Error("Missing OAuth assertion");
       }
+
       const verified = await jwtVerify(assertion, local.keys.publicKey, {
         algorithms: ["RS256"],
         issuer: "relay@example.iam.gserviceaccount.com",
         audience: `${local.remote.base}/token`,
       });
+
       expect(verified.payload.scope).toBe("https://www.googleapis.com/auth/chat.bot");
       const sent = local.remote.traffic.find((request) => request.path.startsWith("/v1/"));
       expect(sent?.path).toBe("/v1/spaces/space/messages?messageReplyOption=REPLY_MESSAGE_OR_FAIL");
@@ -144,6 +155,7 @@ describe("native Google Chat", () => {
   it("rejects invalid signatures and ignores app-authored/non-text events", async () => {
     const local = await setup();
     const foreign = await generateKeyPair("RS256");
+
     const token = await new SignJWT({ email: caller, email_verified: true })
       .setProtectedHeader({ alg: "RS256", kid: "google-key" })
       .setIssuer(issuer)
@@ -151,6 +163,7 @@ describe("native Google Chat", () => {
       .setIssuedAt()
       .setExpirationTime("5m")
       .sign(foreign.privateKey);
+
     expect(
       (
         await local.core.fetch(
@@ -189,11 +202,14 @@ describe("native Google Chat", () => {
           }),
         );
       }
+
       const config = {
         ...local.config,
         ...(change === "server" ? { apiBase: replacement.base } : {}),
       };
+
       const plugin = createGoogleChatChannel();
+
       const reopened = await harness(
         plugin,
         config,
@@ -202,11 +218,13 @@ describe("native Google Chat", () => {
         "spaces/space/threads/thread",
         filename,
       );
+
       cleanup.push(reopened.close);
       const item = (await reopened.storage.listInbound({ limit: 10 }))[0];
       if (!item) {
         throw new Error("Missing frozen target");
       }
+
       const input: SendInput = {
         deliveryId: "delivery",
         requestId: item.snapshot.requestId,
@@ -215,6 +233,7 @@ describe("native Google Chat", () => {
         target: item.snapshot.target,
         chunk: { text: "answer", idempotencyKey: "delivery:0", state: null },
       };
+
       expect(await plugin.send(input)).toMatchObject({ status: "rejected" });
       expect(
         [...local.remote.traffic, ...replacement.traffic].filter((entry) =>
@@ -232,6 +251,7 @@ describe("native Google Chat", () => {
         }),
       );
       const restoredPlugin = createGoogleChatChannel();
+
       const restored = await harness(
         restoredPlugin,
         local.config,
@@ -240,6 +260,7 @@ describe("native Google Chat", () => {
         "spaces/space/threads/thread",
         filename,
       );
+
       cleanup.push(restored.close);
       const legacy = z.record(z.string(), z.json()).parse(input.target.data);
       delete legacy.scope;
@@ -324,6 +345,7 @@ it("downloads pure Google Chat media with bot auth and returns a native image ca
   local.remote.route("/v1/media/spaces/space/messages/media/attachments/file?alt=media", bytes, {
     "content-type": "image/png",
   });
+
   const mediaEvent = {
     type: "MESSAGE",
     space: { name: "spaces/space" },
@@ -340,6 +362,7 @@ it("downloads pure Google Chat media with bot auth and returns a native image ca
       ],
     },
   };
+
   expect(
     (await local.core.fetch(await local.incoming(undefined, JSON.stringify(mediaEvent)))).status,
   ).toBe(200);
@@ -353,17 +376,21 @@ it("downloads pure Google Chat media with bot auth and returns a native image ca
   if (claim.status !== "claimed") {
     throw new Error("claim_failed");
   }
+
   const media = await scoped.media?.read({
     requestId: item.requestId,
     claimToken: claim.claimToken,
     mediaId: item.attachments[0].id,
   });
+
   if (!media) {
     throw new Error("missing_media_bytes");
   }
+
   const storageFailure = vi
     .spyOn(local.storage, "getInbound")
     .mockRejectedValueOnce(new Error("storage_temporarily_unavailable"));
+
   expect(
     await local.plugin.send({
       deliveryId: "publication-attempt",
@@ -389,14 +416,17 @@ it("downloads pure Google Chat media with bot auth and returns a native image ca
   await local.core.processDue();
   const download = local.remote.traffic.find((request) => request.path.startsWith("/v1/media/"));
   expect(download?.headers.authorization).toBe("Bearer oauth-token");
+
   const sent = local.remote.traffic.filter((request) =>
     request.path.startsWith("/v1/spaces/space/messages"),
   );
+
   expect(sent).toHaveLength(2);
   expect(JSON.parse(sent[0]?.body ?? "null") as unknown).toEqual({
     text: "caption",
     thread: { name: "spaces/space/threads/thread" },
   });
+
   const card = z
     .object({
       cardsV2: z.array(
@@ -417,6 +447,7 @@ it("downloads pure Google Chat media with bot auth and returns a native image ca
       thread: z.object({ name: z.string() }),
     })
     .parse(JSON.parse(sent[1]?.body ?? "null"));
+
   expect(card.thread.name).toBe("spaces/space/threads/thread");
   const image = card.cardsV2[0]?.card.sections[0]?.widgets[0]?.image;
   expect(image?.altText).toBe("picture.png");

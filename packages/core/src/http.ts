@@ -14,9 +14,11 @@ export function createHttpHandler(
     const start = Date.now();
     try {
       const path = new URL(request.url).pathname;
+
       const route = [...routes].find(([pattern]) =>
         pattern.endsWith("*") ? path.startsWith(pattern.slice(0, -1)) : path === pattern,
       )?.[1];
+
       const denied = await route?.authorize(request);
       if (denied) {
         void request.body?.cancel().catch(() => {});
@@ -45,6 +47,7 @@ export function createHttpHandler(
     }
   };
 }
+
 async function boundedRequest(
   request: Request,
   maximum: number,
@@ -62,6 +65,7 @@ async function boundedRequest(
   let onAbort: (() => void) | undefined;
   const chunks: Uint8Array[] = [];
   let size = 0;
+
   const read = async () => {
     while (true) {
       const { value, done } = await reader.read();
@@ -82,6 +86,7 @@ async function boundedRequest(
     }
     return new Request(request, { method: request.method, body: bytes });
   };
+
   try {
     return await Promise.race([
       read(),

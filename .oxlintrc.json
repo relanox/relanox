@@ -125,7 +125,70 @@
     "vitest/prefer-to-be-falsy": "off",
     "unicorn/number-literal-case": "off",
     "eslint/complexity": ["error", 20],
-    "eslint/max-depth": ["error", 4]
+    "eslint/max-depth": ["error", 4],
+    "stylistic/padding-line-between-statements": [
+      "error",
+      {
+        "prev": "*",
+        "blankLine": "always",
+        "next": [
+          "function",
+          "class",
+          "interface",
+          "type",
+          "enum",
+          "multiline-export",
+          "multiline-const",
+          "multiline-let"
+        ]
+      },
+      {
+        "prev": [
+          "function",
+          "class",
+          "interface",
+          "type",
+          "enum",
+          "multiline-export",
+          "multiline-const",
+          "multiline-let"
+        ],
+        "blankLine": "always",
+        "next": "*"
+      },
+      {
+        "prev": "import",
+        "blankLine": "always",
+        "next": "*"
+      },
+      {
+        "prev": "import",
+        "blankLine": "any",
+        "next": "import"
+      },
+      {
+        "prev": "function-overload",
+        "blankLine": "any",
+        "next": ["function-overload", "function"]
+      }
+    ],
+    "stylistic/lines-between-class-members": [
+      "error",
+      {
+        "enforce": [
+          {
+            "prev": "method",
+            "blankLine": "always",
+            "next": "*"
+          },
+          {
+            "prev": "*",
+            "blankLine": "always",
+            "next": "method"
+          }
+        ]
+      }
+    ]
   },
   "overrides": [
     {
@@ -161,6 +224,12 @@
           }
         ]
       }
+    }
+  ],
+  "jsPlugins": [
+    {
+      "specifier": "@stylistic/eslint-plugin",
+      "name": "stylistic"
     }
   ]
 }

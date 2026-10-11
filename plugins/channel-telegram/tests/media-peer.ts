@@ -7,6 +7,7 @@ export interface MediaTraffic {
   readonly headers: IncomingHttpHeaders;
   readonly data: Uint8Array;
 }
+
 export interface MediaReply {
   readonly status?: number;
   readonly json?: unknown;
@@ -14,8 +15,10 @@ export interface MediaReply {
   readonly mimeType?: string;
   readonly drop?: boolean;
 }
+
 export async function mediaPeer(reply: (traffic: MediaTraffic) => MediaReply) {
   const traffic: MediaTraffic[] = [];
+
   async function receive(request: IncomingMessage, response: ServerResponse) {
     const chunks: Uint8Array[] = [];
     for await (const part of request) {
@@ -25,12 +28,14 @@ export async function mediaPeer(reply: (traffic: MediaTraffic) => MediaReply) {
       }
       chunks.push(value);
     }
+
     const item = {
       method: request.method ?? "",
       path: request.url ?? "",
       headers: request.headers,
       data: Buffer.concat(chunks),
     };
+
     traffic.push(item);
     const result = reply(item);
     if (result.drop) {
@@ -42,9 +47,11 @@ export async function mediaPeer(reply: (traffic: MediaTraffic) => MediaReply) {
     });
     response.end(result.data ?? JSON.stringify(result.json ?? {}));
   }
+
   const server = createServer((request, response) => {
     void receive(request, response).catch(() => response.destroy());
   });
+
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
@@ -69,9 +76,11 @@ export async function mediaPeer(reply: (traffic: MediaTraffic) => MediaReply) {
       }),
   };
 }
+
 export function trafficJson(traffic: MediaTraffic): unknown {
   return JSON.parse(new TextDecoder().decode(traffic.data));
 }
+
 export function multipart(traffic: MediaTraffic): Promise<FormData> {
   return new Request("http://peer.local/", {
     method: "POST",
@@ -79,6 +88,7 @@ export function multipart(traffic: MediaTraffic): Promise<FormData> {
     body: new Uint8Array(traffic.data),
   }).formData();
 }
+
 export function formJson(form: FormData, key: string): unknown {
   const value = form.get(key);
   if (typeof value !== "string") {

@@ -22,6 +22,7 @@ function config(base: string) {
     reconnectMs: 100,
   };
 }
+
 function envelope(sender: string, text: string, groupId?: string, account = "+10000000001") {
   return {
     account,
@@ -37,6 +38,7 @@ function envelope(sender: string, text: string, groupId?: string, account = "+10
     },
   };
 }
+
 function frame(response: ServerResponse, value: unknown, id: string): void {
   const encoded = JSON.stringify(value);
   const separator = encoded.indexOf(",");
@@ -46,6 +48,7 @@ function frame(response: ServerResponse, value: unknown, id: string): void {
   response.write(bytes.subarray(0, middle));
   response.write(bytes.subarray(middle));
 }
+
 function sendInput(base: string): SendInput {
   return {
     deliveryId: "delivery",
@@ -61,6 +64,7 @@ function sendInput(base: string): SendInput {
     signal: new AbortController().signal,
   };
 }
+
 const rpcRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.string(),
@@ -84,6 +88,7 @@ it.each([
   "persists group recipient %s as %s without replaying partial sends",
   async (type, status) => {
     let sends = 0;
+
     const peer = await httpPeer(async (request, response) => {
       if (request.url?.startsWith("/api/v1/events")) {
         response.writeHead(200, { "Content-Type": "text/event-stream" });
@@ -112,7 +117,9 @@ it.each([
       }
       json(response, {});
     });
+
     const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
+
     const fixture = await harness(
       plugin,
       config(peer.base),
@@ -120,13 +127,16 @@ it.each([
       ["alice-uuid"],
       `${peer.base}/dispatch`,
     );
+
     await plugin.start?.(new AbortController().signal);
     await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
     await plugin.stop?.();
     await fixture.runtime.processDue();
+
     const pending = (
       await fixture.storage.listPending({ agent: "grok", endpointIds: ["worker"], limit: 10 })
     )[0];
+
     if (!pending) {
       throw new Error("Missing group request");
     }
@@ -142,6 +152,7 @@ it("ingests SSE envelopes and independently sends direct and group replies throu
   const streams: { account: string | null; authorization: string | undefined }[] = [];
   const rpcs: z.infer<typeof rpcRequestSchema>[] = [];
   const dispatches: unknown[] = [];
+
   const peer = await httpPeer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://peer");
     if (url.pathname === "/api/v1/events") {
@@ -173,7 +184,9 @@ it("ingests SSE envelopes and independently sends direct and group replies throu
     dispatches.push(data);
     json(response, {});
   });
+
   const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer proxy-secret" });
+
   const fixture = await harness(
     plugin,
     config(peer.base),
@@ -181,6 +194,7 @@ it("ingests SSE envelopes and independently sends direct and group replies throu
     ["alice-uuid"],
     `${peer.base}/dispatch`,
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(
     async () =>
@@ -237,6 +251,7 @@ it("ingests SSE envelopes and independently sends direct and group replies throu
 
 it("reloads committed Last-Event-ID and deduplicates by sender, timestamp and conversation after restart", async () => {
   const lastIds: (string | undefined)[] = [];
+
   const peer = await httpPeer((request, response) => {
     if (!request.url?.startsWith("/api/v1/events")) {
       json(response, {});
@@ -250,8 +265,10 @@ it("reloads committed Last-Event-ID and deduplicates by sender, timestamp and co
       frame(response, envelope("bob-uuid", "same timestamp other sender"), "daemon-second");
     }
   });
+
   const firstPlugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
   const chats = [{ chatId: "direct:alice-uuid" }, { chatId: "direct:bob-uuid" }];
+
   const first = await harness(
     firstPlugin,
     config(peer.base),
@@ -259,6 +276,7 @@ it("reloads committed Last-Event-ID and deduplicates by sender, timestamp and co
     ["alice-uuid", "bob-uuid"],
     `${peer.base}/dispatch`,
   );
+
   await firstPlugin.start?.(new AbortController().signal);
   await waitFor(
     async () =>
@@ -268,6 +286,7 @@ it("reloads committed Last-Event-ID and deduplicates by sender, timestamp and co
   await firstPlugin.stop?.();
   await first.storage.close();
   const nextPlugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
+
   const next = await harness(
     nextPlugin,
     config(peer.base),
@@ -276,6 +295,7 @@ it("reloads committed Last-Event-ID and deduplicates by sender, timestamp and co
     `${peer.base}/dispatch`,
     { filename: first.filename },
   );
+
   await nextPlugin.start?.(new AbortController().signal);
   await waitFor(
     async () =>
@@ -296,21 +316,26 @@ it("preserves Last-Event-ID when valid ingest fails in real storage and replays 
   const lastIds: (string | undefined)[] = [];
   let release: (() => void) | undefined;
   const observation = observations();
+
   const peer = await httpPeer((request, response) => {
     const lastId = request.headers["last-event-id"];
     lastIds.push(typeof lastId === "string" ? lastId : undefined);
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     response.flushHeaders();
+
     const send = () => {
       frame(response, envelope("alice-uuid", "recover me"), "new-cursor");
     };
+
     if (lastIds.length === 1) {
       release = send;
     } else {
       send();
     }
   });
+
   const firstPlugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
+
   const first = await harness(
     firstPlugin,
     config(peer.base),
@@ -319,6 +344,7 @@ it("preserves Last-Event-ID when valid ingest fails in real storage and replays 
     `${peer.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await first.storage.compareAndSetState(
     { pluginId: "channel-signal", ownerId: "bot" },
     { key: "events", expectedVersion: null, value: "old-cursor" },
@@ -332,6 +358,7 @@ it("preserves Last-Event-ID when valid ingest fails in real storage and replays 
   );
   await firstPlugin.stop?.();
   const nextPlugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
+
   const next = await harness(
     nextPlugin,
     config(peer.base),
@@ -340,6 +367,7 @@ it("preserves Last-Event-ID when valid ingest fails in real storage and replays 
     `${peer.base}/dispatch`,
     { filename: first.filename },
   );
+
   await nextPlugin.start?.(new AbortController().signal);
   await waitFor(
     async () =>
@@ -363,6 +391,7 @@ it.each(["mismatched-id", "rpc-error"] as const)(
           : { jsonrpc: "2.0", id: rpc.id, error: { code: -32_603, message: "upstream uncertain" } },
       );
     });
+
     const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
     await harness(
       plugin,
@@ -384,6 +413,7 @@ it.each([
     response.setHeader("Retry-After", "7");
     json(response, {}, status);
   });
+
   const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
   await harness(
     plugin,
@@ -401,11 +431,14 @@ it.each([
 
 it("diagnoses malformed SSE without advancing its durable replay cursor", async () => {
   const observation = observations();
+
   const peer = await httpPeer((_request, response) => {
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     response.write("id: broken\ndata: {invalid-json\n\n");
   });
+
   const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: "Bearer credential" });
+
   const fixture = await harness(
     plugin,
     config(peer.base),
@@ -414,6 +447,7 @@ it("diagnoses malformed SSE without advancing its durable replay cursor", async 
     `${peer.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(() =>
     observation.logs.some((entry) => entry.fields?.errorCode === "receive_failed"),

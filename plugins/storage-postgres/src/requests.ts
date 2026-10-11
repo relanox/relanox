@@ -20,16 +20,19 @@ export function createRequestOperations(
             [snapshot.source.channel, snapshot.source.accountId, snapshot.source.eventId],
           )
         )[0];
+
         if (existing) {
           return { requestId: existing.id, duplicate: true };
         }
         validateIncoming(snapshot, media);
+
         const record: InboundRecord = {
           snapshot,
           status: "pending",
           version: 1,
           dispatch: { status: "due", attempts: 0, dueAt: snapshot.acceptedAt },
         };
+
         const inserted = await query<{ id: string }>(
           client,
           `
@@ -50,10 +53,12 @@ export function createRequestOperations(
             encodeDurableRecord(record),
           ],
         );
+
         if (inserted.length > 0) {
           await insertIncomingMedia(context, client, snapshot.requestId, media);
           return { requestId: snapshot.requestId, duplicate: false };
         }
+
         const original = (
           await query<{ id: string }>(
             client,
@@ -61,6 +66,7 @@ export function createRequestOperations(
             [snapshot.source.channel, snapshot.source.accountId, snapshot.source.eventId],
           )
         )[0];
+
         if (!original) {
           throw new Error("Concurrent source key is unavailable");
         }
@@ -144,11 +150,13 @@ export function createRequestOperations(
               [input.requestId],
             )
           )[0];
+
           const delivery = (
             await query<{ id: string }>(client, "SELECT id FROM outbound WHERE request_id=$1", [
               input.requestId,
             ])
           )[0];
+
           return record.result?.resultId === input.result.resultId &&
             row?.final_digest === resultDigest(input.result) &&
             delivery
@@ -168,6 +176,7 @@ export function createRequestOperations(
         if (!matchesInitialResult(delivery, record, input)) {
           return { status: "conflict" };
         }
+
         const inserted = await query(
           client,
           `
@@ -185,6 +194,7 @@ export function createRequestOperations(
             encodeDurableRecord(delivery),
           ],
         );
+
         if (inserted.length === 0) {
           return { status: "conflict" };
         }

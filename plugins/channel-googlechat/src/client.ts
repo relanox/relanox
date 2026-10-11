@@ -11,6 +11,7 @@ export async function accessToken(
 ): Promise<string | SendResult> {
   const service = serviceSchema.parse(JSON.parse(secret(config.serviceAccount)) as unknown);
   const key = await importPKCS8(service.private_key, "RS256");
+
   const assertion = await new SignJWT({ scope: "https://www.googleapis.com/auth/chat.bot" })
     .setProtectedHeader({ alg: "RS256" })
     .setIssuer(service.client_email)
@@ -18,6 +19,7 @@ export async function accessToken(
     .setIssuedAt()
     .setExpirationTime("1h")
     .sign(key);
+
   const response = await request(
     validateEndpointUrl(config.tokenUrl, config.allowLoopback),
     {
@@ -30,6 +32,7 @@ export async function accessToken(
     },
     signal,
   );
+
   if (!response.ok) {
     return response.status >= 500
       ? { status: "retryable", errorCode: "oauth_unavailable" }

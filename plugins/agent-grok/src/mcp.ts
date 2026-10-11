@@ -12,6 +12,7 @@ async function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): Pr
     // Cancellation is best effort after the response has already been decided.
   }
 }
+
 /** All checks precede MCP parsing and Host access, including streamed/dishonest bodies. */
 export async function guard(request: Request, config: McpConfig): Promise<Request | Response> {
   const url = new URL(request.url);
@@ -49,9 +50,11 @@ export async function guard(request: Request, config: McpConfig): Promise<Reques
   const chunks: Uint8Array[] = [];
   let size = 0;
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(config.timeoutMs)]);
+
   const abort = () => {
     void cancelReader(reader);
   };
+
   signal.addEventListener("abort", abort, { once: true });
   try {
     while (true) {
@@ -83,6 +86,7 @@ export async function guard(request: Request, config: McpConfig): Promise<Reques
 }
 
 const id = z.string().min(1).max(1024);
+
 const requestSchema = z.strictObject({
   requestId: id,
   text: z.string(),
@@ -103,6 +107,7 @@ const requestSchema = z.strictObject({
     .optional(),
   source: z.strictObject({ channel: z.string(), eventId: id }),
 });
+
 function envelope(value: Record<string, unknown>, isError = false): CallToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(value) }],
@@ -110,6 +115,7 @@ function envelope(value: Record<string, unknown>, isError = false): CallToolResu
     isError,
   };
 }
+
 export function registerTools(server: McpServer, host: ScopedAgentHost): void {
   const annotations = (readOnly: boolean) => ({
     readOnlyHint: readOnly,
@@ -117,6 +123,7 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
     idempotentHint: true,
     openWorldHint: false,
   });
+
   server.registerTool(
     "relanox_list_pending",
     {
@@ -131,6 +138,7 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
     async ({ limit }) =>
       envelope({ requests: (await host.listPending(limit)).map(projectAgentRequest) }),
   );
+
   const claimOutput = z.union([
     z.strictObject({
       status: z.literal("claimed"),
@@ -140,6 +148,7 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
     }),
     z.strictObject({ status: z.enum(["busy", "not_found", "not_pending"]) }),
   ]);
+
   server.registerTool(
     "relanox_claim",
     {
@@ -182,10 +191,12 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
     },
     async (input) => {
       const { attachments, ...completion } = input;
+
       const result = await host.complete({
         ...completion,
         ...(attachments ? { attachments } : {}),
       });
+
       return envelope(result, result.status !== "completed");
     },
   );

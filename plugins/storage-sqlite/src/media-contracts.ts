@@ -19,6 +19,7 @@ export function validMedia(media: StoredMedia): boolean {
     ref.sha256 === createHash("sha256").update(media.data).digest("hex")
   );
 }
+
 export function validateIncoming(snapshot: InboundSnapshot, media: readonly StoredMedia[]): void {
   const refs = snapshot.attachments ?? [];
   if (
@@ -31,6 +32,7 @@ export function validateIncoming(snapshot: InboundSnapshot, media: readonly Stor
     throw new TypeError("Inbound media does not match snapshot");
   }
 }
+
 export const sameReference = (left: MediaReference, right: MediaReference): boolean =>
   equalDurableValues(left, right);
 

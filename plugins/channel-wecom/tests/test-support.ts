@@ -18,18 +18,21 @@ afterEach(async () => {
   }
   vi.unstubAllEnvs();
 });
+
 export interface HttpRequest {
   readonly method: string;
   readonly path: string;
   readonly headers: IncomingHttpHeaders;
   readonly body: unknown;
 }
+
 export interface HttpReply {
   readonly status?: number;
   readonly headers?: Record<string, string>;
   readonly body?: unknown;
   readonly disconnect?: boolean;
 }
+
 export async function peer(
   handle: (request: HttpRequest) => HttpReply | Promise<HttpReply>,
   connected: (socket: WebSocket) => void = () => {},
@@ -37,6 +40,7 @@ export async function peer(
   const requests: HttpRequest[] = [];
   const frames: unknown[] = [];
   const sockets: WebSocket[] = [];
+
   const server = createServer((request, response) => {
     void (async () => {
       const chunks: Buffer[] = [];
@@ -54,12 +58,14 @@ export async function peer(
           ? (JSON.parse(bytes) as unknown)
           : raw;
       }
+
       const input = {
         method: request.method ?? "GET",
         path: request.url ?? "/",
         headers: request.headers,
         body,
       };
+
       requests.push(input);
       const reply = await handle(input);
       if (reply.disconnect) {
@@ -76,6 +82,7 @@ export async function peer(
       response.end();
     });
   });
+
   const ws = new WebSocketServer({ server });
   ws.on("connection", (socket) => {
     sockets.push(socket);
@@ -118,11 +125,13 @@ export async function peer(
     ws: `ws://127.0.0.1:${address.port}`,
   };
 }
+
 export async function temporaryDatabase(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "relanox-china-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   return join(directory, "state.db");
 }
+
 export async function assemble<C>(
   plugin: ChannelPlugin<C>,
   config: Json,
@@ -141,12 +150,14 @@ export async function assemble<C>(
       },
     },
   );
+
   await storage.initialize();
   cleanup.push(async () => {
     await plugin.stop?.();
     await storage.close();
   });
   let agentHost: AgentHost | undefined;
+
   const agent: AgentPlugin<unknown> = {
     id: "grok",
     agent: "grok",
@@ -161,6 +172,7 @@ export async function assemble<C>(
       throw new Error("Pull endpoint must not dispatch");
     },
   };
+
   const runtime = await createCore({
     ...(publicBaseUrl ? { media: { publicBaseUrl, allowInsecureLocalhost: true } } : {}),
     config: {
@@ -185,6 +197,7 @@ export async function assemble<C>(
     channels: new Map([["bot", plugin as ChannelPlugin<unknown>]]),
     agents: new Map([["grok", agent]]),
   });
+
   const controller = new AbortController();
   cleanup.push(async () => {
     controller.abort();
@@ -203,9 +216,11 @@ export async function assemble<C>(
     start: async () => plugin.start?.(controller.signal),
   };
 }
+
 export async function records(storage: Storage) {
   return storage.listInbound({ limit: 100 });
 }
+
 export function sendInput(
   channel: SendInput["target"]["channel"],
   chatId: string,

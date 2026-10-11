@@ -17,13 +17,16 @@ const excludedRanges = [
   ["203.0.113.0", 24],
   ["224.0.0.0", 3],
 ] as const;
+
 function ipv4Number(address: string): number {
   return address.split(".").reduce((value, part) => value * 256 + Number(part), 0);
 }
+
 const excludedBounds = excludedRanges.map(([address, prefix]) => {
   const start = ipv4Number(address);
   return { start, end: start + 2 ** (32 - prefix) };
 });
+
 function isPublicAddress(address: string): boolean {
   if (isIP(address) === 4) {
     const value = ipv4Number(address);
@@ -49,6 +52,7 @@ function isPublicAddress(address: string): boolean {
 /** DNS answers are checked together and the selected address is pinned for the actual request. */
 export async function resolveMediaAddress(hostname: string, trusted: boolean, signal: AbortSignal) {
   let onAbort: (() => void) | undefined;
+
   const aborted = new Promise<never>((_resolve, reject) => {
     onAbort = () => {
       reject(new MediaDownloadError("media_timeout"));
@@ -59,6 +63,7 @@ export async function resolveMediaAddress(hostname: string, trusted: boolean, si
       signal.addEventListener("abort", onAbort, { once: true });
     }
   });
+
   try {
     const addresses = await Promise.race([
       isIP(hostname) === 0
@@ -66,6 +71,7 @@ export async function resolveMediaAddress(hostname: string, trusted: boolean, si
         : Promise.resolve([{ address: hostname, family: isIP(hostname) }]),
       aborted,
     ]);
+
     const address = addresses[0];
     if (
       !address ||

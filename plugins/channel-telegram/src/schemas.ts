@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const targetSchema = z.object({ botId: z.string(), apiBaseUrl: z.string() });
+
 const fileSchema = z.looseObject({
   file_id: z.string().min(1),
   file_size: z.number().int().nonnegative().optional(),
@@ -12,6 +13,7 @@ const fileSchema = z.looseObject({
     .max(Number.MAX_SAFE_INTEGER / 1000)
     .optional(),
 });
+
 const messageSchema = z.looseObject({
   message_id: z.number().int().positive(),
   message_thread_id: z.number().int().positive().optional(),
@@ -30,10 +32,12 @@ const messageSchema = z.looseObject({
   video_note: fileSchema.optional(),
   document: fileSchema.optional(),
 });
+
 export const updateSchema = z.looseObject({
   update_id: z.number().int().nonnegative(),
   message: messageSchema.optional(),
 });
+
 export const responseSchema = z.looseObject({
   ok: z.boolean(),
   result: z.looseObject({ message_id: z.number().int() }).optional(),

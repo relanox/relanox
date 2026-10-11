@@ -6,6 +6,7 @@ const relationSchema = z.object({
   event_id: platformIdSchema.optional(),
   "m.in_reply_to": z.object({ event_id: platformIdSchema }).optional(),
 });
+
 export const eventSchema = z.object({
   event_id: platformIdSchema,
   sender: platformIdSchema,
@@ -13,10 +14,12 @@ export const eventSchema = z.object({
   origin_server_ts: z.number().int().nonnegative().optional(),
   content: z.record(z.string(), z.unknown()),
 });
+
 const timelineSchema = z.object({
   events: z.array(eventSchema),
   limited: z.boolean().optional(),
 });
+
 export const syncSchema = z.object({
   next_batch: platformIdSchema,
   rooms: z
@@ -25,6 +28,7 @@ export const syncSchema = z.object({
     })
     .optional(),
 });
+
 export const textSchema = z.object({
   msgtype: z.literal("m.text"),
   body: z.string().min(1),

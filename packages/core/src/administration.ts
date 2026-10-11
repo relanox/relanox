@@ -22,11 +22,13 @@ export function createAdministration(
     health,
     async status(filter) {
       const bounded = { ...filter, limit: limit(filter?.limit ?? 100) };
+
       const [stats, requests, deliveries] = await Promise.all([
         storage.getStats(),
         storage.listInbound(bounded),
         storage.listOutbound(bounded),
       ]);
+
       return {
         stats,
         connections: Object.fromEntries(connections),

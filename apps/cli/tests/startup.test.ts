@@ -50,6 +50,7 @@ test("accepts native text during another channel's initialization while manageme
   const peers = await nativePeers();
   cleanups.push(peers.close);
   const managementPort = await freeManagementPort();
+
   const config = {
     relay: {
       ...value.config.relay,
@@ -86,6 +87,7 @@ test("accepts native text during another channel's initialization while manageme
     },
     server: { ...value.config.server, managementPort, startupTimeoutMs: 5000 },
   };
+
   const starting = startRuntime(config);
   let runtime: Awaited<ReturnType<typeof startRuntime>> | null = null;
   void starting.catch(() => {});
@@ -97,11 +99,13 @@ test("accepts native text during another channel's initialization while manageme
       .poll(async () => (await value.database.getStats()).pending, { timeout: 1000 })
       .toBe(1);
     expect(peers.fastClosed).toBe(false);
+
     const [request] = await value.database.listPending({
       agent: "grok",
       endpointIds: ["agent"],
       limit: 10,
     });
+
     expect(request).toMatchObject({
       text: "message during startup",
       source: { channel: "wecom", accountId: "fast", eventId: "startup-event" },
@@ -138,10 +142,12 @@ async function recoveredNotification() {
     acceptedAt: 1,
     endpoint: agent,
   });
+
   const config = {
     relay: { ...value.config.relay, endpoints: [agent] },
     server: { ...value.config.server, startupTimeoutMs: 100, shutdownTimeoutMs: 1000 },
   };
+
   return { ...value, remote, config };
 }
 
@@ -155,9 +161,11 @@ test("returns from startup before a valid initial backlog receipt and gates read
     runtime = await deadline(starting, 400);
     expect((await fetch(`${runtime.managementUrl}/health/ready`)).status).toBe(503);
     expect(value.remote.requests).toHaveLength(1);
+
     const notification = z
       .object({ content: z.string() })
       .parse(JSON.parse(value.remote.requests[0]?.body ?? "null") as unknown);
+
     expect(JSON.parse(notification.content) as unknown).toMatchObject({
       requestId: "recovered-request",
       text: "persisted backlog",
@@ -190,10 +198,12 @@ test("shutdown waits for the asynchronously launched first batch to settle in re
     acceptedAt: 2,
     endpoint: second,
   });
+
   const config = {
     ...value.config,
     relay: { ...value.config.relay, endpoints: [...value.config.relay.endpoints, second] },
   };
+
   const starting = startRuntime(config);
   let runtime: Awaited<ReturnType<typeof startRuntime>> | null = null;
   void starting.catch(() => {});
@@ -201,10 +211,12 @@ test("shutdown waits for the asynchronously launched first batch to settle in re
     await deadline(value.remote.received, 1000);
     runtime = await deadline(starting, 400);
     let stopped = false;
+
     const stopping = runtime.stop().then(() => {
       stopped = true;
       return true;
     });
+
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 40);
     });
@@ -239,6 +251,7 @@ test("contains a real first-scan SQLite lock failure and recovers readiness afte
   const peers = await nativePeers();
   cleanups.push(peers.close);
   vi.stubEnv("START_DING_SECRET", "secret");
+
   const starting = startRuntime({
     ...value.config,
     server: { ...value.config.server, startupTimeoutMs: 5000 },
@@ -262,6 +275,7 @@ test("contains a real first-scan SQLite lock failure and recovers readiness afte
       ],
     },
   });
+
   void starting.catch(() => {});
   await deadline(peers.discovered, 3000);
   const locker = await sqliteWriteLock(value.filename);

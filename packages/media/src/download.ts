@@ -13,10 +13,12 @@ export interface DownloadMediaOptions {
   /** Credentials are sent only to an exact trusted origin. Redirects are never followed. */
   readonly headers?: Readonly<Record<string, string>>;
 }
+
 export interface DownloadedMedia {
   readonly data: Uint8Array;
   readonly mimeType: string;
 }
+
 function validateUrl(value: string, options: DownloadMediaOptions) {
   const url = new URL(value);
   const trusted = options.trustedOrigins?.includes(url.origin) === true;
@@ -36,6 +38,7 @@ function validateUrl(value: string, options: DownloadMediaOptions) {
   }
   return { url, trusted };
 }
+
 async function consume(response: IncomingMessage, maximum: number): Promise<DownloadedMedia> {
   const status = response.statusCode ?? 500;
   if (status < 200 || status >= 300) {
@@ -81,6 +84,7 @@ export async function downloadMedia(
       trusted,
       signal,
     );
+
     return await new Promise((resolve, reject) => {
       const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
         url,
@@ -101,6 +105,7 @@ export async function downloadMedia(
           void consume(response, options.maxBytes).then(resolve, reject);
         },
       );
+
       request.on("error", reject);
       request.end();
     });

@@ -21,6 +21,7 @@ export function validateBaseUrl(value: string, allowInsecureLocalhost: boolean):
 }
 
 export const platformIdSchema = z.string().min(1).max(1024);
+
 const configSchema = z.strictObject({
   homeserver: z.url(),
   userId: platformIdSchema,
@@ -30,6 +31,7 @@ const configSchema = z.strictObject({
   syncTimeoutMs: z.number().int().min(0).max(60_000).default(30_000),
   reconnectMs: z.number().int().min(100).max(60_000).default(1000),
 });
+
 export type MatrixConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): MatrixConfig {

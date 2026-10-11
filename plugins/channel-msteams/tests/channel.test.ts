@@ -16,6 +16,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 const issuer = "https://api.botframework.com";
+
 async function setup(endorsements = ["msteams"], filename = ":memory:", publicBaseUrl?: string) {
   vi.stubEnv("TEAMS_SECRET", "app-secret");
   const remote = await peer();
@@ -25,6 +26,7 @@ async function setup(endorsements = ["msteams"], filename = ":memory:", publicBa
     keys: [{ ...(await exportJWK(keys.publicKey)), kid: "teams-key", endorsements }],
   });
   remote.respond(200, { id: "activity-sent" });
+
   const config: Json = {
     appId: "app-id",
     botId: "bot-id",
@@ -36,7 +38,9 @@ async function setup(endorsements = ["msteams"], filename = ":memory:", publicBa
     tokenUrl: `${remote.base}/token`,
     allowLoopback: true,
   };
+
   const plugin = createTeamsChannel();
+
   const local = await harness(
     plugin,
     config,
@@ -46,7 +50,9 @@ async function setup(endorsements = ["msteams"], filename = ":memory:", publicBa
     filename,
     publicBaseUrl,
   );
+
   cleanup.push(local.close);
+
   const activity = {
     type: "message",
     id: "activity-1",
@@ -59,6 +65,7 @@ async function setup(endorsements = ["msteams"], filename = ":memory:", publicBa
     channelData: { tenant: { id: "tenant-id" } },
     replyToId: "root-1",
   };
+
   async function incoming(
     claims: { iss?: string; aud?: string; serviceurl?: string; exp?: string } = {},
     body: unknown = activity,
@@ -71,12 +78,14 @@ async function setup(endorsements = ["msteams"], filename = ":memory:", publicBa
       .setNotBefore("-1s")
       .setExpirationTime(claims.exp ?? "5m")
       .sign(keys.privateKey);
+
     return new Request("http://local/channels/business/activities", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     });
   }
+
   return { remote, config, plugin, activity, incoming, ...local };
 }
 
@@ -86,9 +95,11 @@ describe("native Microsoft Teams", () => {
     async (suffix) => {
       const local = await setup();
       const serviceUrl = `${local.activity.serviceUrl}${suffix}`;
+
       const response = await local.core.fetch(
         await local.incoming({ serviceurl: serviceUrl }, { ...local.activity, serviceUrl }),
       );
+
       expect(response.status).toBe(401);
       expect((await local.storage.getStats()).pending).toBe(0);
     },
@@ -189,6 +200,7 @@ describe("native Microsoft Teams", () => {
       expect((await local.core.fetch(await local.incoming())).status).toBe(200);
       await local.close();
       const plugin = createTeamsChannel();
+
       const reopened = await harness(
         plugin,
         {
@@ -202,11 +214,13 @@ describe("native Microsoft Teams", () => {
         "root-1",
         filename,
       );
+
       cleanup.push(reopened.close);
       const item = (await reopened.storage.listInbound({ limit: 10 }))[0];
       if (!item) {
         throw new Error("Missing frozen target");
       }
+
       const input: SendInput = {
         deliveryId: "delivery",
         requestId: item.snapshot.requestId,
@@ -215,6 +229,7 @@ describe("native Microsoft Teams", () => {
         target: item.snapshot.target,
         chunk: { text: "answer", idempotencyKey: "delivery:0", state: null },
       };
+
       expect(await plugin.send(input)).toMatchObject({ status: "rejected" });
       expect(
         local.remote.traffic.filter((entry) => entry.path.startsWith("/teams/v3")),
@@ -222,6 +237,7 @@ describe("native Microsoft Teams", () => {
       await reopened.close();
       vi.stubEnv("TEAMS_SECRET", "rotated-secret");
       const restoredPlugin = createTeamsChannel();
+
       const restored = await harness(
         restoredPlugin,
         local.config,
@@ -230,6 +246,7 @@ describe("native Microsoft Teams", () => {
         "root-1",
         filename,
       );
+
       cleanup.push(restored.close);
       const legacy = z.record(z.string(), z.json()).parse(input.target.data);
       delete legacy.appId;
@@ -330,8 +347,10 @@ it.each([
       ":memory:",
       published ? "http://127.0.0.1:9999" : undefined,
     );
+
     const bytes = new Uint8Array(size).fill(65);
     local.remote.route("/inline", bytes, { "content-type": "image/png" });
+
     const incoming = {
       ...local.activity,
       text: "",
@@ -340,6 +359,7 @@ it.each([
         { contentType: "image/png", contentUrl: `${local.remote.base}/inline`, name: "image.png" },
       ],
     };
+
     expect((await local.core.fetch(await local.incoming({}, incoming))).status).toBe(200);
     const scoped = local.principal();
     const item = (await scoped.listPending(10))[0];
@@ -370,9 +390,11 @@ it.each([
         },
       ],
     });
+
     const attachment = z
       .object({ attachments: z.array(z.object({ contentUrl: z.string() })) })
       .parse(JSON.parse(sent?.body ?? "null")).attachments[0];
+
     if (published) {
       expect(attachment?.contentUrl).toMatch(/^http:\/\/127\.0\.0\.1:9999\/media\//u);
     } else {
@@ -408,6 +430,7 @@ it.each([
     const local = await setup(["msteams"], filename);
     local.remote.route("/file", bytes, { "content-type": mimeType });
     local.remote.route("/upload", {});
+
     const incoming = {
       ...local.activity,
       text: "",
@@ -420,6 +443,7 @@ it.each([
         },
       ],
     };
+
     expect((await local.core.fetch(await local.incoming({}, incoming))).status).toBe(200);
     const scoped = local.principal();
     const item = (await scoped.listPending(10))[0];
@@ -430,14 +454,17 @@ it.each([
     if (claim.status !== "claimed") {
       throw new Error("claim_failed");
     }
+
     const media = await scoped.media?.read({
       requestId: item.requestId,
       claimToken: claim.claimToken,
       mediaId: item.attachments[0].id,
     });
+
     if (!media) {
       throw new Error("missing_media_bytes");
     }
+
     const input: SendInput = {
       deliveryId: "file-delivery",
       requestId: item.requestId,
@@ -447,6 +474,7 @@ it.each([
       media,
       signal: new AbortController().signal,
     };
+
     expect(await local.plugin.send(input)).toMatchObject({
       status: "retryable",
       errorCode: "file_consent_pending",
@@ -460,6 +488,7 @@ it.each([
     ).toHaveLength(1);
     await local.close();
     const plugin = createTeamsChannel();
+
     const restarted = await harness(
       plugin,
       local.config,
@@ -468,12 +497,15 @@ it.each([
       "root-1",
       filename,
     );
+
     cleanup.push(restarted.close);
+
     const resumed = await restarted.principal().media?.read({
       requestId: item.requestId,
       claimToken: claim.claimToken,
       mediaId: media.reference.id,
     });
+
     if (!resumed) {
       throw new Error("missing_restored_media");
     }
@@ -482,6 +514,7 @@ it.each([
       status: "retryable",
       errorCode: "file_consent_pending",
     });
+
     const invoke = {
       ...local.activity,
       type: "invoke",
@@ -497,6 +530,7 @@ it.each([
         },
       },
     };
+
     expect((await restarted.core.fetch(await local.incoming({}, invoke))).status).toBe(200);
     local.remote.disconnectOnce("/upload");
     expect(await plugin.send(resumedInput)).toMatchObject({

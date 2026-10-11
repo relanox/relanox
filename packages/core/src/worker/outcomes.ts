@@ -5,16 +5,19 @@ const errorOutcome = z.strictObject({
   status: z.enum(["rejected", "unknown"]),
   errorCode: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u),
 });
+
 const retryOutcome = z.strictObject({
   status: z.literal("retryable"),
   errorCode: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/u),
   retryAfterMs: z.number().nonnegative().optional(),
 });
+
 const dispatchOutcome = z.union([
   z.strictObject({ status: z.literal("accepted") }),
   retryOutcome,
   errorOutcome,
 ]);
+
 const sendOutcome = z.union([
   z.strictObject({
     status: z.literal("sent"),
@@ -26,6 +29,7 @@ const sendOutcome = z.union([
   retryOutcome,
   errorOutcome,
 ]);
+
 export function validateDispatchOutcome(input: unknown): DispatchResult {
   const result = dispatchOutcome.safeParse(input);
   return result.success

@@ -20,11 +20,13 @@ const createEvent = (id: string, group = false, extra: Record<string, unknown> =
   ...(group ? { group_openid: "group" } : {}),
   ...extra,
 });
+
 const frame = (s: number, t: string, d: unknown) => JSON.stringify({ op: 0, s, t, d });
 
 test("QQ authenticates latest token protocol, receives C2C/group text and resumes committed cursor before RESUMED", async () => {
   vi.stubEnv("QQ_SECRET", "secret");
   let address = "";
+
   const remote = await peer(
     (request) => {
       if (request.path === "/app/getAppAccessToken") {
@@ -52,8 +54,10 @@ test("QQ authenticates latest token protocol, receives C2C/group text and resume
       });
     },
   );
+
   address = remote.ws;
   const plugin = createQqChannel();
+
   const host = await assemble(
     plugin,
     {
@@ -67,6 +71,7 @@ test("QQ authenticates latest token protocol, receives C2C/group text and resume
       { chatId: "group", senderId: "member" },
     ],
   );
+
   await host.start();
   await expect.poll(() => remote.frames.length).toBeGreaterThan(0);
   expect(remote.frames[0]).toEqual({
@@ -150,6 +155,7 @@ test("QQ authenticates latest token protocol, receives C2C/group text and resume
 test("QQ reserves sequences using real SQLite CAS, reuses them after reopen and preserves 429 retries", async () => {
   vi.stubEnv("QQ_SECRET", "secret");
   let sends = 0;
+
   const remote = await peer((request) => {
     if (request.path === "/app/getAppAccessToken") {
       return { body: { access_token: "token", expires_in: 7200 } };
@@ -159,21 +165,26 @@ test("QQ reserves sequences using real SQLite CAS, reuses them after reopen and 
       ? { status: 429, headers: { "retry-after": "1" } }
       : { body: { id: `sent-${sends}` } };
   });
+
   const filename = await temporaryDatabase();
+
   const config = {
     appId: "app",
     clientSecret: { env: "QQ_SECRET" },
     apiBase: remote.http,
     allowInsecureLoopback: true,
   };
+
   const first = createQqChannel();
   const host = await assemble(first, config, [{ chatId: "group", senderId: "member" }], filename);
+
   const target = {
     type: "group",
     msgId: "incoming",
     messageAt: Date.now(),
     scope: { appId: "app", apiBase: new URL(remote.http).href },
   };
+
   const a = sendInput("qq", "group", target, "arbitrary-key-a");
   const b = sendInput("qq", "group", target, "arbitrary-key-b");
   const results = await Promise.all([first.send(a), first.send(b)]);
@@ -212,11 +223,13 @@ test.each([
   "QQ applies documented passive $type window at $ageMs milliseconds",
   async ({ type, ageMs, expected }) => {
     vi.stubEnv("QQ_SECRET", "secret");
+
     const remote = await peer((request) =>
       request.path === "/app/getAppAccessToken"
         ? { body: { access_token: "token", expires_in: 7200 } }
         : { body: { id: "sent" } },
     );
+
     const plugin = createQqChannel();
     await assemble(
       plugin,
@@ -253,11 +266,13 @@ test.each([
   "QQ bounds $type passive replies and requires permission for proactive fallback",
   async ({ type, max }) => {
     vi.stubEnv("QQ_SECRET", "secret");
+
     const remote = await peer((request) =>
       request.path === "/app/getAppAccessToken"
         ? { body: { access_token: "token", expires_in: 7200 } }
         : { body: { id: "sent" } },
     );
+
     const plugin = createQqChannel();
     await assemble(
       plugin,
@@ -269,12 +284,14 @@ test.each([
       },
       [{ chatId: "user", senderId: "user" }],
     );
+
     const target = {
       type,
       msgId: "incoming",
       messageAt: Date.now(),
       scope: { appId: "app", apiBase: new URL(remote.http).href },
     };
+
     for (let index = 0; index < max; index++) {
       expect((await plugin.send(sendInput("qq", "user", target, `chunk:${index}`))).status).toBe(
         "sent",
@@ -350,11 +367,13 @@ test.each([
   "QQ preserves $result.errorCode instead of blind retry or false success",
   async ({ reply, result }) => {
     vi.stubEnv("QQ_SECRET", "secret");
+
     const remote = await peer((request) =>
       request.path === "/app/getAppAccessToken"
         ? { body: { access_token: "token", expires_in: 7200 } }
         : reply,
     );
+
     const plugin = createQqChannel();
     await assemble(
       plugin,
@@ -396,6 +415,7 @@ test("QQ rejects deprecated static token configuration and remote insecure API b
 test("QQ resumes before a failed SQLite write even with later dispatches already buffered", async () => {
   vi.stubEnv("QQ_SECRET", "secret");
   let address = "";
+
   const remote = await peer(
     (request) =>
       request.path === "/app/getAppAccessToken"
@@ -419,8 +439,10 @@ test("QQ resumes before a failed SQLite write even with later dispatches already
       });
     },
   );
+
   address = remote.ws;
   const filename = await temporaryDatabase();
+
   const host = await assemble(
     createQqChannel(),
     {
@@ -432,6 +454,7 @@ test("QQ resumes before a failed SQLite write even with later dispatches already
     [{ chatId: "user", senderId: "user" }],
     filename,
   );
+
   using database = new DatabaseSync(filename);
   database.exec(
     "CREATE TRIGGER fail_selected BEFORE INSERT ON inbound WHEN NEW.event LIKE '%failed-write%' BEGIN SELECT RAISE(FAIL, 'injected write failure'); END",
@@ -463,6 +486,7 @@ test("QQ resumes before a failed SQLite write even with later dispatches already
 test("QQ authentication still times out when an unready gateway acknowledges heartbeats", async () => {
   vi.stubEnv("QQ_SECRET", "secret");
   let address = "";
+
   const remote = await peer(
     (request) =>
       request.path === "/app/getAppAccessToken"
@@ -478,7 +502,9 @@ test("QQ authentication still times out when an unready gateway acknowledges hea
       });
     },
   );
+
   address = remote.ws;
+
   const host = await assemble(
     createQqChannel(),
     {
@@ -489,6 +515,7 @@ test("QQ authentication still times out when an unready gateway acknowledges hea
     },
     [{ chatId: "user", senderId: "user" }],
   );
+
   await host.start();
   await expect.poll(() => remote.sockets.length, { timeout: 13_000 }).toBe(2);
   expect(await records(host.storage)).toHaveLength(0);

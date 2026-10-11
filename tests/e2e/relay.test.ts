@@ -11,6 +11,7 @@ afterEach(async () => {
   }
   vi.unstubAllEnvs();
 });
+
 function firstTraffic(traffic: readonly Traffic[]): Traffic {
   const first = traffic[0];
   if (!first) {
@@ -42,11 +43,13 @@ test("native HTTP, official network MCP and resident worker relay a scoped final
     source: { channel: "telegram", eventId: "1" },
   });
   expect((await runtime.core.status()).stats.pending).toBe(1);
+
   const wrongCredential = await fetch(`${runtime.businessUrl}/agents/grok/mcp/alpha`, {
     method: "POST",
     headers: { Authorization: "Bearer beta-secret", "Content-Type": "application/json" },
     body: "{}",
   });
+
   expect(wrongCredential.status).toBe(401);
   const beta = await fx.client(runtime, "beta");
   expect(await beta.callTool({ name: "relanox_list_pending", arguments: {} })).toMatchObject({
@@ -114,6 +117,7 @@ test("runtime restart preserves a claim and frozen routing while new events foll
   const claimed = await claim(alphaBefore, request.requestId, "original-run");
   await alphaBefore.close();
   await before.stop();
+
   const changed = {
     ...fx.config,
     relay: {
@@ -121,6 +125,7 @@ test("runtime restart preserves a claim and frozen routing while new events foll
       bindings: fx.config.relay.bindings.map((binding) => ({ ...binding, endpointId: "beta" })),
     },
   };
+
   const after = await fx.start(changed);
   const persisted = await after.core.status();
   expect(persisted.requests).toMatchObject([
@@ -179,6 +184,7 @@ test("an uncertain native send stays held across restart and explicit delivery r
   const fx = await fixture(cleanups, (_traffic, index) =>
     index === 0 ? { dropConnection: true } : { body: { ok: true, result: { message_id: 701 } } },
   );
+
   const before = await fx.start();
   expect((await ingest(before)).status).toBe(204);
   await expect.poll(() => fx.routine.traffic.length).toBe(1);
@@ -208,11 +214,13 @@ test("an uncertain native send stays held across restart and explicit delivery r
   await after.core.processDue();
   expect(fx.telegram.traffic).toHaveLength(1);
   expect(fx.routine.traffic).toHaveLength(1);
+
   const recovery = {
     kind: "delivery" as const,
     id: held.deliveryId,
     expectedVersion: held.version,
   };
+
   expect(await after.core.requeue({ ...recovery, acknowledgeUnknown: false })).toEqual({
     status: "conflict",
   });

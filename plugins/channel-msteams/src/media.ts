@@ -15,6 +15,7 @@ const consentSchema = z.object({
     .object({ uploadUrl: z.url(), contentUrl: z.url(), uniqueId: z.string(), fileType: z.string() })
     .optional(),
 });
+
 export const invokeSchema = z.object({
   action: z.enum(["accept", "decline"]),
   context: z.object({ consentId: z.string().min(1) }),
@@ -48,6 +49,7 @@ export async function acceptConsent(
   if (invoke.action === "accept" && !invoke.uploadInfo) {
     throw new Error("missing_file_upload_info");
   }
+
   const result = await host.state.compareAndSet({
     key,
     expectedVersion: entry.version,
@@ -59,6 +61,7 @@ export async function acceptConsent(
       ...(invoke.uploadInfo ? { uploadInfo: invoke.uploadInfo } : {}),
     },
   });
+
   if (result.status !== "updated") {
     throw new Error("file_consent_contention");
   }
@@ -98,6 +101,7 @@ export async function prepareAttachment(
       expectedVersion: null,
       value: { phase: "posting", ...identity },
     });
+
     if (created.status !== "updated") {
       return {
         outcome: { status: "retryable", errorCode: "file_consent_contention", retryAfterMs: 1000 },
@@ -156,6 +160,7 @@ export async function prepareAttachment(
       },
       input.signal,
     );
+
     if (!response.ok) {
       return {
         outcome: {
@@ -233,6 +238,7 @@ export async function downloadAttachments(
     if (token !== undefined && typeof token !== "string") {
       throw new Error("media_oauth_unavailable");
     }
+
     const downloaded = await downloadMedia(url, {
       maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
       signal,
@@ -240,6 +246,7 @@ export async function downloadAttachments(
       allowInsecureLocalhost: config.allowLoopback,
       ...(typeof token === "string" ? { headers: { authorization: `Bearer ${token}` } } : {}),
     });
+
     const mimeType = file ? downloaded.mimeType : attachment.contentType;
     attachments.push({
       ...downloaded,

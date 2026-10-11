@@ -7,22 +7,29 @@ import { startRuntime, validateApp } from "./runtime.js";
 export function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);
 }
+
 const configOptions = z.object({ config: z.string().min(1) });
+
 const numberOption = (min: number, max: number) =>
   z.string().regex(/^\d+$/u).transform(Number).pipe(z.number().int().min(min).max(max));
+
 async function configFrom(command: Command) {
   const options = configOptions.parse(command.optsWithGlobals());
   return validateApp(await readConfig(options.config));
 }
+
 async function run(command: Command): Promise<void> {
   const config = await configFrom(command);
   let requested = false;
+
   let signalShutdown = () => {
     requested = true;
   };
+
   const onSignal = () => {
     signalShutdown();
   };
+
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
   try {
@@ -46,6 +53,7 @@ async function run(command: Command): Promise<void> {
     process.removeListener("SIGTERM", onSignal);
   }
 }
+
 function addStatus(program: Command): void {
   program
     .command("status")
@@ -58,6 +66,7 @@ function addStatus(program: Command): void {
     .option("--include-content", "Include message/result text", false)
     .action(async (_options: unknown, command: Command) => {
       const config = await configFrom(command);
+
       const options = z
         .object({
           limit: numberOption(1, 1000),
@@ -68,6 +77,7 @@ function addStatus(program: Command): void {
           includeContent: z.boolean(),
         })
         .parse(command.opts());
+
       const filter = {
         limit: options.limit,
         ...(options.afterId === undefined ? {} : { afterId: options.afterId }),
@@ -75,11 +85,13 @@ function addStatus(program: Command): void {
         ...(options.requestStatus === undefined ? {} : { requestStatus: options.requestStatus }),
         ...(options.deliveryStatus === undefined ? {} : { deliveryStatus: options.deliveryStatus }),
       };
+
       printJson(
         await withStorage(config, (storage) => readStatus(storage, filter, options.includeContent)),
       );
     });
 }
+
 function addRecovery(program: Command): void {
   program
     .command("requeue")
@@ -92,6 +104,7 @@ function addRecovery(program: Command): void {
     .option("--acknowledge-unknown", "Acknowledge possible duplicate external effects", false)
     .action(async (_options: unknown, command: Command) => {
       const config = await configFrom(command);
+
       const options = z
         .object({
           kind: z.enum(["request", "delivery"]),
@@ -100,9 +113,11 @@ function addRecovery(program: Command): void {
           acknowledgeUnknown: z.boolean(),
         })
         .parse(command.opts());
+
       const result = await withStorage(config, (storage) =>
         storage.requeue({ ...options, now: Date.now() }),
       );
+
       printJson(result);
       if (result.status !== "updated") {
         process.exitCode = 2;
@@ -115,12 +130,15 @@ function addRecovery(program: Command): void {
     .option("--limit <number>", "Maximum records", "100")
     .action(async (_options: unknown, command: Command) => {
       const config = await configFrom(command);
+
       const input = z
         .object({ before: numberOption(0, Number.MAX_SAFE_INTEGER), limit: numberOption(1, 1000) })
         .parse(command.opts());
+
       printJson(await withStorage(config, (storage) => storage.cleanup(input)));
     });
 }
+
 export function createProgram(): Command {
   const program = new Command()
     .name("relanox")
@@ -129,6 +147,7 @@ export function createProgram(): Command {
     .requiredOption("-c, --config <path>", "JSON configuration path")
     .exitOverride()
     .configureOutput({ writeErr() {} });
+
   program
     .command("validate")
     .description("Validate all schemas without opening resources")
@@ -153,10 +172,12 @@ export function createProgram(): Command {
       const options = z.object({ managementUrl: z.url().optional() }).parse(command.opts());
       const health = await withStorage(config, (storage) => storage.health());
       const missing = missingSecrets(config);
+
       const running =
         options.managementUrl === undefined
           ? undefined
           : await probeManagement(options.managementUrl, config.server.startupTimeoutMs);
+
       const ok = health.ok && missing.length === 0 && (running?.ready ?? true);
       printJson({
         ok,

@@ -16,6 +16,7 @@ const noopRuntime: ObservabilityRuntime = {
   async flush() {},
   async shutdown() {},
 };
+
 export function validateApp(input: unknown): AppConfig {
   const config = appConfigSchema.parse(input);
   validateStorage(config.relay.storage);
@@ -25,7 +26,9 @@ export function validateApp(input: unknown): AppConfig {
   loadPlugins(config.relay);
   return config;
 }
+
 export { requireHealthy } from "./storage.js";
+
 async function setupObservability(config: AppConfig): Promise<ObservabilityRuntime> {
   if (config.relay.observability.plugin === "none") {
     return noopRuntime;
@@ -33,14 +36,17 @@ async function setupObservability(config: AppConfig): Promise<ObservabilityRunti
   const plugin = createStandardObservability();
   return plugin.setup(plugin.validateConfig(config.relay.observability.config));
 }
+
 /** Validation precedes side effects; register resources immediately after acquisition. */
 export async function startRuntime(input: unknown) {
   const config = validateApp(input);
   const { channels, agents } = loadPlugins(config.relay);
+
   const lifecycle = createLifecycle(config.server.shutdownTimeoutMs, [
     ...channels.values(),
     ...agents.values(),
   ]);
+
   try {
     const observability = await setupObservability(config);
     lifecycle.registerObservability(observability);
@@ -49,6 +55,7 @@ export async function startRuntime(input: unknown) {
     lifecycle.registerStorage(storage);
     await storage.initialize();
     await requireHealthy(storage);
+
     const core = await createCore({
       config: config.relay,
       storage,
@@ -58,6 +65,7 @@ export async function startRuntime(input: unknown) {
       ...(config.media ? { media: config.media } : {}),
       ...(config.mediaLimits ? { worker: config.mediaLimits } : {}),
     });
+
     core.setAccepting(false);
     const worker = createWorker(core, config.server.workerIntervalMs, observe);
     lifecycle.registerCore(
@@ -66,16 +74,20 @@ export async function startRuntime(input: unknown) {
       },
       () => worker.stop(),
     );
+
     const listeners = createListeners(core, observability, lifecycle.live, () =>
       worker.healthy(config.server.workerStaleMs),
     );
+
     lifecycle.servers.push(listeners.business, listeners.management);
     const businessUrl = await listen(listeners.business, config.server.port, config.server.host);
+
     const managementUrl = await listen(
       listeners.management,
       config.server.managementPort,
       config.server.managementHost,
     );
+
     // A connection can receive its first message before another connection finishes starting.
     // Readiness remains gated on the worker's first successful scan.
     core.setAccepting(true);

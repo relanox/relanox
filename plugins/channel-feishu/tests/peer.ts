@@ -8,9 +8,11 @@ export function recorder(ingest?: (input: IngestInput) => Promise<void>) {
   const received: IngestInput[] = [];
   const handlers = new Map<string, HttpHandler>();
   const connections: string[] = [];
+
   const unavailable = async (): Promise<never> => {
     throw new Error("state_unavailable");
   };
+
   const host: ChannelHost = {
     observe: noopObservability,
     state: { get: unavailable, list: unavailable, compareAndSet: unavailable, delete: unavailable },
@@ -26,20 +28,25 @@ export function recorder(ingest?: (input: IngestInput) => Promise<void>) {
       return { requestId: "request-1", duplicate: false };
     },
   };
+
   return { host, received, handlers, connections };
 }
+
 export interface Captured {
   path: string;
   headers: IncomingHttpHeaders;
   body: unknown;
 }
+
 interface PeerResponse {
   status?: number;
   headers?: Record<string, string>;
   body: unknown;
 }
+
 export async function peer(respond: (input: Captured) => PeerResponse) {
   const requests: Captured[] = [];
+
   async function handle(request: IncomingMessage, response: ServerResponse) {
     const chunks: Buffer[] = [];
     for await (const chunk of request) {
@@ -49,8 +56,10 @@ export async function peer(respond: (input: Captured) => PeerResponse) {
       }
       chunks.push(value);
     }
+
     const body: unknown =
       chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : null;
+
     const input: Captured = { path: request.url ?? "", headers: request.headers, body };
     requests.push(input);
     const output = respond(input);
@@ -60,18 +69,21 @@ export async function peer(respond: (input: Captured) => PeerResponse) {
     });
     response.end(JSON.stringify(output.body));
   }
+
   const server = createServer((request, response) => {
     void handle(request, response).catch(() => {
       response.writeHead(500);
       response.end();
     });
   });
+
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return { url, requests, server, close: () => close(server) };
 }
+
 export async function close(server: Server) {
   server.closeAllConnections();
   await new Promise<void>((resolve, reject) => {
@@ -84,6 +96,7 @@ export async function close(server: Server) {
     });
   });
 }
+
 export function sendInput(
   target: SendInput["target"],
   signal = new AbortController().signal,

@@ -30,6 +30,7 @@ const configSchema = z.strictObject({
   tokenUrl: z.url().default("https://oauth2.googleapis.com/token"),
   allowLoopback: z.boolean().default(false),
 });
+
 export type GoogleChatConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): GoogleChatConfig {

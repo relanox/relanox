@@ -14,10 +14,12 @@ export function createDiscordChannel(
   let host: ChannelHost;
   let account: AccountConfig;
   let gateway: DiscordGateway;
+
   const identity = () => ({
     botId: config.botUserId,
     apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, ""),
   });
+
   return {
     id: "channel-discord",
     sdkMajor: 1,
@@ -69,16 +71,19 @@ export function createDiscordChannel(
         if (errorCode) {
           return { status: "rejected", errorCode };
         }
+
         const response = await sendMessage(
           input,
           host,
           config,
           credential(config.botToken, environment),
         );
+
         if (response.status === 429) {
           const parsed = rateLimitResponseSchema.safeParse(
             await jsonResponse(response).catch(() => null),
           );
+
           return {
             status: "retryable",
             errorCode: "rate_limited",

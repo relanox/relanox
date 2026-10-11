@@ -8,6 +8,7 @@ import { wireText } from "../src/transport.js";
 import { assemble, peer, records, temporaryDatabase } from "./test-support.js";
 
 type Kind = "wecom" | "dingtalk" | "qq";
+
 function pluginFor(kind: Kind): ChannelPlugin<unknown> {
   switch (kind) {
     case "wecom": {
@@ -24,8 +25,10 @@ function pluginFor(kind: Kind): ChannelPlugin<unknown> {
     }
   }
 }
+
 async function nativePeer(kind: Kind) {
   let address = "";
+
   const remote = await peer(
     (request) => {
       if (request.path === "/v1.0/gateway/connections/open") {
@@ -50,6 +53,7 @@ async function nativePeer(kind: Kind) {
         const frame = z
           .object({ op: z.number().optional(), headers: z.unknown().optional() })
           .parse(JSON.parse(wireText(bytes)));
+
         if (kind === "wecom") {
           socket.send(JSON.stringify({ headers: frame.headers, errcode: 0 }));
         }
@@ -62,9 +66,11 @@ async function nativePeer(kind: Kind) {
       });
     },
   );
+
   address = remote.ws;
   return remote;
 }
+
 function configFor(
   kind: Kind,
   remote: Awaited<ReturnType<typeof nativePeer>>,
@@ -98,6 +104,7 @@ function configFor(
     }
   }
 }
+
 function incoming(kind: Kind): unknown {
   switch (kind) {
     case "wecom": {
@@ -148,6 +155,7 @@ function incoming(kind: Kind): unknown {
     }
   }
 }
+
 function sentCount(remote: Awaited<ReturnType<typeof nativePeer>>): number {
   return (
     remote.requests.filter(
@@ -186,12 +194,14 @@ test.each([
     await firstHost.storage.close();
     const changed = pluginFor(kind);
     const nextRemote = change === "server" ? replacement : original;
+
     const nextHost = await assemble(
       changed,
       configFor(kind, nextRemote, change === "identity"),
       bindings,
       filename,
     );
+
     await nextHost.start();
     await expect
       .poll(async () => (await nextHost.runtime.status()).connections["channels/bot"])
@@ -200,6 +210,7 @@ test.each([
     if (!persisted) {
       throw new Error("Missing accepted target after reopen");
     }
+
     const input: SendInput = {
       deliveryId: "delivery",
       requestId: persisted.snapshot.requestId,
@@ -208,6 +219,7 @@ test.each([
       target: persisted.snapshot.target,
       chunk: { text: "answer", idempotencyKey: "delivery:0", state: null },
     };
+
     expect(await changed.send(input)).toMatchObject({ status: "rejected" });
     expect(sentCount(original) + sentCount(replacement)).toBe(0);
     await changed.stop?.();

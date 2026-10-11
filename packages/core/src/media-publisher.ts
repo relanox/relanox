@@ -10,10 +10,12 @@ const ticketSchema = z.strictObject({
   token: z.string().regex(/^[a-f0-9]{64}$/u),
   expiresAt: z.number().int().positive(),
 });
+
 const namespace = (accountId: string): StateNamespace => ({
   pluginId: "core-media-publisher",
   ownerId: accountId,
 });
+
 const keyFor = (requestId: string, id: string) => `${requestId}/${id}`;
 
 function publicOrigin(options: MediaPublisherOptions): string {
@@ -41,6 +43,7 @@ export function validateMediaOptions(input: unknown): MediaPublisherOptions {
       allowInsecureLocalhost: z.boolean().optional(),
     })
     .parse(input);
+
   const result: MediaPublisherOptions = {
     publicBaseUrl: options.publicBaseUrl,
     ...(options.urlLifetimeMs === undefined ? {} : { urlLifetimeMs: options.urlLifetimeMs }),
@@ -48,6 +51,7 @@ export function validateMediaOptions(input: unknown): MediaPublisherOptions {
       ? {}
       : { allowInsecureLocalhost: options.allowInsecureLocalhost }),
   };
+
   publicOrigin(result);
   return result;
 }
@@ -63,12 +67,14 @@ export function createMediaPublisher(
   }
   const valid = validateMediaOptions(options);
   const origin = publicOrigin(valid);
+
   const lifetime = z
     .number()
     .int()
     .positive()
     .max(604_800_000)
     .parse(valid.urlLifetimeMs ?? 86_400_000);
+
   app.get("/media/:accountId/:requestId/:mediaId", async (context) => {
     const { accountId, requestId, mediaId: id } = context.req.param();
     if (!mediaId.safeParse(requestId).success || !mediaId.safeParse(id).success) {
@@ -126,12 +132,14 @@ export function createMediaPublisher(
           return ticketUrl(origin, accountId, input, existing.data.token);
         }
         const ticket = { token: randomBytes(32).toString("hex"), expiresAt: Date.now() + lifetime };
+
         const result = await storage.compareAndSetState(scope, {
           key,
           expectedVersion: entry?.version ?? null,
           value: ticket,
           expiresAt: ticket.expiresAt,
         });
+
         if (result.status === "updated") {
           return ticketUrl(origin, accountId, input, ticket.token);
         }
@@ -140,11 +148,13 @@ export function createMediaPublisher(
     },
   });
 }
+
 function validToken(candidate: string, expected: string): boolean {
   const bytes = Buffer.from(candidate);
   const known = Buffer.from(expected);
   return bytes.length === known.length && timingSafeEqual(bytes, known);
 }
+
 function ticketUrl(
   origin: string,
   account: string,

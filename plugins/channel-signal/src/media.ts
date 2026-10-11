@@ -9,6 +9,7 @@ const base64Schema = z
   .string()
   .min(1)
   .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u);
+
 export async function receiveAttachments(
   attachments: readonly z.infer<typeof attachmentSchema>[],
   host: ChannelHost,
@@ -29,6 +30,7 @@ export async function receiveAttachments(
       throw new Error("media_unavailable");
     }
     const id = crypto.randomUUID();
+
     const response = await fetch(`${base}/api/v1/rpc`, {
       method: "POST",
       redirect: "error",
@@ -45,11 +47,13 @@ export async function receiveAttachments(
         },
       }),
     });
+
     if (!response.ok) {
       await response.body?.cancel();
       throw new Error("media_download_failed");
     }
     const encodedMaximum = Math.ceil(maximum / 3) * 4;
+
     const rpc = z
       .object({
         jsonrpc: z.literal("2.0"),
@@ -57,6 +61,7 @@ export async function receiveAttachments(
         result: z.object({ data: base64Schema.max(encodedMaximum) }),
       })
       .parse(await readJson(response, encodedMaximum + 16_384));
+
     const data = new Uint8Array(Buffer.from(rpc.result.data, "base64"));
     if (data.byteLength === 0 || data.byteLength > maximum) {
       throw new Error("media_too_large");
@@ -71,6 +76,7 @@ export async function receiveAttachments(
   }
   return result;
 }
+
 export function outboundAttachments(input: SendInput): Record<string, readonly string[]> {
   if (!input.media) {
     return {};

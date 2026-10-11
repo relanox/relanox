@@ -29,12 +29,14 @@ const accountSchema = z.strictObject({
   config: z.json(),
   allowedSenders: senderAllowlistSchema,
 });
+
 const endpointSchema = z.strictObject({
   id: configIdSchema,
   agent: z.enum(["dot", "grok"]),
   config: z.json(),
   dispatchMode: z.enum(["push", "pull"]),
 });
+
 const bindingSchema = z.strictObject({
   accountId: configIdSchema,
   chatId: platformIdSchema,

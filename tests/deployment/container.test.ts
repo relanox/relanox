@@ -7,10 +7,12 @@ import { expect, test } from "vitest";
 
 const execute = promisify(execFile);
 const image = process.env.RELANOX_TEST_CONTAINER_IMAGE;
+
 async function docker(...args: string[]): Promise<string> {
   const result = await execute("docker", args, { timeout: 60_000, maxBuffer: 1024 * 1024 });
   return result.stdout.trim();
 }
+
 async function waitHealthy(name: string): Promise<void> {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const status = await docker("inspect", "--format", "{{.State.Health.Status}}", name);
@@ -34,12 +36,14 @@ test.skipIf(!image)(
     const name = `relanox-test-${randomUUID()}`;
     const volume = `${name}-data`;
     const config = resolve("deploy/empty.example.json");
+
     const mounts = [
       "--mount",
       `type=volume,source=${volume},target=/data`,
       "--mount",
       `type=bind,source=${config},target=/config/relanox.json,readonly`,
     ];
+
     await docker("volume", "create", volume);
     try {
       await docker(

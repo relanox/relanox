@@ -31,21 +31,25 @@ function decodeFrame(bytes: RawData) {
   }
   return frameSchema.parse(JSON.parse(buffer.toString("utf8")) as unknown);
 }
+
 export function createMattermostChannel(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ChannelPlugin<MattermostConfig> {
   let runtime:
     | { host: ChannelHost; account: AccountConfig; config: MattermostConfig; base: string }
     | undefined;
+
   let task: Promise<void> | undefined;
   let controller: AbortController | undefined;
   let socket: WebSocket | undefined;
+
   function configured() {
     if (!runtime) {
       throw new Error("not_setup");
     }
     return runtime;
   }
+
   async function receive(frame: z.infer<typeof frameSchema>, signal: AbortSignal): Promise<void> {
     const { host, account, config, base } = configured();
     if (frame.event !== "posted") {
@@ -64,6 +68,7 @@ export function createMattermostChannel(
       diagnose(host, "nontext_unsupported");
       return;
     }
+
     const attachments = await receiveFiles(
       post.file_ids,
       host,
@@ -72,6 +77,7 @@ export function createMattermostChannel(
       `Bearer ${secret(config.token, environment)}`,
       signal,
     );
+
     await ingest(host, {
       source: { channel: "mattermost", accountId: account.id, eventId: post.id },
       senderId: post.user_id,
@@ -89,25 +95,30 @@ export function createMattermostChannel(
       context: null,
     });
   }
+
   async function connect(signal: AbortSignal): Promise<void> {
     const { host, base, config } = configured();
     const url = new URL(`${base}/api/v4/websocket`);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const token = secret(config.token, environment);
+
     const current = new WebSocket(url, {
       handshakeTimeout: config.timeoutMs,
       maxPayload: 2_097_152,
       followRedirects: false,
     });
+
     socket = current;
     let authenticated = false;
     let queued = 0;
     let pending = Promise.resolve();
     let lastPong = Date.now();
+
     const authTimeout = setTimeout(() => {
       diagnose(host, "authentication_timeout");
       current.terminate();
     }, config.timeoutMs);
+
     const heartbeat = setInterval(() => {
       if (current.readyState !== WebSocket.OPEN) {
         return;
@@ -118,9 +129,11 @@ export function createMattermostChannel(
       }
       current.ping();
     }, 10_000);
+
     const abort = () => {
       current.terminate();
     };
+
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) {
       abort();
@@ -131,6 +144,7 @@ export function createMattermostChannel(
     current.on("pong", () => {
       lastPong = Date.now();
     });
+
     async function processFrame(frame: z.infer<typeof frameSchema>): Promise<void> {
       if (frame.seq_reply === 1) {
         if (frame.status !== "OK") {
@@ -148,6 +162,7 @@ export function createMattermostChannel(
       }
       await receive(frame, signal);
     }
+
     current.on("message", (bytes, isBinary) => {
       if (isBinary || queued >= 100) {
         diagnose(host, "invalid_frame");
@@ -181,6 +196,7 @@ export function createMattermostChannel(
     await pending;
     host.connection("disconnected");
   }
+
   async function loop(signal: AbortSignal): Promise<void> {
     const { host, config } = configured();
     while (!signal.aborted) {
@@ -193,6 +209,7 @@ export function createMattermostChannel(
       await delay(config.reconnectMs, signal);
     }
   }
+
   async function send(input: SendInput): Promise<SendResult> {
     const { account, config, base } = configured();
     const destination = targetSchema.safeParse(input.target.data);
@@ -212,6 +229,7 @@ export function createMattermostChannel(
       if (upload && !("fileId" in upload)) {
         return upload;
       }
+
       const response = await fetch(`${base}/api/v4/posts`, {
         method: "POST",
         redirect: "error",
@@ -227,6 +245,7 @@ export function createMattermostChannel(
           ...(input.target.threadId ? { root_id: input.target.threadId } : {}),
         }),
       });
+
       if (!response.ok) {
         await response.body?.cancel();
         return httpFailure(response);
@@ -237,6 +256,7 @@ export function createMattermostChannel(
       return { status: "unknown", errorCode: "send_outcome_unknown" };
     }
   }
+
   return {
     id: "channel-mattermost",
     sdkMajor: 1,

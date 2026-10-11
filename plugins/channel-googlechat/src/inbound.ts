@@ -29,6 +29,7 @@ export async function receive(
     throw new Error("inconsistent_space");
   }
   const attachments = await downloadAttachments(message, space.name, config, host);
+
   const target = {
     channel: "googlechat" as const,
     accountId: account.id,
@@ -45,6 +46,7 @@ export async function receive(
       },
     },
   };
+
   await ingest(host, {
     source: { channel: "googlechat", accountId: account.id, eventId: message.name },
     senderId: message.sender.name,

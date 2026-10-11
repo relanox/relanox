@@ -9,6 +9,7 @@ import type { InboundContent } from "./inbound-content.js";
 export { parseContent } from "./inbound-content.js";
 const nativeType = { image: "image", audio: "audio", video: "media", file: "file" };
 const fileType = { image: "stream", audio: "opus", video: "mp4", file: "stream" };
+
 export async function receiveMedia(
   messageId: string,
   content: InboundContent,
@@ -29,10 +30,12 @@ export async function receiveMedia(
           headers: { authorization: `Bearer ${access}` },
         },
       );
+
       const mimeType =
         downloaded.mimeType === "application/octet-stream"
           ? resource.fallbackMime
           : downloaded.mimeType;
+
       return {
         kind: mediaKind(mimeType),
         mimeType,
@@ -43,10 +46,12 @@ export async function receiveMedia(
     }),
   );
 }
+
 const uploadSchema = z.looseObject({
   code: z.literal(0),
   data: z.looseObject({ image_key: z.string().optional(), file_key: z.string().optional() }),
 });
+
 async function uploadAsset(
   media: StoredMedia,
   host: ChannelHost,
@@ -73,6 +78,7 @@ async function uploadAsset(
     }
   }
   body.set(image ? "image" : "file", mediaBlob(media), media.reference.fileName);
+
   const response = await fetch(
     `${base.replace(/\/$/u, "")}/open-apis/im/v1/${image ? "images" : "files"}`,
     {
@@ -83,6 +89,7 @@ async function uploadAsset(
       redirect: "error",
     },
   );
+
   const uploaded = uploadSchema.parse(await jsonResponse(response));
   if (!response.ok) {
     throw new Error("media_upload_failed");
@@ -93,6 +100,7 @@ async function uploadAsset(
   }
   return key;
 }
+
 export function mediaError(input: SendInput, host: ChannelHost): string | undefined {
   if (!input.chunk.media) {
     return undefined;
@@ -127,6 +135,7 @@ export function mediaError(input: SendInput, host: ChannelHost): string | undefi
   }
   return undefined;
 }
+
 export async function messageContent(
   input: SendInput,
   host: ChannelHost,
@@ -142,8 +151,10 @@ export async function messageContent(
     throw new Error("missing_media");
   }
   const key = await uploadAsset(media, host, config, base, access, input.signal);
+
   const content: Record<string, string> =
     media.reference.kind === "image" ? { image_key: key } : { file_key: key };
+
   if (input.preview && media.reference.kind === "video") {
     content.image_key = await uploadAsset(input.preview, host, config, base, access, input.signal);
   }

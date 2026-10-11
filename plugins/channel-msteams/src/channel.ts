@@ -16,6 +16,7 @@ import { activitySchema, targetSchema, keysSchema, receiptSchema } from "./schem
 
 export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
   let runtime: { host: ChannelHost; account: AccountConfig; config: TeamsConfig } | undefined;
+
   async function send(input: SendInput): Promise<SendResult> {
     if (
       !runtime ||
@@ -70,9 +71,11 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     }
     try {
       const suffix = target.replyToId ? `/${encodeURIComponent(target.replyToId)}` : "";
+
       const url = new URL(
         `${base.href.replace(/\/$/u, "")}/v3/conversations/${encodeURIComponent(target.conversationId)}/activities${suffix}`,
       );
+
       const response = await request(
         url,
         {
@@ -92,6 +95,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
         },
         input.signal,
       );
+
       if (!response.ok) {
         return failure(response);
       }
@@ -107,6 +111,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       return unavailable();
     }
   }
+
   return {
     id: "channel-msteams",
     sdkMajor: 1,
@@ -127,10 +132,12 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     validateConfig,
     async setup(host, account, config) {
       runtime = { host, account, config };
+
       const keys = createRemoteJWKSet(validateEndpointUrl(config.jwksUrl, config.allowLoopback), {
         timeoutDuration: 5000,
         cacheMaxAge: 3_600_000,
       });
+
       host.mountHttp("/activities", async (incoming) => {
         if (incoming.method !== "POST") {
           return new Response(null, { status: 405 });
@@ -151,6 +158,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
             audience: config.appId,
             requiredClaims: ["exp", "nbf"],
           });
+
           const jwks = keysSchema.parse(keys.jwks());
           const signingKey = jwks.keys.find((key) => key.kid === verified.protectedHeader.kid);
           if (!signingKey?.endorsements?.includes("msteams")) {

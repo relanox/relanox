@@ -6,6 +6,7 @@ export const frameSchema = z.object({
   t: z.string().optional(),
   d: z.unknown().optional(),
 });
+
 export const messageSchema = z.object({
   id: z.string().min(1),
   author: z.object({
@@ -29,6 +30,7 @@ export const messageSchema = z.object({
     )
     .optional(),
 });
+
 export const targetSchema = z
   .object({
     type: z.enum(["c2c", "group"]),
@@ -37,6 +39,7 @@ export const targetSchema = z
     scope: z.object({ appId: z.string().min(1), apiBase: z.url() }).strict(),
   })
   .strict();
+
 export const tokenSchema = z.object({
   access_token: z.string().min(1),
   expires_in: z
@@ -44,6 +47,7 @@ export const tokenSchema = z.object({
     .transform(Number)
     .pipe(z.number().positive()),
 });
+
 export const allocationSchema = z.object({
   next: z.number().int().positive(),
   allocations: z.record(
@@ -54,6 +58,7 @@ export const allocationSchema = z.object({
     }),
   ),
 });
+
 export const errorSchema = z.object({ code: z.number().int() });
 
 export const readyEventSchema = z.object({ session_id: z.string().min(1) });

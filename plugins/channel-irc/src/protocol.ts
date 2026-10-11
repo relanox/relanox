@@ -12,6 +12,7 @@ export function secret(
   }
   return value;
 }
+
 export function diagnose(host: ChannelHost, errorCode: string): void {
   host.observe.log("warn", "operation.failed", { operation: "receive", errorCode });
   if (errorCode.endsWith("_unsupported")) {
@@ -21,6 +22,7 @@ export function diagnose(host: ChannelHost, errorCode: string): void {
     });
   }
 }
+
 export async function ingest(host: ChannelHost, input: IngestInput): Promise<void> {
   try {
     await host.ingest(input);
@@ -28,12 +30,14 @@ export async function ingest(host: ChannelHost, input: IngestInput): Promise<voi
     const code = z
       .object({ code: z.enum(["sender_not_allowed", "unbound_conversation"]) })
       .safeParse(error);
+
     if (!code.success) {
       throw error;
     }
     diagnose(host, code.data.code);
   }
 }
+
 export async function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
   await pause(milliseconds, undefined, { signal }).catch(() => {});
 }

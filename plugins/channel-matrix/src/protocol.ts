@@ -12,6 +12,7 @@ export function secret(
   }
   return value;
 }
+
 export async function readJson(response: Response): Promise<unknown> {
   if (!response.body) {
     throw new Error("empty_response");
@@ -37,6 +38,7 @@ export async function readJson(response: Response): Promise<unknown> {
     reader.releaseLock();
   }
 }
+
 export function diagnose(host: ChannelHost, errorCode: string): void {
   host.observe.log("warn", "operation.failed", { operation: "receive", errorCode });
   if (errorCode.endsWith("_unsupported")) {
@@ -46,6 +48,7 @@ export function diagnose(host: ChannelHost, errorCode: string): void {
     });
   }
 }
+
 export async function ingest(host: ChannelHost, input: IngestInput): Promise<void> {
   try {
     await host.ingest(input);
@@ -53,12 +56,14 @@ export async function ingest(host: ChannelHost, input: IngestInput): Promise<voi
     const code = z
       .object({ code: z.enum(["sender_not_allowed", "unbound_conversation"]) })
       .safeParse(error);
+
     if (!code.success) {
       throw error;
     }
     diagnose(host, code.data.code);
   }
 }
+
 export function httpFailure(response: Response): SendResult {
   if (response.status === 429) {
     const seconds = Number(response.headers.get("retry-after"));
@@ -70,6 +75,7 @@ export function httpFailure(response: Response): SendResult {
   }
   return { status: "unknown", errorCode: "platform_response_unknown" };
 }
+
 export async function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
   await pause(milliseconds, undefined, { signal }).catch(() => {});
 }

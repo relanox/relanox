@@ -1,4 +1,5 @@
 export type TextUnit = "utf16" | "codepoint" | "utf8";
+
 /** Preserves Unicode scalar boundaries; rejects lone surrogates rather than corrupting wire text. */
 export function chunkText(text: string, maximum: number, unit: TextUnit): readonly string[] {
   if (!Number.isSafeInteger(maximum) || maximum < 1) {
