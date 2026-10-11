@@ -32,7 +32,6 @@ const configSchema = z.strictObject({
   mediaOrigins: z.array(z.url()).default([]),
   trustedUploadOrigins: z.array(z.url()).default([]),
   trustedServiceOrigins: z.array(z.url()).min(1),
-  issuer: z.string().default('https://api.botframework.com'),
   jwksUrl: z
     .url()
     .default('https://login.botframework.com/v1/.well-known/keys'),

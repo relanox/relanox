@@ -59,8 +59,7 @@ it.each(kinds)(
         serviceUrl: peer.base,
         account: '+10000000001',
         authorization: { env: 'SIGNAL_AUTH' },
-        allowInsecureLocalhost: true,
-        reconnectMs: 100
+        allowInsecureLocalhost: true
       },
       [{ chatId: 'group:GROUP=' }],
       ['alice-uuid']
@@ -140,8 +139,7 @@ it('rejects over-limit Signal attachment data without advancing the event cursor
     {
       serviceUrl: peer.base,
       account: '+10000000001',
-      allowInsecureLocalhost: true,
-      reconnectMs: 100
+      allowInsecureLocalhost: true
     },
     [{ chatId: 'direct:alice' }],
     ['alice'],

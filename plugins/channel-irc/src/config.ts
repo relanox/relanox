@@ -4,13 +4,6 @@ const secretRefSchema = z.strictObject({
   env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u)
 })
 
-const requestTimeoutSchema = z
-  .number()
-  .int()
-  .min(100)
-  .max(120_000)
-  .default(10_000)
-
 export const nicknameSchema = z
   .string()
   .regex(/^[A-Za-z_[\]\\`^{}|][A-Za-z0-9_[\]\\`^{}|-]{0,29}$/u)
@@ -42,9 +35,7 @@ const configSchema = z.strictObject({
       password: secretRefSchema
     })
     .optional(),
-  allowNickFallback: z.boolean().default(false),
-  timeoutMs: requestTimeoutSchema,
-  reconnectMs: z.number().int().min(100).max(60_000).default(1000)
+  allowNickFallback: z.boolean().default(false)
 })
 
 export type IrcConfig = z.infer<typeof configSchema>

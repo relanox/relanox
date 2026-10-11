@@ -1,3 +1,4 @@
+import { requestTimeoutMs } from './constants.js'
 import { downloadMedia, mediaBlob } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -67,7 +68,7 @@ export async function receiveMedia(
     `${base}/_matrix/client/v1/media/download/${encodeURIComponent(uri.server)}/${encodeURIComponent(uri.id)}`,
     {
       maxBytes: host.maxMediaBytes ?? 16_777_216,
-      signal: AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
       headers,
       trustedOrigins: [new URL(base).origin],
       allowInsecureLocalhost: config.allowInsecureLocalhost

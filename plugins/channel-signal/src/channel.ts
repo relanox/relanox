@@ -1,3 +1,4 @@
+import { requestTimeoutMs, reconnectDelayMs } from './constants.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -198,7 +199,7 @@ export function createSignalChannel(
   }
 
   async function loop(signal: AbortSignal): Promise<void> {
-    const { host, config } = configured()
+    const { host } = configured()
     while (!signal.aborted) {
       try {
         await connect(signal)
@@ -208,7 +209,7 @@ export function createSignalChannel(
           host.connection('degraded')
         }
       }
-      await delay(config.reconnectMs, signal)
+      await delay(reconnectDelayMs, signal)
     }
     host.connection('disconnected')
   }
@@ -237,7 +238,7 @@ export function createSignalChannel(
         redirect: 'error',
         signal: AbortSignal.any([
           input.signal,
-          AbortSignal.timeout(config.timeoutMs)
+          AbortSignal.timeout(requestTimeoutMs)
         ]),
         headers: { ...headers(), 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,3 +1,4 @@
+import { requestTimeoutMs } from './constants.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -25,7 +26,7 @@ export async function receiveFiles(
   signal: AbortSignal
 ): Promise<MediaUpload[]> {
   const attachments: MediaUpload[] = []
-  const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)])
+  const bound = AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)])
   for (const id of ids) {
     const url = `${base}/api/v4/files/${encodeURIComponent(id)}`
 

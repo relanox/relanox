@@ -109,9 +109,7 @@ it.each(kinds)(
         homeserver: peer.base,
         userId: '@bot:example',
         accessToken: { env: 'MATRIX_TOKEN' },
-        allowInsecureLocalhost: true,
-        syncTimeoutMs: 0,
-        reconnectMs: 100
+        allowInsecureLocalhost: true
       },
       [{ chatId: '!room:example', threadId: '$thread' }],
       ['@alice:example']
@@ -233,9 +231,7 @@ it('refuses oversized Matrix media without committing the sync cursor', async ()
       homeserver: peer.base,
       userId: '@bot:example',
       accessToken: { env: 'MATRIX_TOKEN' },
-      allowInsecureLocalhost: true,
-      syncTimeoutMs: 0,
-      reconnectMs: 100
+      allowInsecureLocalhost: true
     },
     [{ chatId: '!room:example' }],
     ['@alice:example'],

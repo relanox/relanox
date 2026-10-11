@@ -1,3 +1,8 @@
+import {
+  requestTimeoutMs,
+  reconnectDelayMs,
+  syncTimeoutMs
+} from './constants.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -156,7 +161,7 @@ export function createMatrixChannel(
   }
 
   async function synchronize(signal: AbortSignal): Promise<void> {
-    const { host, base, config } = configured()
+    const { host, base } = configured()
     const checkpoint = await host.state.get('sync')
 
     const since = checkpoint
@@ -164,7 +169,7 @@ export function createMatrixChannel(
       : undefined
 
     const url = new URL(`${base}/_matrix/client/v3/sync`)
-    url.searchParams.set('timeout', String(config.syncTimeoutMs))
+    url.searchParams.set('timeout', String(syncTimeoutMs))
     if (since) {
       url.searchParams.set('since', since)
     }
@@ -174,7 +179,7 @@ export function createMatrixChannel(
       redirect: 'error',
       signal: AbortSignal.any([
         signal,
-        AbortSignal.timeout(config.timeoutMs + config.syncTimeoutMs)
+        AbortSignal.timeout(requestTimeoutMs + syncTimeoutMs)
       ])
     })
 
@@ -207,7 +212,7 @@ export function createMatrixChannel(
   }
 
   async function loop(signal: AbortSignal): Promise<void> {
-    const { host, config } = configured()
+    const { host } = configured()
     while (!signal.aborted) {
       try {
         await synchronize(signal)
@@ -227,7 +232,7 @@ export function createMatrixChannel(
           diagnose(host, code)
         }
       }
-      await delay(config.reconnectMs, signal)
+      await delay(reconnectDelayMs, signal)
     }
     host.connection('disconnected')
   }
@@ -276,7 +281,7 @@ export function createMatrixChannel(
 
     const signal = AbortSignal.any([
       input.signal,
-      AbortSignal.timeout(config.timeoutMs)
+      AbortSignal.timeout(requestTimeoutMs)
     ])
 
     const encryptionFailure = await checkEncryption(room, signal)

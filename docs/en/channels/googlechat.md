@@ -17,7 +17,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
       "id": "googlechat-main",
       "config": {
         "audience": "https://relay.example.com/channels/googlechat-main/webhook",
-        "callerEmail": "chat@system.gserviceaccount.com",
         "serviceAccount": {
           "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
         }
@@ -45,7 +44,7 @@ Bindings match the exact chat and thread IDs. Include `threadId` when your test 
 
 ## Enable the connection
 
-Configure the app’s HTTP endpoint as `https://relay.example.com/channels/googlechat-main/webhook`. Set the app’s authentication audience and the account’s `audience` to that exact URL. Start Relanox before sending app interactions. The default caller email is `chat@system.gserviceaccount.com`.
+Configure the app’s HTTP endpoint as `https://relay.example.com/channels/googlechat-main/webhook`. Set the app’s authentication audience and the account’s `audience` to that exact URL. Start Relanox before sending app interactions. Relanox verifies the caller email as `chat@system.gserviceaccount.com`.
 
 ## Send your first message
 
