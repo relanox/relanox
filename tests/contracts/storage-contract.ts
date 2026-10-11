@@ -57,7 +57,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
     let s: Storage;
     beforeEach(async () => {
       s = await open();
-      await s.migrate();
+      await s.initialize();
     });
     afterEach(async () => {
       await s.close();

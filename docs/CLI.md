@@ -4,14 +4,13 @@ Build with `pnpm install --frozen-lockfile` and `pnpm build`, then use Node 24:
 
 ```sh
 node apps/cli/dist/main.js validate --config examples/relanox.sqlite.json
-node apps/cli/dist/main.js migrate --config examples/relanox.sqlite.json
 node apps/cli/dist/main.js doctor --config examples/relanox.sqlite.json
 node apps/cli/dist/main.js run --config examples/relanox.sqlite.json
 ```
 
 The executable also installs as `relanox` through the package bin. The configuration is a strict JSON object with `relay` (the [SDK/core configuration](CORE.md)) and optional `server`. Config and SecretRefs are static for the process lifetime. Credentials resolve from environment references at use; values are never printed by validate, doctor, status defaults, or command errors. Example identities, bindings and hosts must be replaced with the actual configured identities. Validation does not contact a platform or prove account permissions.
 
-SQLite filenames resolve against the process working directory, not the config file directory. Create any parent directory before migrate. PostgreSQL replaces `relay.storage` with `{ "plugin": "postgres", "config": { "connectionString": { "env": "RELANOX_DATABASE_URL" }, "schema": "public" } }`; the environment variable holds the actual DSN. Storage migrations are explicit and idempotent. Run refuses an unavailable or unmigrated database. Doctor/status never migrate or start channel connections.
+SQLite filenames resolve against the process working directory, not the config file directory. Create any parent directory before run. PostgreSQL replaces `relay.storage` with `{ "plugin": "postgres", "config": { "connectionString": { "env": "RELANOX_DATABASE_URL" }, "schema": "public" } }`; the environment variable holds the actual DSN. Run automatically creates missing tables and indexes without clearing existing records. Run refuses unavailable storage. Doctor/status only inspect storage and never initialize its schema or start channel connections.
 
 | Server option                       | Default              | Purpose                                                              |
 | ----------------------------------- | -------------------- | -------------------------------------------------------------------- |

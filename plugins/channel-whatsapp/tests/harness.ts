@@ -78,7 +78,7 @@ export async function harness(
   filename = ":memory:",
 ) {
   const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
-  await storage.migrate();
+  await storage.initialize();
   let host: AgentHost | undefined;
   const dispatches: string[] = [];
   const agent: AgentPlugin = {

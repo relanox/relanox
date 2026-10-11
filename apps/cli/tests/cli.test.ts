@@ -3,7 +3,8 @@ import { access, rm } from "node:fs/promises";
 import { afterEach, expect, test, vi } from "vitest";
 import { startRuntime } from "../src/runtime.js";
 import { closeServer, listen } from "../src/listeners.js";
-import { cli, fixture, storage } from "./fixture.js";
+import { snapshot } from "../../../tests/contracts/storage-contract.js";
+import { cli, fixture, storage, runCli } from "./fixture.js";
 
 const directories: string[] = [];
 const stops: (() => Promise<void>)[] = [];
@@ -48,7 +49,6 @@ test("assembled Telegram ingress persists before ACK and status projects only op
   await value.save(config);
   vi.stubEnv("CLI_TEST_BOT_TOKEN", "123:valid-token");
   vi.stubEnv("CLI_TEST_WEBHOOK_SECRET", "valid-webhook-secret");
-  expect((await cli(value.configPath, ["migrate"])).code).toBe(0);
   const runtime = await startRuntime(config);
   stops.push(runtime.stop);
   const response = await fetch(`${runtime.businessUrl}/channels/telegram-bot/webhook`, {
@@ -95,9 +95,9 @@ test("assembled Telegram ingress persists before ACK and status projects only op
 
 test("requeue passes exact version and explicit unknown-effect acknowledgement into actual storage", async () => {
   const value = await setup();
-  expect((await cli(value.configPath, ["migrate"])).code).toBe(0);
   const db = await storage(value.filename);
   try {
+    await db.initialize();
     await db.acceptInbound({
       requestId: "unknown-request",
       source: { channel: "telegram", accountId: "bot", eventId: "event" },
@@ -195,22 +195,40 @@ test("validate rejects public management addresses before opening storage", asyn
   await expect(access(value.filename)).rejects.toThrow();
 });
 
-test("run and doctor never migrate implicitly, while repeated migrate enables healthy doctor", async () => {
+test("run initializes a new database and preserves work on restart while diagnosis stays read-only", async () => {
   const value = await setup();
   const doctor = await cli(value.configPath, ["doctor"]);
   expect(doctor.code).toBe(2);
   expect(JSON.parse(doctor.stdout)).toMatchObject({ ok: false, storage: { ok: false } });
-  expect((await cli(value.configPath, ["run"])).code).toBe(1);
-  expect((await cli(value.configPath, ["migrate"])).code).toBe(0);
-  expect((await cli(value.configPath, ["migrate"])).code).toBe(0);
+  expect((await cli(value.configPath, ["status"])).code).toBe(1);
+  const empty = await storage(value.filename);
+  expect(await empty.health()).toEqual({ ok: false, errorCode: "storage_unavailable" });
+  await empty.close();
+  const first = await runCli(value.configPath);
+  stops.push(first.stop);
+  expect((await fetch(`${first.managementUrl}/health/ready`)).status).toBe(200);
+  await first.stop();
+  const db = await storage(value.filename);
+  await db.acceptInbound({
+    ...snapshot(),
+    endpoint: { id: "ep", agent: "grok", dispatchMode: "pull", config: {} },
+  });
+  await db.close();
+  const second = await runCli(value.configPath);
+  stops.push(second.stop);
+  expect((await fetch(`${second.managementUrl}/health/ready`)).status).toBe(200);
   const healthy = await cli(value.configPath, ["doctor"]);
   expect(healthy.code).toBe(0);
   expect(JSON.parse(healthy.stdout)).toMatchObject({ ok: true, storage: { ok: true } });
+  const persisted = await cli(value.configPath, ["status", "--include-content"]);
+  expect(persisted.code).toBe(0);
+  expect(JSON.parse(persisted.stdout)).toMatchObject({
+    requests: [{ requestId: "r1", text: "question" }],
+  });
 });
 
 test("real listeners isolate management endpoints and release both ports on shutdown", async () => {
   const value = await setup();
-  expect((await cli(value.configPath, ["migrate"])).code).toBe(0);
   const input = {
     ...value.config,
     relay: {
@@ -245,7 +263,6 @@ test("real listeners isolate management endpoints and release both ports on shut
 
 test("a failed second listener cleans up the first listener and storage", async () => {
   const value = await setup();
-  expect((await cli(value.configPath, ["migrate"])).code).toBe(0);
   const busy = createServer();
   const busyUrl = await listen(busy, 0, "127.0.0.1");
   stops.push(async () => closeServer(busy));

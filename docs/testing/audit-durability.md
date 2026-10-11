@@ -20,10 +20,3 @@
 2. Credible regression: physical deletion resets recreated keys to version 1. A delayed dot callback holding version 1 can delete a newly re-established subscription after unsubscribe/subscribe, or stale CAS can replace its signing secret.
 3. Existing gap: shared tests check mismatched versions on one live entry but never recreate a deleted key; dot's renewal test advances an existing version rather than deleting it. Add shared real-database coverage; the agent audit adds the HTTP/MCP race regression separately.
 4. Production seams: none. Public state get/list/CAS/delete methods on real SQLite/PostgreSQL expose stale mutations and null-value semantics. An internal null-record tombstone retains only the version fence, not the deleted value.
-
-## Version-one database upgrade
-
-1. Observable behavior: opening a version-one database requires explicit migration to the tombstone-aware format, preserves accepted requests and then reports healthy.
-2. Credible regression: keeping the old format marker would let a previous binary report healthy while reading null-record tombstones as live state, or let the new binary skip the explicit upgrade contract.
-3. Existing gap: migration tests use fresh databases and repeated current migrations only. Extend each real backend's existing migration/restart case with a version-one metadata fixture after inserting durable work.
-4. Production seams: none. Test database drivers adjust only the fixture's migration metadata; public health/migrate/get methods validate upgrade and data preservation.

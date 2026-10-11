@@ -120,24 +120,21 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
   const fence = (a: Lease | undefined, b: Lease, now: number) =>
     a !== undefined && equal(a, b) && a.expiresAt > now;
   const storage: Storage = {
-    async migrate() {
+    async initialize() {
       transaction(() => {
         db.exec(
-          `CREATE TABLE IF NOT EXISTS migration_metadata(version INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS inbound(id TEXT PRIMARY KEY,channel TEXT NOT NULL,account TEXT NOT NULL,event TEXT NOT NULL,endpoint TEXT NOT NULL,accepted_at INTEGER NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,final_id TEXT UNIQUE,final_digest TEXT,record TEXT NOT NULL,UNIQUE(channel,account,event)); CREATE INDEX IF NOT EXISTS inbound_fifo ON inbound(endpoint,accepted_at,id); CREATE TABLE IF NOT EXISTS outbound(id TEXT PRIMARY KEY,request_id TEXT NOT NULL UNIQUE REFERENCES inbound(id),result_id TEXT NOT NULL UNIQUE,status TEXT NOT NULL,version INTEGER NOT NULL,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS plugin_state(plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT NOT NULL,version INTEGER NOT NULL,expires_at INTEGER,record TEXT NOT NULL,PRIMARY KEY(plugin,owner,key)); INSERT OR IGNORE INTO migration_metadata(version) VALUES(1),(2);`,
+          `CREATE TABLE IF NOT EXISTS inbound(id TEXT PRIMARY KEY,channel TEXT NOT NULL,account TEXT NOT NULL,event TEXT NOT NULL,endpoint TEXT NOT NULL,accepted_at INTEGER NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,final_id TEXT UNIQUE,final_digest TEXT,record TEXT NOT NULL,UNIQUE(channel,account,event)); CREATE INDEX IF NOT EXISTS inbound_fifo ON inbound(endpoint,accepted_at,id); CREATE TABLE IF NOT EXISTS outbound(id TEXT PRIMARY KEY,request_id TEXT NOT NULL UNIQUE REFERENCES inbound(id),result_id TEXT NOT NULL UNIQUE,status TEXT NOT NULL,version INTEGER NOT NULL,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS plugin_state(plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT NOT NULL,version INTEGER NOT NULL,expires_at INTEGER,record TEXT NOT NULL,PRIMARY KEY(plugin,owner,key));`,
         );
       });
     },
     async health() {
       try {
-        const r = db.prepare("SELECT MAX(version) AS version FROM migration_metadata").get() as {
-          version: number;
-        };
         db.prepare("SELECT id,record,final_digest FROM inbound LIMIT 0").all();
         db.prepare("SELECT id,record FROM outbound LIMIT 0").all();
         db.prepare("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0").all();
-        return r.version === 2 ? { ok: true } : { ok: false, errorCode: "migration_required" };
+        return { ok: true };
       } catch {
-        return { ok: false, errorCode: "migration_required" };
+        return { ok: false, errorCode: "storage_unavailable" };
       }
     },
     async close() {

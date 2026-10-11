@@ -18,7 +18,7 @@ Relanox 把渠道文字交给用户已有的托管 Agent，再把异步结果发
 | 存储       | SQLite（默认）、PostgreSQL 两个插件；每个部署选择一个权威库                          |
 | 可观测性   | 独立 Observability 插件；JSON 日志、Prometheus 指标、可选 OTLP traces；存活/就绪检查 |
 | 部署       | 常驻 Node 服务，直接运行或容器部署；支持 HTTP 与平台长连接                           |
-| 运维       | 配置校验、迁移、查看待处理/失败/未知结果、显式重新排队；不做管理面板                 |
+| 运维       | 配置校验、查看待处理/失败/未知结果、显式重新排队；不做管理面板                       |
 
 部署统一为常驻 Node，不提供功能受限的 Serverless 版本。Grok 默认直接通过 Webhook 传入正文，MCP 用于领取确认和结果回传；dot 按 Events + Tools 协议工作。本次不做真实账户联调；实现与本地协议测试全部完成，账户能力仍明确标实验性。
 
@@ -45,13 +45,13 @@ flowchart LR
 | `packages/core` / `@relanox/core`                      | 配置/allowlist/绑定、接收去重、领取、结果关联、重试决策、HTTP 路由、单批 processDue | 不 import 渠道实现、Agent 实现或 SQL 驱动；不承担 listener 和进程生命周期 |
 | `plugins/channel-*` / `@relanox/channel-*`             | 平台验签、消息规范化、独立发送、平台错误/回执映射                                   | 不选择 Agent，不调模型，不直接写数据库                                    |
 | `plugins/agent-*` / `@relanox/agent-*`                 | dot/Grok 的认证与传输协议、提交消息或提醒、MCP 工具映射                             | 不向聊天渠道发送，不拥有第二套任务状态机                                  |
-| `plugins/storage-*` / `@relanox/storage-*`             | 三类持久记录、固定业务事务、索引、迁移                                              | 不决定授权、路由、重试策略，不调用外部服务                                |
+| `plugins/storage-*` / `@relanox/storage-*`             | 三类持久记录、固定业务事务、索引、初始化                                            | 不决定授权、路由、重试策略，不调用外部服务                                |
 | `plugins/observability-*` / `@relanox/observability-*` | 日志、指标和 trace 实现与导出，首个为 observability-standard                        | 不改变业务状态，不决定重试，不直接访问业务表，不接收正文                  |
 | `apps/cli` / `@relanox/cli`                            | Node 配置装配、listener、timer、常驻连接与管理命令                                  | 调用同一 core，不重写业务流程                                             |
 
-依赖方向是 core/插件 → sdk，装配入口 → core/选定插件。Channel 和 Agent 只通过 HostContext 接收/领取/完成消息及访问命名空间协议状态。Storage 拥有表与迁移；core 拥有业务状态转换规则，Storage 用原子条件执行规则。日志和遥测实现归 Observability，core/其他插件仅调用 sdk 观测门面，不暴露 Pino/OTel 类型。认证、绑定、凭据引用保持在现有模块，不拆出 auth/router/secrets 包，也不建 client、testkit、通用 Jobs 或 Workflow 框架。
+依赖方向是 core/插件 → sdk，装配入口 → core/选定插件。Channel 和 Agent 只通过 HostContext 接收/领取/完成消息及访问命名空间协议状态。Storage 拥有表与初始化；core 拥有业务状态转换规则，Storage 用原子条件执行规则。日志和遥测实现归 Observability，core/其他插件仅调用 sdk 观测门面，不暴露 Pino/OTel 类型。认证、绑定、凭据引用保持在现有模块，不拆出 auth/router/secrets 包，也不建 client、testkit、通用 Jobs 或 Workflow 框架。
 
-核心使用 Web Request/Response、fetch 和 Web Crypto。插件元数据只需要 id、kind、SDK 主版本、配置校验和运行环境/接收能力。setup 注册 handler；start/stop 仅用于常驻连接。迁移由部署命令执行，正确性不依赖进程内 Map、stop 或退出时 flush。
+核心使用 Web Request/Response、fetch 和 Web Crypto。插件元数据只需要 id、kind、SDK 主版本、配置校验和运行环境/接收能力。setup 注册 handler；start/stop 仅用于常驻连接。表和索引由启动流程幂等初始化，正确性不依赖进程内 Map、stop 或退出时 flush。
 
 <a id="interfaces"></a>
 
@@ -120,7 +120,7 @@ claimKey 标识远端一次领取尝试，同一尝试重试返回原令牌；�
 | takeDue / settleAttempt                                 | 原子短 lease 领取、条件结算，不能先 SELECT 再无条件 UPDATE                                 |
 | getState / compareAndSetState / listState / deleteState | 命名空间与版本控制，支持订阅到期扫描                                                       |
 | getStats                                                | 只读聚合 pending/claimed/未送达/unknown 数量、最老待办时间；不读出正文，不把整表加载到内存 |
-| migrate / health / close                                | 显式迁移；close 不承担最后提交                                                             |
+| initialize / health / close                             | 幂等创建缺失的表和索引，health 只读检查；close 不承担最后提交                              |
 
 core 只调用固定业务操作，不暴露通用 ORM 或任意事务回调。SQLite/PostgreSQL 插件各自在数据库事务中使用条件更新与唯一约束保证契约；SQL 和驱动不必相同。
 
@@ -143,7 +143,7 @@ v0.1 交付 `@relanox/observability-standard`：Pino 输出 JSON 日志，@prome
 | 计数/耗时 | inbound_total、dispatch_total、delivery_total、retries_total；HTTP、数据库、dispatch/send 耗时；接收到结果、结果到送达时长                   | counter 是本进程观测次数，重启归零，不作为业务账本；直方图单位和桶固定                      |
 | 当前状态  | pending/claimed/outbound/unknown 数量、oldest_pending_age_seconds；循环最近成功时间、连接状态；进程内存/CPU/事件循环                         | core 定期通过 Storage.getStats 刷新快照；抓取不写库，失败保留陈旧标记而非伪造为 0           |
 | Trace     | ingest、dispatch、MCP claim/complete、storage 操作、channel.send 的短 span                                                                   | 有界批量导出，不做全量自动插桩，不记录 HTTP body/SQL 参数                                   |
-| 健康      | `/health/live` 存活；`/health/ready` 配置/迁移有效、存储可达、循环运行                                                                       | 健康事实归 core/CLI，禁用观测插件仍可用；遥测后端故障不影响 readiness，渠道断线另列组件状态 |
+| 健康      | `/health/live` 存活；`/health/ready` 配置有效、表结构可用、存储可达、循环运行                                                                | 健康事实归 core/CLI，禁用观测插件仍可用；遥测后端故障不影响 readiness，渠道断线另列组件状态 |
 
 跨异步阶段只在 inbound/outbound 保存可选 W3C trace context，不增遥测表。重启后创建新短 span 并关联原上下文；requestId 是业务关联依据，trace context 不参与授权。不保持 span 等待远端数小时，不声称能观测 dot/Grok 的内部推理和工具；只记录本地交接与回传。
 
@@ -163,7 +163,7 @@ Tracing 只选必要 OTel 模块，不引入完整 sdk-node 或 auto-instrumenta
 
 移除 Serverless 支持：其平台长连接和后台恢复需要额外限制或常驻桥，无法覆盖本项目完整渠道能力。相应移除 Vercel/Cloudflare 部署入口、D1、Neon HTTP 专用适配、托管队列、Cron 配额和混合桥设计；不保留受限的演示部署作为支持目标。
 
-默认 SQLite 持久数据目录，也可选择 PostgreSQL。进程管理器负责重启；数据库负责业务恢复。启动时先校验配置/数据库版本，再注册 handler、启动连接和扫描。关闭时停止接收新任务、尝试结束短调用并释放连接，强制退出后仍按持久状态恢复。迁移显式执行，不自动在每次启动改表。
+默认 SQLite 持久数据目录，也可选择 PostgreSQL。进程管理器负责重启；数据库负责业务恢复。启动时先校验配置、初始化数据库并检查健康，再注册 handler、启动连接和扫描。关闭时停止接收新任务、尝试结束短调用并释放连接，强制退出后仍按持久状态恢复。启动时只创建缺失的表和索引，不清空已有数据。
 
 dot/Grok 远程 MCP 与 Telegram Webhook 仍需要可访问的 HTTPS 地址，可在服务前使用反向代理。远端长任务无需一直持有 HTTP 请求；结果通过新工具调用交回。所有原生渠道共用 core，不为不同收发协议复制业务流程。
 

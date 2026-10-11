@@ -98,7 +98,7 @@ export async function fixture(
   const directory = await mkdtemp(join(tmpdir(), "relanox-agent-"));
   const filename = join(directory, "state.sqlite");
   let storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
-  await storage.migrate();
+  await storage.initialize();
   let channelHost: ChannelHost | undefined;
   const sent: unknown[] = [];
   const channel: ChannelPlugin = {

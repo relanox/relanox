@@ -171,7 +171,7 @@ export async function harness(
 ) {
   const filename = options.filename ?? (await databaseFile());
   const storage: Storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
-  await storage.migrate();
+  await storage.initialize();
   const bindings: Binding[] = chats.map((chat) => ({
     accountId: "bot",
     endpointId: "worker",

@@ -38,9 +38,9 @@ Agents: dot via MCP Events/Tools; Grok via a Routine Webhook carrying text and M
 - One active request per endpoint. Authenticated idempotent claim attempts issue a processing token; restarts/timeouts never automatically re-run claimed remote work.
 - Result and outbound creation commit atomically. Identical completion replays are idempotent, conflicting finals fail. Agents cannot supply arbitrary reply destinations.
 - Retry known temporary failures; preserve unknown external sends for explicit recovery. Persist text chunk progress/identities.
-- Interchangeable SQLite/PostgreSQL plugins own transactions and migrations. Resident worker scans persisted due records; no Redis/queue server.
+- Interchangeable SQLite/PostgreSQL plugins own transactions and idempotent schema initialization. Resident worker scans persisted due records; no Redis/queue server.
 - Independent observability plugin provides redacted JSON logs, bounded metrics, optional tracing. Export failures cannot break messaging. Backlog and worker/connection health are visible.
-- CLI provides validate/migrate/run/status/doctor and guarded requeue/recovery. Migrations are explicit. Retention never deletes pending requests or undelivered results.
+- CLI provides validate/run/status/doctor and guarded requeue/recovery. Run initializes missing tables automatically; diagnosis stays read-only. Retention never deletes pending requests or undelivered results.
 
 ## Security and excluded features
 
@@ -50,7 +50,7 @@ Media, cards, slash commands, streaming, arbitrary proactive agent notifications
 
 ## Acceptance
 
-Deliver SDK, core, fifteen native channel packages, dot/Grok, SQLite/PostgreSQL, observability, CLI, Docker/Compose, examples, user/operator/developer guides, license notices and CI. Vitest protects public APIs, protocol, config, migration, security and release behavior. Before every new/changed test, answer the four AGENTS.md questions in a task rationale document.
+Deliver SDK, core, fifteen native channel packages, dot/Grok, SQLite/PostgreSQL, observability, CLI, Docker/Compose, examples, user/operator/developer guides, license notices and CI. Vitest protects public APIs, protocol, config, initialization, security and release behavior. Before every new/changed test, answer the four AGENTS.md questions in a task rationale document.
 
 Required evidence: build/typecheck/lint and default Vitest pass; both storage contract suites run against real databases; local HTTP/socket peers demonstrate production ingest → dispatch → scoped claim → completion → outbound and restart recovery; each channel verifies its own authentication/target/error contracts. Test peers simulate only external services, never Relanox business behavior. Deployment/startup checks are reproducible.
 

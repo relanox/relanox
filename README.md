@@ -14,7 +14,6 @@ Relanox 是一个开源、自托管的消息网关。它把渠道文字交给你
 pnpm install --frozen-lockfile
 pnpm build
 node apps/cli/dist/main.js validate --config ./relanox.json
-node apps/cli/dist/main.js migrate --config ./relanox.json
 node apps/cli/dist/main.js run --config ./relanox.json
 ```
 

@@ -131,7 +131,7 @@ export async function assemble<C>(
       },
     },
   );
-  await storage.migrate();
+  await storage.initialize();
   cleanup.push(async () => {
     await plugin.stop?.();
     await storage.close();

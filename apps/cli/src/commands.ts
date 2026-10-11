@@ -141,20 +141,12 @@ export function createProgram(): Command {
       });
     });
   program
-    .command("migrate")
-    .description("Apply explicit idempotent storage migrations")
-    .action(async (_options: unknown, command: Command) => {
-      const config = await configFrom(command);
-      await withStorage(config, (storage) => storage.migrate());
-      printJson({ ok: true });
-    });
-  program
     .command("run")
     .description("Start listeners, connections, and durable worker")
     .action(async (_options: unknown, command: Command) => run(command));
   program
     .command("doctor")
-    .description("Check storage/secrets without migrations or connection startup")
+    .description("Check storage/secrets without schema initialization or connection startup")
     .option("--management-url <url>", "Explicit running loopback management origin")
     .action(async (_options: unknown, command: Command) => {
       const config = await configFrom(command);

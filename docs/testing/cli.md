@@ -9,12 +9,12 @@ All tests exercise compiled Node entrypoints, real SQLite storage or actual list
 3. Core config tests cover relay shape but cannot exercise CLI parsing, output, or resource creation.
 4. No unused seam: the compiled executable is the deployment entrypoint.
 
-## Explicit migrations and diagnosis
+## Automatic initialization and read-only diagnosis
 
-1. An unmigrated database blocks `run` and makes `doctor` unhealthy; repeated `migrate` succeeds and makes doctor healthy.
-2. Implicit migrations or ignoring health version checks could falsely report readiness.
-3. Storage migration tests do not prove that CLI commands select explicit migration versus health inspection.
-4. No unused seam: normal migrate/doctor/run commands are exercised with a file database.
+1. Run initializes an empty database and preserves stored work across restart; doctor/status inspect without creating tables.
+2. Missing startup initialization, destructive repeated creation or writes by diagnosis would break this contract.
+3. Storage initialization tests do not prove which CLI commands create tables; the real run subprocess exercises the built entrypoint.
+4. No unused seam: normal doctor/status/run commands and the public storage API use a real file database.
 
 ## Management isolation, ingress, and shutdown
 

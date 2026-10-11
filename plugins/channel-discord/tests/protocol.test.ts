@@ -50,7 +50,7 @@ async function setup(
   const plugin = createDiscordChannel(environment);
   const recorded = recorder(onIngest);
   const db = storage ?? createSqliteStorage({ filename: ":memory:", busyTimeoutMs: 5000 });
-  await db.migrate();
+  await db.initialize();
   if (!storage) {
     cleanup.push(() => db.close());
   }
