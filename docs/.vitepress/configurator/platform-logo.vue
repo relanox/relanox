@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { withBase } from 'vitepress'
-
 defineProps<{ platform: string }>()
+
+const logos = import.meta.glob<string>('./logos/*.svg', {
+  eager: true,
+  query: '?url',
+  import: 'default'
+})
 </script>
 
 <template>
   <img
     class="platform-logo"
-    :src="withBase(`/platforms/${platform}.svg`)"
+    :src="logos[`./logos/${platform}.svg`]"
     alt=""
     aria-hidden="true"
     width="24"
