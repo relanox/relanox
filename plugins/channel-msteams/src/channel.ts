@@ -53,17 +53,22 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     if (typeof token !== "string") {
       return token;
     }
+    let prepared: Awaited<ReturnType<typeof prepareAttachment>>;
     try {
-      const prepared = await prepareAttachment(
+      prepared = await prepareAttachment(
         runtime.host,
         config,
         input,
         { conversationId: target.conversationId, userId: target.userId, botId: target.botId },
         target.personal === true,
       );
-      if (prepared.outcome) {
-        return prepared.outcome;
-      }
+    } catch {
+      return { status: "retryable", errorCode: "media_preparation_unavailable" };
+    }
+    if (prepared.outcome) {
+      return prepared.outcome;
+    }
+    try {
       const suffix = target.replyToId ? `/${encodeURIComponent(target.replyToId)}` : "";
       const url = new URL(
         `${base.href.replace(/\/$/u, "")}/v3/conversations/${encodeURIComponent(target.conversationId)}/activities${suffix}`,

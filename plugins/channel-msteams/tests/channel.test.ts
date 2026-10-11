@@ -455,6 +455,14 @@ it("Teams sends a native consent card, preserves it across restart and PUTs actu
     },
   };
   expect((await restarted.core.fetch(await local.incoming({}, invoke))).status).toBe(200);
+  local.remote.disconnectOnce("/upload");
+  expect(await plugin.send(resumedInput)).toMatchObject({
+    status: "retryable",
+    errorCode: "media_preparation_unavailable",
+  });
+  expect(
+    local.remote.traffic.filter((request) => request.path.includes("/activities/")),
+  ).toHaveLength(1);
   expect(await plugin.send(resumedInput)).toMatchObject({ status: "sent" });
   const uploaded = local.remote.traffic.find((request) => request.path === "/upload");
   expect(Buffer.from(uploaded?.body ?? "", "utf8")).toEqual(Buffer.from(bytes));
