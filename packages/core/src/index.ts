@@ -274,13 +274,18 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
           return handler(context.req.raw);
         });
       },
-      connection(status) {
+      connection(status, errorCode) {
         connections.set(prefix.slice(1), status);
         const allConnected = [...connections]
           .filter(([component]) => componentPlugins.get(component) === namespace.pluginId)
           .every(([, componentStatus]) => componentStatus === "connected");
         observe.record("relanox_connection_status", allConnected ? 1 : 0, {
           plugin: namespace.pluginId,
+        });
+        observe.log(status === "connected" ? "info" : "warn", "connection.changed", {
+          plugin: namespace.pluginId,
+          outcome: status === "connected" ? "ok" : "error",
+          ...(errorCode ? { errorCode } : {}),
         });
       },
     };
