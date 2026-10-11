@@ -87,7 +87,9 @@ export function createFeishuChannel(
       config.timeoutMs,
     );
     if (!response.ok) {
-      return failure(response);
+      return response.status >= 500
+        ? { status: "retryable", errorCode: "tenant_token_unavailable" }
+        : failure(response);
     }
     const parsed = z
       .looseObject({
@@ -96,13 +98,14 @@ export function createFeishuChannel(
         expire: z.number().positive().optional(),
       })
       .safeParse(await jsonResponse(response));
-    if (
-      !parsed.success ||
-      parsed.data.code !== 0 ||
-      !parsed.data.tenant_access_token ||
-      !parsed.data.expire
-    ) {
+    if (!parsed.success) {
+      return { status: "retryable", errorCode: "tenant_token_unavailable" };
+    }
+    if (parsed.data.code !== 0) {
       return { status: "rejected", errorCode: "tenant_token_unavailable" };
+    }
+    if (!parsed.data.tenant_access_token || !parsed.data.expire) {
+      return { status: "retryable", errorCode: "tenant_token_unavailable" };
     }
     token = {
       value: parsed.data.tenant_access_token,
@@ -304,11 +307,15 @@ export function createFeishuChannel(
       ) {
         return { status: "rejected", errorCode: "invalid_target" };
       }
+      // Authentication precedes the message effect, so failures here are safe to retry.
+      const access = await accessToken(input.signal).catch(() => ({
+        status: "retryable" as const,
+        errorCode: "tenant_token_transport_error",
+      }));
+      if (typeof access !== "string") {
+        return access;
+      }
       try {
-        const access = await accessToken(input.signal);
-        if (typeof access !== "string") {
-          return access;
-        }
         const reply = input.target.replyToId;
         const response = await post(
           `${base().replace(/\/$/u, "")}/open-apis/im/v1/messages${reply ? `/${encodeURIComponent(reply)}/reply` : "?receive_id_type=chat_id"}`,
