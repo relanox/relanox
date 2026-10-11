@@ -36,7 +36,7 @@
 
 除消息权限外，授予资源下载、上传权限（`im:resource` 或对应的新上传权限）。接收原生图片、音频、视频、文件，以及含文字、图片或视频资源的富文本；多语言富文本选取第一个语言。通过 `messages/{message_id}/resources/{key}?type=image|file` 携带租户令牌下载用户消息资源，不能用仅供应用自有资源的图片或文件下载 API 替代。
 
-图片用 multipart `im/v1/images`（`image_type=message`），其他资源用 `im/v1/files` 上传，再调用冻结的消息或回复 API。图片最多 10 MiB，其他上传最多 30 MiB，消息资源下载最多 100 MiB，同时受中转限制。音频需 Opus/Ogg 和 `durationMs`；视频需 MP4 和 `durationMs`，可附可选的暂存图片 `previewMediaId`；普通文件使用 `file_type=stream`。最终文字另发，不支持的格式或缺失元数据在消息效果前拒绝。
+图片用 multipart `im/v1/images`（`image_type=message`），其他资源用 `im/v1/files` 上传，再调用冻结的消息或回复 API。图片最多 10 MiB，其他上传最多 30 MiB，消息资源下载最多 100 MiB，同时受中转限制。音频需 Opus/Ogg 和 `durationMs`；视频需 MP4 和 `durationMs`，可附可选的生成 previewUrl 或已有 previewMediaId；普通文件使用 `file_type=stream`。回复文字另发，不支持的格式或缺失元数据在消息效果前拒绝。
 
 参见[媒体传输](../media.md)、官方[资源 API](https://open.feishu.cn/document/server-docs/im-v1/message/get-2)、[文件上传](https://open.feishu.cn/document/server-docs/im-v1/file/create)及[官方 SDK](https://github.com/larksuite/node-sdk/blob/main/channel/outbound/media/uploader.ts)。本地测试验证协议传输，未验证真实租户权限或播放。
 

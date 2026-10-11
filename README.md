@@ -4,7 +4,7 @@
 
 Bring your hosted AI agents to your messaging channels.
 
-Relanox is a self-hosted message gateway for **dot and Grok Bot**. It receives text and media, persists the handoff and returns asynchronous results to the original conversation. It does not run models.
+Relanox is a self-hosted message gateway for **dot and Grok Bot**. It receives text and media, persists the handoff and sends asynchronous replies to the original conversation. An incoming message can receive multiple replies through `relanox_send_message`; `relanox_read_media` reads its attachments. It does not run models.
 
 Supports Telegram, Discord, Slack, Feishu, WeCom, DingTalk, QQ, Microsoft Teams, WhatsApp Business Cloud, Google Chat, LINE, Matrix, Mattermost, Signal and IRC. Platform account compatibility remains experimental; channel permissions and limitations are documented individually.
 

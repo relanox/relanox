@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { claim, complete, dispatched, fixture, ingest } from './fixture.js'
+import { sendMessage, dispatched, fixture, ingest } from './fixture.js'
 import type { Cleanup } from './fixture.js'
 import type { Traffic } from './peer.js'
 
@@ -37,12 +37,14 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
     }
   })
   expect(request).toEqual({
-    requestId: stringValue,
+    replyTo: stringValue,
     text: '中文\nhello 🌍',
     context: { messageId: '41' },
     source: { channel: 'telegram', eventId: '1' }
   })
-  expect((await runtime.core.status()).stats.pending).toBe(1)
+  await expect
+    .poll(async () => (await runtime.core.status()).stats.pending)
+    .toBe(0)
 
   const wrongCredential = await fetch(
     `${runtime.businessUrl}/agents/grok/mcp/alpha`,
@@ -59,37 +61,22 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
   expect(wrongCredential.status).toBe(401)
   const beta = await fx.client(runtime, 'beta')
   expect(
-    await beta.callTool({ name: 'relanox_list_pending', arguments: {} })
-  ).toMatchObject({
-    structuredContent: { requests: [] },
-    isError: false
-  })
-  expect(
     await beta.callTool({
-      name: 'relanox_claim',
+      name: 'relanox_send_message',
       arguments: {
-        requestId: request.requestId,
-        claimKey: 'wrong-endpoint-run'
-      }
-    })
-  ).toMatchObject({ structuredContent: { status: 'not_found' }, isError: true })
-  const alpha = await fx.client(runtime, 'alpha')
-  const claimed = await claim(alpha, request.requestId, 'alpha-run')
-  expect(claimed).toMatchObject({ replay: false, request })
-  expect(
-    await beta.callTool({
-      name: 'relanox_complete',
-      arguments: {
-        requestId: request.requestId,
-        claimToken: claimed.claimToken,
-        resultId: 'cross-scope-result',
+        replyTo: request.replyTo,
         text: 'untrusted cross-scope answer'
       }
     })
   ).toMatchObject({ structuredContent: { status: 'not_found' }, isError: true })
-  const result = await complete(alpha, request.requestId, claimed.claimToken)
+  const alpha = await fx.client(runtime, 'alpha')
+  expect((await alpha.listTools()).tools.map((tool) => tool.name)).toEqual([
+    'relanox_send_message',
+    'relanox_read_media'
+  ])
+  const result = await sendMessage(alpha, request.replyTo)
   expect(result.replay).toBe(false)
-  expect(await complete(alpha, request.requestId, claimed.claimToken)).toEqual({
+  expect(await sendMessage(alpha, request.replyTo)).toEqual({
     ...result,
     replay: true
   })
@@ -112,13 +99,10 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
   const status = await runtime.core.status()
   expect(status.stats).toMatchObject({
     pending: 0,
-    claimed: 0,
     undelivered: 0,
     unknown: 0
   })
-  expect(status.requests).toMatchObject([
-    { status: 'completed', result: { text: '最终 answer 🌍' } }
-  ])
+  expect(status.requests).toMatchObject([{ dispatch: { status: 'accepted' } }])
   expect(status.deliveries).toMatchObject([
     {
       status: 'sent',
@@ -126,17 +110,31 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
       receipts: [{ platformMessageId: '700' }]
     }
   ])
+
+  const second = await sendMessage(
+    alpha,
+    request.replyTo,
+    'second response',
+    'second-response'
+  )
+
+  expect(second.deliveryId).not.toBe(result.deliveryId)
+  await expect.poll(() => fx.telegram.traffic.length).toBe(2)
+  expect(JSON.parse(fx.telegram.traffic[1]?.body ?? '')).toMatchObject({
+    text: 'second response',
+    chat_id: '101',
+    reply_parameters: { message_id: 41 }
+  })
   expect(fx.routine.traffic).toHaveLength(1)
 })
 
-test('runtime restart preserves a claim and frozen routing while new events follow a changed binding', async () => {
+test('runtime restart preserves incoming messages and frozen routing while new events follow a changed binding', async () => {
   const fx = await fixture(cleanups)
   const before = await fx.start()
   expect((await ingest(before)).status).toBe(204)
   await expect.poll(() => fx.routine.traffic.length).toBe(1)
   const request = dispatched(firstTraffic(fx.routine.traffic))
   const alphaBefore = await fx.client(before, 'alpha')
-  const claimed = await claim(alphaBefore, request.requestId, 'original-run')
   await alphaBefore.close()
   await before.stop()
 
@@ -155,8 +153,7 @@ test('runtime restart preserves a claim and frozen routing while new events foll
   const persisted = await after.core.status()
   expect(persisted.requests).toMatchObject([
     {
-      status: 'claimed',
-      claim: { token: claimed.claimToken },
+      dispatch: { status: 'accepted' },
       snapshot: {
         endpoint: { id: 'alpha' },
         target: { chatId: '101', threadId: '9', replyToId: '41' }
@@ -167,25 +164,14 @@ test('runtime restart preserves a claim and frozen routing while new events foll
   expect(fx.routine.traffic).toHaveLength(1)
   expect(fx.telegram.traffic).toHaveLength(0)
   const alphaAfter = await fx.client(after, 'alpha')
-  expect(
-    await claim(alphaAfter, request.requestId, 'original-run')
-  ).toMatchObject({
-    claimToken: claimed.claimToken,
-    replay: true
-  })
   const beta = await fx.client(after, 'beta')
   expect(
     await beta.callTool({
-      name: 'relanox_claim',
-      arguments: {
-        requestId: request.requestId,
-        claimKey: 'replacement-run'
-      }
+      name: 'relanox_send_message',
+      arguments: { replyTo: request.replyTo, text: 'replacement answer' }
     })
   ).toMatchObject({ isError: true, structuredContent: { status: 'not_found' } })
-  expect(
-    (await complete(alphaAfter, request.requestId, claimed.claimToken)).replay
-  ).toBe(false)
+  expect((await sendMessage(alphaAfter, request.replyTo)).replay).toBe(false)
   await expect
     .poll(async () => (await after.core.status()).deliveries[0]?.status)
     .toBe('sent')
@@ -208,14 +194,14 @@ test('runtime restart preserves a claim and frozen routing while new events foll
     source: { eventId: '2' }
   })
   expect(
-    await beta.callTool({ name: 'relanox_list_pending', arguments: {} })
-  ).toMatchObject({
-    structuredContent: { requests: [later] }
+    (await sendMessage(beta, later.replyTo, 'new binding answer')).replay
+  ).toBe(false)
+  await expect.poll(() => fx.telegram.traffic.length).toBe(2)
+  expect(JSON.parse(fx.telegram.traffic[1]?.body ?? '')).toMatchObject({
+    text: 'new binding answer',
+    chat_id: '101',
+    reply_parameters: { message_id: 42 }
   })
-  expect((await claim(beta, later.requestId, 'new-binding-run')).replay).toBe(
-    false
-  )
-  expect(fx.telegram.traffic).toHaveLength(1)
 })
 
 test('an uncertain native send stays held across restart and explicit delivery recovery never reruns its agent', async () => {
@@ -230,14 +216,7 @@ test('an uncertain native send stays held across restart and explicit delivery r
   await expect.poll(() => fx.routine.traffic.length).toBe(1)
   const request = dispatched(firstTraffic(fx.routine.traffic))
   const alpha = await fx.client(before, 'alpha')
-  const claimed = await claim(alpha, request.requestId, 'agent-run-once')
-
-  const final = await complete(
-    alpha,
-    request.requestId,
-    claimed.claimToken,
-    'saved final'
-  )
+  const final = await sendMessage(alpha, request.replyTo, 'saved final')
 
   await expect
     .poll(async () => (await before.core.status()).deliveries[0]?.status)
@@ -258,9 +237,7 @@ test('an uncertain native send stays held across restart and explicit delivery r
     chunks: [{ text: 'saved final' }],
     target: { chatId: '101', threadId: '9', replyToId: '41' }
   })
-  expect(status.requests).toMatchObject([
-    { status: 'completed', result: { text: 'saved final' } }
-  ])
+  expect(status.requests).toMatchObject([{ dispatch: { status: 'accepted' } }])
   await after.core.processDue()
   await after.core.processDue()
   expect(fx.telegram.traffic).toHaveLength(1)
@@ -310,7 +287,6 @@ test('an uncertain native send stays held across restart and explicit delivery r
   expect(recovered.deliveries).toHaveLength(1)
   expect(recovered.stats).toMatchObject({
     pending: 0,
-    claimed: 0,
     undelivered: 0,
     unknown: 0
   })

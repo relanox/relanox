@@ -20,40 +20,39 @@ Core 路由错误返回脱敏 500。正文按原始字节缓冲，受 maxHttpBod
 
 ChannelHost 固定 source/target 的账号和渠道，校验有界 Unicode 文字、可序列化 context、白名单和绑定，等待 acceptInbound 后返回。稳定事件去重由 Storage 执行。AgentHost.forPrincipal 将鉴权 endpoint 与配置 Agent endpoint 取交集，去重并拒绝范围扩张；仅可在协议鉴权后调用。
 
-listPending/claim/complete/fail 使用不变授权范围。claim 生成安全随机 token，Storage 用 claimKey 实现重放。complete 的 getInbound 只用于构造冻结目标/分片；completeAndEnqueue 原子重查范围、token 和最终唯一性，不接受回复目标。对外工具只能投影安全字段，不能暴露含私有 URL/SecretRef 的 endpoint.config。
+`sendMessage({replyTo,text,idempotencyKey?,attachments?})` 使用不变范围，只读取输入以构造冻结目标和分片；`Storage.enqueueMessage` 原子重查授权、消息身份和媒体一致性，不接收调用方指定目标。默认按相同内容去重，显式 key 用于稳定重试及有意重复发送。同一输入可关联多条独立入队消息。`media.read({requestId,mediaId})` 使用同一 endpoint 授权。对外工具和推送只含安全字段，不暴露 endpoint.config 或私有 SecretRef。
 
 `chunkText(text,max,unit)` 支持 UTF16、codepoints 和 UTF8 字节，不拆 Unicode scalar；孤立 surrogate 或单 scalar 无法容纳时拒绝。分片 idempotencyKey 为 `<deliveryUUID>:<index>`，state 为 null。需要协议序号的插件在外部发送前通过绑定 StateStore CAS 分配，重试复用已分配序号和持久分片身份。命名空间由 metadata ID 与账号/Agent kind 决定，不由调用者指定。
 
 ## 媒体边界
 
-Core 在字节与请求一并提交前校验入站附件；只有存在媒体时才允许空文字，并检查渠道接收能力、MIME/类型一致性、文件名、字节/数量预算和完整性。限定范围的 Agent 上传要求当前持久 claim。完成请求时解析同请求的有序 ID、校验预览、检查发送能力，在文字之后建立媒体分片。工作循环在原生发送前读取并核验持久字节。
+Core 在字节与请求一并提交前校验入站附件；只有存在媒体时才允许空文字，并检查渠道接收能力、MIME/类型一致性、文件名、字节/数量预算和完整性。每次限定发送接收有序入站媒体 ID 或生成字节，可原子提交正文/预览对；检查归属、预览与发送能力，在文字之后建立媒体分片。工作循环在原生发送前读取并核验持久字节。
 
-可选 `media` 配置由 `validateMediaOptions` 校验，包括 `publicBaseUrl`、可选 `urlLifetimeMs` 和显式 `allowInsecureLocalhost`。publisher 挂载 `/media/<accountId>/<requestId>/<mediaId>`，不可猜测且会过期的访问 token 保存在 Core 自有命名空间。插件 Host 只能发布所属账号的请求附件。Agent 签名传输路由独立鉴权后才使用更大正文限额，普通 HTTP 路由保留 `maxHttpBodyBytes`。部署和保留要求见[媒体传输](../media.md)。
+可选 `media` 配置由 `validateMediaOptions` 校验，包括 `publicBaseUrl`、可选 `urlLifetimeMs` 和显式 `allowInsecureLocalhost`。publisher 挂载 `/media/<accountId>/<requestId>/<mediaId>`，不可猜测且会过期的访问 token 保存在 Core 自有命名空间。插件 Host 只能发布所属账号的请求附件。Agent 签名下载路由独立鉴权后才使用更大正文限额，普通 HTTP 路由保留 `maxHttpBodyBytes`。部署和保留要求见[媒体传输](../media.md)。
 
 ## 工作批次
 
-processDue 运行一个有界顺序批次，阻止同 runtime 重叠。Storage FIFO 选择 endpoint 工作并原子领取 lease，Core 无内存队列。一次只领取一项，避免慢调用耗尽已排队工作的 lease。dispatch 接收冻结原配置；send 接收单个持久分片与目标。
+processDue 运行一个有界顺序批次，阻止同 runtime 重叠。Storage 选择到期消息工作并原子领取 lease，Core 无内存队列。一次只领取一项，避免慢调用耗尽已排队工作的 lease。dispatch 接收冻结原配置；send 接收单个持久分片与目标。
 
-调用带 signal 和超时竞争；异常、非法结果、超时变为 unknown，停止自动效果。声明 idempotentSend 的账号可安全恢复过期发送，复用原分片 key。settleAttempt 接收精确 lease token/version；并发 claim/final/requeue 可使结算冲突。中止不能撤销外部效果，插件须遵守 signal。
+调用带 signal 和超时竞争；异常、非法结果、超时变为 unknown，停止自动效果。声明 idempotentSend 的账号可安全恢复过期发送，复用原分片 key。settleAttempt 接收精确 lease token/version；并发结算/requeue 可使结算冲突。中止不能撤销外部效果，插件须遵守 signal。
 
-| Worker 选项            | 默认值   |
-| ---------------------- | -------- |
-| batchSize              | 32       |
-| batchDurationMs        | 30000    |
-| callTimeoutMs          | 10000    |
-| leaseMs                | 30000    |
-| maxAttempts            | 8        |
-| retryBaseMs            | 1000     |
-| retryMaxMs             | 300000   |
-| notificationIntervalMs | 60000    |
-| maxTextBytes           | 1048576  |
-| maxMediaBytes          | 26214400 |
-| maxTotalMediaBytes     | 52428800 |
-| maxAttachments         | 10       |
-| maxContextBytes        | 65536    |
-| maxHttpBodyBytes       | 2097152  |
+| Worker 选项        | 默认值   |
+| ------------------ | -------- |
+| batchSize          | 32       |
+| batchDurationMs    | 30000    |
+| callTimeoutMs      | 10000    |
+| leaseMs            | 30000    |
+| maxAttempts        | 8        |
+| retryBaseMs        | 1000     |
+| retryMaxMs         | 300000   |
+| maxTextBytes       | 1048576  |
+| maxMediaBytes      | 26214400 |
+| maxTotalMediaBytes | 52428800 |
+| maxAttachments     | 10       |
+| maxContextBytes    | 65536    |
+| maxHttpBodyBytes   | 2097152  |
 
-lease 必须大于 timeout。retryable 延迟限定在 base/max 内，无显式延迟时指数退避。未领取的 accepted dispatch 在 notificationIntervalMs 后可再次通知。accepted/retryable 耗尽预算变为 rejected `retry_budget_exhausted`，保留工作供恢复。outbound 预算按当前分片计算，成功推进后重置。unknown 不自动恢复，claimed 不自动 dispatch 或超时释放。
+lease 必须大于 timeout。retryable 延迟限定在 base/max 内，无显式延迟时指数退避。accepted dispatch 为终态，无论 Agent 是否回复，都不自动再次通知。retryable 耗尽预算变 rejected `retry_budget_exhausted`，保留供显式恢复。同 endpoint 不串行占用，也无自动通知续期。outbound 预算按当前分片计算，成功推进后重置；unknown 必须显式恢复。
 
 ## 管理与观测
 
@@ -61,4 +60,4 @@ status(filter?) 返回统计、请求/发送分页和连接组件。这是含正
 
 cleanup({before,limit}) 校验有界参数后委托保留清理，不删除未完成/未送达工作。requeue({kind,id,expectedVersion,acknowledgeUnknown}) 使用精确版本恢复，不执行远端取消；unknown 必须显式确认。完整原子规则见 [SDK](sdk.md)。
 
-observe 使用异常隔离 facade，有限计数器、秒制 duration、gauge 与 standard 观测一致，记录短 ingest/claim/complete/fail/dispatch/send span 和安全字段。ingest 持久保存本地/输入 span context，后续阶段关联。成功批次从真实 getStats 更新积压；失败保留旧值并标记 storage_stats_stale。导出失败不改变业务状态或 readiness。详见 [可观测性](observability.md)。
+observe 使用异常隔离 facade，有限计数器、秒制 duration、gauge 与 standard 观测一致，记录短 ingest/enqueue_message/dispatch/send span 和安全字段。ingest 持久保存本地/输入 span context，后续阶段关联。成功批次从真实 getStats 更新积压；失败保留旧值并标记 storage_stats_stale。导出失败不改变业务状态或 readiness。详见 [可观测性](observability.md)。

@@ -76,19 +76,14 @@ test('DingTalk downloads a pure picture before durable ACK and uploads original 
       })
     )
   const scoped = local.principal()
-  const task = (await scoped.listPending(10))[0]
+  const task = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
   if (!task?.attachments?.[0]) {
     throw new Error('missing_durable_media')
   }
   expect(task.text).toBe('')
-  const claim = await scoped.claim(task.requestId, 'image-claim')
-  if (claim.status !== 'claimed') {
-    throw new Error('claim_failed')
-  }
-  await scoped.complete({
-    requestId: task.requestId,
-    claimToken: claim.claimToken,
-    resultId: 'result',
+  await scoped.sendMessage({
+    replyTo: task.requestId,
+    idempotencyKey: 'result',
     text: 'caption',
     attachments: [task.attachments[0].id]
   })

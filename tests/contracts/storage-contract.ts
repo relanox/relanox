@@ -1,8 +1,7 @@
-import type { DueWork } from '../../packages/sdk/src/storage.js'
-import type { ClaimResult } from '../../packages/sdk/src/messages.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type {
-  CompleteInput,
+  DueWork,
+  EnqueueMessageInput,
   InboundSnapshot,
   Storage
 } from '../../packages/sdk/src/index.js'
@@ -35,25 +34,22 @@ export const snapshot = (
   endpoint: {
     id: endpoint,
     agent: 'grok',
-    dispatchMode: 'push',
     config: { url: 'https://agent.example', secret: { env: 'TOKEN' } }
   }
 })
 
 export const completion = (
   id = 'r1',
-  token = 'token',
-  resultId = 'final'
-): CompleteInput => ({
+  messageId = 'message'
+): EnqueueMessageInput => ({
   requestId: id,
   agent: 'grok',
   endpointIds: ['ep'],
-  claimToken: token,
-  result: { resultId, text: 'AB', completedAt: 110 },
+  message: { messageId, text: 'AB', createdAt: 110 },
   outbound: {
-    deliveryId: `d-${id}`,
+    deliveryId: `d-${id}-${messageId}`,
     requestId: id,
-    resultId,
+    messageId,
     target: snapshot(id).target,
     chunks: [
       { text: 'A', idempotencyKey: 'c1', state: { seq: 1 } },
@@ -83,20 +79,6 @@ export function storageContract(
       await s.close()
     })
 
-    const claim = async (
-      id = 'r1',
-      key = 'try',
-      token = 'token'
-    ): Promise<ClaimResult> =>
-      s.claimRequest({
-        requestId: id,
-        agent: 'grok',
-        endpointIds: ['ep'],
-        claimKey: key,
-        claimToken: token,
-        now: 105
-      })
-
     const due = async (
       now = 110,
       safeRetryAccountIds: string[] = []
@@ -109,427 +91,412 @@ export function storageContract(
         safeRetryAccountIds
       })
 
-    it.each([99, 100])(
-      'holds endpoint exclusivity when a later accepted request sorts before its active claim (%i)',
-      async (timestamp) => {
-        await s.acceptInbound(snapshot('z-active', 100))
-        expect(await claim('z-active')).toMatchObject({ status: 'claimed' })
-        await s.acceptInbound(snapshot('a-later', timestamp))
-        expect(await claim('a-later')).toMatchObject({ status: 'busy' })
-        expect(await due(110)).toEqual([])
-        expect(
-          await s.fail({
-            requestId: 'z-active',
-            agent: 'grok',
-            endpointIds: ['ep'],
-            claimToken: 'token',
-            errorCode: 'remote_failed',
-            now: 111
-          })
-        ).toMatchObject({ status: 'updated' })
-        expect(await claim('a-later')).toMatchObject({ status: 'claimed' })
-      }
-    )
+    const dispatch = async (id = 'r1'): Promise<void> => {
+      const w = required(
+        (await due(100)).find(
+          (item) =>
+            item.kind === 'dispatch' && item.record.snapshot.requestId === id
+        )
+      )
 
-    it.each(['rejected', 'unknown'] as const)(
-      'preserves dispatch ownership and explicit %s recovery across later reordered acceptance',
-      async (status) => {
-        await s.acceptInbound(snapshot('z-active', 100))
-        const work = required((await due(100))[0])
-        expect(work.kind).toBe('dispatch')
-        await s.acceptInbound(snapshot('a-later', 100))
-        expect(await due(101)).toEqual([])
-        expect(await claim('a-later')).toMatchObject({ status: 'busy' })
-        expect(
-          await s.settleAttempt({
-            kind: 'dispatch',
-            id: 'z-active',
-            lease: work.lease,
-            outcome: { status, errorCode: 'remote_problem' },
-            now: 102,
-            nextDueAt: 102
-          })
-        ).toMatchObject({ status: 'updated' })
-        expect(await due(103)).toEqual([])
-        expect(await claim('a-later')).toMatchObject({ status: 'busy' })
-        const stopped = required(await s.getInbound('z-active'))
-        expect(
-          await s.requeue({
-            kind: 'request',
-            id: 'z-active',
-            expectedVersion: stopped.version,
-            now: 104,
-            acknowledgeUnknown: true
-          })
-        ).toMatchObject({ status: 'updated' })
-        expect(await claim('a-later')).toMatchObject({ status: 'claimed' })
-      }
-    )
-
-    it('keeps the already notified request claimable after reordered acceptance', async () => {
-      await s.acceptInbound(snapshot('z-active', 100))
-      const work = required((await due(100))[0])
-      expect(
-        await s.settleAttempt({
-          kind: 'dispatch',
-          id: 'z-active',
-          lease: work.lease,
-          outcome: { status: 'accepted' },
-          now: 101,
-          nextDueAt: 200
-        })
-      ).toMatchObject({ status: 'updated' })
-      await s.acceptInbound(snapshot('a-later', 100))
-      expect(await due(102)).toEqual([])
-      expect(await claim('a-later')).toMatchObject({ status: 'busy' })
-      expect(await claim('z-active')).toMatchObject({ status: 'claimed' })
-    })
-
-    it('starts a fresh delivery retry budget on explicit recovery', async () => {
-      await s.acceptInbound(snapshot())
-      await claim()
-      await s.completeAndEnqueue(completion())
-      const first = required((await due(110))[0])
       await s.settleAttempt({
-        kind: 'send',
-        id: 'd-r1',
-        lease: first.lease,
-        outcome: { status: 'retryable', errorCode: 'rate_limit' },
-        now: 111,
-        nextDueAt: 112
+        kind: 'dispatch',
+        id,
+        lease: w.lease,
+        outcome: { status: 'accepted' },
+        now: 101,
+        nextDueAt: 102
       })
-      const second = required((await due(112))[0])
-      await s.settleAttempt({
-        kind: 'send',
-        id: 'd-r1',
-        lease: second.lease,
-        outcome: { status: 'rejected', errorCode: 'retry_budget_exhausted' },
-        now: 113,
-        nextDueAt: 113
-      })
-      const rejected = required(await s.getOutbound('d-r1'))
-      expect(rejected.attempts).toBe(2)
-      expect(
-        await s.requeue({
-          kind: 'delivery',
-          id: 'd-r1',
-          expectedVersion: rejected.version,
-          now: 114,
-          acknowledgeUnknown: false
-        })
-      ).toMatchObject({ status: 'updated' })
-      expect(await s.getOutbound('d-r1')).toMatchObject({
-        attempts: 0,
-        currentChunk: 0,
-        receipts: [],
-        status: 'pending',
-        chunks: [{ idempotencyKey: 'c1' }, { idempotencyKey: 'c2' }]
-      })
-      expect(await due(114)).toHaveLength(1)
-    })
+    }
 
-    it('serializes acceptance and retains source deduplication', async () => {
-      const input = snapshot()
-      await s.acceptInbound(input)
-      ;(input.target.data as Record<string, unknown>).thread = 'changed'
-      expect((await s.getInbound('r1'))?.snapshot.target.data).toEqual({
-        thread: 'original'
-      })
+    it('deduplicates source keys and freezes serializable input without sharing mutable caller objects', async () => {
+      const context = { original: true }
+      const original = { ...snapshot(), context }
+      await s.acceptInbound(original)
       expect(
-        await s.acceptInbound({
-          ...snapshot('other'),
-          source: snapshot().source
-        })
+        await s.acceptInbound({ ...snapshot('other'), source: original.source })
       ).toEqual({ requestId: 'r1', duplicate: true })
-      const read = await s.getInbound('r1')
-      if (!read) {
-        throw new Error('Accepted request is missing')
-      }
-      ;(read.snapshot.endpoint.config as Record<string, unknown>).url =
-        'changed'
-      expect((await s.getInbound('r1'))?.snapshot.endpoint.config).toEqual({
-        url: 'https://agent.example',
-        secret: { env: 'TOKEN' }
+      expect((await s.getInbound('r1'))?.snapshot).toEqual(original)
+      context.original = false
+      expect((await s.getInbound('r1'))?.snapshot.context).toEqual({
+        original: true
+      })
+      expect(await s.getInbound('other')).toBeUndefined()
+      expect(await s.getStats()).toEqual({
+        pending: 1,
+        undelivered: 0,
+        unknown: 0,
+        oldestPendingAt: 100
       })
     })
 
-    it('retains agent-kind authority when an endpoint ID is reused', async () => {
-      const old = snapshot('old', 100)
-      await s.acceptInbound({
-        ...old,
-        endpoint: { ...old.endpoint, agent: 'dot' }
-      })
-      await s.acceptInbound(snapshot('new', 101))
-      expect(
-        (
-          await s.listPending({ agent: 'grok', endpointIds: ['ep'], limit: 1 })
-        ).map((request) => request.requestId)
-      ).toEqual(['new'])
+    it('queues multiple scoped messages per incoming message and replays identical keys but conflicts changed content', async () => {
+      await s.acceptInbound(snapshot())
+      const input = completion()
 
-      const claimInput = {
-        requestId: 'old',
-        endpointIds: ['ep'],
-        claimKey: 'original',
-        claimToken: 'old-token',
-        now: 105
-      }
+      const results = await Promise.all([
+        s.enqueueMessage(input),
+        s.enqueueMessage(input)
+      ])
 
-      expect(await s.claimRequest({ ...claimInput, agent: 'grok' })).toEqual({
-        status: 'not_found'
-      })
+      expect(results).toEqual(
+        expect.arrayContaining([
+          {
+            status: 'queued',
+            deliveryId: input.outbound.deliveryId,
+            replay: false
+          },
+          {
+            status: 'queued',
+            deliveryId: input.outbound.deliveryId,
+            replay: true
+          }
+        ])
+      )
       expect(
-        await s.claimRequest({ ...claimInput, agent: 'dot' })
-      ).toMatchObject({
-        status: 'claimed',
+        await s.enqueueMessage({
+          ...input,
+          message: { ...input.message, text: 'different' }
+        })
+      ).toEqual({ status: 'conflict' })
+      expect(await s.enqueueMessage(completion('r1', 'second'))).toMatchObject({
+        status: 'queued',
         replay: false
       })
-      expect(await s.claimRequest({ ...claimInput, agent: 'grok' })).toEqual({
-        status: 'not_found'
-      })
+      expect(await s.listOutbound({ limit: 10 })).toHaveLength(2)
       expect(
-        await s.completeAndEnqueue({
-          ...completion('old', 'old-token'),
-          agent: 'grok'
-        })
-      ).toEqual({ status: 'unauthorized' })
-      expect(
-        await s.fail({
-          requestId: 'old',
-          endpointIds: ['ep'],
-          agent: 'grok',
-          claimToken: 'old-token',
-          errorCode: 'foreign_failure',
-          now: 110
-        })
-      ).toEqual({ status: 'unauthorized' })
-      expect((await s.getInbound('old'))?.status).toBe('claimed')
-      expect(await s.getOutbound('d-old')).toBeUndefined()
-      expect(
-        await s.completeAndEnqueue({
-          ...completion('old', 'old-token'),
-          agent: 'dot'
-        })
-      ).toMatchObject({ status: 'completed', replay: false })
-    })
-
-    it('enforces scoped endpoint FIFO and idempotent claim keys', async () => {
-      await s.acceptInbound(snapshot())
-      await s.acceptInbound(snapshot('r2', 101))
-      expect(await claim('r2')).toEqual({ status: 'busy' })
-      expect(
-        await s.listPending({
-          agent: 'grok',
-          endpointIds: ['other'],
-          limit: 10
-        })
-      ).toEqual([])
-      expect(
-        await s.claimRequest({
-          requestId: 'r1',
-          agent: 'grok',
-          endpointIds: ['other'],
-          claimKey: 'try',
-          claimToken: 'x',
-          now: 105
-        })
-      ).toEqual({ status: 'not_found' })
-      expect(await claim()).toMatchObject({
-        status: 'claimed',
-        claimToken: 'token',
-        replay: false
-      })
-      expect(await claim('r1', 'try', 'replacement')).toMatchObject({
-        claimToken: 'token',
-        replay: true
-      })
-      expect(await claim('r1', 'other')).toEqual({ status: 'busy' })
-      expect(await claim('r2')).toEqual({ status: 'busy' })
-    })
-
-    it('atomically validates frozen final/outbound and replay identity', async () => {
-      await s.acceptInbound(snapshot())
-      await claim()
-      const bad = completion()
-
-      const forged = {
-        ...bad,
-        outbound: {
-          ...bad.outbound,
-          target: { ...bad.outbound.target, chatId: 'attacker' }
-        }
-      }
-
-      expect(await s.completeAndEnqueue(forged)).toEqual({
-        status: 'conflict'
-      })
-      expect(await s.getOutbound('d-r1')).toBeUndefined()
-      expect((await s.getInbound('r1'))?.status).toBe('claimed')
-      expect(
-        await s.completeAndEnqueue({
-          ...bad,
-          agent: 'grok',
+        await s.enqueueMessage({
+          ...completion('r1', 'third'),
           endpointIds: ['other']
         })
-      ).toEqual({
-        status: 'unauthorized'
-      })
-      expect(await s.completeAndEnqueue(bad)).toEqual({
-        status: 'completed',
-        deliveryId: 'd-r1',
-        replay: false
-      })
+      ).toEqual({ status: 'unauthorized' })
       expect(
-        await s.completeAndEnqueue({
-          ...bad,
-          result: { ...bad.result, completedAt: 999 }
-        })
-      ).toEqual({ status: 'completed', deliveryId: 'd-r1', replay: true })
-      expect(
-        await s.completeAndEnqueue({
-          ...bad,
-          result: { ...bad.result, text: 'different' }
-        })
-      ).toEqual({ status: 'conflict' })
-      await s.acceptInbound(snapshot('r2', 101))
-      await claim('r2')
-      expect(await s.completeAndEnqueue(completion('r2'))).toEqual({
-        status: 'conflict'
+        await s.enqueueMessage({ ...completion('r1', 'third'), agent: 'dot' })
+      ).toEqual({ status: 'unauthorized' })
+      expect(await s.enqueueMessage(completion('missing'))).toEqual({
+        status: 'not_found'
       })
-      expect(await s.getOutbound('d-r2')).toBeUndefined()
     })
 
-    it('fences concurrent leases and persists partial chunk receipts and unknown recovery', async () => {
+    it('rejects forged targets, chunk content and initial delivery state before queue publication', async () => {
       await s.acceptInbound(snapshot())
-      await claim()
-      await s.completeAndEnqueue(completion())
-      const [one, two] = await Promise.all([due(), due()])
-      expect(one).toHaveLength(1)
-      expect(two).toHaveLength(0)
-      const lease = required(one[0]).lease
+      const input = completion()
+      for (const change of [
+        { target: { ...input.outbound.target, chatId: 'foreign' } },
+        { currentChunk: 1 },
+        { createdAt: 999 },
+        { receipts: [{}] },
+        { version: 2 },
+        { chunks: [{ text: 'wrong', state: null, idempotencyKey: 'x' }] }
+      ]) {
+        expect(
+          await s.enqueueMessage({
+            ...input,
+            outbound: { ...input.outbound, ...change }
+          })
+        ).toEqual({ status: 'conflict' })
+      }
+      expect(await s.listOutbound({ limit: 10 })).toEqual([])
+      expect(await s.enqueueMessage(input)).toMatchObject({ status: 'queued' })
+    })
+
+    it('dispatches independent messages on the same endpoint and never automatically repeats accepted effects', async () => {
+      await s.acceptInbound(snapshot())
+      await s.acceptInbound(snapshot('r2', 100))
+      const work = await due(100)
       expect(
-        await s.settleAttempt({
-          kind: 'send',
-          id: 'd-r1',
-          lease: { ...lease, token: 'wrong' },
-          outcome: { status: 'sent', receipt: {} },
-          now: 111,
-          nextDueAt: 112
-        })
-      ).toEqual({ status: 'conflict' })
+        work.map((item) =>
+          item.kind === 'dispatch' ? item.record.snapshot.requestId : ''
+        )
+      ).toEqual(['r1', 'r2'])
+      for (const item of work) {
+        if (item.kind === 'dispatch') {
+          await s.settleAttempt({
+            kind: 'dispatch',
+            id: item.record.snapshot.requestId,
+            lease: item.lease,
+            outcome: { status: 'accepted' },
+            now: 101,
+            nextDueAt: 102
+          })
+        }
+      }
+      expect(await due(1000)).toEqual([])
       expect(
-        await s.settleAttempt({
-          kind: 'send',
-          id: 'd-r1',
-          lease,
-          outcome: { status: 'sent', receipt: { platformMessageId: 'p1' } },
-          now: 111,
-          nextDueAt: 112
-        })
-      ).toMatchObject({ status: 'updated' })
-      expect(await s.getOutbound('d-r1')).toMatchObject({
-        currentChunk: 1,
-        attempts: 0,
-        receipts: [{ platformMessageId: 'p1' }],
-        status: 'pending'
-      })
-      const next = required((await due(112))[0])
-      expect(await due(122)).toEqual([])
-      expect((await s.getOutbound('d-r1'))?.status).toBe('unknown')
-      expect(
-        await s.settleAttempt({
-          kind: 'send',
-          id: 'd-r1',
-          lease: next.lease,
-          outcome: { status: 'sent', receipt: {} },
-          now: 122,
-          nextDueAt: 122
-        })
-      ).toEqual({ status: 'conflict' })
-      const unknown = required(await s.getOutbound('d-r1'))
+        await s.listInbound({ dispatchStatus: 'accepted', limit: 10 })
+      ).toHaveLength(2)
+      expect((await s.getStats()).pending).toBe(0)
+      const record = required(await s.getInbound('r1'))
       expect(
         await s.requeue({
-          kind: 'delivery',
-          id: unknown.deliveryId,
-          expectedVersion: unknown.version,
-          now: 123,
+          kind: 'request',
+          id: 'r1',
+          expectedVersion: record.version,
+          now: 1001,
           acknowledgeUnknown: false
         })
-      ).toEqual({ status: 'conflict' })
-      await s.requeue({
-        kind: 'delivery',
-        id: unknown.deliveryId,
-        expectedVersion: unknown.version,
-        now: 123,
-        acknowledgeUnknown: true
-      })
-      await due(123)
-      const safe = await due(133, ['a'])
-      expect(safe).toHaveLength(1)
-      if (safe[0]?.kind === 'send') {
-        expect(safe[0].record).toMatchObject({
-          currentChunk: 1,
-          chunks: [{ idempotencyKey: 'c1' }, { idempotencyKey: 'c2' }]
-        })
-      }
+      ).toMatchObject({ status: 'updated' })
+      expect((await due(1001)).map((item) => item.kind)).toEqual(['dispatch'])
     })
 
-    it('keeps processing claims durable and revokes tokens on explicit recovery', async () => {
+    it('fences stale dispatch settlements and requires explicit unknown recovery while retryable work respects its due date', async () => {
       await s.acceptInbound(snapshot())
-      const work = required((await due(100))[0])
-      await claim()
-      expect(await due(1000)).toEqual([])
+      const first = required((await due(100))[0])
+      expect(await due(110)).toEqual([])
+      const record = required(await s.getInbound('r1'))
+      expect(record.dispatch.status).toBe('unknown')
       expect(
         await s.settleAttempt({
           kind: 'dispatch',
           id: 'r1',
-          lease: work.lease,
+          lease: first.lease,
           outcome: { status: 'accepted' },
-          now: 106,
-          nextDueAt: 107
+          now: 111,
+          nextDueAt: 111
         })
       ).toEqual({ status: 'conflict' })
-      const r = required(await s.getInbound('r1'))
-      await s.requeue({
-        kind: 'request',
-        id: 'r1',
-        expectedVersion: r.version,
-        now: 1000,
-        acknowledgeUnknown: false
-      })
-      await claim('r1', 'new', 'new-token')
-      expect(await s.completeAndEnqueue(completion())).toEqual({
-        status: 'unauthorized'
-      })
-    })
 
-    it('clears unknown notification counts after claim while preserving uncertain deliveries', async () => {
-      await s.acceptInbound(snapshot())
-      const dispatch = required((await due(100))[0])
+      const recovery = {
+        kind: 'request' as const,
+        id: 'r1',
+        expectedVersion: record.version,
+        now: 111,
+        acknowledgeUnknown: false
+      }
+
+      expect(await s.requeue(recovery)).toEqual({ status: 'conflict' })
+      expect(
+        await s.requeue({ ...recovery, acknowledgeUnknown: true })
+      ).toMatchObject({ status: 'updated' })
+      const retry = required((await due(111))[0])
       await s.settleAttempt({
         kind: 'dispatch',
         id: 'r1',
-        lease: dispatch.lease,
-        outcome: { status: 'unknown', errorCode: 'connection_lost' },
-        now: 101,
-        nextDueAt: 101
+        lease: retry.lease,
+        outcome: { status: 'retryable', errorCode: 'rate_limit' },
+        now: 112,
+        nextDueAt: 150
       })
-      expect((await s.getStats()).unknown).toBe(1)
-      expect(await claim()).toMatchObject({ status: 'claimed' })
-      expect((await s.getStats()).unknown).toBe(0)
-      expect(await s.completeAndEnqueue(completion())).toMatchObject({
-        status: 'completed'
-      })
-      expect((await s.getStats()).unknown).toBe(0)
-      const send = required((await due(110))[0])
+      expect(await due(149)).toEqual([])
+      expect(await due(150)).toHaveLength(1)
+    })
+
+    it('preserves partial receipts and idempotency keys through ambiguous-send recovery', async () => {
+      await s.acceptInbound(snapshot())
+      await dispatch()
+      const input = completion()
+      await s.enqueueMessage(input)
+      const first = required((await due())[0])
       await s.settleAttempt({
         kind: 'send',
-        id: 'd-r1',
-        lease: send.lease,
-        outcome: { status: 'unknown', errorCode: 'connection_lost' },
+        id: input.outbound.deliveryId,
+        lease: first.lease,
+        outcome: { status: 'sent', receipt: { platformMessageId: 'first' } },
         now: 111,
-        nextDueAt: 111
+        nextDueAt: 112
       })
-      expect((await s.getStats()).unknown).toBe(1)
+      const second = required((await due(112))[0])
+      expect(await due(122)).toEqual([])
+      const record = required(await s.getOutbound(input.outbound.deliveryId))
+      expect(record).toMatchObject({
+        status: 'unknown',
+        currentChunk: 1,
+        receipts: [{ platformMessageId: 'first' }]
+      })
+      expect(
+        await s.requeue({
+          kind: 'delivery',
+          id: record.deliveryId,
+          expectedVersion: record.version,
+          now: 123,
+          acknowledgeUnknown: true
+        })
+      ).toMatchObject({ status: 'updated' })
+      const retry = required((await due(123))[0])
+      if (retry.kind === 'send') {
+        expect(retry.record.chunks[1]?.idempotencyKey).toBe('c2')
+      }
+      expect(
+        await s.settleAttempt({
+          kind: 'send',
+          id: record.deliveryId,
+          lease: second.lease,
+          outcome: { status: 'sent', receipt: {} },
+          now: 124,
+          nextDueAt: 124
+        })
+      ).toEqual({ status: 'conflict' })
+      await s.settleAttempt({
+        kind: 'send',
+        id: record.deliveryId,
+        lease: retry.lease,
+        outcome: { status: 'sent', receipt: { platformMessageId: 'second' } },
+        now: 124,
+        nextDueAt: 124
+      })
+      expect((await s.getOutbound(record.deliveryId))?.status).toBe('sent')
+    })
+
+    it('allows lease expiry retry only for durable idempotent-send accounts', async () => {
+      await s.acceptInbound(snapshot())
+      await dispatch()
+      await s.enqueueMessage(completion())
+      const original = required((await due())[0])
+      const recovered = required((await due(120, ['a']))[0])
+      expect(recovered.kind).toBe('send')
+      expect(recovered.lease.token).not.toBe(original.lease.token)
+    })
+
+    it('sends each request in enqueue order despite reversed IDs and holds later messages behind leased, future or unknown predecessors', async () => {
+      await s.acceptInbound(snapshot())
+      await dispatch()
+      const first = completion('r1', 'z-first')
+      const second = completion('r1', 'a-second')
+      await s.enqueueMessage(first)
+      await s.enqueueMessage(second)
+      await s.acceptInbound(snapshot('independent', 100))
+      await dispatch('independent')
+      const independent = completion('independent')
+      await s.enqueueMessage(independent)
+      const work = await due(110)
+      expect(
+        work
+          .filter((item) => item.kind === 'send')
+          .map((item) => item.record.deliveryId)
+      ).toEqual([first.outbound.deliveryId, independent.outbound.deliveryId])
+      expect(await due(111)).toEqual([])
+
+      const firstWork = required(
+        work.find(
+          (item) => item.kind === 'send' && item.record.requestId === 'r1'
+        )
+      )
+
+      await s.settleAttempt({
+        kind: 'send',
+        id: first.outbound.deliveryId,
+        lease: firstWork.lease,
+        outcome: { status: 'retryable', errorCode: 'rate_limit' },
+        now: 111,
+        nextDueAt: 150
+      })
+      expect(await due(120)).toEqual([])
+
+      const retry = required(
+        (await due(150)).find((item) => item.kind === 'send')
+      )
+
+      await s.settleAttempt({
+        kind: 'send',
+        id: first.outbound.deliveryId,
+        lease: retry.lease,
+        outcome: { status: 'unknown', errorCode: 'timeout' },
+        now: 151,
+        nextDueAt: 151
+      })
+      expect(await due(152)).toEqual([])
+      const record = required(await s.getOutbound(first.outbound.deliveryId))
+      await s.requeue({
+        kind: 'delivery',
+        id: record.deliveryId,
+        expectedVersion: record.version,
+        now: 153,
+        acknowledgeUnknown: true
+      })
+      for (let index = 0; index < 2; index++) {
+        const next = required((await due(153))[0])
+        expect(next.kind === 'send' ? next.record.deliveryId : '').toBe(
+          first.outbound.deliveryId
+        )
+        await s.settleAttempt({
+          kind: 'send',
+          id: first.outbound.deliveryId,
+          lease: next.lease,
+          outcome: { status: 'sent', receipt: {} },
+          now: 154,
+          nextDueAt: 153
+        })
+      }
+      const next = required((await due(153))[0])
+      expect(next.kind === 'send' ? next.record.deliveryId : '').toBe(
+        second.outbound.deliveryId
+      )
+    })
+
+    it('redacts only old accepted or rejected inputs after every delivery is sent and retains all dedupe identifiers', async () => {
+      await s.acceptInbound(snapshot())
+      await dispatch()
+      const first = completion()
+      const second = completion('r1', 'second')
+      await s.enqueueMessage(first)
+      await s.enqueueMessage(second)
+      expect(await s.cleanup({ before: 200, limit: 10 })).toEqual({
+        redacted: 0
+      })
+      for (let index = 0; index < 4; index++) {
+        const item = required(
+          (await due(110)).find((work) => work.kind === 'send')
+        )
+
+        if (item.kind === 'send') {
+          await s.settleAttempt({
+            kind: 'send',
+            id: item.record.deliveryId,
+            lease: item.lease,
+            outcome: { status: 'sent', receipt: {} },
+            now: 111,
+            nextDueAt: 110
+          })
+        }
+      }
+      expect(await s.cleanup({ before: 110, limit: 10 })).toEqual({
+        redacted: 0
+      })
+      expect(await s.cleanup({ before: 200, limit: 10 })).toEqual({
+        redacted: 1
+      })
+      expect((await s.getInbound('r1'))?.snapshot).toMatchObject({
+        text: '',
+        context: null,
+        attachments: []
+      })
+      expect(await s.acceptInbound(snapshot())).toEqual({
+        requestId: 'r1',
+        duplicate: true
+      })
+      expect(await s.enqueueMessage(first)).toMatchObject({
+        status: 'queued',
+        replay: true
+      })
+      expect(
+        await s.enqueueMessage({
+          ...first,
+          message: { ...first.message, text: 'changed' }
+        })
+      ).toEqual({ status: 'conflict' })
+      expect(await s.enqueueMessage(completion('r1', 'new'))).toEqual({
+        status: 'conflict'
+      })
+    })
+
+    it('rejects non-JSON snapshots and rolls back publication on malformed delivery serialization', async () => {
+      await expect(
+        s.acceptInbound({ ...snapshot(), context: { bad: undefined } as never })
+      ).rejects.toThrow()
+      expect(await s.getInbound('r1')).toBeUndefined()
+      await s.acceptInbound(snapshot())
+      const input = completion()
+      await expect(
+        s.enqueueMessage({
+          ...input,
+          outbound: {
+            ...input.outbound,
+            trace: { traceparent: undefined } as never
+          }
+        })
+      ).rejects.toThrow()
+      expect(await s.getOutbound(input.outbound.deliveryId)).toBeUndefined()
+      expect(await s.enqueueMessage(input)).toMatchObject({ status: 'queued' })
     })
 
     it('fences stale state mutations across delete and recreate without hiding null values', async () => {
@@ -585,238 +552,153 @@ export function storageContract(
       ])
     })
 
-    it('uses namespaced state CAS and database admin aggregates', async () => {
+    it('starts a fresh delivery retry budget on explicit recovery', async () => {
+      await s.acceptInbound(snapshot())
+      await dispatch()
+      await s.enqueueMessage(completion())
+      const first = required((await due(110))[0])
+      await s.settleAttempt({
+        kind: 'send',
+        id: 'd-r1-message',
+        lease: first.lease,
+        outcome: { status: 'retryable', errorCode: 'rate_limit' },
+        now: 111,
+        nextDueAt: 112
+      })
+      const second = required((await due(112))[0])
+      await s.settleAttempt({
+        kind: 'send',
+        id: 'd-r1-message',
+        lease: second.lease,
+        outcome: { status: 'rejected', errorCode: 'retry_budget_exhausted' },
+        now: 113,
+        nextDueAt: 113
+      })
+      const rejected = required(await s.getOutbound('d-r1-message'))
+      expect(rejected.attempts).toBe(2)
+      expect(
+        await s.requeue({
+          kind: 'delivery',
+          id: 'd-r1-message',
+          expectedVersion: rejected.version,
+          now: 114,
+          acknowledgeUnknown: false
+        })
+      ).toMatchObject({ status: 'updated' })
+      expect(await s.getOutbound('d-r1-message')).toMatchObject({
+        attempts: 0,
+        currentChunk: 0,
+        receipts: [],
+        status: 'pending',
+        chunks: [{ idempotencyKey: 'c1' }, { idempotencyKey: 'c2' }]
+      })
+      expect(await due(114)).toHaveLength(1)
+    })
+
+    it('applies endpoint, status and pagination filters to administrative message inspection', async () => {
+      await s.acceptInbound(snapshot())
+      await s.acceptInbound(snapshot('r2', 100, 'other'))
+
+      const work = await due(100)
+      for (const item of work) {
+        if (item.kind === 'dispatch') {
+          await s.settleAttempt({
+            kind: 'dispatch',
+            id: item.record.snapshot.requestId,
+            lease: item.lease,
+            outcome: { status: 'accepted' },
+            now: 101,
+            nextDueAt: 101
+          })
+        }
+      }
+
+      const first = completion()
+      const second = { ...completion('r2'), endpointIds: ['other'] }
+      await s.enqueueMessage(first)
+      await s.enqueueMessage(second)
+      expect(
+        (
+          await s.listInbound({
+            endpointId: 'ep',
+            dispatchStatus: 'accepted',
+            limit: 10
+          })
+        ).map((record) => record.snapshot.requestId)
+      ).toEqual(['r1'])
+      expect(
+        (
+          await s.listInbound({
+            dispatchStatus: 'accepted',
+            afterId: 'r1',
+            limit: 1
+          })
+        ).map((record) => record.snapshot.requestId)
+      ).toEqual(['r2'])
+      expect(
+        (
+          await s.listOutbound({
+            endpointId: 'other',
+            deliveryStatus: 'pending',
+            limit: 10
+          })
+        ).map((record) => record.deliveryId)
+      ).toEqual([second.outbound.deliveryId])
+      expect(
+        (
+          await s.listOutbound({ afterId: first.outbound.deliveryId, limit: 1 })
+        ).map((record) => record.deliveryId)
+      ).toEqual([second.outbound.deliveryId])
+      expect(await s.getStats()).toEqual({
+        pending: 0,
+        undelivered: 2,
+        unknown: 0
+      })
+    })
+
+    it('isolates durable protocol namespaces and enforces compare-and-set, expiry filters and literal prefixes', async () => {
       const ns = { pluginId: 'dot', ownerId: 'a' }
       expect(
         await s.compareAndSetState(ns, {
-          key: 'sub:1',
+          key: 'cursor_1',
           expectedVersion: null,
-          value: { url: 'original' },
-          expiresAt: 120
+          value: { v: 1 },
+          expiresAt: 200
         })
       ).toEqual({ status: 'updated', version: 1 })
       expect(
         await s.compareAndSetState(ns, {
-          key: 'sub:1',
+          key: 'cursor_1',
           expectedVersion: null,
-          value: null
+          value: { v: 2 }
         })
       ).toEqual({ status: 'conflict' })
-      expect(await s.getState({ ...ns, ownerId: 'b' }, 'sub:1')).toBeUndefined()
       expect(
-        await s.listState(ns, { prefix: 'sub:', expiresBefore: 120, limit: 1 })
-      ).toEqual([
-        {
-          key: 'sub:1',
-          value: { url: 'original' },
-          expiresAt: 120,
-          version: 1
-        }
-      ])
-      expect(await s.deleteState(ns, 'sub:1', 9)).toEqual({
+        await s.getState({ ...ns, ownerId: 'b' }, 'cursor_1')
+      ).toBeUndefined()
+      await s.compareAndSetState(ns, {
+        key: 'cursorX1',
+        expectedVersion: null,
+        value: 2
+      })
+      expect(
+        (await s.listState(ns, { prefix: 'cursor_', limit: 10 })).map(
+          (entry) => entry.key
+        )
+      ).toEqual(['cursor_1'])
+      expect(await s.listState(ns, { expiresBefore: 199, limit: 10 })).toEqual(
+        []
+      )
+      expect(
+        await s.listState(ns, { expiresBefore: 201, limit: 10 })
+      ).toHaveLength(1)
+      expect(await s.deleteState(ns, 'cursor_1', 0)).toEqual({
         status: 'conflict'
       })
-      expect(
-        await s.compareAndSetState(ns, {
-          key: 'sub:1',
-          expectedVersion: 1,
-          value: 'next'
-        })
-      ).toEqual({ status: 'updated', version: 2 })
-      expect(await s.deleteState(ns, 'sub:1', 2)).toEqual({
+      expect(await s.deleteState(ns, 'cursor_1', 1)).toEqual({
         status: 'updated',
-        version: 3
+        version: 2
       })
-      await s.acceptInbound(snapshot())
-      await s.acceptInbound(snapshot('r2', 101))
-      await claim()
-      expect(await s.getStats()).toEqual({
-        pending: 1,
-        claimed: 1,
-        undelivered: 0,
-        unknown: 0,
-        oldestPendingAt: 101
-      })
-      expect(
-        (await s.listInbound({ limit: 1, afterId: 'r1' })).map(
-          (x) => x.snapshot.requestId
-        )
-      ).toEqual(['r2'])
-    })
-
-    it('redacts only terminal delivered work while preserving replay equality', async () => {
-      await s.acceptInbound(snapshot())
-      await claim()
-      await s.completeAndEnqueue(completion())
-      await s.acceptInbound(snapshot('r2', 101))
-      expect(await s.cleanup({ before: 1000, limit: 10 })).toEqual({
-        redacted: 0
-      })
-      for (let i = 0; i < 2; i++) {
-        const w = required((await due(110 + i)).find((x) => x.kind === 'send'))
-        await s.settleAttempt({
-          kind: 'send',
-          id: 'd-r1',
-          lease: w.lease,
-          outcome: { status: 'sent', receipt: { platformMessageId: `p${i}` } },
-          now: 110 + i,
-          nextDueAt: 111 + i
-        })
-      }
-      expect(await s.cleanup({ before: 1000, limit: 10 })).toEqual({
-        redacted: 1
-      })
-      expect((await s.getInbound('r1'))?.snapshot).toMatchObject({
-        text: '',
-        context: null
-      })
-      expect((await s.getInbound('r2'))?.snapshot.text).toBe('question')
-      expect(await s.acceptInbound(snapshot())).toEqual({
-        requestId: 'r1',
-        duplicate: true
-      })
-      expect(await s.completeAndEnqueue(completion())).toMatchObject({
-        status: 'completed',
-        replay: true
-      })
-      expect(
-        await s.completeAndEnqueue({
-          ...completion(),
-          result: { resultId: 'final', text: 'changed', completedAt: 110 }
-        })
-      ).toEqual({ status: 'conflict' })
-    })
-
-    it('recovers rejected dispatch explicitly and releases FIFO after finalization', async () => {
-      await s.acceptInbound(snapshot())
-      await s.acceptInbound(snapshot('r2', 101))
-      const w = required((await due(100))[0])
-      await s.settleAttempt({
-        kind: 'dispatch',
-        id: 'r1',
-        lease: w.lease,
-        outcome: { status: 'rejected', errorCode: 'exhausted' },
-        now: 101,
-        nextDueAt: 101
-      })
-      expect(await due(102)).toEqual([])
-      const r = required(await s.getInbound('r1'))
-      expect(
-        await s.requeue({
-          kind: 'request',
-          id: 'r1',
-          expectedVersion: r.version - 1,
-          now: 103,
-          acknowledgeUnknown: false
-        })
-      ).toEqual({ status: 'conflict' })
-      expect(
-        await s.requeue({
-          kind: 'request',
-          id: 'r1',
-          expectedVersion: r.version,
-          now: 103,
-          acknowledgeUnknown: false
-        })
-      ).toMatchObject({ status: 'updated' })
-      await claim()
-      await s.completeAndEnqueue(completion())
-      expect(await claim('r2')).toMatchObject({ status: 'claimed' })
-      const final = required(await s.getInbound('r1'))
-      expect(
-        await s.requeue({
-          kind: 'request',
-          id: 'r1',
-          expectedVersion: final.version,
-          now: 104,
-          acknowledgeUnknown: true
-        })
-      ).toEqual({ status: 'conflict' })
-      const send = required((await due()).find((x) => x.kind === 'send'))
-      await s.settleAttempt({
-        kind: 'send',
-        id: 'd-r1',
-        lease: send.lease,
-        outcome: { status: 'retryable', errorCode: 'rate_limit' },
-        now: 111,
-        nextDueAt: 150
-      })
-      expect(await due(149)).toEqual([])
-      const retry = required((await due(150))[0])
-      if (retry.kind === 'send') {
-        expect(retry.record).toMatchObject({
-          currentChunk: 0,
-          receipts: [],
-          chunks: [{ idempotencyKey: 'c1' }, { idempotencyKey: 'c2' }],
-          attempts: 1
-        })
-      }
-    })
-
-    it('rejects non-JSON durable data and rolls back outbound/final on serialization failure', async () => {
-      await expect(
-        s.acceptInbound({
-          ...snapshot(),
-          context: { bad: undefined } as never
-        })
-      ).rejects.toThrow()
-      expect(await s.getInbound('r1')).toBeUndefined()
-      await s.acceptInbound(snapshot())
-      await claim()
-      const input = completion()
-      await expect(
-        s.completeAndEnqueue({
-          ...input,
-          outbound: {
-            ...input.outbound,
-            trace: { traceparent: undefined } as never
-          }
-        })
-      ).rejects.toThrow()
-      expect(await s.getOutbound('d-r1')).toBeUndefined()
-      expect((await s.getInbound('r1'))?.status).toBe('claimed')
-      expect(await s.completeAndEnqueue(input)).toMatchObject({
-        status: 'completed'
-      })
-    })
-
-    it('scopes idempotent failure and preserves failed recovery fences', async () => {
-      await s.acceptInbound(snapshot())
-      await claim()
-
-      const input = {
-        requestId: 'r1',
-        agent: 'grok' as const,
-        endpointIds: ['ep'],
-        claimToken: 'token',
-        errorCode: 'remote_failed',
-        now: 106
-      }
-
-      expect(
-        await s.fail({ ...input, agent: 'grok', endpointIds: ['foreign'] })
-      ).toEqual({
-        status: 'unauthorized'
-      })
-      expect(await s.fail(input)).toMatchObject({ status: 'updated' })
-      const r = required(await s.getInbound('r1'))
-      expect(await s.fail(input)).toEqual({
-        status: 'updated',
-        version: r.version
-      })
-      expect(await s.cleanup({ before: 1000, limit: 1 })).toEqual({
-        redacted: 1
-      })
-      expect((await s.getInbound('r1'))?.snapshot.text).toBe('')
-      expect(
-        await s.requeue({
-          kind: 'request',
-          id: 'r1',
-          expectedVersion: r.version,
-          now: 1001,
-          acknowledgeUnknown: true
-        })
-      ).toEqual({ status: 'conflict' })
     })
   })
 }

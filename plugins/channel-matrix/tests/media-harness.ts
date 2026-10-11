@@ -3,12 +3,18 @@ import {
   StreamableHTTPClientTransport
 } from '@modelcontextprotocol/client'
 import { createCore } from '@relanox/core'
-import type { ChannelPlugin, Json, MediaUpload } from '@relanox/sdk'
+import type {
+  ChannelPlugin,
+  Json,
+  MediaUpload,
+  ScopedAgentHost
+} from '@relanox/sdk'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
 import { vi } from 'vitest'
 import { z } from 'zod'
 import { createGrokAgentPlugin } from '../../agent-grok/src/index.js'
 import { cleanup, databaseFile, httpPeer } from './harness.js'
+import { readMedia } from '../../channel-telegram/tests/media-tools.js'
 
 const referenceSchema = z.object({
   id: z.string(),
@@ -85,6 +91,15 @@ export async function mediaRelay(
   vi.stubEnv('OPEN_MEDIA_ROUTINE', `${business.base}/routine`)
   vi.stubEnv('OPEN_MEDIA_ROUTINE_AUTH', 'Bearer routine-secret')
   const agent = createGrokAgentPlugin()
+  let principal: ScopedAgentHost | undefined
+  const setup = agent.setup.bind(agent)
+  agent.setup = async (host, endpoints, pluginConfig): Promise<void> => {
+    principal = host.forPrincipal({
+      subject: 'worker',
+      endpointIds: ['worker']
+    })
+    await setup(host, endpoints, pluginConfig)
+  }
   cleanup(async () => agent.stop?.())
 
   const runtime = await createCore({
@@ -104,7 +119,6 @@ export async function mediaRelay(
         {
           id: 'worker',
           agent: 'grok',
-          dispatchMode: 'pull',
           config: {
             mcp: {
               token: { env: 'OPEN_MEDIA_MCP_TOKEN' },
@@ -159,98 +173,55 @@ export async function mediaRelay(
     }[]
     deliveryId: string
   }> {
-    const claim = z
-      .object({
-        status: z.literal('claimed'),
-        claimToken: z.string(),
-        request: z.object({ attachments: z.array(referenceSchema) })
-      })
-      .parse(
-        (
-          await client.callTool({
-            name: 'relanox_claim',
-            arguments: { requestId, claimKey: `claim:${requestId}` }
-          })
-        ).structuredContent
-      )
-
+    const request = await storage.getInbound(requestId)
+    if (!request) {
+      throw new Error('missing_media_request')
+    }
     const inbound = []
-    for (const reference of claim.request.attachments) {
-      const transferred = z.object({ url: z.string() }).parse(
-        (
-          await client.callTool({
-            name: 'relanox_media_transfer',
-            arguments: {
-              requestId,
-              claimToken: claim.claimToken,
-              mediaId: reference.id,
-              method: 'GET'
-            }
-          })
-        ).structuredContent
-      )
-
-      const response = await fetch(transferred.url)
-      if (!response.ok) {
-        throw new Error('Media download failed')
-      }
+    for (const asset of request.snapshot.attachments ?? []) {
+      const reference = referenceSchema.parse(asset)
       inbound.push({
         reference,
-        data: new Uint8Array(await response.arrayBuffer())
+        data: await readMedia(client, requestId, reference.id)
       })
     }
-    const ids = []
-    for (const upload of uploads ?? []) {
-      const { data, ...metadata } = upload
-      const id = crypto.randomUUID()
+    if (uploads) {
+      if (!principal) {
+        throw new Error('missing_media_principal')
+      }
 
-      const transferred = z.object({ url: z.string() }).parse(
-        (
-          await client.callTool({
-            name: 'relanox_media_transfer',
-            arguments: {
-              requestId,
-              claimToken: claim.claimToken,
-              mediaId: id,
-              method: 'PUT',
-              metadata
-            }
-          })
-        ).structuredContent
-      )
-
-      const response = await fetch(transferred.url, {
-        method: 'PUT',
-        body: new Uint8Array(data)
+      const reply = await principal.sendMessage({
+        replyTo: requestId,
+        text: '',
+        attachments: uploads,
+        idempotencyKey: `reply:${requestId}`
       })
 
-      const stored = z
-        .object({ status: z.literal('stored'), media: referenceSchema })
-        .parse(await response.json())
-
-      ids.push(stored.media.id)
+      if (reply.status !== 'queued') {
+        throw new Error('media_reply_failed')
+      }
+      return { inbound, deliveryId: reply.deliveryId }
     }
 
-    const completed = z
-      .object({ status: z.literal('completed'), deliveryId: z.string() })
+    const reply = z
+      .object({ status: z.literal('queued'), deliveryId: z.string() })
       .parse(
         (
           await client.callTool({
-            name: 'relanox_complete',
+            name: 'relanox_send_message',
             arguments: {
-              requestId,
-              claimToken: claim.claimToken,
-              resultId: `result:${requestId}`,
+              replyTo: requestId,
               text: '',
-              attachments: uploads
-                ? ids
-                : inbound.map((item) => item.reference.id)
+              idempotencyKey: `reply:${requestId}`,
+              attachments: inbound.map((item) => ({
+                mediaId: item.reference.id
+              }))
             }
           })
         ).structuredContent
       )
 
-    return { inbound, deliveryId: completed.deliveryId }
+    return { inbound, deliveryId: reply.deliveryId }
   }
 
   return { storage, runtime, businessUrl: business.base, client, turn }

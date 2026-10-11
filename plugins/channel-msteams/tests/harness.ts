@@ -169,7 +169,7 @@ export async function harness(
   storage: ReturnType<typeof createSqliteStorage>
   dispatches: string[]
   principal(this: void): ScopedAgentHost
-  complete(
+  sendReply(
     this: void,
     text?: string
   ): Promise<{
@@ -217,9 +217,7 @@ export async function harness(
           allowedSenders: [sender]
         }
       ],
-      endpoints: [
-        { id: 'agent', agent: 'dot', config: {}, dispatchMode: 'push' }
-      ],
+      endpoints: [{ id: 'agent', agent: 'dot', config: {} }],
       bindings: [
         {
           accountId: 'business',
@@ -240,30 +238,29 @@ export async function harness(
     return host.forPrincipal({ subject: 'local-agent', endpointIds: ['agent'] })
   }
 
-  async function complete(text = 'answer'): Promise<{
+  async function sendReply(text = 'answer'): Promise<{
     request: InboundSnapshot
     delivery: OutboundRecord | undefined
   }> {
     await core.processDue()
     const scoped = principal()
-    const pending = await scoped.listPending(10)
+
+    const pending = (await storage.listInbound({ limit: 10 })).map(
+      (record) => record.snapshot
+    )
+
     const item = pending[0]
     if (!item) {
       throw new Error('No pending inbound')
     }
-    const claim = await scoped.claim(item.requestId, 'local-attempt')
-    if (claim.status !== 'claimed') {
-      throw new Error('Claim failed')
-    }
 
-    const completion = await scoped.complete({
-      requestId: item.requestId,
-      claimToken: claim.claimToken,
-      resultId: 'local-result',
+    const completion = await scoped.sendMessage({
+      replyTo: item.requestId,
+      idempotencyKey: 'local-result',
       text
     })
 
-    if (completion.status !== 'completed') {
+    if (completion.status !== 'queued') {
       throw new Error('Completion failed')
     }
     await core.processDue()
@@ -278,7 +275,7 @@ export async function harness(
     storage,
     dispatches,
     principal,
-    complete,
+    sendReply,
     async close(): Promise<void> {
       await storage.close()
     }

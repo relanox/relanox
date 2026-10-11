@@ -18,7 +18,6 @@ export type WorkerOptions = {
   readonly maxAttempts?: number
   readonly retryBaseMs?: number
   readonly retryMaxMs?: number
-  readonly notificationIntervalMs?: number
   readonly maxTextBytes?: number
   readonly maxMediaBytes?: number
   readonly maxTotalMediaBytes?: number

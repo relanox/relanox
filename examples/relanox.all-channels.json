@@ -224,7 +224,6 @@
       {
         "id": "dot-main",
         "agent": "dot",
-        "dispatchMode": "push",
         "config": {
           "mcp": {
             "token": {
@@ -247,7 +246,6 @@
       {
         "id": "grok-main",
         "agent": "grok",
-        "dispatchMode": "push",
         "config": {
           "mcp": {
             "token": {

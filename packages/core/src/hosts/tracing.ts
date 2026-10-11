@@ -4,12 +4,12 @@ import type { Observability, TraceContext, IngestInput } from '@relanox/sdk'
 export function createOperationTracer(
   observe: Observability
 ): <T>(
-  operation: 'ingest' | 'claim' | 'complete' | 'fail' | 'storage',
+  operation: 'ingest' | 'enqueue_message' | 'read_media' | 'storage',
   action: (context?: TraceContext) => Promise<T>,
   parent?: IngestInput['trace']
 ) => Promise<T> {
   async function traced<T>(
-    operation: 'ingest' | 'claim' | 'complete' | 'fail' | 'storage',
+    operation: 'ingest' | 'enqueue_message' | 'read_media' | 'storage',
     action: (context?: TraceContext) => Promise<T>,
     parent?: IngestInput['trace']
   ): Promise<T> {

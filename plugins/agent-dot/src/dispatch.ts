@@ -1,3 +1,4 @@
+import { projectAgentRequest } from '@relanox/agent-mcp'
 import type { AgentHost, AgentPlugin, DispatchResult } from '@relanox/sdk'
 import { CallbackError, callbackUrl, postCallback } from './callback.js'
 import { configSchema } from './config.js'
@@ -39,7 +40,7 @@ export function createDispatch(
       eventId,
       name,
       timestamp: new Date(request.acceptedAt).toISOString(),
-      data: { requestId: request.requestId },
+      data: projectAgentRequest(request),
       cursor: null
     })
 

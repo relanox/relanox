@@ -2,15 +2,14 @@ import type { Json, EpochMs } from './values.js'
 import type { AgentId } from './config.js'
 import type {
   InboundSnapshot,
-  RequestStatus,
-  FinalResult,
+  AttemptStatus,
+  OutboundMessage,
   Lease,
   InboundRecord,
   DeliveryStatus,
   OutboundRecord,
   IngestReceipt,
-  ClaimResult,
-  CompletionResult,
+  MessageReceipt,
   MutationResult,
   DispatchResult,
   SendResult
@@ -20,7 +19,6 @@ import type { MediaStorage, StoredMedia } from './media.js'
 
 export type StorageStats = {
   readonly pending: number
-  readonly claimed: number
   readonly undelivered: number
   readonly unknown: number
   readonly oldestPendingAt?: EpochMs
@@ -31,31 +29,15 @@ export type Health = {
   readonly errorCode?: string
 }
 
-export type ClaimInput = {
+export type EnqueueMessageInput = {
   readonly requestId: string
   readonly endpointIds: readonly string[]
   readonly agent: AgentId
-  readonly claimKey: string
-  readonly claimToken: string
-  readonly now: EpochMs
-}
-
-export type CompleteInput = {
-  readonly requestId: string
-  readonly endpointIds: readonly string[]
-  readonly agent: AgentId
-  readonly claimToken: string
-  readonly result: FinalResult
+  readonly message: OutboundMessage
   readonly outbound: OutboundRecord
-}
-
-export type FailInput = {
-  readonly requestId: string
-  readonly endpointIds: readonly string[]
-  readonly agent: AgentId
-  readonly claimToken: string
-  readonly errorCode: string
-  readonly now: EpochMs
+  readonly media?: readonly StoredMedia[]
+  readonly maxCount?: number
+  readonly maxTotalBytes?: number
 }
 
 export type DueWork =
@@ -98,7 +80,7 @@ export type Settlement =
     }
 
 export type StatusFilter = {
-  readonly requestStatus?: RequestStatus
+  readonly dispatchStatus?: AttemptStatus
   readonly deliveryStatus?: DeliveryStatus
   readonly endpointId?: string
   readonly limit: number
@@ -112,14 +94,7 @@ export type Storage = {
     snapshot: InboundSnapshot,
     media?: readonly StoredMedia[]
   ): Promise<IngestReceipt>
-  listPending(input: {
-    readonly endpointIds: readonly string[]
-    readonly agent: AgentId
-    readonly limit: number
-  }): Promise<readonly InboundSnapshot[]>
-  claimRequest(input: ClaimInput): Promise<ClaimResult>
-  completeAndEnqueue(input: CompleteInput): Promise<CompletionResult>
-  fail(input: FailInput): Promise<MutationResult>
+  enqueueMessage(input: EnqueueMessageInput): Promise<MessageReceipt>
   requeue(input: {
     readonly kind: 'request' | 'delivery'
     readonly id: string

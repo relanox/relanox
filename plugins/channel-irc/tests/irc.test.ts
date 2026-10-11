@@ -30,9 +30,9 @@ async function tcpPeer(
     let buffer = ''
     socket.on('data', (data: string) => {
       buffer += data
-      const complete = buffer.split('\r\n')
-      buffer = complete.pop() ?? ''
-      for (const line of complete) {
+      const sendReply = buffer.split('\r\n')
+      buffer = sendReply.pop() ?? ''
+      for (const line of sendReply) {
         lines.push(line)
         onLine(line, socket)
       }
@@ -237,13 +237,9 @@ it('negotiates SASL and tags, ingests channel/private text and independently wri
   ).toBe(true)
   expect(JSON.stringify(requests)).not.toContain('sasl-password')
   await fixture.runtime.processDue()
-  for (const request of await fixture.storage.listPending({
-    agent: 'grok',
-    endpointIds: ['worker'],
-    limit: 10
-  })) {
-    const result = await fixture.complete(
-      request.requestId,
+  for (const request of await fixture.storage.listInbound({ limit: 10 })) {
+    const result = await fixture.sendReply(
+      request.snapshot.requestId,
       'delayed\nanswer\rwith\r\nlines'
     )
 

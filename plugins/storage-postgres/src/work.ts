@@ -40,12 +40,8 @@ export function createWorkOperations(
           if (
             record.version !== input.expectedVersion ||
             record.redactedAt !== undefined ||
-            record.status === 'completed' ||
-            !(
-              record.status === 'claimed' ||
-              record.status === 'failed' ||
-              record.dispatch.status === 'unknown' ||
-              record.dispatch.status === 'rejected'
+            !['accepted', 'unknown', 'rejected'].includes(
+              record.dispatch.status
             ) ||
             (record.dispatch.status === 'unknown' && !input.acknowledgeUnknown)
           ) {
@@ -54,13 +50,10 @@ export function createWorkOperations(
 
           const next = {
             ...record,
-            status: 'pending' as const,
             version: record.version + 1,
             dispatch: { status: 'due' as const, attempts: 0, dueAt: input.now }
           }
 
-          delete next.claim
-          delete next.errorCode
           await saveInbound(client, next)
           return { status: 'updated', version: next.version }
         }
@@ -101,8 +94,7 @@ export function createWorkOperations(
           `
             SELECT record
             FROM inbound
-            WHERE status='pending'
-              AND record#>>'{snapshot,endpoint,dispatchMode}'='push'
+            WHERE status='due'
               AND (record#>>'{dispatch,lease,expiresAt}')::bigint<=$1
             ORDER BY accepted_at,id
             LIMIT $2
@@ -157,22 +149,9 @@ export function createWorkOperations(
           `
             SELECT i.record
             FROM inbound i
-            WHERE i.status='pending'
-              AND i.record#>>'{snapshot,endpoint,dispatchMode}'='push'
-              AND i.record#>>'{dispatch,status}' IN ('due','accepted')
+            WHERE i.status='due'
               AND i.record#>'{dispatch,lease}' IS NULL
               AND (i.record#>>'{dispatch,dueAt}')::bigint<=$1
-              AND NOT EXISTS(SELECT 1
-              FROM inbound earlier
-              WHERE earlier.endpoint=i.endpoint
-                AND earlier.id<>i.id
-                AND earlier.status IN ('pending','claimed')
-                AND (earlier.status='claimed'
-                  OR earlier.record#>'{dispatch,lease}' IS NOT NULL
-                  OR (earlier.record#>>'{dispatch,attempts}')::int>0
-                  OR earlier.record#>>'{dispatch,status}' IN ('unknown','rejected')
-                  OR ((i.record#>>'{dispatch,attempts}')::int=0
-                    AND (earlier.accepted_at,earlier.id)<(i.accepted_at,i.id))))
             ORDER BY i.accepted_at,i.id
             LIMIT $2
           `,
@@ -200,11 +179,12 @@ export function createWorkOperations(
           client,
           `
             SELECT record
-            FROM outbound
-            WHERE status='pending'
+            FROM outbound o
+            WHERE o.status='pending'
+              AND NOT EXISTS(SELECT 1 FROM outbound earlier WHERE earlier.request_id=o.request_id AND earlier.sequence<o.sequence AND earlier.status IN ('pending','unknown'))
               AND record->'lease' IS NULL
               AND (record->>'dueAt')::bigint<=$1
-            ORDER BY id
+            ORDER BY o.sequence
             LIMIT $2
           `,
           [input.now, limit - work.length]
@@ -232,7 +212,6 @@ export function createWorkOperations(
             return { status: 'not_found' }
           }
           if (
-            record.status !== 'pending' ||
             record.version !== input.lease.version ||
             !isActiveLease(record.dispatch.lease, input.lease, input.now)
           ) {

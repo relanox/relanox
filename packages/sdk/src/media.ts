@@ -1,5 +1,3 @@
-import type { AgentId } from './config.js'
-
 export type MediaKind = 'image' | 'audio' | 'video' | 'file'
 
 /** Binary data crosses a plugin boundary only in memory, never in JSON snapshots. */
@@ -13,6 +11,15 @@ export type MediaUpload = {
   readonly previewMediaId?: string
   readonly data: Uint8Array
 }
+
+/** A generated attachment may carry native preview bytes in the same atomic enqueue. */
+export type AgentAttachment =
+  | string
+  | MediaUpload
+  | {
+      readonly media: MediaUpload
+      readonly preview: MediaUpload
+    }
 
 /** Stable metadata for bytes owned by this relay. Platform download URLs are not assets. */
 export type MediaReference = {
@@ -33,43 +40,19 @@ export type StoredMedia = {
   readonly data: Uint8Array
 }
 
-export type MediaWriteResult =
-  | {
-      readonly status: 'stored'
-      readonly media: MediaReference
-      readonly replay: boolean
-    }
-  | { readonly status: 'not_found' | 'unauthorized' | 'conflict' }
-
-/** Media belongs to a request; writes use the same durable claim fence as completion. */
+/** Bytes are published only as part of atomic message acceptance or enqueue. */
 export type MediaStorage = {
   get(requestId: string, mediaId: string): Promise<StoredMedia | undefined>
-  put(input: {
-    readonly requestId: string
-    readonly agent: AgentId
-    readonly endpointIds: readonly string[]
-    readonly claimToken: string
-    readonly media: StoredMedia
-    /** Atomic per-request budget, including input and staged output assets. */
-    readonly maxCount?: number
-    readonly maxTotalBytes?: number
-  }): Promise<MediaWriteResult>
 }
 
 export type AgentMediaHost = {
   readonly maxBytes: number
+  readonly maxTotalBytes: number
+  readonly maxAttachments: number
   read(input: {
     readonly requestId: string
-    readonly claimToken: string
     readonly mediaId: string
   }): Promise<StoredMedia | undefined>
-  upload(input: {
-    readonly requestId: string
-    readonly claimToken: string
-    /** A caller-generated UUID makes retried uploads idempotent. */
-    readonly uploadId: string
-    readonly media: MediaUpload
-  }): Promise<MediaWriteResult>
 }
 
 /** Short-lived download URLs for native platforms that fetch outbound bytes themselves. */

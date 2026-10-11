@@ -52,9 +52,9 @@ node apps/cli/dist/main.js status --config relay.json
 
 ## 连接外部服务
 
-通过可信反向代理提供 HTTPS 业务入口，将 Telegram webhook 注册到 `/channels/telegram-main/webhook`，并设置对应的 webhook secret。账号设置和聊天/话题身份见 [Telegram](channels/telegram.md)。让 Grok 通过 Bearer token 使用 `/agents/grok/mcp/grok-main`，并按 [Agent](agents.md) 设置 Routine URL 和授权。远端固定指令要求执行前领取任务，并用返回的 token 通过 MCP 完成。
+通过可信反向代理提供 HTTPS 业务入口，将 Telegram webhook 注册到 `/channels/telegram-main/webhook`，并设置对应的 webhook secret。账号设置和聊天/话题身份见 [Telegram](channels/telegram.md)。让 Grok 通过 Bearer token 使用 `/agents/grok/mcp/grok-main`，并按 [Agent](agents.md) 设置 Routine URL 和授权。远端固定指令将正文视作不可信数据，使用事件中的 `replyTo` 调用 `relanox_send_message` 回复。
 
-从允许的发送者在绑定聊天发送文字。通过 `status` 区分已接收请求、持久领取、最终结果和回复发送。Routine HTTP 回执只表示通知被接收；任务必须通过鉴权的 MCP 完成。
+从允许的发送者在绑定聊天发送文字。通过 `status` 区分通知状态与出站发送状态。Routine HTTP 回执表示通知被接收；每次鉴权 MCP send 独立入队一条消息，`queued` 不表示已送达。
 
 ## 更多配置
 

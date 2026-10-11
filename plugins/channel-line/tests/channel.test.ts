@@ -60,7 +60,7 @@ async function setup(filename?: string): Promise<{
   core: CoreRuntime
   storage: Storage
   dispatches: string[]
-  complete(
+  sendReply(
     this: void,
     text?: string
   ): Promise<{
@@ -97,7 +97,7 @@ describe('native LINE', () => {
     async (change) => {
       const local = await setup()
       await local.core.fetch(incoming(webhook()))
-      const completed = await local.complete()
+      const completed = await local.sendReply()
       const outbound = completed.delivery
       if (!outbound?.chunks[0]) {
         throw new Error('Missing stored outbound')
@@ -144,7 +144,7 @@ describe('native LINE', () => {
   it('keeps credential rotation on the same canonical API endpoint deliverable', async () => {
     const local = await setup()
     await local.core.fetch(incoming(webhook()))
-    const completed = await local.complete()
+    const completed = await local.sendReply()
     const outbound = completed.delivery
     if (!outbound?.chunks[0]) {
       throw new Error('Missing stored outbound')
@@ -192,7 +192,7 @@ describe('native LINE', () => {
     )
     expect((await local.core.fetch(incoming(webhook()))).status).toBe(200)
     expect((await local.storage.getStats()).pending).toBe(1)
-    const completed = await local.complete()
+    const completed = await local.sendReply()
     expect(local.dispatches).toEqual(['hello'])
     expect(completed.delivery?.status).toBe('sent')
     expect(completed.request.target).toEqual({
@@ -225,7 +225,7 @@ describe('native LINE', () => {
     const local = await setup(join(directory, 'state.db'))
     await local.core.fetch(incoming(webhook()))
     local.remote.respond(429, {}, { 'retry-after': '2' })
-    const completed = await local.complete()
+    const completed = await local.sendReply()
     const outbound = completed.delivery
     if (!outbound?.chunks[0]) {
       throw new Error('No outbound chunk')
@@ -294,7 +294,7 @@ describe('native LINE', () => {
       const local = await setup()
       await local.core.fetch(incoming(webhook()))
       local.remote.respond(status, {}, { 'retry-after': '2' })
-      const completed = await local.complete()
+      const completed = await local.sendReply()
       expect(completed.delivery?.status).toBe(
         expected === 'retryable' ? 'pending' : expected
       )

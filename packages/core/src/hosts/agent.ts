@@ -1,26 +1,24 @@
+import { createHash } from 'node:crypto'
 import type {
   AgentHost,
   AgentId,
   AgentPrincipal,
   ChannelPlugin,
   CommonHost,
+  DeliveryChunk,
   EndpointConfig,
-  Json,
+  InboundRecord,
   Observability,
   ScopedAgentHost,
-  Storage
+  Storage,
+  StoredMedia
 } from '@relanox/sdk'
-import { z } from 'zod'
 import { chunkText } from '../chunk.js'
 import { CoreError } from '../errors.js'
 import { jsonSnapshot } from '../json.js'
-import { textId, limit, boundedText } from '../validation.js'
+import { textId, boundedText } from '../validation.js'
 import type { WorkerConfig } from '../worker/options.js'
-import {
-  createAgentMedia,
-  completionMedia,
-  authorizedRequest
-} from './media.js'
+import { createAgentMedia, messageMedia, authorizedRequest } from './media.js'
 import { createOperationTracer } from './tracing.js'
 
 type AgentHostOptions = {
@@ -33,182 +31,156 @@ type AgentHostOptions = {
   readonly channels: ReadonlyMap<string, ChannelPlugin<unknown>>
 }
 
-/** Intersects authenticated endpoint authority and keeps result destinations inside saved snapshots. */
-export function createAgentHost({
-  agent,
-  agentEndpoints,
-  common,
-  storage,
-  observe,
-  worker,
-  channels
-}: AgentHostOptions): AgentHost {
-  const traced = createOperationTracer(observe)
+type MessageInput = Parameters<ScopedAgentHost['sendMessage']>[0]
+
+function chunksFor(
+  plugin: ChannelPlugin<unknown>,
+  deliveryId: string,
+  text: string,
+  media: readonly StoredMedia[]
+): readonly DeliveryChunk[] {
+  if (
+    media.some(
+      (item) => !plugin.capabilities.media?.send.includes(item.reference.kind)
+    )
+  ) {
+    throw new CoreError('media_not_supported')
+  }
+
+  const chunks: DeliveryChunk[] = (
+    text
+      ? chunkText(
+          text,
+          plugin.capabilities.maxTextLength,
+          plugin.capabilities.lengthUnit
+        )
+      : []
+  ).map((part, index) => ({
+    text: part,
+    idempotencyKey: `${deliveryId}:${index}`,
+    state: null
+  }))
+
+  return [
+    ...chunks,
+    ...media.map((item, index) => ({
+      text: '',
+      media: item.reference,
+      idempotencyKey: `${deliveryId}:${chunks.length + index}`,
+      state: null
+    }))
+  ]
+}
+
+async function enqueue(
+  options: AgentHostOptions,
+  scope: readonly string[],
+  input: MessageInput,
+  request: InboundRecord
+): ReturnType<ScopedAgentHost['sendMessage']> {
+  const { storage, worker, channels, agent, observe } = options
+
+  const media = await messageMedia(
+    storage,
+    input.replyTo,
+    input.attachments,
+    worker
+  )
+
+  const plugin = channels.get(request.snapshot.target.accountId)
+  if (!plugin) {
+    throw new CoreError('channel_plugin_missing')
+  }
+  const deliveryId = crypto.randomUUID()
+  const now = Date.now()
+  const references = media.attachments.map((item) => item.reference)
+
+  const messageId =
+    input.idempotencyKey ??
+    createHash('sha256')
+      .update(JSON.stringify([input.text, references]))
+      .digest('hex')
+
+  const result = await createOperationTracer(observe)(
+    'enqueue_message',
+    async () =>
+      storage.enqueueMessage({
+        requestId: input.replyTo,
+        endpointIds: scope,
+        agent,
+        message: {
+          messageId,
+          text: input.text,
+          ...(references.length > 0 ? { attachments: references } : {}),
+          createdAt: now
+        },
+        media: media.stored,
+        maxCount: worker.maxAttachments * 2,
+        maxTotalBytes: worker.maxTotalMediaBytes * 2,
+        outbound: {
+          deliveryId,
+          requestId: input.replyTo,
+          messageId,
+          target: jsonSnapshot(request.snapshot.target),
+          chunks: chunksFor(plugin, deliveryId, input.text, media.attachments),
+          currentChunk: 0,
+          receipts: [],
+          status: 'pending',
+          version: 1,
+          attempts: 0,
+          dueAt: now,
+          createdAt: now,
+          ...(request.snapshot.trace ? { trace: request.snapshot.trace } : {})
+        }
+      }),
+    request.snapshot.trace
+  )
+
+  if (result.status === 'queued' && !result.replay) {
+    observe.record(
+      'relanox_reply_duration_seconds',
+      Math.max(0, (now - request.snapshot.acceptedAt) / 1000),
+      { agent }
+    )
+  }
+  observe.log('info', 'message.queued', {
+    plugin: 'core',
+    requestId: input.replyTo,
+    outcome: result.status === 'queued' ? 'ok' : result.status
+  })
+  return result
+}
+
+/** Authenticated endpoints can send messages only to the frozen incoming reply address. */
+export function createAgentHost(options: AgentHostOptions): AgentHost {
+  const { agent, agentEndpoints, common, storage, worker } = options
   return {
     ...common,
     forPrincipal(principal: AgentPrincipal): ScopedAgentHost {
       textId.parse(principal.subject)
 
       const scope = [...new Set(principal.endpointIds)].filter((id) =>
-        agentEndpoints.some((e) => e.id === id)
+        agentEndpoints.some((endpoint) => endpoint.id === id)
       )
 
       return {
         media: createAgentMedia(storage, agent, scope, worker),
-        listPending: async (count) =>
-          storage.listPending({
-            agent,
-            endpointIds: scope,
-            limit: limit(count)
-          }),
-        claim: async (requestId, claimKey) =>
-          traced('claim', async () =>
-            storage.claimRequest({
-              requestId: textId.parse(requestId),
-              endpointIds: scope,
-              agent,
-              claimKey: textId.parse(claimKey),
-              claimToken: crypto.randomUUID(),
-              now: Date.now()
-            })
-          ),
-        async complete(input) {
-          textId.parse(input.requestId)
-          textId.parse(input.claimToken)
-          textId.parse(input.resultId)
+        async sendMessage(input) {
+          textId.parse(input.replyTo)
+          if (input.idempotencyKey !== undefined) {
+            textId.parse(input.idempotencyKey)
+          }
           boundedText(
             input.text,
             worker.maxTextBytes,
             !input.attachments?.length
           )
-          const request = await storage.getInbound(input.requestId)
-          if (
-            !request ||
-            !scope.includes(request.snapshot.endpoint.id) ||
-            request.snapshot.endpoint.agent !== agent
-          ) {
+          const request = await storage.getInbound(input.replyTo)
+          if (!authorizedRequest(request, agent, scope)) {
             return { status: 'not_found' }
           }
-          if (
-            input.attachments &&
-            !authorizedRequest(request, agent, scope, input.claimToken)
-          ) {
-            return { status: 'unauthorized' }
-          }
-
-          const media = await completionMedia(
-            storage,
-            input.requestId,
-            input.attachments,
-            worker
-          )
-
-          const channelPlugin = channels.get(request.snapshot.target.accountId)
-          if (!channelPlugin) {
-            throw new CoreError('channel_plugin_missing')
-          }
-          if (
-            media.some(
-              (item) =>
-                !channelPlugin.capabilities.media?.send.includes(
-                  item.reference.kind
-                )
-            )
-          ) {
-            throw new CoreError('media_not_supported')
-          }
-          const deliveryId = crypto.randomUUID()
-          const now = Date.now()
-
-          const chunks = (
-            input.text
-              ? chunkText(
-                  input.text,
-                  channelPlugin.capabilities.maxTextLength,
-                  channelPlugin.capabilities.lengthUnit
-                )
-              : []
-          ).map((text, index) => ({
-            text,
-            idempotencyKey: `${deliveryId}:${index}`,
-            state: null as Json
-          }))
-
-          const deliveryChunks = [
-            ...chunks,
-            ...media.map((item, index) => ({
-              text: '',
-              media: item.reference,
-              idempotencyKey: `${deliveryId}:${chunks.length + index}`,
-              state: null as Json
-            }))
-          ]
-
-          const result = await traced(
-            'complete',
-            async () =>
-              storage.completeAndEnqueue({
-                requestId: input.requestId,
-                endpointIds: scope,
-                agent,
-                claimToken: input.claimToken,
-                result: {
-                  resultId: input.resultId,
-                  text: input.text,
-                  ...(media.length > 0
-                    ? { attachments: media.map((item) => item.reference) }
-                    : {}),
-                  completedAt: now
-                },
-                outbound: {
-                  deliveryId,
-                  requestId: input.requestId,
-                  resultId: input.resultId,
-                  target: jsonSnapshot(request.snapshot.target),
-                  chunks: deliveryChunks,
-                  currentChunk: 0,
-                  receipts: [],
-                  status: 'pending',
-                  version: 1,
-                  attempts: 0,
-                  dueAt: now,
-                  createdAt: now,
-                  ...(request.snapshot.trace
-                    ? { trace: request.snapshot.trace }
-                    : {})
-                }
-              }),
-            request.snapshot.trace
-          )
-
-          if (result.status === 'completed' && !result.replay) {
-            observe.record(
-              'relanox_result_duration_seconds',
-              Math.max(0, (now - request.snapshot.acceptedAt) / 1000),
-              { agent }
-            )
-          }
-          observe.log('info', 'complete.completed', {
-            plugin: 'core',
-            requestId: input.requestId,
-            outcome: result.status === 'completed' ? 'ok' : result.status
-          })
-          return result
-        },
-        fail: async (input) =>
-          traced('fail', async () =>
-            storage.fail({
-              requestId: textId.parse(input.requestId),
-              endpointIds: scope,
-              agent,
-              claimToken: textId.parse(input.claimToken),
-              errorCode: z
-                .string()
-                .regex(/^[a-zA-Z0-9_-]{1,128}$/u)
-                .parse(input.errorCode),
-              now: Date.now()
-            })
-          )
+          return enqueue(options, scope, input, request)
+        }
       }
     }
   }

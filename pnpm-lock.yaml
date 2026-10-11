@@ -302,6 +302,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.3.1
         version: 2.3.1
+      '@relanox/channel-media':
+        specifier: workspace:*
+        version: link:../channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../sdk

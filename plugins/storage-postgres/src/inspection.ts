@@ -42,8 +42,8 @@ export function createInspectionOperations(
     async listInbound(filter) {
       const where = ['1=1']
       const params: unknown[] = []
-      if (filter.requestStatus !== undefined) {
-        params.push(filter.requestStatus)
+      if (filter.dispatchStatus !== undefined) {
+        params.push(filter.dispatchStatus)
         where.push(`status=$${params.length}`)
       }
       if (filter.endpointId !== undefined) {
@@ -104,7 +104,6 @@ export function createInspectionOperations(
       const row = (
         await query<{
           pending: string
-          claimed: string
           oldest: string | null
           undelivered: string
           unknown: string
@@ -112,12 +111,11 @@ export function createInspectionOperations(
           pool,
           `
             SELECT
-              COUNT(*) FILTER(WHERE status='pending') pending,
-              COUNT(*) FILTER(WHERE status='claimed') claimed,
-              MIN(accepted_at) FILTER(WHERE status='pending') oldest,
+              COUNT(*) FILTER(WHERE status='due') pending,
+              MIN(accepted_at) FILTER(WHERE status='due') oldest,
               (SELECT COUNT(*) FROM outbound WHERE status!='sent') undelivered,
               COUNT(*) FILTER(
-                WHERE status='pending' AND record#>>'{dispatch,status}'='unknown'
+                WHERE record#>>'{dispatch,status}'='unknown'
               ) + (SELECT COUNT(*) FROM outbound WHERE status='unknown') unknown
             FROM inbound
           `
@@ -129,7 +127,6 @@ export function createInspectionOperations(
       }
       return {
         pending: Number(row.pending),
-        claimed: Number(row.claimed),
         undelivered: Number(row.undelivered),
         unknown: Number(row.unknown),
         ...(row.oldest !== null ? { oldestPendingAt: Number(row.oldest) } : {})
@@ -137,65 +134,45 @@ export function createInspectionOperations(
     },
     async cleanup(input) {
       return transaction(async (client) => {
-        const rows = await query<{
-          inbound_record: InboundRecord
-          outbound_record: OutboundRecord | null
-        }>(
+        const rows = await query<{ record: InboundRecord }>(
           client,
-          `
-            SELECT inbound_request.record inbound_record,outbound_delivery.record outbound_record
-            FROM inbound inbound_request
-            LEFT JOIN outbound outbound_delivery ON outbound_delivery.request_id=inbound_request.id
-            WHERE inbound_request.accepted_at<$1
-              AND inbound_request.record->'redactedAt' IS NULL
-              AND (inbound_request.status='failed'
-                OR (inbound_request.status='completed'
-                  AND outbound_delivery.status='sent'))
-            ORDER BY inbound_request.accepted_at,inbound_request.id
-            LIMIT $2
-          `,
+          `SELECT i.record FROM inbound i WHERE i.accepted_at<$1 AND i.status IN ('accepted','rejected') AND i.record->'redactedAt' IS NULL AND NOT EXISTS(SELECT 1 FROM outbound o WHERE o.request_id=i.id AND (o.status!='sent' OR (o.record->>'createdAt')::bigint>=$1)) ORDER BY i.accepted_at,i.id LIMIT $2 FOR UPDATE`,
           [input.before, boundedLimit(input.limit)]
         )
 
-        for (const {
-          inbound_record: record,
-          outbound_record: delivery
-        } of rows) {
-          await saveInbound(
-            client,
-            {
-              ...record,
-              snapshot: {
-                ...record.snapshot,
-                text: '',
-                context: null,
-                attachments: []
-              },
-              ...(record.result
-                ? { result: { ...record.result, text: '', attachments: [] } }
-                : {}),
-              redactedAt: input.before
+        for (const { record } of rows) {
+          await saveInbound(client, {
+            ...record,
+            version: record.version + 1,
+            snapshot: {
+              ...record.snapshot,
+              text: '',
+              context: null,
+              attachments: []
             },
-            record.version
-          )
-          await client.query(
-            "UPDATE media SET data=NULL,reference='{}'::jsonb WHERE request_id=$1",
+            redactedAt: input.before
+          })
+          await client.query('UPDATE media SET data=NULL WHERE request_id=$1', [
+            record.snapshot.requestId
+          ])
+
+          const deliveries = await query<{ record: OutboundRecord }>(
+            client,
+            'SELECT record FROM outbound WHERE request_id=$1',
             [record.snapshot.requestId]
           )
-          if (delivery) {
-            await saveOutbound(
-              client,
-              {
-                ...delivery,
-                chunks: delivery.chunks.map((chunk) => ({
-                  text: '',
-                  state: null,
-                  idempotencyKey: chunk.idempotencyKey
-                })),
-                receipts: delivery.receipts.map(() => ({}))
-              },
-              delivery.version
-            )
+
+          for (const { record: delivery } of deliveries) {
+            await saveOutbound(client, {
+              ...delivery,
+              version: delivery.version + 1,
+              chunks: delivery.chunks.map((chunk) => ({
+                text: '',
+                state: null,
+                idempotencyKey: chunk.idempotencyKey
+              })),
+              receipts: delivery.receipts.map(() => ({}))
+            })
           }
         }
         return { redacted: rows.length }

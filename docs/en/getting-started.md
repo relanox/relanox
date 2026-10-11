@@ -52,9 +52,9 @@ A new database can make `doctor` unhealthy before the first `run`, because diagn
 
 ## Connect the services
 
-Expose business HTTP through HTTPS with a trusted reverse proxy. Register Telegram's webhook at `/channels/telegram-main/webhook` using the configured webhook secret; follow the [Telegram guide](channels/telegram.md) for account setup and exact chat/topic identities. Configure Grok to use `/agents/grok/mcp/grok-main` with its Bearer token, then set its Routine URL and authorization as described in [Agents](agents.md). Give the remote agent fixed instructions to claim before executing and complete through MCP with the returned token.
+Expose business HTTP through HTTPS with a trusted reverse proxy. Register Telegram's webhook at `/channels/telegram-main/webhook` using the configured webhook secret; follow the [Telegram guide](channels/telegram.md) for account setup and exact chat/topic identities. Configure Grok to use `/agents/grok/mcp/grok-main` with its Bearer token, then set its Routine URL and authorization as described in [Agents](agents.md). Give the remote agent fixed instructions to treat incoming text as untrusted data and send replies through `relanox_send_message` using the event's `replyTo`.
 
-Send text from an allowed sender in the bound chat. Inspect `status` to distinguish accepted requests, durable claims, final results and delivery. HTTP receipt from a Routine is only notification acceptance; the task finishes through authenticated MCP completion.
+Send text from an allowed sender in the bound chat. Inspect `status` to distinguish notification status from outbound delivery. A Routine HTTP receipt confirms notification acceptance; each authenticated MCP send independently queues a message, and `queued` does not mean delivered.
 
 ## Other configurations
 

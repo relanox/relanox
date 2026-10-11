@@ -6,14 +6,15 @@ import type {
 } from '@relanox/sdk'
 import { equalDurableValues } from './record-codec.js'
 
-export function matchesInitialResult(
+export function matchesInitialMessage(
   outbound: OutboundRecord,
   request: InboundRecord,
-  input: Parameters<Storage['completeAndEnqueue']>[0]
+  input: Parameters<Storage['enqueueMessage']>[0]
 ): boolean {
   return (
     outbound.requestId === input.requestId &&
-    outbound.resultId === input.result.resultId &&
+    outbound.messageId === input.message.messageId &&
+    outbound.createdAt === input.message.createdAt &&
     equalDurableValues(outbound.target, request.snapshot.target) &&
     outbound.currentChunk === 0 &&
     outbound.receipts.length === 0 &&
@@ -22,20 +23,21 @@ export function matchesInitialResult(
     outbound.attempts === 0 &&
     outbound.lease === undefined &&
     outbound.chunks.length > 0 &&
-    outbound.chunks.map((chunk) => chunk.text).join('') === input.result.text &&
+    outbound.chunks.map((chunk) => chunk.text).join('') ===
+      input.message.text &&
     outbound.chunks.every(
       (chunk) => chunk.media === undefined || chunk.text === ''
     ) &&
     equalDurableValues(
       outbound.chunks.flatMap((chunk) => (chunk.media ? [chunk.media] : [])),
-      input.result.attachments ?? []
+      input.message.attachments ?? []
     )
   )
 }
 
 export const isRequestInScope = (
   record: InboundRecord,
-  input: Pick<Parameters<Storage['claimRequest']>[0], 'endpointIds' | 'agent'>
+  input: Pick<Parameters<Storage['enqueueMessage']>[0], 'endpointIds' | 'agent'>
 ): boolean =>
   input.endpointIds.includes(record.snapshot.endpoint.id) &&
   record.snapshot.endpoint.agent === input.agent

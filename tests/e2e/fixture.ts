@@ -23,7 +23,7 @@ export const routineSchema = z.strictObject({
 })
 
 export const requestSchema = z.strictObject({
-  requestId: z.string(),
+  replyTo: z.string(),
   text: z.string(),
   context: z.json(),
   source: z.strictObject({
@@ -33,7 +33,7 @@ export const requestSchema = z.strictObject({
 })
 
 export function dispatched(traffic: Traffic): {
-  requestId: string
+  replyTo: string
   text: string
   context: z.core.util.JSONType
   source: { channel: 'telegram'; eventId: string }
@@ -84,7 +84,6 @@ export async function fixture(
   ): {
     id: 'alpha' | 'beta'
     agent: string
-    dispatchMode: string
     config: {
       mcp: { token: { env: string }; allowedHosts: string[] }
       routineUrl: { env: string }
@@ -95,7 +94,6 @@ export async function fixture(
   } => ({
     id,
     agent: 'grok',
-    dispatchMode: 'push',
     config: {
       mcp: {
         token: { env: `E2E_GROK_${id.toUpperCase()}_TOKEN` },
@@ -217,55 +215,20 @@ export async function ingest(
   })
 }
 
-export async function claim(
+export async function sendMessage(
   client: Client,
-  requestId: string,
-  claimKey: string
-): Promise<{
-  status: 'claimed'
-  request: {
-    requestId: string
-    text: string
-    context: z.core.util.JSONType
-    source: { channel: 'telegram'; eventId: string }
-  }
-  claimToken: string
-  replay: boolean
-}> {
+  replyTo: string,
+  text = '最终 answer 🌍',
+  idempotencyKey = `result-${replyTo}`
+): Promise<{ status: 'queued'; deliveryId: string; replay: boolean }> {
   const result = await client.callTool({
-    name: 'relanox_claim',
-    arguments: { requestId, claimKey }
+    name: 'relanox_send_message',
+    arguments: { replyTo, idempotencyKey, text }
   })
 
   return z
     .strictObject({
-      status: z.literal('claimed'),
-      request: requestSchema,
-      claimToken: z.string(),
-      replay: z.boolean()
-    })
-    .parse(result.structuredContent)
-}
-
-export async function complete(
-  client: Client,
-  requestId: string,
-  claimToken: string,
-  text = '最终 answer 🌍'
-): Promise<{ status: 'completed'; deliveryId: string; replay: boolean }> {
-  const result = await client.callTool({
-    name: 'relanox_complete',
-    arguments: {
-      requestId,
-      claimToken,
-      resultId: `result-${requestId}`,
-      text
-    }
-  })
-
-  return z
-    .strictObject({
-      status: z.literal('completed'),
+      status: z.literal('queued'),
       deliveryId: z.string(),
       replay: z.boolean()
     })

@@ -1,23 +1,19 @@
 # Images, audio, video and files
 
-Relanox stores incoming media with its request and returns generated media to the original conversation. Support follows each channel's native protocol and permissions. Text and attachments form one durable request; a media-only message does not need placeholder text. Replies are final results, without streaming updates.
+Relanox stores incoming media with its request and returns generated media to the original conversation. Support follows each channel's native protocol and permissions. Text and attachments form one durable request; a media-only message does not need placeholder text. Each send is an independent durable message; streaming updates are outside scope.
 
 The [channel guides](configuration.md) describe supported directions, formats and platform limits. IRC has no standardized native attachment transport. LINE cannot send arbitrary files through the Messaging API. Google Chat bot-authenticated delivery uses image cards and download buttons; those buttons are not native uploaded file attachments. Teams file delivery depends on personal-chat consent. These distinctions also apply when a hosted agent can generate the requested file.
 
 ## Agent workflow
 
-The request returned by `relanox_list_pending` and `relanox_claim` includes attachment metadata: `id`, `kind`, `mimeType`, `fileName`, `size`, `sha256`, and optional `durationMs` / `previewMediaId`. Binary bytes are not embedded in the Routine or notification JSON.
+Incoming dot events and Grok Routine content directly include replyTo and attachment metadata: id, kind, mimeType, fileName, size, sha256 and optional durationMs/previewMediaId. They carry no binary bytes.
 
-1. Claim the request before reading or generating assets.
-2. Call `relanox_read_media` with `requestId`, `claimToken` and `mediaId`. Images and audio up to 1 MiB return inline MCP content. Other media return a resource link to a binary download.
-3. For generated media, choose a stable UUID and call `relanox_media_transfer` with `method: "PUT"`, that `mediaId`, the request/claim, and metadata. PUT the raw file bytes to the returned URL. A successful response supplies the stored `media.id`.
-4. Complete with the final `text` and ordered `attachments: ["media-id", ...]`. Empty text is valid when attachments are present. Existing request attachments may also be included. Reuse the same result ID, text and attachment order on retries.
+1. Read a received asset with `relanox_read_media({replyTo,mediaId})`. Images/audio up to 1 MiB return inline MCP content; other assets return a signed five-minute GET resource link scoped to the endpoint and input. Links themselves grant temporary access; keep them out of replies/logs.
+2. Send text or attachments with `relanox_send_message`. Echo received media as `attachments:[{mediaId:"received-id"}]`. Generated files use `{url:"https://public.example/file",kind:"image",mimeType:"image/png",fileName:"picture.png"}`. The gateway downloads public HTTPS URLs with size/time bounds, DNS/address checks and no redirects, then atomically queues the bytes and message.
+3. Provide positive integer durationMs when the platform requires audio/video duration. An image previewUrl downloads a generated companion atomically with its main asset; previewMediaId can reference a received image belonging to the same input. Previews need not be separate reply attachments.
+4. Multiple sends are allowed for the same replyTo. Empty text requires attachments. Reuse an explicit idempotencyKey with identical content/attachment order to retry; absent a key, identical content deduplicates. Distinct explicit keys permit intentionally identical messages. `queued` does not mean delivered.
 
-Upload metadata contains `kind` (`image`, `audio`, `video` or `file`), `mimeType` and a plain `fileName`. Supply positive integer `durationMs` when the destination requires audio/video duration. Upload an image first and use its ID as `previewMediaId` when a native video or image preview is required. The preview must belong to the same request. A preview need not appear as a separate final attachment.
-
-Transfer URLs expire after five minutes and are bound to the endpoint, request, claim, method and metadata. They authorize access themselves; do not put them into channel replies or logs. A retried upload uses the same UUID and bytes. Reusing the UUID with changed bytes or metadata conflicts. Requeueing the request revokes the old claim. These private transfer URLs are separate from native platform download URLs below.
-
-Both dot and Grok expose the media tools. The hosted client must support inline MCP media, resource downloads and raw binary PUT for the relevant workflow. Local protocol tests exercise actual MCP requests, storage and byte transfer; they do not establish that a particular hosted account automatically downloads resources or uploads generated files. Configure and verify that client behavior before relying on it.
+There is no standalone upload or task-completion operation. Direct SDK hosts can pass inline MediaUpload bytes or a `{media,preview}` pair to sendMessage; MCP clients provide public HTTPS URLs. Both dot and Grok expose the two media/message tools. Hosted clients must support relevant inline content or resource downloads, and generated files must be available through a public URL. Local protocol tests do not prove a particular hosted account's behavior.
 
 ## Public URLs for native delivery
 
@@ -45,10 +41,10 @@ Direct-upload channels do not require this configuration. An adapter that requir
 
 ## Limits, persistence and recovery
 
-Default relay limits are 25 MiB per asset, 50 MiB total and ten attachments per incoming request or final result. `mediaLimits` can change them up to 200 MiB per asset, 200 MiB total and ten attachments. Platform format and size limits still apply, including smaller image/preview limits. Staged assets share an atomic per-request budget of twice the configured attachment count and total bytes, counting inputs and previews as well as generated output.
+Default relay limits are 25 MiB per asset, 50 MiB total and ten attachments per incoming request or outbound message. `mediaLimits` can change them up to 200 MiB per asset, 200 MiB total and ten attachments. Platform format and size limits still apply, including smaller image/preview limits. Generated assets share an atomic per-request budget of twice the configured attachment count and total bytes, counting inputs and previews as well as generated output.
 
 Downloads enforce actual byte limits and timeouts, reject redirects and restrict credential forwarding to trusted platform origins. Untrusted remote media URLs cannot target private network addresses. Media bytes are stored in SQLite BLOBs or PostgreSQL bytea alongside request-owned metadata. Database backups therefore include attachments; account for their size and sensitivity.
 
-Completion commits text chunks first, followed by attachment chunks in the requested order. Each chunk has its own persisted progress and receipt. A failed later attachment does not repeat successful earlier chunks. Ambiguous external sends retain the normal `unknown` state and require explicit recovery; restarting does not imply that a platform send was safe to repeat.
+Message enqueue commits text chunks first, followed by attachment chunks in the requested order. Each chunk has its own persisted progress and receipt. A failed later attachment does not repeat successful earlier chunks. Ambiguous external sends retain the normal `unknown` state and require explicit recovery; restarting does not imply that a platform send was safe to repeat.
 
-Retention removes media bytes and identifying metadata only when the request is eligible for cleanup, preserving unfinished requests and undelivered results. Cleanup can invalidate an otherwise unexpired public URL. Configure the retention interval to leave enough time for native platform downloads and user access to download buttons. See [Operations](operations.md) for backup and recovery commands.
+Retention redacts eligible incoming text/context/attachment lists, outbound content/receipts and binary bytes. Durable deduplication and routing metadata, including stored media filenames/hashes, remain. Due/unknown notifications and undelivered messages are preserved. Cleanup can invalidate an otherwise unexpired public URL. Configure the retention interval to leave enough time for native platform downloads and user access to download buttons. See [Operations](operations.md) for backup and recovery commands.

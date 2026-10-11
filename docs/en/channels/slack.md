@@ -33,7 +33,7 @@ Optional config: `apiBaseUrl` (default `https://slack.com/api`), `timeoutMs` (de
 
 Add bot scopes `files:read` and `files:write`. Normal messages, `app_mention` and `file_share` messages accept native files with or without text. Missing file URLs are resolved through `files.info`; private downloads send credentials only to `https://files.slack.com` or the configured API origin. Redirects and other credential destinations are rejected.
 
-Generated images/audio/video/files use `files.getUploadURLExternal`, upload actual bytes to the returned Slack upload origin, then `files.completeUploadExternal` with the frozen channel and `thread_ts`. Final text stays in separate literal text chunks. Uploads obey relay limits; native workspace file permissions and quotas still apply. An ambiguous completion is held; staged uploads are not proof a message was shared.
+Generated images/audio/video/files use `files.getUploadURLExternal`, upload actual bytes to the returned Slack upload origin, then `files.completeUploadExternal` with the frozen channel and `thread_ts`. Reply text stays in separate literal text chunks. Uploads obey relay limits; native workspace file permissions and quotas still apply. An ambiguous completion is held; staged uploads are not proof a message was shared.
 
 See [Media transfer](../media.md) and Slack's official [file workflow](https://docs.slack.dev/messaging/working-with-files/). Local tests verify signed ingress, binary upload and completion; live workspace permissions remain unverified.
 

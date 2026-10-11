@@ -6,7 +6,8 @@ import type { PrimaryChannel } from './media-events.js'
 import { mediaPeer, multipart, trafficJson, formJson } from './media-peer.js'
 import { discordPeer } from '../../channel-discord/tests/media-peer.js'
 import type { MediaReply, MediaTraffic } from './media-peer.js'
-import { claimMedia, mediaRuntime, mediaUrl } from './media-runtime.js'
+import { mediaRuntime } from './media-runtime.js'
+import { dispatchedMedia, readMedia } from './media-tools.js'
 import type { Cleanup } from './media-runtime.js'
 
 const cleanups: Cleanup[] = []
@@ -32,8 +33,6 @@ const outputBytes = Uint8Array.of(
   0,
   19
 )
-
-const outputId = '1316d1be-378d-4aba-ac19-6c3b8fa78f15'
 
 const channels: PrimaryChannel[] = [
   'telegram',
@@ -229,12 +228,12 @@ async function assertNativeOutput(
     const downloaded = await fetch(media.originalContentUrl)
     expect(downloaded.status).toBe(200)
     expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(expected)
-    expect(media.originalContentUrl).not.toContain('claimToken')
+    expect(media.originalContentUrl).not.toContain('media-agent-token')
   }
 }
 
 it.each(cases)(
-  '$channel relays pure native $kind bytes through authenticated MCP and SQLite to the frozen reply',
+  '$channel relays pure native $kind bytes through authenticated media reads and SQLite to the frozen reply',
   async ({ channel, kind }) => {
     const mimeType =
       channel === 'feishu' && kind === 'audio' ? 'audio/ogg' : mimes[kind]
@@ -316,81 +315,48 @@ it.each(cases)(
       runtime = await fixture.start()
     }
     const client = await fixture.client(runtime)
-    const claimed = await claimMedia(client)
-    expect(claimed.request.text).toBe(caption)
-    expect(claimed.request.attachments).toMatchObject([
+    const request = await dispatchedMedia(fixture.routine)
+    expect(request.text).toBe(caption)
+    expect(request.attachments).toMatchObject([
       { kind, mimeType, size: inputBytes.byteLength }
     ])
-    const inbound = claimed.request.attachments[0]
+    const inbound = request.attachments[0]
     if (!inbound) {
       throw new Error('missing_input_asset')
     }
-
-    const readUrl = await mediaUrl(
-      client,
-      claimed.request.requestId,
-      claimed.claimToken,
-      inbound.id,
-      'GET'
-    )
-
-    expect(new Uint8Array(await (await fetch(readUrl)).arrayBuffer())).toEqual(
+    expect(await readMedia(client, request.replyTo, inbound.id)).toEqual(
       inputBytes
     )
-    const previewId = '8d690587-788a-4851-8cba-1aa26a3b634e'
-    if (kind === 'video' && channel === 'line') {
-      const previewUrl = await mediaUrl(
-        client,
-        claimed.request.requestId,
-        claimed.claimToken,
-        previewId,
-        'PUT',
-        { kind: 'image', mimeType: 'image/png', fileName: 'preview.png' }
-      )
 
-      expect(
-        (await fetch(previewUrl, { method: 'PUT', body: outputBytes })).status
-      ).toBe(200)
+    const media = {
+      kind,
+      mimeType,
+      fileName: 'generated.png',
+      durationMs: 1000,
+      data: outputBytes
     }
 
-    const uploadUrl = await mediaUrl(
-      client,
-      claimed.request.requestId,
-      claimed.claimToken,
-      outputId,
-      'PUT',
-      {
-        kind,
-        mimeType,
-        fileName: 'generated.png',
-        durationMs: 1000,
-        ...(kind === 'video' && channel === 'line'
-          ? {
-              previewMediaId: previewId
+    const attachment =
+      kind === 'video' && channel === 'line'
+        ? {
+            media,
+            preview: {
+              kind: 'image' as const,
+              mimeType: 'image/png',
+              fileName: 'preview.png',
+              data: outputBytes
             }
-          : {})
-      }
-    )
+          }
+        : media
 
     expect(
-      (await fetch(uploadUrl, { method: 'PUT', body: outputBytes })).status
-    ).toBe(200)
-
-    const complete = await client.callTool({
-      name: 'relanox_complete',
-      arguments: {
-        requestId: claimed.request.requestId,
-        claimToken: claimed.claimToken,
-        resultId: 'generated-result',
+      await fixture.principal().sendMessage({
+        replyTo: request.replyTo,
+        idempotencyKey: 'generated-message',
         text: '',
-        attachments: [outputId]
-      }
-    })
-
-    expect(complete).toMatchObject({
-      isError: false,
-      structuredContent: { status: 'completed' }
-    })
+        attachments: [attachment]
+      })
+    ).toMatchObject({ status: 'queued' })
     await expect
       .poll(async () => (await runtime.core.status()).deliveries[0]?.status, {
         timeout: 5000

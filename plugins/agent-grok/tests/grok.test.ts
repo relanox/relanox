@@ -121,7 +121,7 @@ describe('grok configured Routine and scoped MCP', () => {
   })
 
   it.each([false, true])(
-    'transmits exact text and completes through the SDK %s modern client',
+    'transmits exact text and sends repeated replies through the SDK %s modern client',
     async (modern) => {
       const { fx, receiver } = await setup()
       const receipt = await fx.ingest()
@@ -134,7 +134,7 @@ describe('grok configured Routine and scoped MCP', () => {
       const posted = parseWire(trigger?.body ?? '')
       expect(posted).toEqual({
         content: JSON.stringify({
-          requestId: receipt.requestId,
+          replyTo: receipt.requestId,
           text: '中文\nsecond line',
           context: { thread: 'protocol-context' },
           source: { channel: 'telegram', eventId: 'event-1' }
@@ -142,121 +142,57 @@ describe('grok configured Routine and scoped MCP', () => {
         source: 'relanox',
         sentAt: stringValue
       })
-      expect((await fx.storage.getInbound(receipt.requestId))?.status).toBe(
-        'pending'
-      )
       const client = await fx.client('secret-0', 0, modern)
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
+        ['relanox_send_message', 'relanox_read_media']
+      )
 
-      const claimed = await client.callTool({
-        name: 'relanox_claim',
-        arguments: { requestId: receipt.requestId, claimKey: 'remote-run-A' }
-      })
-
-      expect(claimed).toMatchObject({
-        isError: false,
-        structuredContent: { status: 'claimed', replay: false }
-      })
-
-      const token = z
-        .object({ claimToken: z.string() })
-        .parse(claimed.structuredContent).claimToken
+      const input = {
+        replyTo: receipt.requestId,
+        text: 'answer',
+        idempotencyKey: 'result'
+      }
 
       expect(
         await client.callTool({
-          name: 'relanox_claim',
-          arguments: { requestId: receipt.requestId, claimKey: 'remote-run-A' }
+          name: 'relanox_send_message',
+          arguments: input
         })
       ).toMatchObject({
-        structuredContent: { claimToken: token, replay: true }
+        structuredContent: { status: 'queued', replay: false }
       })
       expect(
         await client.callTool({
-          name: 'relanox_claim',
-          arguments: { requestId: receipt.requestId, claimKey: 'remote-run-B' }
+          name: 'relanox_send_message',
+          arguments: input
         })
-      ).toMatchObject({ isError: true, structuredContent: { status: 'busy' } })
+      ).toMatchObject({ structuredContent: { status: 'queued', replay: true } })
       expect(
         await client.callTool({
-          name: 'relanox_complete',
-          arguments: {
-            requestId: receipt.requestId,
-            claimToken: 'wrong',
-            resultId: 'result',
-            text: 'answer'
-          }
-        })
-      ).toMatchObject({
-        isError: true,
-        structuredContent: { status: 'unauthorized' }
-      })
-      expect(
-        await client.callTool({
-          name: 'relanox_complete',
-          arguments: {
-            requestId: receipt.requestId,
-            claimToken: token,
-            resultId: 'result',
-            text: 'answer'
-          }
-        })
-      ).toMatchObject({
-        isError: false,
-        structuredContent: { status: 'completed', replay: false }
-      })
-      expect(
-        await client.callTool({
-          name: 'relanox_complete',
-          arguments: {
-            requestId: receipt.requestId,
-            claimToken: token,
-            resultId: 'other-result',
-            text: 'conflicting'
-          }
+          name: 'relanox_send_message',
+          arguments: { ...input, text: 'conflict' }
         })
       ).toMatchObject({
         isError: true,
         structuredContent: { status: 'conflict' }
       })
-      await fx.core.processDue()
-      expect(fx.sent).toHaveLength(1)
-      expect(fx.sent[0]).toMatchObject({
-        target: { chatId: 'chat0', replyToId: 'original' },
-        chunk: { text: 'answer' }
-      })
-      const next = await fx.ingest(0, 'later', 'event-2')
-
-      const later = await client.callTool({
-        name: 'relanox_claim',
-        arguments: { requestId: next.requestId, claimKey: 'run-later' }
-      })
-
-      expect(later).toMatchObject({ structuredContent: { status: 'claimed' } })
-      expect(
-        await client.callTool({
-          name: 'relanox_fail',
-          arguments: {
-            requestId: next.requestId,
-            claimToken: z
-              .object({ claimToken: z.string() })
-              .parse(later.structuredContent).claimToken,
-            errorCode: 'remote_failed'
-          }
-        })
-      ).toMatchObject({
-        isError: false,
-        structuredContent: { status: 'updated' }
-      })
       await fx.reopen(createGrokAgentPlugin())
       const reconnected = await fx.client('secret-0', 0, modern)
       expect(
         await reconnected.callTool({
-          name: 'relanox_list_pending',
-          arguments: {}
+          name: 'relanox_send_message',
+          arguments: { replyTo: receipt.requestId, text: 'another answer' }
         })
-      ).toMatchObject({ structuredContent: { requests: [] } })
-      expect((await fx.storage.getInbound(next.requestId))?.status).toBe(
-        'failed'
-      )
+      ).toMatchObject({
+        structuredContent: { status: 'queued', replay: false }
+      })
+      await fx.core.processDue()
+      expect(fx.sent).toHaveLength(2)
+
+      expect(fx.sent[0]).toMatchObject({
+        target: { chatId: 'chat0', replyToId: 'original' },
+        chunk: { text: 'answer' }
+      })
     }
   )
 
@@ -266,8 +202,8 @@ describe('grok configured Routine and scoped MCP', () => {
     const client = await fx.client()
     expect(
       await client.callTool({
-        name: 'relanox_claim',
-        arguments: { requestId: other.requestId, claimKey: 'malicious' }
+        name: 'relanox_send_message',
+        arguments: { replyTo: other.requestId, text: 'malicious' }
       })
     ).toMatchObject({
       isError: true,
@@ -291,18 +227,18 @@ describe('grok configured Routine and scoped MCP', () => {
     process.env.AGENT_TEST_TOKEN_0 = 'rotated-token'
     await expect(
       client.callTool({
-        name: 'relanox_list_pending',
-        arguments: {}
+        name: 'relanox_send_message',
+        arguments: { replyTo: first.requestId, text: 'answer' }
       })
     ).rejects.toThrow()
     const rotated = await fx.client('rotated-token')
     expect(
       await rotated.callTool({
-        name: 'relanox_list_pending',
-        arguments: {}
+        name: 'relanox_send_message',
+        arguments: { replyTo: first.requestId, text: 'answer' }
       })
     ).toMatchObject({
-      structuredContent: { requests: [{ requestId: first.requestId }] }
+      structuredContent: { status: 'queued' }
     })
   })
 

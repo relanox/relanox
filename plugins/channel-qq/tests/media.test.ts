@@ -285,26 +285,20 @@ test.each(
     )
     await expect.poll(async () => (await records(local.storage)).length).toBe(1)
     const scoped = local.principal()
-    const item = (await scoped.listPending(10))[0]
+    const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
     if (!item?.attachments?.[0] || !scoped.media) {
       throw new Error('missing_media')
-    }
-    const claim = await scoped.claim(item.requestId, 'file-claim')
-    if (claim.status !== 'claimed') {
-      throw new Error('claim_failed')
     }
 
     const stored = await scoped.media.read({
       requestId: item.requestId,
-      claimToken: claim.claimToken,
       mediaId: item.attachments[0].id
     })
 
     expect(stored?.data).toEqual(new Uint8Array(smallBytes))
-    await scoped.complete({
-      requestId: item.requestId,
-      claimToken: claim.claimToken,
-      resultId: 'file-result',
+    await scoped.sendMessage({
+      replyTo: item.requestId,
+      idempotencyKey: 'file-result',
       text: 'caption',
       attachments: [item.attachments[0].id]
     })

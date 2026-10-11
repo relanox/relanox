@@ -8,59 +8,29 @@
 
 ChannelHost 固定账号，拒绝 source/target/channel 不匹配。Core 按账号/聊天/线程精确绑定，检查两层白名单并冻结目标/endpoint。AgentHost.forPrincipal 只在插件鉴权后调用，与该 Agent 配置 endpoint 取交集，正文不能扩张范围。StateStore 绑定插件/账号；Agent 订阅使用其 owner。路由由 Core 控制命名空间。Channel/Agent 不接收 Storage。
 
-validateConfig 对非法 unknown 抛错，SDK 不泄露 Zod 类型。HTTP 使用 Web Request/Response，setup 注册 handler 不监听。长连接 start 在初始化后返回，stop 关闭连接。capabilities 声明文字单位与持久幂等；Core 按其限额分片后提交 outbound。send 一次接收一个持久分片，必须复用 idempotencyKey/state。协议序号通过命名空间 StateStore CAS 在外部效果前分配；chunk state 用于完成时不可变准备。
+validateConfig 对非法 unknown 抛错，SDK 不泄露 Zod 类型。HTTP 使用 Web Request/Response，setup 注册 handler 不监听。长连接 start 在初始化后返回，stop 关闭连接。capabilities 声明文字单位与持久幂等；Core 按其限额分片后提交 outbound。send 一次接收一个持久分片，必须复用 idempotencyKey/state。协议序号通过命名空间 StateStore CAS 在外部效果前分配；chunk state 用于消息入队时不可变准备。
 
 ## 媒体契约
 
-`MediaUpload` 携带内存字节、类型、MIME、文件名及可选时长/预览 ID。`MediaReference` 增加请求所属 UUID、字节数与 SHA-256，快照和结果只保存引用。`StoredMedia` 组合引用与字节。`ChannelPlugin.capabilities.media` 明确声明接收/发送的类型。Core 读取并校验 `SendInput.media` 和可选 `preview`，媒体分片的文字为空；适配器仍须遵守原生格式与权限限制。
+`MediaUpload` 包含内存字节、kind、MIME、文件名及可选时长/预览 ID。`MediaReference` 增加请求所属 UUID、大小与 SHA-256；快照和出站消息只存引用，`StoredMedia` 配对引用和字节。渠道能力显式声明接收/发送种类。Core 在发送前解析 `SendInput.media` 和可选 preview，媒体分片文字为空，渠道继续检查原生格式与权限。
 
-`Storage.acceptInbound(snapshot, media)` 原子提交字节与入站快照。`Storage.media.put` 在同一事务检查 Agent endpoint 范围、当前 claim、上传身份和总预算；UUID、元数据、字节相同可重放，修改则冲突。`get` 限定在请求内。Agent Host 读取/上传要求当前 claim，complete 接收同一请求所属的有序 ID。Storage 检查结果引用与 outbound 分片一致，保留分片恢复能力；cleanup 移除符合条件的字节/元数据，保留重放与冲突判断的墓碑信息。
+`Storage.acceptInbound(snapshot,media)` 原子保存入站字节与快照。`ScopedAgentHost.media.read({requestId,mediaId})` 按 Agent endpoint 授权，不需要任务 token。`sendMessage({replyTo,text,idempotencyKey?,attachments?})` 接收已有媒体 ID、内存 `MediaUpload` 或生成的 `{media,preview}` 对。Storage 的 `enqueueMessage` 在同一事务校验 request/agent/endpoint 与冻结目标，保存生成媒体、消息身份和出站分片；预览与正文媒体属于同一输入。没有独立 Agent 上传操作。
 
-可选 `ChannelHost.media.publish` 签发限定账号与请求、持久且会过期的 URL。`mountHttp` 只有提供正文缓冲前授权 callback 才能申请更大的有界正文。Agent 二进制路由使用此能力校验签名传输 URL，普通路由保留原限额。见[媒体传输](../media.md)。
+`ChannelHost.media.publish` 可为本账号/请求生成持久过期 URL。`mountHttp` 的较大请求体限制必须配合缓冲前授权。Agent 二进制下载路由使用签名 GET URL，其他路由保持普通限制，详见[媒体](../media.md)。
 
 ## 存储事务
 
-### 接纳与领取
+- `acceptInbound` 按 channel/account/eventId 去重，重放返回原 requestId。新记录只有 snapshot、version=1、dispatch 与可选 redactedAt，dispatch 为 due、dueAt=acceptedAt、attempts=0；调用方修改对象不能改变已保存值。
+- `enqueueMessage` 校验不可扩大的 Agent/endpoint 范围、输入可用性、消息身份、冻结目标及分片/媒体一致性，原子保存所有新附件与一个 outbound。相同身份与内容返回原 deliveryId、replay=true，改变内容冲突。outbound 使用 messageId、version=1、pending、currentChunk=0 和空回执。同一输入可关联多条独立消息。
+- `takeDue` 原子获取短 token/version/expiresAt lease 并推进版本，按持久时间/身份选择到期工作。同 endpoint 的不同输入互不阻塞；同输入的回复按持久插入顺序，仅选择最早 pending 发送，前序 unknown 阻止后序直到手动恢复，rejected 放行后序。accepted 通知为终态，只有 due 通知和 pending 发送自动选择；并发工作者不能获取同一未过期 lease。
+- dispatch lease 过期变 unknown。send 过期也变 unknown，除 safeRetryAccountIds 允许复用原分片身份重试。`settleAttempt` 要求准确 lease token/version，不覆盖新结算或 requeue，清 lease 并记录 outcome。成功分片追加回执、推进 currentChunk、重置当前分片 attempts=0；全部发完才为 sent。retryable 保留身份，rejected/unknown 停止自动副作用。
+- `requeue` 要求当前版本。未脱敏的 accepted/rejected/unknown 通知可重设 due；rejected/unknown delivery 保留成功分片和回执，重置当前重试预算并继续 currentChunk。unknown 必须 acknowledgeUnknown=true。通知恢复不取消远端工作或撤销回复权限。
+- State CAS 的 expectedVersion=null 仅创建；版本从 1 开始并跨删除重建单调增长。准确版本删除保留不可见 version fence。pluginId/ownerId/key 唯一，列表按 key 排序并组合 prefix/expiry，过期条件为 expiresAt <= bound。状态值为序列化快照。
+- 管理列表使用对应 dispatchStatus/deliveryStatus、可选 endpoint 范围和按 ID 的排他 afterId 游标。`getStats` 聚合 pending **到期通知**、pending/rejected/unknown 未送达消息与 unknown 通知/发送效果；没有 claimed 统计，无到期通知时省略 oldestPendingAt。
+- cleanup 脱敏符合条件的旧内容、删除符合条件的媒体，保留 source 去重与消息相等摘要。保护 due/unknown 通知与全部未送达 outbound。redactedAt 标记空 text/context tombstone，已脱敏输入不能接纳新回复。
+- `initialize` 幂等创建当前 schema。非空旧任务 schema 拒绝启动并提示备份/导出，不会静默解释旧工作。`health` 只检查表与连接，`close` 释放资源，正确性不依赖关闭时刷新。
 
-acceptInbound 以 channel/account/eventId 唯一去重。即使重放调用提供不同新 ID，也返回原 requestId。pending 初始 version=1，dispatch dueAt=acceptedAt，attempts=0。记录为深序列化快照，调用者修改对象不影响持久值。
-
-listPending 在 endpointIds 范围内按 acceptedAt/requestId FIFO 返回有界 pending 快照。claimRequest 原子检查范围和 endpoint 排他。已有 claim 或已开始通知占据 endpoint，直到完成或显式恢复；有 dispatch lease、非零 attempts、unknown/rejected dispatch 即为开始。新请求不能通过更早时间/ID 抢占。未开始请求只有 FIFO 首项可领取。
-
-相同 request/claimKey 返回原 token，replay=true；不同 key 或另一个活跃 claim 返回 busy；completed/failed 返回 not_pending。token 由 Core 安全随机产生，直到最终结算或显式 requeue 有效，不因超时过期。
-
-### 完成与失败
-
-completeAndEnqueue 校验授权范围和当前 token，在同一事务提交唯一 final 与 outbound，释放 endpoint 串行占用。相同 resultId/text 且 token 有效时重放返回原 deliveryId、replay=true；相同 resultId 但文字不同或第二个 final 冲突。
-
-outbound 必须指向该 request/result 与冻结 target，currentChunk=0、receipts 为空、status=pending、version=1。Storage 检查这些不变量，不信任调用者目标。resultId 全局唯一。fail 检查范围/token 并保存终态 error，重复匹配失败幂等。下一请求自行变得可领取，不依赖内存唤醒。
-
-### Lease 与发送结算
-
-takeDue 原子获取 token/version/expiresAt lease 并推进持久 version。dispatch 只选择 endpoint 最早未完成 pending 请求；claimed 阻塞后续请求且不 dispatch。accepted dispatch 在 nextDueAt 仍可通知未领取请求，限额由 Core 决定。pull endpoint 不参与自动 dispatch。并发工作者不能领取同一未过期 lease。
-
-过期 lease 意味外部效果不确定。过期 dispatch 变 unknown；过期 send 除 safeRetryAccountIds 可用原持久 key 重试外也变 unknown。unknown 不自动选择。settleAttempt 检查精确 token/version，不覆盖新 claim/final/requeue，清 lease 并更新 attempts/outcome。
-
-成功分片在一个事务追加回执、推进 currentChunk、重置 attempts=0；attempts 按当前分片，不包含已经成功的分片。全部发送才标为 sent。retryable 保留 index/identity，rejected/unknown 停止自动发送。Core 决定 nextDueAt 和有界 retryAfterMs；claim/final/requeue 撤销 dispatch lease。
-
-### 显式恢复
-
-requeue 要求当前精确版本。request 可恢复 claimed/failed/dispatch-rejected/dispatch-unknown，撤销 token/final failure 并重设 dispatch due；completed 或已脱敏请求不允许重跑。delivery 可恢复 rejected/unknown，保留已发分片/回执，为新预算重置 attempts，并从 currentChunk 继续。unknown 要求 acknowledgeUnknown=true，表示接受重复外部效果风险，不代表远端取消。
-
-### 协议状态 CAS
-
-expectedVersion=null 只允许新建。成功写入从 1 单调增加，包括删除后重建。删除要求精确版本，保留不可见 version fence，不保留 value；读取/列表视为缺失，重建必须 expectedVersion=null。pluginId/ownerId/key tuple 唯一。
-
-State list 按 key 排序，expiresBefore 只选 expiresAt <= 边界，prefix 与 expiry 可组合。value 是序列化快照。
-
-### 管理、保留与生命周期
-
-管理 list 各自应用相关 status 和可选 endpoint 范围，按 ID 排序，afterId 为排他游标。getStats 用数据库聚合：unknown 计 pending 中 unknown dispatch 与 unknown delivery；持久 claim 消除通知不确定性；undelivered 计 pending/rejected/unknown delivery。无待处理项时 oldestPendingAt 缺失。
-
-cleanup 只在对应 outbound 已 sent 且旧于 before 时脱敏 completed 的 text/context；足够旧的 failed 也可脱敏。保留 source 去重键、final 身份及重放/冲突所需最小结果摘要/相等信息，绝不清理未完成或未送达工作。redactedAt 标记空 text/context tombstone。实现可内部保留摘要，不新增业务表。
-
-initialize 幂等创建缺失表/索引并保留记录；每次启动先 initialize 再 health。health 只检查必需表与连接。close 释放资源，正确性不依赖 close 刷盘。
-
-Storage 用 union 表达业务结果，驱动/I/O 失败 reject，上游因此不能 ACK。版本与 lease 约束本地持久化，不提供远端恰好一次。
+Storage 返回有类型的业务 outcome union；驱动/I/O 错误 reject，入站不能 ACK。版本与 lease fence 保护本地状态，不保证外部效果恰好一次。
 
 ## 观测
 

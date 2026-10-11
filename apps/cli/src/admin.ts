@@ -3,7 +3,6 @@ import type {
   OutboundRecord,
   StatusFilter,
   Storage,
-  RequestStatus,
   AttemptStatus,
   DeliveryStatus,
   StorageStats
@@ -29,11 +28,9 @@ function requestSummary(
   content: boolean
 ): {
   text?: string
-  resultText?: string | undefined
   requestId: string
   endpointId: string
   accountId: string
-  status: RequestStatus
   version: number
   acceptedAt: number
   dispatch: {
@@ -47,7 +44,6 @@ function requestSummary(
     requestId: record.snapshot.requestId,
     endpointId: record.snapshot.endpoint.id,
     accountId: record.snapshot.source.accountId,
-    status: record.status,
     version: record.version,
     acceptedAt: record.snapshot.acceptedAt,
     dispatch: {
@@ -56,9 +52,7 @@ function requestSummary(
       dueAt: record.dispatch.dueAt
     },
     redactedAt: record.redactedAt,
-    ...(content
-      ? { text: record.snapshot.text, resultText: record.result?.text }
-      : {})
+    ...(content ? { text: record.snapshot.text } : {})
   }
 }
 
@@ -99,11 +93,9 @@ export async function readStatus(
   stats: StorageStats
   requests: {
     text?: string
-    resultText?: string | undefined
     requestId: string
     endpointId: string
     accountId: string
-    status: RequestStatus
     version: number
     acceptedAt: number
     dispatch: {

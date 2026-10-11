@@ -8,18 +8,36 @@ export function createLifecycle(
   return {
     async initialize() {
       transaction(() => {
+        const columns = db.prepare('PRAGMA table_info(inbound)').all() as {
+          name: string
+        }[]
+
+        if (columns.some((column) => column.name === 'final_id')) {
+          const count = db
+            .prepare('SELECT COUNT(*) count FROM inbound')
+            .get() as { count: number }
+
+          if (count.count > 0) {
+            throw new Error(
+              'Legacy request lifecycle schema contains durable messages. Back up the database and export or finish its queued work with the previous Relanox version before using a new empty database; automatic conversion is unavailable.'
+            )
+          }
+          db.exec(
+            'DROP TABLE IF EXISTS outbound; DROP TABLE IF EXISTS media; DROP TABLE inbound'
+          )
+        }
         db.exec(
           `
           CREATE TABLE IF NOT EXISTS inbound(
             id TEXT PRIMARY KEY, channel TEXT NOT NULL, account TEXT NOT NULL,
             event TEXT NOT NULL, endpoint TEXT NOT NULL, accepted_at INTEGER NOT NULL,
-            status TEXT NOT NULL, version INTEGER NOT NULL, final_id TEXT UNIQUE,
-            final_digest TEXT, record TEXT NOT NULL, UNIQUE(channel,account,event));
+            status TEXT NOT NULL, version INTEGER NOT NULL, record TEXT NOT NULL, UNIQUE(channel,account,event));
           CREATE INDEX IF NOT EXISTS inbound_fifo ON inbound(endpoint,accepted_at,id);
           CREATE TABLE IF NOT EXISTS outbound(
-            id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE REFERENCES inbound(id),
-            result_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL,
-            version INTEGER NOT NULL, record TEXT NOT NULL);
+            id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES inbound(id),
+            message_id TEXT NOT NULL, digest TEXT NOT NULL, status TEXT NOT NULL,
+            version INTEGER NOT NULL, record TEXT NOT NULL, UNIQUE(request_id,message_id));
+          CREATE INDEX IF NOT EXISTS outbound_request_order ON outbound(request_id) WHERE status IN ('pending','unknown');
           CREATE TABLE IF NOT EXISTS media(
             id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES inbound(id),
             reference TEXT NOT NULL, data BLOB, digest TEXT NOT NULL);
@@ -34,7 +52,7 @@ export function createLifecycle(
     },
     async health() {
       try {
-        db.prepare('SELECT id,record,final_digest FROM inbound LIMIT 0').all()
+        db.prepare('SELECT id,record FROM inbound LIMIT 0').all()
         db.prepare('SELECT id,record FROM outbound LIMIT 0').all()
         db.prepare(
           'SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0'

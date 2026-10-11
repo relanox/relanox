@@ -27,11 +27,10 @@ afterEach(async () => {
   vi.unstubAllEnvs()
 })
 
-function endpoint(mode: 'pull' | 'push' = 'pull'): EndpointConfig {
+function endpoint(): EndpointConfig {
   return {
     id: 'agent',
     agent: 'grok',
-    dispatchMode: mode,
     config: {
       mcp: {
         token: { env: 'START_AGENT_TOKEN' },
@@ -134,11 +133,8 @@ test("accepts native text during another channel's initialization while manageme
       .toBe(1)
     expect(peers.fastClosed).toBe(false)
 
-    const [request] = await value.database.listPending({
-      agent: 'grok',
-      endpointIds: ['agent'],
-      limit: 10
-    })
+    const request = (await value.database.listInbound({ limit: 10 }))[0]
+      ?.snapshot
 
     expect(request).toMatchObject({
       text: 'message during startup',
@@ -197,7 +193,7 @@ async function recoveredNotification(): Promise<{
   cleanups.push(remote.close)
   vi.stubEnv('START_ROUTINE_URL', `${remote.origin}/routine`)
   vi.stubEnv('START_ROUTINE_AUTH', 'Bearer secret')
-  const agent = endpoint('push')
+  const agent = endpoint()
   await value.database.acceptInbound({
     requestId: 'recovered-request',
     source: { channel: 'telegram', accountId: 'bot', eventId: 'event' },
@@ -245,7 +241,7 @@ test('returns from startup before a valid initial backlog receipt and gates read
       .parse(JSON.parse(value.remote.requests[0]?.body ?? 'null') as unknown)
 
     expect(JSON.parse(notification.content) as unknown).toMatchObject({
-      requestId: 'recovered-request',
+      replyTo: 'recovered-request',
       text: 'persisted backlog'
     })
     value.remote.release()
@@ -267,7 +263,7 @@ test('returns from startup before a valid initial backlog receipt and gates read
 
 test('shutdown waits for the asynchronously launched first batch to settle in real storage', async () => {
   const value = await recoveredNotification()
-  const second = { ...endpoint('push'), id: 'second' }
+  const second = { ...endpoint(), id: 'second' }
   await value.database.acceptInbound({
     requestId: 'next-process-request',
     source: { channel: 'telegram', accountId: 'bot', eventId: 'second-event' },

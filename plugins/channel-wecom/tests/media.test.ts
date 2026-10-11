@@ -103,23 +103,18 @@ test('WeCom decrypts pure-media input into SQLite and uploads original bytes aft
 
   await restarted.start()
   const scoped = restarted.principal()
-  const task = (await scoped.listPending(10))[0]
+  const task = (await restarted.storage.listInbound({ limit: 10 }))[0]?.snapshot
   if (!task?.attachments?.[0]) {
     throw new Error('missing_durable_media')
   }
-  const claim = await scoped.claim(task.requestId, 'media-claim')
-  if (claim.status !== 'claimed') {
-    throw new Error('claim_failed')
-  }
   expect(
-    await scoped.complete({
-      requestId: task.requestId,
-      claimToken: claim.claimToken,
-      resultId: 'media-result',
+    await scoped.sendMessage({
+      replyTo: task.requestId,
+      idempotencyKey: 'media-result',
       text: 'caption',
       attachments: [task.attachments[0].id]
     })
-  ).toMatchObject({ status: 'completed' })
+  ).toMatchObject({ status: 'queued' })
   await restarted.runtime.processDue()
 
   const chunk = remote.frames.find(

@@ -4,7 +4,7 @@
 
 在消息渠道中使用已有的托管 AI Agent。
 
-Relanox 是面向 **dot 和 Grok Bot** 的自托管消息网关。它接收文字和媒体、持久保存交接状态，再将异步结果发回原会话；本身不运行模型。
+Relanox 是面向 **dot 和 Grok Bot** 的自托管消息网关。它接收文字和媒体、持久保存交接状态，再将异步回复发回原会话。同一入站消息可通过 `relanox_send_message` 获得多条回复，`relanox_read_media` 用于读取附件；本身不运行模型。
 
 支持 Telegram、Discord、Slack、飞书、企业微信、钉钉、QQ、Microsoft Teams、WhatsApp Business Cloud、Google Chat、LINE、Matrix、Mattermost、Signal 和 IRC。真实平台账号兼容性仍为实验性，各渠道的权限要求与限制在文档中单独说明。
 

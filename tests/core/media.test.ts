@@ -1,8 +1,9 @@
+import type { ScopedAgentHost } from '../../packages/sdk/src/index.js'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, it } from 'vitest'
 import { mediaFixture, incoming, picture } from './fixture.js'
 
-it('persists pure media, fences claim scope and sends ordered media after text', async () => {
+it('persists incoming bytes and sends replayable ordered replies without a claim', async () => {
   const f = await mediaFixture()
   try {
     await expect(
@@ -19,24 +20,19 @@ it('persists pure media, fences claim scope and sends ordered media after text',
       attachments: [picture]
     })
 
-    const duplicate = await f.channel.ingest({
-      ...incoming,
-      attachments: [picture]
-    })
-
-    expect(duplicate).toEqual({ requestId: receipt.requestId, duplicate: true })
+    expect(
+      await f.channel.ingest({ ...incoming, attachments: [picture] })
+    ).toEqual({ requestId: receipt.requestId, duplicate: true })
 
     const scoped = f.agent.forPrincipal({
       subject: 'worker',
       endpointIds: ['first']
     })
 
-    const claim = await scoped.claim(receipt.requestId, 'claim')
-    if (claim.status !== 'claimed' || !scoped.media) {
-      throw new Error('Expected media claim')
-    }
-    const ref = claim.request.attachments?.[0]
-    if (!ref) {
+    const ref = (await f.storage.getInbound(receipt.requestId))?.snapshot
+      .attachments?.[0]
+
+    if (!ref || !scoped.media) {
       throw new Error('Expected inbound media')
     }
     expect(ref).toMatchObject({
@@ -44,94 +40,77 @@ it('persists pure media, fences claim scope and sends ordered media after text',
       size: 3,
       sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81'
     })
-
-    const args = {
-      requestId: receipt.requestId,
-      claimToken: claim.claimToken,
-      mediaId: ref.id
-    }
-
+    const args = { requestId: receipt.requestId, mediaId: ref.id }
     expect((await scoped.media.read(args))?.data).toEqual(
       new Uint8Array([1, 2, 3])
     )
-    expect(
-      await f.agent
-        .forPrincipal({ subject: 'other', endpointIds: ['other'] })
-        .media?.read(args)
-    ).toBeUndefined()
-    const uploadId = crypto.randomUUID()
 
-    const upload = {
-      requestId: receipt.requestId,
-      claimToken: claim.claimToken,
-      uploadId,
-      media: {
-        kind: 'file' as const,
-        mimeType: 'application/octet-stream',
-        fileName: 'result.bin',
-        data: new Uint8Array([4, 5])
-      }
-    }
+    const other = f.agent.forPrincipal({
+      subject: 'other',
+      endpointIds: ['other']
+    })
 
-    expect(await scoped.media.upload(upload)).toMatchObject({
-      status: 'stored',
-      replay: false
-    })
-    expect(await scoped.media.upload(upload)).toMatchObject({
-      status: 'stored',
-      replay: true
-    })
+    expect(await other.media?.read(args)).toBeUndefined()
     expect(
-      await scoped.media.upload({
-        ...upload,
-        media: { ...upload.media, data: new Uint8Array([9]) }
+      await other.sendMessage({
+        replyTo: receipt.requestId,
+        text: 'unauthorized'
       })
-    ).toEqual({ status: 'conflict' })
+    ).toEqual({ status: 'not_found' })
 
-    const result = {
-      requestId: receipt.requestId,
-      claimToken: claim.claimToken,
-      resultId: 'final',
-      text: 'abcdef',
-      attachments: [uploadId, ref.id]
+    const generated = {
+      kind: 'file' as const,
+      mimeType: 'application/octet-stream',
+      fileName: 'result.bin',
+      data: new Uint8Array([4, 5])
     }
 
-    expect(await scoped.complete(result)).toMatchObject({
-      status: 'completed',
-      replay: false
-    })
-    expect(await scoped.complete(result)).toMatchObject({
-      status: 'completed',
-      replay: true
-    })
+    const input = {
+      replyTo: receipt.requestId,
+      idempotencyKey: 'answer',
+      text: 'abcdef',
+      attachments: [generated, ref.id]
+    }
+
+    const first = await scoped.sendMessage(input)
+    expect(first).toMatchObject({ status: 'queued', replay: false })
+    expect(await scoped.sendMessage(input)).toEqual({ ...first, replay: true })
     expect(
-      await scoped.complete({ ...result, attachments: [ref.id, uploadId] })
-    ).toEqual({
-      status: 'conflict'
-    })
+      await scoped.sendMessage({ ...input, attachments: [ref.id, generated] })
+    ).toEqual({ status: 'conflict' })
     await f.runtime.processDue()
-    expect(f.sent.map((input) => input.chunk.text)).toEqual([
+    expect(f.sent.map((item) => item.chunk.text)).toEqual([
       'abc',
       'def',
       '',
       ''
     ])
-    expect(f.sent.map((input) => input.media?.reference.id)).toEqual([
-      undefined,
-      undefined,
-      uploadId,
-      ref.id
-    ])
     expect(f.sent[2]?.media?.data).toEqual(new Uint8Array([4, 5]))
-    expect((await f.storage.listOutbound({ limit: 10 }))[0]?.status).toBe(
-      'sent'
-    )
+    expect(f.sent[3]?.media?.reference.id).toBe(ref.id)
+    const followup = { replyTo: receipt.requestId, text: 'ok' }
+    expect(await scoped.sendMessage(followup)).toMatchObject({
+      status: 'queued',
+      replay: false
+    })
+    expect(await scoped.sendMessage(followup)).toMatchObject({
+      status: 'queued',
+      replay: true
+    })
+    await f.runtime.processDue()
+    expect(f.sent.map((item) => item.chunk.text)).toEqual([
+      'abc',
+      'def',
+      '',
+      '',
+      'ok'
+    ])
+    expect(await f.storage.listOutbound({ limit: 10 })).toHaveLength(2)
   } finally {
     await f.close()
   }
 })
 
-it('revokes media read and upload access after requeue', async () => {
+it('retains endpoint media access after notification redispatch and revokes it after redaction', async () => {
   const f = await mediaFixture()
   try {
     const receipt = await f.channel.ingest({
@@ -144,17 +123,11 @@ it('revokes media read and upload access after requeue', async () => {
       endpointIds: ['first']
     })
 
-    const claim = await scoped.claim(receipt.requestId, 'old')
-    if (
-      claim.status !== 'claimed' ||
-      !scoped.media ||
-      !claim.request.attachments?.[0]
-    ) {
-      throw new Error('Expected claim')
-    }
+    await f.runtime.processDue()
     const request = await f.storage.getInbound(receipt.requestId)
-    if (!request) {
-      throw new Error('Expected request')
+    const id = request?.snapshot.attachments?.[0]?.id
+    if (!request || !id || !scoped.media) {
+      throw new Error('Expected incoming media')
     }
     expect(
       await f.runtime.requeue({
@@ -164,36 +137,23 @@ it('revokes media read and upload access after requeue', async () => {
         acknowledgeUnknown: false
       })
     ).toMatchObject({ status: 'updated' })
+    const input = { requestId: receipt.requestId, mediaId: id }
+    expect((await scoped.media.read(input))?.data).toEqual(picture.data)
+    await scoped.sendMessage({ replyTo: receipt.requestId, text: 'ok' })
+    await f.runtime.processDue()
     expect(
-      await scoped.media.read({
-        requestId: receipt.requestId,
-        claimToken: claim.claimToken,
-        mediaId: claim.request.attachments[0].id
-      })
-    ).toBeUndefined()
+      await f.storage.cleanup({ before: Date.now() + 1000, limit: 10 })
+    ).toEqual({ redacted: 1 })
+    expect(await scoped.media.read(input)).toBeUndefined()
     expect(
-      await scoped.media.upload({
-        requestId: receipt.requestId,
-        claimToken: claim.claimToken,
-        uploadId: crypto.randomUUID(),
-        media: picture
-      })
-    ).toEqual({ status: 'unauthorized' })
-    expect(
-      await scoped.complete({
-        requestId: receipt.requestId,
-        claimToken: claim.claimToken,
-        resultId: 'stale',
-        text: '',
-        attachments: [claim.request.attachments[0].id]
-      })
-    ).toEqual({ status: 'unauthorized' })
+      await scoped.sendMessage({ replyTo: receipt.requestId, text: 'late' })
+    ).toEqual({ status: 'not_found' })
   } finally {
     await f.close()
   }
 })
 
-it('rejects malformed or oversized media and unsupported sends without completing', async () => {
+it('rejects malformed or oversized media and unsupported sends without enqueueing', async () => {
   const f = await mediaFixture([])
   try {
     await expect(
@@ -240,22 +200,20 @@ it('rejects malformed or oversized media and unsupported sends without completin
       endpointIds: ['first']
     })
 
-    const claim = await scoped.claim(receipt.requestId, 'claim')
-    if (claim.status !== 'claimed' || !claim.request.attachments?.[0]) {
-      throw new Error('Expected claim')
+    const request = await f.storage.getInbound(receipt.requestId)
+    const ref = request?.snapshot.attachments?.[0]
+    if (!ref) {
+      throw new Error('Expected media')
     }
     await expect(
-      scoped.complete({
-        requestId: receipt.requestId,
-        claimToken: claim.claimToken,
-        resultId: 'final',
+      scoped.sendMessage({
+        replyTo: receipt.requestId,
+        idempotencyKey: 'final',
         text: '',
-        attachments: [claim.request.attachments[0].id]
+        attachments: [ref.id]
       })
     ).rejects.toMatchObject({ code: 'media_not_supported' })
-    expect((await f.storage.getInbound(receipt.requestId))?.status).toBe(
-      'claimed'
-    )
+    expect(await f.storage.listOutbound({ limit: 10 })).toEqual([])
     expect(f.sent).toHaveLength(0)
   } finally {
     await f.close()
@@ -322,20 +280,20 @@ it.each(['missing', 'corrupt'])(
         endpointIds: ['first']
       })
 
-      const claim = await scoped.claim(receipt.requestId, 'claim')
-      if (claim.status !== 'claimed' || !claim.request.attachments?.[0]) {
-        throw new Error('Expected claim')
+      const request = await f.storage.getInbound(receipt.requestId)
+      const ref = request?.snapshot.attachments?.[0]
+      if (!ref) {
+        throw new Error('Expected media')
       }
-      const id = claim.request.attachments[0].id
+      const id = ref.id
       expect(
-        await scoped.complete({
-          requestId: receipt.requestId,
-          claimToken: claim.claimToken,
-          resultId: 'final',
+        await scoped.sendMessage({
+          replyTo: receipt.requestId,
+          idempotencyKey: 'final',
           text: '',
           attachments: [id]
         })
-      ).toMatchObject({ status: 'completed' })
+      ).toMatchObject({ status: 'queued' })
       const database = new DatabaseSync(f.filename)
       try {
         database
@@ -359,7 +317,7 @@ it.each(['missing', 'corrupt'])(
 )
 
 it.each(['count', 'bytes'])(
-  'passes atomic staged media %s budgets through the agent host',
+  'enforces atomic outgoing media %s budgets across multiple replies',
   async (budget) => {
     const f = await mediaFixture()
     try {
@@ -373,57 +331,39 @@ it.each(['count', 'bytes'])(
         endpointIds: ['first']
       })
 
-      const claim = await scoped.claim(receipt.requestId, 'claim')
-      if (claim.status !== 'claimed' || !scoped.media) {
-        throw new Error('Expected media claim')
-      }
       const accepted = budget === 'count' ? 3 : 2
       const size = budget === 'count' ? 3 : 16
 
-      const upload = (
-        uploadId: string
-      ): {
-        requestId: string
-        claimToken: string
-        uploadId: string
-        media: {
-          kind: 'file'
-          mimeType: string
-          fileName: string
-          data: Uint8Array<ArrayBuffer>
-        }
-      } => ({
-        requestId: receipt.requestId,
-        claimToken: claim.claimToken,
-        uploadId,
-        media: {
-          kind: 'file' as const,
-          mimeType: 'application/octet-stream',
-          fileName: 'asset.bin',
-          data: new Uint8Array(size)
-        }
+      const input = (
+        index: number
+      ): Parameters<ScopedAgentHost['sendMessage']>[0] => ({
+        replyTo: receipt.requestId,
+        text: '',
+        idempotencyKey: `reply-${index}`,
+        attachments: [
+          {
+            kind: 'file' as const,
+            mimeType: 'application/octet-stream',
+            fileName: `asset-${index}.bin`,
+            data: new Uint8Array(size)
+          }
+        ]
       })
 
-      const firstId = crypto.randomUUID()
-      expect(await scoped.media.upload(upload(firstId))).toMatchObject({
-        status: 'stored',
-        replay: false
-      })
-      for (let index = 1; index < accepted; index++) {
-        expect(
-          await scoped.media.upload(upload(crypto.randomUUID()))
-        ).toMatchObject({
-          status: 'stored',
+      for (let index = 0; index < accepted; index++) {
+        expect(await scoped.sendMessage(input(index))).toMatchObject({
+          status: 'queued',
           replay: false
         })
       }
-      expect(await scoped.media.upload(upload(crypto.randomUUID()))).toEqual({
+      expect(await scoped.sendMessage(input(accepted))).toEqual({
         status: 'conflict'
       })
-      expect(await scoped.media.upload(upload(firstId))).toMatchObject({
-        status: 'stored',
+      expect(await scoped.sendMessage(input(0))).toMatchObject({
+        status: 'queued',
         replay: true
       })
+      expect(await f.storage.listOutbound({ limit: 10 })).toHaveLength(accepted)
     } finally {
       await f.close()
     }

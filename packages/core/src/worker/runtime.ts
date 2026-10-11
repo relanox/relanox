@@ -34,7 +34,6 @@ export function createWorker(
     try {
       const stats = await storage.getStats()
       observe.record('relanox_pending', stats.pending)
-      observe.record('relanox_claimed', stats.claimed)
       observe.record('relanox_outbound', stats.undelivered)
       observe.record('relanox_unknown', stats.unknown)
       observe.record(

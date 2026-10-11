@@ -3,7 +3,7 @@ import type {
   MediaReference,
   StoredMedia,
   InboundSnapshot,
-  MediaStorage
+  EnqueueMessageInput
 } from '@relanox/sdk'
 import { encodeDurableRecord, equalDurableValues } from './record-codec.js'
 
@@ -49,7 +49,7 @@ export const sameReference = (
 ): boolean => equalDurableValues(left, right)
 
 export function withinMediaBudget(
-  input: Parameters<MediaStorage['put']>[0],
+  input: EnqueueMessageInput,
   count: number,
   bytes: number
 ): boolean {
@@ -60,9 +60,67 @@ export function withinMediaBudget(
     maxCount >= 0 &&
     Number.isSafeInteger(maxTotalBytes) &&
     maxTotalBytes >= 0 &&
-    count < maxCount &&
-    bytes + input.media.data.byteLength <= maxTotalBytes
+    count <= maxCount &&
+    bytes <= maxTotalBytes
   )
+}
+
+/** Resolve the complete attachment graph before any database writes. */
+export function validateMessageMedia(
+  input: EnqueueMessageInput,
+  existing: readonly StoredMedia[]
+): readonly StoredMedia[] | undefined {
+  const assets = new Map(existing.map((asset) => [asset.reference.id, asset]))
+  const additions: StoredMedia[] = []
+  for (const asset of input.media ?? []) {
+    if (!validMedia(asset)) {
+      return undefined
+    }
+    const previous = assets.get(asset.reference.id)
+    if (previous) {
+      if (!sameReference(previous.reference, asset.reference)) {
+        return undefined
+      }
+    } else {
+      assets.set(asset.reference.id, asset)
+      additions.push(asset)
+    }
+  }
+  const refs = input.message.attachments ?? []
+  const used = new Set<string>()
+  for (const ref of refs) {
+    const asset = assets.get(ref.id)
+    if (!asset || !sameReference(asset.reference, ref)) {
+      return undefined
+    }
+    used.add(ref.id)
+    if (ref.previewMediaId !== undefined) {
+      const preview = assets.get(ref.previewMediaId)
+      if (
+        preview?.reference.kind !== 'image' ||
+        preview.reference.previewMediaId !== undefined
+      ) {
+        return undefined
+      }
+      used.add(ref.previewMediaId)
+    }
+  }
+  if (additions.some((asset) => !used.has(asset.reference.id))) {
+    return undefined
+  }
+  if (
+    !withinMediaBudget(
+      input,
+      assets.size,
+      [...assets.values()].reduce(
+        (sum, asset) => sum + asset.data.byteLength,
+        0
+      )
+    )
+  ) {
+    return undefined
+  }
+  return additions
 }
 
 export const mediaDigest = (media: StoredMedia): string =>

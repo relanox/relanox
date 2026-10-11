@@ -4,7 +4,7 @@ import type {
   AgentPlugin,
   ChannelHost,
   ChannelPlugin,
-  CompleteInput,
+  EnqueueMessageInput,
   InboundSnapshot,
   RelanoxConfig,
   Settlement,
@@ -93,10 +93,9 @@ const config: RelanoxConfig = {
       config: {
         authorization: { env: 'AGENT_TOKEN' },
         url: 'https://example.test/old'
-      },
-      dispatchMode: 'push'
+      }
     },
-    { id: 'other', agent: 'dot', config: {}, dispatchMode: 'pull' }
+    { id: 'other', agent: 'dot', config: {} }
   ],
   bindings: [
     {
@@ -133,8 +132,7 @@ const snapshot: InboundSnapshot = {
     config: {
       authorization: { env: 'AGENT_TOKEN' },
       url: 'https://example.test/old'
-    },
-    dispatchMode: 'push'
+    }
   },
   acceptedAt: 1
 }
@@ -313,14 +311,13 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
   const accepted: InboundSnapshot[] = []
 
   const complete = vi
-    .fn<(input: CompleteInput) => ReturnType<Storage['completeAndEnqueue']>>()
+    .fn<(input: EnqueueMessageInput) => ReturnType<Storage['enqueueMessage']>>()
     .mockResolvedValue({
-      status: 'completed',
+      status: 'queued',
       deliveryId: 'recorded',
       replay: false
     })
 
-  const listPending = vi.fn<Storage['listPending']>().mockResolvedValue([])
   const p = plugins()
 
   const runtime = await createCore({
@@ -347,14 +344,13 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
         accepted.push(value)
         return { requestId: value.requestId, duplicate: false }
       },
-      listPending,
       getInbound: async () => ({
         snapshot,
-        status: 'claimed',
+
         version: 2,
         dispatch: { status: 'accepted', attempts: 1, dueAt: 1 }
       }),
-      completeAndEnqueue: complete
+      enqueueMessage: complete
     })
   })
 
@@ -385,27 +381,19 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
     endpointIds: ['first', 'other', 'invented', 'first']
   })
 
-  await scope.listPending(10)
-  expect(listPending).toHaveBeenCalledWith({
-    agent: 'grok',
-    endpointIds: ['first'],
-    limit: 10
-  })
   expect(
     await p.agentHost
       .forPrincipal({ subject: 'verified', endpointIds: ['other'] })
-      .complete({
-        requestId: 'req',
-        claimToken: 'token',
-        resultId: 'final',
+      .sendMessage({
+        replyTo: 'req',
+        idempotencyKey: 'final',
         text: 'no authority'
       })
   ).toEqual({ status: 'not_found' })
   expect(complete).not.toHaveBeenCalled()
-  await scope.complete({
-    requestId: 'req',
-    claimToken: 'token',
-    resultId: 'final',
+  await scope.sendMessage({
+    replyTo: 'req',
+    idempotencyKey: 'final',
     text: 'a😀中b😀'
   })
   const input = complete.mock.calls[0]?.[0]
@@ -494,27 +482,17 @@ it("reports connection diagnostics and recovery through the registered plugin's 
 it("binds mutations to the principal agent and rejects a reused endpoint's foreign snapshot", async () => {
   const p = plugins()
 
-  const claimRequest = vi
-    .fn<Storage['claimRequest']>()
-    .mockResolvedValue({ status: 'not_found' })
-
-  const fail = vi
-    .fn<Storage['fail']>()
-    .mockResolvedValue({ status: 'not_found' })
-
   await createCore({
     config,
     channels: p.channels,
     agents: p.agents,
     storage: recordingStorage({
-      claimRequest,
-      fail,
       getInbound: async () => ({
         snapshot: {
           ...snapshot,
           endpoint: { ...snapshot.endpoint, agent: 'dot' }
         },
-        status: 'claimed',
+
         version: 2,
         dispatch: { status: 'accepted', attempts: 1, dueAt: 1 }
       })
@@ -526,31 +504,10 @@ it("binds mutations to the principal agent and rejects a reused endpoint's forei
     endpointIds: ['first']
   })
 
-  await host.claim('req', 'key')
-  expect(claimRequest).toHaveBeenCalledWith(
-    expect.objectContaining({
-      requestId: 'req',
-      endpointIds: ['first'],
-      agent: 'grok'
-    })
-  )
-  await host.fail({
-    requestId: 'req',
-    claimToken: 'token',
-    errorCode: 'failed'
-  })
-  expect(fail).toHaveBeenCalledWith(
-    expect.objectContaining({
-      requestId: 'req',
-      endpointIds: ['first'],
-      agent: 'grok'
-    })
-  )
   expect(
-    await host.complete({
-      requestId: 'req',
-      claimToken: 'token',
-      resultId: 'final',
+    await host.sendMessage({
+      replyTo: 'req',
+      idempotencyKey: 'final',
       text: 'answer'
     })
   ).toEqual({ status: 'not_found' })
@@ -594,7 +551,6 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
         record: {
           snapshot,
           version: 7,
-          status: 'pending',
           dispatch: { status: 'due', attempts: 1, dueAt: 0 }
         },
         lease
@@ -624,7 +580,6 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
       },
       getStats: async () => ({
         pending: 1,
-        claimed: 0,
         undelivered: 0,
         unknown: 0
       })
@@ -658,7 +613,6 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
       record: {
         snapshot,
         version: 8,
-        status: 'pending',
         dispatch: { status: 'due', attempts: 8, dueAt: 0 }
       },
       lease
@@ -670,6 +624,21 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
     errorCode: 'retry_budget_exhausted'
   })
   expect(p.grok.dispatch).toHaveBeenCalledOnce()
+  vi.mocked(p.grok.dispatch).mockResolvedValueOnce({ status: 'accepted' })
+  takeDue.mockResolvedValueOnce([
+    {
+      kind: 'dispatch',
+      record: {
+        snapshot,
+        version: 7,
+        dispatch: { status: 'due', attempts: 7, dueAt: 0 }
+      },
+      lease
+    }
+  ])
+  await runtime.processDue()
+  expect(settlements[2]?.outcome).toEqual({ status: 'accepted' })
+  expect(settlements[2]?.nextDueAt).toBe(settlements[2]?.now)
 })
 
 it('aborts bounded transport calls and preserves unknown effects', async () => {
@@ -685,7 +654,6 @@ it('aborts bounded transport calls and preserves unknown effects', async () => {
           record: {
             snapshot,
             version: 7,
-            status: 'pending',
             dispatch: { status: 'due', attempts: 0, dueAt: 0 }
           },
           lease
@@ -712,7 +680,6 @@ it('aborts bounded transport calls and preserves unknown effects', async () => {
         settleAttempt,
         getStats: async () => ({
           pending: 1,
-          claimed: 0,
           undelivered: 0,
           unknown: 1
         })

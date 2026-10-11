@@ -53,7 +53,7 @@ async function setup(
   storage: Storage
   dispatches: string[]
   principal(this: void): ScopedAgentHost
-  complete(
+  sendReply(
     this: void,
     text?: string
   ): Promise<{
@@ -163,7 +163,7 @@ describe('native Google Chat', () => {
       expect((await local.core.fetch(await local.incoming())).status).toBe(200)
       expect((await local.core.fetch(await local.incoming())).status).toBe(200)
       expect((await local.storage.getStats()).pending).toBe(1)
-      const completed = await local.complete()
+      const completed = await local.sendReply()
       expect(completed.delivery?.status).toBe('sent')
       expect(local.dispatches).toEqual(['hello'])
 
@@ -359,7 +359,7 @@ describe('native Google Chat', () => {
       const local = await setup()
       await local.core.fetch(await local.incoming())
       local.remote.token(status, { error: 'temporarily_unavailable' })
-      const completed = await local.complete()
+      const completed = await local.sendReply()
       expect(completed.delivery?.status).toBe(expected)
       expect(
         local.remote.traffic.filter((request) =>
@@ -395,7 +395,7 @@ describe('native Google Chat', () => {
     const token = `opaque-token-${'a'.repeat(2048)}`
     local.remote.token(200, { access_token: token })
     await local.core.fetch(await local.incoming())
-    expect((await local.complete()).delivery?.status).toBe('sent')
+    expect((await local.sendReply()).delivery?.status).toBe('sent')
 
     const sent = local.remote.traffic.find((request) =>
       request.path.startsWith('/v1/')
@@ -412,7 +412,7 @@ describe('native Google Chat', () => {
     const local = await setup()
     await local.core.fetch(await local.incoming())
     local.remote.respond(status, {}, { 'retry-after': '2' })
-    expect((await local.complete()).delivery?.status).toBe(expected)
+    expect((await local.sendReply()).delivery?.status).toBe(expected)
     expect(
       local.remote.traffic.filter((request) => request.path.startsWith('/v1/'))
     ).toHaveLength(1)
@@ -471,19 +471,14 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
     ).status
   ).toBe(200)
   const scoped = local.principal()
-  const item = (await scoped.listPending(10))[0]
+  const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
   if (!item?.attachments?.[0]) {
     throw new Error('missing_media')
   }
   expect(item.text).toBe('')
-  const claim = await scoped.claim(item.requestId, 'media-claim')
-  if (claim.status !== 'claimed') {
-    throw new Error('claim_failed')
-  }
 
   const media = await scoped.media?.read({
     requestId: item.requestId,
-    claimToken: claim.claimToken,
     mediaId: item.attachments[0].id
   })
 
@@ -520,10 +515,9 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
       request.path.startsWith('/v1/spaces/space/messages')
     )
   ).toHaveLength(0)
-  await scoped.complete({
-    requestId: item.requestId,
-    claimToken: claim.claimToken,
-    resultId: 'media-result',
+  await scoped.sendMessage({
+    replyTo: item.requestId,
+    idempotencyKey: 'media-result',
     text: 'caption',
     attachments: [item.attachments[0].id]
   })

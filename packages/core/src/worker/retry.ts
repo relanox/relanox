@@ -7,9 +7,7 @@ export function retryDelay(
   worker: WorkerConfig
 ): number {
   let delay = 0
-  if (outcome.status === 'accepted') {
-    delay = worker.notificationIntervalMs
-  } else if (outcome.status === 'retryable') {
+  if (outcome.status === 'retryable') {
     delay = Math.max(
       worker.retryBaseMs,
       Math.min(
@@ -30,8 +28,5 @@ export function retryBudgetExhausted(
   attempts: number,
   maximum: number
 ): boolean {
-  return (
-    (outcome.status === 'retryable' || outcome.status === 'accepted') &&
-    attempts + 1 >= maximum
-  )
+  return outcome.status === 'retryable' && attempts + 1 >= maximum
 }
