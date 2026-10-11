@@ -18,7 +18,8 @@
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.1",
     "@relanox/sdk": "workspace:*",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@relanox/agent-mcp": "workspace:*"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.3.1",

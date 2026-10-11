@@ -20,6 +20,8 @@ Core 和插件依赖 SDK，CLI 装配具体实现。渠道和 Agent 只接收限
 
 `channel-media` 只依赖 SDK 契约。媒体授权、发布与持久化仍由 Core 和 Storage 负责；各渠道保留平台原生的上传下载协议。
 
+`agent-mcp` 负责 dot 和 Grok 共用的 MCP 配置、鉴权、任务工具、媒体传输凭证与请求投影，只依赖 SDK 契约和 MCP 服务端库，不依赖 Core 或具体 Agent 插件。dot 保留订阅与 webhook 通知，Grok 保留 Routine 分发。共享包是实现库，不作为插件注册进 CLI 目录。
+
 ## 持久消息流
 
 数据库中，`inbound` 保存请求、冻结快照、领取令牌和通知进度；`outbound` 保存最终文字/媒体分片、发送进度与回执；`media` 保存请求所属的字节和元数据；`plugin_state` 在独立命名空间内保存订阅、游标与发布凭证。二进制在内存中跨插件边界传递，不进入 JSON 快照。共享 `@relanox/channel-media` 包负责渠道的有界远程下载与上传辅助，Core 负责请求授权、附件顺序与公开发布。
@@ -50,6 +52,8 @@ Storage 是持久工作的唯一事实源，不需要独立队列。启动继续
 | 位置                                 | 职责                                                           |
 | ------------------------------------ | -------------------------------------------------------------- |
 | `packages/sdk/src`                   | values/config/messages/state/storage/observability 和插件 Host |
+| `packages/channel-media/src`         | 渠道有界下载、MIME 分类与原生上传辅助                          |
+| `packages/agent-mcp/src`             | 托管 Agent 共用的 MCP 鉴权、任务工具、媒体传输与请求投影       |
 | `packages/core/src/config`           | 配置结构、引用关系、插件校验和路由索引                         |
 | `packages/core/src/hosts`            | 渠道/Agent 授权 Host、命名空间、连接观测和 setup               |
 | `packages/core/src/worker`           | 有期限的顺序执行、结果校验和重试策略                           |

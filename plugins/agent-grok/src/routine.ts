@@ -1,8 +1,7 @@
 import type { AgentPlugin, DispatchResult } from '@relanox/sdk'
 import { configSchema } from './config.js'
 import type { GrokConfig } from './config.js'
-import { projectAgentRequest } from './request-payload.js'
-import { resolveAgentSecret } from './secrets.js'
+import { projectAgentRequest, resolveAgentSecret } from '@relanox/agent-mcp'
 
 function classifyReceipt(response: Response): DispatchResult {
   if (response.ok) {

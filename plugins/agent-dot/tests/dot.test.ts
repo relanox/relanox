@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { callbackUrl, isPublicAddress } from '../src/callback.js'
 import { createDotAgentPlugin } from '../src/index.js'
-import { guard } from '../src/mcp.js'
+import { guard } from '@relanox/agent-mcp'
 import { fixture, mcp, parseWire, peer } from './fixture.js'
 import type { Traffic } from './fixture.js'
 

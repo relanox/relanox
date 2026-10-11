@@ -20,6 +20,8 @@ Core and plugins depend on SDK. CLI assembles concrete implementations. Channels
 
 `channel-media` depends only on SDK contracts. It does not own media authorization, publication or persistence; those remain in Core and Storage. Channels keep their native platform upload/download protocols.
 
+`agent-mcp` owns the MCP configuration, authentication guard, task tools, media transfer tickets and shared request projection used by dot and Grok. It depends on SDK contracts and the MCP server library, never Core or a concrete agent plugin. dot retains subscriptions and webhook dispatch; Grok retains Routine dispatch. The shared packages are libraries, not plugins registered in the CLI catalog.
+
 ## Durable message flow
 
 The database holds `inbound` requests with frozen snapshots, claim tokens and notification progress; `outbound` final text/media chunks with send progress and receipts; request-owned `media` bytes and metadata; and `plugin_state` subscriptions/cursors/publication tickets within separate namespaces. Binary bytes cross plugin boundaries in memory and stay outside JSON snapshots. The shared `@relanox/channel-media` package owns bounded remote downloads and upload helpers for channels; core owns request authorization, attachment order and public publication.
@@ -47,17 +49,19 @@ Business MCP/webhook routes belong behind HTTPS. Management uses a separate lite
 
 Package entrypoints are stable public boundaries. Internal modules import concrete siblings rather than their own `index.ts`.
 
-| Source                               | Responsibility                                                                     |
-| ------------------------------------ | ---------------------------------------------------------------------------------- |
-| `packages/sdk/src`                   | Values, config, messages, state, storage, observability and plugin hosts           |
-| `packages/core/src/config`           | Shape, reference relationships, plugin validation and route indexes                |
-| `packages/core/src/hosts`            | Scoped channel/agent hosts, namespaces, connection telemetry and setup             |
-| `packages/core/src/worker`           | Bounded sequential execution, outcome validation and retry policy                  |
-| `packages/core/src/runtime.ts`       | Core assembly, HTTP, worker and administration                                     |
-| `plugins/channel-*/src`              | Pure config/schemas, account runtime, transports and connection state              |
-| `plugins/agent-*/src`                | Per-endpoint config, secrets, MCP and notification/Routine transport               |
-| `plugins/storage-*/src`              | Database transactions, requests, leases, protocol CAS, inspection and codecs       |
-| `plugins/observability-standard/src` | Configuration, sanitization, backpressure, metrics, traces and lifecycle           |
-| `apps/cli/src`                       | Application config, plugin catalog, listeners, worker lifecycle and admin commands |
+| Source                               | Responsibility                                                                            |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `packages/sdk/src`                   | Values, config, messages, state, storage, observability and plugin hosts                  |
+| `packages/channel-media/src`         | Bounded channel downloads, MIME classification and native upload helpers                  |
+| `packages/agent-mcp/src`             | Shared hosted-agent MCP authentication, task tools, media transfer and request projection |
+| `packages/core/src/config`           | Shape, reference relationships, plugin validation and route indexes                       |
+| `packages/core/src/hosts`            | Scoped channel/agent hosts, namespaces, connection telemetry and setup                    |
+| `packages/core/src/worker`           | Bounded sequential execution, outcome validation and retry policy                         |
+| `packages/core/src/runtime.ts`       | Core assembly, HTTP, worker and administration                                            |
+| `plugins/channel-*/src`              | Pure config/schemas, account runtime, transports and connection state                     |
+| `plugins/agent-*/src`                | Per-endpoint config, secrets, MCP and notification/Routine transport                      |
+| `plugins/storage-*/src`              | Database transactions, requests, leases, protocol CAS, inspection and codecs              |
+| `plugins/observability-standard/src` | Configuration, sanitization, backpressure, metrics, traces and lifecycle                  |
+| `apps/cli/src`                       | Application config, plugin catalog, listeners, worker lifecycle and admin commands        |
 
 [Development](development.md) describes maintenance and verification. Local protocol peers and real storage tests protect contracts; they do not establish live-account compatibility.
