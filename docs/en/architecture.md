@@ -18,9 +18,11 @@ Channel → Core → Agent → hosted dot/Grok; Core ↔ Storage; CLI manages li
 
 Core and plugins depend on SDK. CLI assembles concrete implementations. Channels and agents receive scoped Hosts and namespaced protocol state, never direct Storage access. Storage enforces atomic predicates; Core chooses business transitions.
 
+`channel-media` depends only on SDK contracts. It does not own media authorization, publication or persistence; those remain in Core and Storage. Channels keep their native platform upload/download protocols.
+
 ## Durable message flow
 
-The database holds `inbound` requests with frozen snapshots, claim tokens and notification progress; `outbound` final text/media chunks with send progress and receipts; request-owned `media` bytes and metadata; and `plugin_state` subscriptions/cursors/publication tickets within separate namespaces. Binary bytes cross plugin boundaries in memory and stay outside JSON snapshots. The shared media package owns bounded remote downloads; core owns request authorization, attachment order and public publication.
+The database holds `inbound` requests with frozen snapshots, claim tokens and notification progress; `outbound` final text/media chunks with send progress and receipts; request-owned `media` bytes and metadata; and `plugin_state` subscriptions/cursors/publication tickets within separate namespaces. Binary bytes cross plugin boundaries in memory and stay outside JSON snapshots. The shared `@relanox/channel-media` package owns bounded remote downloads and upload helpers for channels; core owns request authorization, attachment order and public publication.
 
 1. A channel authenticates the event. Core checks sender allowlists and an exact account/chat/thread binding, then commits before acknowledging input. Deduplication uses channel, account and stable platform event ID.
 2. Acceptance freezes the endpoint, credential references and serializable reply target. Binding changes cannot redirect old requests. An agent cannot supply another destination.

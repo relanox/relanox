@@ -1,4 +1,4 @@
-import { mediaKind } from '@relanox/media'
+import { mediaKind } from '@relanox/channel-media'
 import type { ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
 import { z } from 'zod'
 import type { attachmentSchema } from './schemas.js'

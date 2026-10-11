@@ -1,4 +1,4 @@
-import { downloadMedia, mediaKind } from '@relanox/media'
+import { downloadMedia, mediaKind } from '@relanox/channel-media'
 import type { ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
 import type { z } from 'zod'
 import { accessToken } from './client.js'
