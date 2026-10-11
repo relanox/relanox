@@ -1,9 +1,9 @@
 import type { Storage, StateEntry } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
-import { encode, decode } from "./record-codec.js";
+import { encodeDurableRecord, decodeDurableRecord } from "./record-codec.js";
 
 export function createStateOperations(
-  context: DatabaseContext,
+  context: Pick<DatabaseContext, "db" | "transaction">,
 ): Pick<Storage, "getState" | "listState" | "compareAndSetState" | "deleteState"> {
   const { db, transaction } = context;
   return {
@@ -13,7 +13,7 @@ export function createStateOperations(
           "SELECT record FROM plugin_state WHERE plugin=? AND owner=? AND key=? AND record!='null'",
         )
         .get(ns.pluginId, ns.ownerId, key) as { record: string } | undefined;
-      return row ? decode<StateEntry>(row.record) : undefined;
+      return row ? decodeDurableRecord<StateEntry>(row.record) : undefined;
     },
     async listState(ns, input) {
       const where = ["plugin=?", "owner=?", "record!='null'"];
@@ -32,7 +32,7 @@ export function createStateOperations(
             `SELECT record FROM plugin_state WHERE ${where.join(" AND ")} ORDER BY key LIMIT ?`,
           )
           .all(...params, input.limit) as { record: string }[]
-      ).map((x) => decode<StateEntry>(x.record));
+      ).map((row) => decodeDurableRecord<StateEntry>(row.record));
     },
     async compareAndSetState(ns, input) {
       return transaction(() => {
@@ -63,7 +63,14 @@ export function createStateOperations(
             ON CONFLICT(plugin,owner,key) DO UPDATE
             SET version=excluded.version,expires_at=excluded.expires_at,record=excluded.record
           `,
-        ).run(ns.pluginId, ns.ownerId, input.key, version, input.expiresAt ?? null, encode(entry));
+        ).run(
+          ns.pluginId,
+          ns.ownerId,
+          input.key,
+          version,
+          input.expiresAt ?? null,
+          encodeDurableRecord(entry),
+        );
         return { status: "updated", version };
       });
     },

@@ -3,7 +3,16 @@ import type { DatabaseContext } from "./database.js";
 import { boundedLimit } from "./database.js";
 
 export function createInspectionOperations(
-  context: DatabaseContext,
+  context: Pick<
+    DatabaseContext,
+    | "pool"
+    | "query"
+    | "transaction"
+    | "readInbound"
+    | "readOutbound"
+    | "saveInbound"
+    | "saveOutbound"
+  >,
 ): Pick<
   Storage,
   "getInbound" | "getOutbound" | "listInbound" | "listOutbound" | "getStats" | "cleanup"
@@ -149,7 +158,7 @@ export function createInspectionOperations(
               client,
               {
                 ...delivery,
-                chunks: delivery.chunks.map((c) => ({ ...c, text: "", state: null })),
+                chunks: delivery.chunks.map((chunk) => ({ ...chunk, text: "", state: null })),
                 receipts: delivery.receipts.map(() => ({})),
               },
               delivery.version,

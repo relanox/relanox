@@ -1,10 +1,13 @@
 import type { Storage, InboundRecord } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
-import { encode, decode, resultDigest } from "./record-codec.js";
+import { encodeDurableRecord, decodeDurableRecord, resultDigest } from "./record-codec.js";
 import { matchesInitialResult, isRequestInScope } from "./record-contracts.js";
 
 export function createRequestOperations(
-  context: DatabaseContext,
+  context: Pick<
+    DatabaseContext,
+    "db" | "transaction" | "readInbound" | "saveInbound" | "isEndpointHead"
+  >,
 ): Pick<Storage, "acceptInbound" | "listPending" | "claimRequest" | "completeAndEnqueue" | "fail"> {
   const { db, transaction, readInbound, saveInbound, isEndpointHead } = context;
   return {
@@ -19,7 +22,7 @@ export function createRequestOperations(
           return { requestId: row.id, duplicate: true };
         }
         const record: InboundRecord = {
-          snapshot: decode(encode(snapshot)),
+          snapshot: decodeDurableRecord(encodeDurableRecord(snapshot)),
           status: "pending",
           version: 1,
           dispatch: { status: "due", attempts: 0, dueAt: snapshot.acceptedAt },
@@ -38,7 +41,7 @@ export function createRequestOperations(
           snapshot.acceptedAt,
           record.status,
           1,
-          encode(record),
+          encodeDurableRecord(record),
         );
         return { requestId: snapshot.requestId, duplicate: false };
       });
@@ -62,7 +65,7 @@ export function createRequestOperations(
             `,
           )
           .all(...input.endpointIds, input.agent, input.limit) as { record: string }[]
-      ).map((x) => decode<InboundRecord>(x.record).snapshot);
+      ).map((row) => decodeDurableRecord<InboundRecord>(row.record).snapshot);
     },
     async claimRequest(input) {
       return transaction(() => {
@@ -152,7 +155,7 @@ export function createRequestOperations(
           delivery.resultId,
           delivery.status,
           1,
-          encode(delivery),
+          encodeDurableRecord(delivery),
         );
         saveInbound({
           ...record,

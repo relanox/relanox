@@ -1,9 +1,12 @@
 import type { Storage, InboundRecord, OutboundRecord } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
-import { decode } from "./record-codec.js";
+import { decodeDurableRecord } from "./record-codec.js";
 
 export function createInspectionOperations(
-  context: DatabaseContext,
+  context: Pick<
+    DatabaseContext,
+    "db" | "transaction" | "readInbound" | "readOutbound" | "saveInbound" | "saveOutbound"
+  >,
 ): Pick<
   Storage,
   "getInbound" | "getOutbound" | "listInbound" | "listOutbound" | "getStats" | "cleanup"
@@ -35,7 +38,7 @@ export function createInspectionOperations(
         db
           .prepare(`SELECT record FROM inbound WHERE ${where.join(" AND ")} ORDER BY id LIMIT ?`)
           .all(...params, filter.limit) as { record: string }[]
-      ).map((x) => decode<InboundRecord>(x.record));
+      ).map((row) => decodeDurableRecord<InboundRecord>(row.record));
     },
     async listOutbound(filter) {
       const where = ["1=1"];
@@ -65,7 +68,7 @@ export function createInspectionOperations(
             `,
           )
           .all(...params, filter.limit) as { record: string }[]
-      ).map((x) => decode<OutboundRecord>(x.record));
+      ).map((row) => decodeDurableRecord<OutboundRecord>(row.record));
     },
     async getStats() {
       const inboundStats = db
@@ -129,9 +132,9 @@ export function createInspectionOperations(
           outbound_record: string | null;
         }[];
         for (const row of rows) {
-          const record = decode<InboundRecord>(row.inbound_record);
+          const record = decodeDurableRecord<InboundRecord>(row.inbound_record);
           const delivery = row.outbound_record
-            ? decode<OutboundRecord>(row.outbound_record)
+            ? decodeDurableRecord<OutboundRecord>(row.outbound_record)
             : undefined;
           saveInbound({
             ...record,

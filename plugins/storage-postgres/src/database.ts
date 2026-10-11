@@ -2,11 +2,15 @@ import type { InboundRecord, OutboundRecord, Observability, Span } from "@relano
 import { Pool } from "pg";
 import type { PoolClient, QueryResultRow } from "pg";
 import type { z } from "zod";
+import type { PostgresConfig } from "./config.js";
 import { configSchema } from "./config.js";
-import { encode } from "./record-codec.js";
+import { encodeDurableRecord } from "./record-codec.js";
 
 /** Owns the connection and atomic transaction boundary for every storage operation. */
-export function openDatabase(configuration: z.input<typeof configSchema>, observe: Observability) {
+export function openDatabase(
+  configuration: z.input<typeof configSchema>,
+  observe: Observability,
+): DatabaseContext {
   const extractDatabaseErrorCode = (error: unknown): string | undefined =>
     error !== null && typeof error === "object" && "code" in error && typeof error.code === "string"
       ? error.code
@@ -120,7 +124,13 @@ export function openDatabase(configuration: z.input<typeof configSchema>, observ
   ) => {
     const changed = await client.query(
       "UPDATE inbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5",
-      [record.status, record.version, encode(record), record.snapshot.requestId, expectedVersion],
+      [
+        record.status,
+        record.version,
+        encodeDurableRecord(record),
+        record.snapshot.requestId,
+        expectedVersion,
+      ],
     );
     if (changed.rowCount !== 1) {
       throw new Error("Inbound version conflict");
@@ -133,7 +143,13 @@ export function openDatabase(configuration: z.input<typeof configSchema>, observ
   ) => {
     const changed = await client.query(
       "UPDATE outbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5",
-      [record.status, record.version, encode(record), record.deliveryId, expectedVersion],
+      [
+        record.status,
+        record.version,
+        encodeDurableRecord(record),
+        record.deliveryId,
+        expectedVersion,
+      ],
     );
     if (changed.rowCount !== 1) {
       throw new Error("Outbound version conflict");
@@ -180,7 +196,40 @@ export function openDatabase(configuration: z.input<typeof configSchema>, observ
   };
 }
 
-export type DatabaseContext = ReturnType<typeof openDatabase>;
+export interface DatabaseContext {
+  readonly config: PostgresConfig;
+  readonly pool: Pool;
+  query<T extends QueryResultRow>(
+    this: void,
+    client: Pool | PoolClient,
+    sql: string,
+    values?: unknown[],
+  ): Promise<T[]>;
+  transaction<T>(this: void, operation: (client: PoolClient) => Promise<T>): Promise<T>;
+  readInbound(
+    this: void,
+    client: Pool | PoolClient,
+    id: string,
+  ): Promise<InboundRecord | undefined>;
+  readOutbound(
+    this: void,
+    client: Pool | PoolClient,
+    id: string,
+  ): Promise<OutboundRecord | undefined>;
+  saveInbound(
+    this: void,
+    client: PoolClient,
+    record: InboundRecord,
+    expectedVersion?: number,
+  ): Promise<void>;
+  saveOutbound(
+    this: void,
+    client: PoolClient,
+    record: OutboundRecord,
+    expectedVersion?: number,
+  ): Promise<void>;
+  isEndpointHead(this: void, client: PoolClient, record: InboundRecord): Promise<boolean>;
+}
 
 export const boundedLimit = (limit: number): number => {
   if (!Number.isSafeInteger(limit) || limit < 0) {

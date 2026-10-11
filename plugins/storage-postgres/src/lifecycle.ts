@@ -2,7 +2,7 @@ import type { Storage } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
 
 export function createLifecycle(
-  context: DatabaseContext,
+  context: Pick<DatabaseContext, "config" | "pool" | "transaction">,
 ): Pick<Storage, "initialize" | "health" | "close"> {
   const { config, pool, transaction } = context;
   return {

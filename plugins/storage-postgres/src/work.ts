@@ -5,7 +5,10 @@ import { randomUUID } from "node:crypto";
 import { isActiveLease } from "./record-contracts.js";
 
 export function createWorkOperations(
-  context: DatabaseContext,
+  context: Pick<
+    DatabaseContext,
+    "query" | "transaction" | "readInbound" | "readOutbound" | "saveInbound" | "saveOutbound"
+  >,
 ): Pick<Storage, "requeue" | "takeDue" | "settleAttempt"> {
   const { query, transaction, readInbound, readOutbound, saveInbound, saveOutbound } = context;
   return {

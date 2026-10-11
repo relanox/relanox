@@ -1,11 +1,14 @@
 import type { Storage, InboundRecord } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
 import { boundedLimit } from "./database.js";
-import { encode, resultDigest } from "./record-codec.js";
+import { encodeDurableRecord, resultDigest } from "./record-codec.js";
 import { matchesInitialResult, isRequestInScope } from "./record-contracts.js";
 
 export function createRequestOperations(
-  context: DatabaseContext,
+  context: Pick<
+    DatabaseContext,
+    "pool" | "query" | "transaction" | "readInbound" | "saveInbound" | "isEndpointHead"
+  >,
 ): Pick<Storage, "acceptInbound" | "listPending" | "claimRequest" | "completeAndEnqueue" | "fail"> {
   const { pool, query, transaction, readInbound, saveInbound, isEndpointHead } = context;
   return {
@@ -44,7 +47,7 @@ export function createRequestOperations(
             snapshot.acceptedAt,
             record.status,
             1,
-            encode(record),
+            encodeDurableRecord(record),
           ],
         );
         if (inserted.length > 0) {
@@ -172,7 +175,7 @@ export function createRequestOperations(
             delivery.resultId,
             delivery.status,
             1,
-            encode(delivery),
+            encodeDurableRecord(delivery),
           ],
         );
         if (inserted.length === 0) {

@@ -1,11 +1,20 @@
 import type { Storage, InboundRecord, OutboundRecord } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
 import { randomUUID } from "node:crypto";
-import { decode } from "./record-codec.js";
+import { decodeDurableRecord } from "./record-codec.js";
 import { isActiveLease } from "./record-contracts.js";
 
 export function createWorkOperations(
-  context: DatabaseContext,
+  context: Pick<
+    DatabaseContext,
+    | "db"
+    | "transaction"
+    | "readInbound"
+    | "readOutbound"
+    | "saveInbound"
+    | "saveOutbound"
+    | "isEndpointHead"
+  >,
 ): Pick<Storage, "requeue" | "takeDue" | "settleAttempt"> {
   const { db, transaction, readInbound, readOutbound, saveInbound, saveOutbound, isEndpointHead } =
     context;
@@ -85,7 +94,7 @@ export function createWorkOperations(
               `,
             )
             .all(input.now, input.now) as { record: string }[]
-        ).map((x) => decode<InboundRecord>(x.record))) {
+        ).map((row) => decodeDurableRecord<InboundRecord>(row.record))) {
           let next = record;
           if (record.dispatch.lease && record.dispatch.lease.expiresAt <= input.now) {
             const dispatch = {
@@ -135,7 +144,7 @@ export function createWorkOperations(
               `,
             )
             .all(input.now, input.now) as { record: string }[]
-        ).map((x) => decode<OutboundRecord>(x.record))) {
+        ).map((row) => decodeDurableRecord<OutboundRecord>(row.record))) {
           let next = record;
           if (record.lease && record.lease.expiresAt <= input.now) {
             next = {
@@ -146,7 +155,8 @@ export function createWorkOperations(
                 : "unknown",
               errorCode: "lease_expired",
             };
-            next = (({ lease: _lease, ...rest }) => rest)(next);
+            const { lease: _expiredLease, ...recovered } = next;
+            next = recovered;
             saveOutbound(next);
           }
           if (

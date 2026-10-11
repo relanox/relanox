@@ -1,33 +1,33 @@
 import { createHash } from "node:crypto";
 
-export const encode = (v: unknown): string => {
+export const encodeDurableRecord = (value: unknown): string => {
   const ancestors = new Set<object>();
-  const check = (x: unknown): void => {
-    if (x === null || typeof x === "string" || typeof x === "boolean") {
+  const validateJsonValue = (candidate: unknown): void => {
+    if (candidate === null || typeof candidate === "string" || typeof candidate === "boolean") {
       return;
     }
-    if (typeof x === "number" && Number.isFinite(x)) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
       return;
     }
-    if (typeof x !== "object" || ancestors.has(x)) {
+    if (typeof candidate !== "object" || ancestors.has(candidate)) {
       throw new TypeError("Non-JSON durable value");
     }
-    if (!Array.isArray(x) && Object.getPrototypeOf(x) !== Object.prototype) {
+    if (!Array.isArray(candidate) && Object.getPrototypeOf(candidate) !== Object.prototype) {
       throw new TypeError("Non-plain durable value");
     }
-    ancestors.add(x);
-    for (const value of Object.values(x)) {
-      check(value);
+    ancestors.add(candidate);
+    for (const child of Object.values(candidate)) {
+      validateJsonValue(child);
     }
-    ancestors.delete(x);
+    ancestors.delete(candidate);
   };
-  check(v);
-  return JSON.stringify(v);
+  validateJsonValue(value);
+  return JSON.stringify(value);
 };
-export const decode = <T>(v: unknown): T => JSON.parse(String(v)) as T;
+export const decodeDurableRecord = <T>(value: unknown): T => JSON.parse(String(value)) as T;
 export const resultDigest = (text: string): string =>
   createHash("sha256").update(text).digest("hex");
-export const equal = (a: unknown, b: unknown): boolean => {
+export const equalDurableValues = (a: unknown, b: unknown): boolean => {
   const canonical = (value: unknown): unknown => {
     if (Array.isArray(value)) {
       return value.map(canonical);
@@ -41,5 +41,5 @@ export const equal = (a: unknown, b: unknown): boolean => {
     }
     return value;
   };
-  return encode(canonical(a)) === encode(canonical(b));
+  return encodeDurableRecord(canonical(a)) === encodeDurableRecord(canonical(b));
 };
