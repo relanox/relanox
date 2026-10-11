@@ -1,10 +1,18 @@
-import { validateConfig } from "@relanox/core";
+import { validateConfig, validateMediaOptions } from "@relanox/core";
 import { z } from "zod";
 
 const port = z.number().int().min(0).max(65_535);
 export const appConfigSchema = z
   .strictObject({
     relay: z.unknown().transform(validateConfig),
+    media: z.unknown().transform(validateMediaOptions).optional(),
+    mediaLimits: z
+      .strictObject({
+        maxMediaBytes: z.number().int().min(1).max(209_715_200).default(26_214_400),
+        maxTotalMediaBytes: z.number().int().min(1).max(209_715_200).default(52_428_800),
+        maxAttachments: z.number().int().min(1).max(10).default(10),
+      })
+      .optional(),
     server: z
       .strictObject({
         host: z.string().min(1).default("127.0.0.1"),

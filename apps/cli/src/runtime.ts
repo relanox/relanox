@@ -49,7 +49,15 @@ export async function startRuntime(input: unknown) {
     lifecycle.registerStorage(storage);
     await storage.initialize();
     await requireHealthy(storage);
-    const core = await createCore({ config: config.relay, storage, channels, agents, observe });
+    const core = await createCore({
+      config: config.relay,
+      storage,
+      channels,
+      agents,
+      observe,
+      ...(config.media ? { media: config.media } : {}),
+      ...(config.mediaLimits ? { worker: config.mediaLimits } : {}),
+    });
     core.setAccepting(false);
     const worker = createWorker(core, config.server.workerIntervalMs, observe);
     lifecycle.registerCore(
