@@ -1,7 +1,69 @@
 import type { ScopedAgentHost } from '../../packages/sdk/src/index.js'
 import { DatabaseSync } from 'node:sqlite'
+import { randomUUID } from 'node:crypto'
 import { expect, it } from 'vitest'
 import { mediaFixture, incoming, picture } from './fixture.js'
+
+it('authorizes staged uploads, preserves immutable retries and sends the returned ID', async () => {
+  const f = await mediaFixture()
+  try {
+    const receipt = await f.channel.ingest({ ...incoming, text: 'question' })
+
+    const owner = f.agent.forPrincipal({
+      subject: 'worker',
+      endpointIds: ['first']
+    })
+
+    const foreign = f.agent.forPrincipal({
+      subject: 'other',
+      endpointIds: ['other']
+    })
+
+    if (!owner.media || !foreign.media) {
+      throw new Error('Expected agent media host')
+    }
+
+    const input = {
+      requestId: receipt.requestId,
+      mediaId: randomUUID(),
+      upload: picture
+    }
+
+    expect(await owner.media.authorize(input)).toBe(true)
+    expect(await foreign.media.authorize(input)).toBe(false)
+    expect(await foreign.media.upload(input)).toBeUndefined()
+    expect(await owner.media.read(input)).toBeUndefined()
+    const reference = await owner.media.upload(input)
+    expect(reference).toMatchObject({
+      id: input.mediaId,
+      kind: 'image',
+      size: 3
+    })
+    expect(await owner.media.upload(input)).toEqual(reference)
+    await expect(
+      owner.media.upload({
+        ...input,
+        upload: { ...picture, data: new Uint8Array([4]) }
+      })
+    ).rejects.toMatchObject({ code: 'media_conflict' })
+    expect(
+      await owner.sendMessage({
+        replyTo: receipt.requestId,
+        text: '',
+        attachments: [input.mediaId]
+      })
+    ).toMatchObject({ status: 'queued' })
+    await f.runtime.processDue()
+    expect(f.sent[0]?.media?.data).toEqual(picture.data)
+    expect(
+      await f.storage.cleanup({ before: Date.now() + 1000, limit: 10 })
+    ).toEqual({ redacted: 1 })
+    expect(await owner.media.authorize(input)).toBe(false)
+    expect(await owner.media.upload(input)).toBeUndefined()
+  } finally {
+    await f.close()
+  }
+})
 
 it('persists incoming bytes and sends replayable ordered replies without a claim', async () => {
   const f = await mediaFixture()

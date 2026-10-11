@@ -83,6 +83,21 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
         { ...snapshot(), attachments: [incoming.reference] },
         [incoming]
       )
+      const staged = asset('staged')
+
+      const stageInput = {
+        requestId: 'r1',
+        agent: 'grok' as const,
+        endpointIds: ['ep'],
+        media: staged,
+        maxBytes: 3,
+        maxCount: 2,
+        maxTotalBytes: 6
+      }
+
+      expect(await required(a.media).put(stageInput)).toMatchObject({
+        status: 'stored'
+      })
 
       const input = {
         now: 100,
@@ -105,6 +120,11 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       expect(await required(a.media).get('r1', incoming.reference.id)).toEqual(
         incoming
       )
+      expect(await required(a.media).get('r1', 'staged')).toEqual(staged)
+      expect(await required(a.media).put(stageInput)).toEqual({
+        status: 'stored',
+        reference: staged.reference
+      })
       expect(await a.takeDue({ ...input, now: 110 })).toEqual([])
       expect((await a.getInbound('r1'))?.dispatch.status).toBe('unknown')
       expect(
