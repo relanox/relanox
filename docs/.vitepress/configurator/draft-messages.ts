@@ -8,16 +8,16 @@ const messages: Record<string, Localized> = {
     zh: '将示例域名替换为你自己的域名。'
   },
   publicHost: {
-    en: 'Enter an HTTPS address or a local HTTP address (127.0.0.1 or [::1]), without a path.',
-    zh: '填写 HTTPS 地址或本机 HTTP 地址（127.0.0.1 或 [::1]），不包含路径。'
+    en: 'Enter your public HTTPS address without a path.',
+    zh: '填写公开 HTTPS 地址，不包含路径。'
   },
-  oauthPublicHost: {
-    en: 'dot OAuth requires a public HTTPS address for authorization.',
-    zh: 'dot OAuth 授权需要公开 HTTPS 地址。'
+  agentPublicHost: {
+    en: 'dot and Grok need a public HTTPS address to reach Relanox. Enter your deployed service address.',
+    zh: 'dot 和 Grok 需要公开 HTTPS 地址来访问 Relanox，请填写部署后的服务地址。'
   },
-  publicHostRequired: {
-    en: 'The selected webhook channels require a public HTTPS address.',
-    zh: '所选回调渠道需要填写公开 HTTPS 地址。'
+  duplicateChat: {
+    en: 'This chat and thread are already bound. Edit the existing binding or choose another chat.',
+    zh: '此聊天与线程已有绑定，请修改已有绑定或填写其他聊天。'
   },
   channelRequired: {
     en: 'Choose at least one channel.',
@@ -69,13 +69,23 @@ export function draftMessage(
   const locale = chinese ? 'zh' : 'en'
   const agent = state.agents.find((entry) => entry.id === issue.target)
   const [channelId, ...fieldPath] = issue.target.split('.')
-  const channel = CHANNELS.find((entry) => entry.id === channelId)
+  const account = state.channels.find((entry) => entry.id === channelId)
+  const channel = CHANNELS.find((entry) => entry.id === account?.channel)
+
+  const chatIndex =
+    account?.chats.findIndex((chat) => chat.id === fieldPath[0]) ?? -1
 
   const field = channel?.fields.find(
     (entry) => entry.key === fieldPath.join('.')
   )
 
-  const subject = [agent?.name, channel?.name[locale], field?.label[locale]]
+  const subject = [
+    agent?.name,
+    channel?.name[locale],
+    account?.id,
+    chatIndex >= 0 ? `${chinese ? '聊天' : 'Chat'} ${chatIndex + 1}` : '',
+    field?.label[locale]
+  ]
     .filter(Boolean)
     .join(' · ')
 

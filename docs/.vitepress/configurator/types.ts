@@ -33,14 +33,21 @@ export type AgentState = {
   mcpToken: string
 }
 
+export type ChatState = {
+  id: string
+  chatId: string
+  threadId: string
+  endpointId: string
+}
+
 export type ChannelState = {
+  id: string
   channel: string
   enabled: boolean
   fields: Record<string, string>
-  chatId: string
   senderIds: string
-  threadId: string
-  endpointId: string
+  chats: ChatState[]
+  nextChatNumber: number
 }
 
 export type ConfiguratorState = {
@@ -48,6 +55,7 @@ export type ConfiguratorState = {
   agents: AgentState[]
   channels: ChannelState[]
   nextAgentNumber: number
+  nextAccountNumber: number
 }
 
 export type GeneratedConfig = {

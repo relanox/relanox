@@ -3,6 +3,10 @@ import { validateApp } from '../../apps/cli/src/runtime.js'
 import { CHANNELS } from '../../docs/.vitepress/configurator/channels.js'
 import {
   addAgent,
+  addAccount,
+  removeAccount,
+  addChat,
+  removeChat,
   buildConfig,
   connectionDetails,
   createState,
@@ -13,6 +17,13 @@ import {
   webhookDetails
 } from '../../docs/.vitepress/configurator/model.js'
 
+function required<T>(value: T | undefined): T {
+  if (value === undefined) {
+    throw new Error('Required fixture entry missing')
+  }
+  return value
+}
+
 function completedState(): ReturnType<typeof createState> {
   const state = createState()
   state.publicHost = 'relay.test.example:8443'
@@ -22,7 +33,11 @@ function completedState(): ReturnType<typeof createState> {
   for (const channel of state.channels) {
     const definition = CHANNELS.find((entry) => entry.id === channel.channel)
     channel.enabled = true
-    channel.chatId = definition?.chatExample ?? ''
+    const chat = channel.chats[0]
+    if (!chat) {
+      throw new Error('Chat missing')
+    }
+    chat.chatId = definition?.chatExample ?? ''
     channel.senderIds = definition?.senderExample ?? ''
     for (const field of definition?.fields ?? []) {
       if (field.requiresInput) {
@@ -47,12 +62,15 @@ describe('connection configurator production contracts', () => {
     }
     agent.mcpToken = generateMcpToken()
     expect(agent.mcpToken).toMatch(/^[a-f0-9]{64}$/u)
+    expect(buildConfig(state).publicUrl).toBe('')
+    expect(connectionDetails(state)[0]?.mcpUrl).toBe('')
+    state.publicHost = 'https://relay.test.example'
     agent.mcpToken = 'edited_password_01234567890123456789'
     agent.type = 'grok'
     expect(connectionDetails(state)[0]).toEqual({
       id: 'agent-1',
       mcpUrl:
-        'http://127.0.0.1:8787/agents/grok/mcp/agent-1/edited_password_01234567890123456789',
+        'https://relay.test.example/agents/grok/mcp/agent-1/edited_password_01234567890123456789',
       tokenEnv: 'RELANOX_AGENT_1_MCP_TOKEN',
       token: 'edited_password_01234567890123456789',
       auth: 'path'
@@ -64,7 +82,7 @@ describe('connection configurator production contracts', () => {
     expect(JSON.stringify(buildConfig(state))).not.toContain(agent.mcpToken)
     agent.type = 'dot'
     expect(connectionDetails(state)[0]?.mcpUrl).toBe(
-      'http://127.0.0.1:8787/agents/dot/mcp/agent-1'
+      'https://relay.test.example/agents/dot/mcp/agent-1'
     )
     expect(buildConfig(state).relay.endpoints[0]?.config.mcp).toEqual({
       token: { env: 'RELANOX_AGENT_1_MCP_TOKEN' },
@@ -84,7 +102,7 @@ describe('connection configurator production contracts', () => {
       channel.enabled = channel.channel === 'discord'
     }
     expect(validateDraft(state)).toContainEqual({
-      code: 'oauthPublicHost',
+      code: 'agentPublicHost',
       target: 'publicHost'
     })
     state.publicHost = 'https://relay.test.example'
@@ -103,7 +121,7 @@ describe('connection configurator production contracts', () => {
 
     slack.enabled = true
     slack.senderIds = 'U123ABC'
-    slack.chatId = 'C123ABC'
+    required(slack.chats[0]).chatId = 'C123ABC'
     expect(
       buildConfig(state).relay.accounts.find(
         (account) => account.channel === 'slack'
@@ -111,134 +129,102 @@ describe('connection configurator production contracts', () => {
     ).toBe('')
     expect(validateDraft(state)).toContainEqual({
       code: 'fieldRequired',
-      target: 'slack.appId'
+      target: 'slack-main.appId'
     })
   })
 
-  it.each([
-    ['telegram', true],
-    ['slack', true],
-    ['feishu', true],
-    ['msteams', true],
-    ['whatsapp', true],
-    ['googlechat', true],
-    ['line', true],
-    ['discord', false],
-    ['wecom', false],
-    ['dingtalk', false],
-    ['qq', false],
-    ['matrix', false],
-    ['mattermost', false],
-    ['signal', false],
-    ['irc', false]
-  ] as const)(
-    'applies %s address requirements without forcing HTTPS on outbound channels',
-    (channelId, requiresHttps) => {
+  it.each(['dot', 'grok'] as const)(
+    'requires a reachable HTTPS origin for %s even with outbound channels',
+    (agentType) => {
       const state = completedState()
-      state.publicHost = ''
-      const agent = state.agents[0]
-      if (!agent) {
-        throw new Error('Agent missing')
-      }
-      agent.type = 'grok'
+      required(state.agents[0]).type = agentType
       for (const channel of state.channels) {
-        channel.enabled = channel.channel === channelId
+        channel.enabled = channel.channel === 'discord'
       }
-      if (requiresHttps) {
+      for (const host of [
+        '',
+        'http://127.0.0.1:8787',
+        'https://localhost',
+        'https://127.0.0.1',
+        'https://192.168.1.2',
+        'https://[::1]'
+      ]) {
+        state.publicHost = host
         expect(validateDraft(state)).toContainEqual({
-          code: 'publicHostRequired',
+          code: 'agentPublicHost',
           target: 'publicHost'
         })
-      } else {
-        expect(validateDraft(state)).toEqual([])
-        const config = buildConfig(state)
-        expect(validateApp(config).publicUrl).toBe('http://127.0.0.1:8787')
-        expect(connectionDetails(state)[0]?.mcpUrl).toBe(
-          `http://127.0.0.1:8787/agents/grok/mcp/agent-1/${agent.mcpToken}`
-        )
-        expect(webhookDetails(state)).toEqual([])
       }
+      state.publicHost = 'https://10.relay.test.example'
+      expect(validateDraft(state)).toEqual([])
+      state.publicHost = 'https://relay.test.example:8443'
+      expect(validateDraft(state)).toEqual([])
+      expect(validateApp(buildConfig(state)).publicUrl).toBe(
+        'https://relay.test.example:8443'
+      )
+      expect(webhookDetails(state)).toEqual([])
+      required(state.channels[0]).enabled = true
+      expect(webhookDetails(state)).toEqual([
+        {
+          id: 'telegram-main',
+          channel: 'telegram',
+          webhookUrl:
+            'https://relay.test.example:8443/channels/telegram-main/webhook'
+        }
+      ])
+      required(state.channels[0]).enabled = false
+      expect(buildConfig(state).publicUrl).toBe(
+        'https://relay.test.example:8443'
+      )
+      state.publicHost = 'http://public.example'
+      expect(validateDraft(state)).toContainEqual({
+        code: 'publicHost',
+        target: 'publicHost'
+      })
     }
   )
-
-  it('rechecks callback requirements when adding a channel and retains the supplied address', () => {
-    const state = completedState()
-    for (const channel of state.channels) {
-      channel.enabled = channel.channel === 'discord'
-    }
-    const agent = state.agents[0]
-    if (!agent) {
-      throw new Error('Agent missing')
-    }
-    agent.type = 'grok'
-    state.publicHost = 'http://[::1]:8787'
-    expect(validateDraft(state)).toEqual([])
-    expect(validateApp(buildConfig(state)).publicUrl).toBe('http://[::1]:8787')
-
-    const telegram = state.channels.find(
-      (channel) => channel.channel === 'telegram'
-    )
-
-    if (!telegram) {
-      throw new Error('Telegram missing')
-    }
-    telegram.enabled = true
-    expect(validateDraft(state)).toContainEqual({
-      code: 'publicHostRequired',
-      target: 'publicHost'
-    })
-    state.publicHost = 'https://relay.test.example:8443'
-    expect(validateDraft(state)).toEqual([])
-    expect(webhookDetails(state)).toEqual([
-      {
-        id: 'telegram-main',
-        webhookUrl:
-          'https://relay.test.example:8443/channels/telegram-main/webhook'
-      }
-    ])
-    telegram.enabled = false
-    expect(buildConfig(state).publicUrl).toBe('https://relay.test.example:8443')
-    state.publicHost = 'http://public.example'
-    expect(validateDraft(state)).toContainEqual({
-      code: 'publicHost',
-      target: 'publicHost'
-    })
-  })
 
   it('uses native platform callback paths and excludes outbound connections', () => {
     const state = completedState()
     expect(webhookDetails(state)).toEqual([
       {
         id: 'telegram-main',
+        channel: 'telegram',
         webhookUrl:
           'https://relay.test.example:8443/channels/telegram-main/webhook'
       },
       {
         id: 'slack-main',
+        channel: 'slack',
         webhookUrl: 'https://relay.test.example:8443/channels/slack-main/events'
       },
       {
         id: 'feishu-main',
+        channel: 'feishu',
         webhookUrl:
           'https://relay.test.example:8443/channels/feishu-main/events'
       },
       {
         id: 'msteams-main',
+        channel: 'msteams',
         webhookUrl:
           'https://relay.test.example:8443/channels/msteams-main/activities'
       },
       {
         id: 'whatsapp-main',
+        channel: 'whatsapp',
         webhookUrl:
           'https://relay.test.example:8443/channels/whatsapp-main/webhook'
       },
       {
         id: 'googlechat-main',
+        channel: 'googlechat',
         webhookUrl:
           'https://relay.test.example:8443/channels/googlechat-main/webhook'
       },
       {
         id: 'line-main',
+        channel: 'line',
         webhookUrl: 'https://relay.test.example:8443/channels/line-main/webhook'
       }
     ])
@@ -286,8 +272,8 @@ describe('connection configurator production contracts', () => {
     if (!telegram) {
       throw new Error('Telegram missing')
     }
-    telegram.endpointId = second.id
-    telegram.threadId = '42'
+    required(telegram.chats[0]).endpointId = second.id
+    required(telegram.chats[0]).threadId = '42'
     second.name = 'My renamed agent'
     let config = buildConfig(state)
     expect(validateApp(config).relay.bindings[0]).toMatchObject({
@@ -312,10 +298,80 @@ describe('connection configurator production contracts', () => {
     removeAgent(state, second.id)
     expect(validateDraft(state)).toContainEqual({
       code: 'mapping',
-      target: 'telegram'
+      target: 'telegram-main.chat-1'
     })
     expect(buildConfig(state).relay.bindings[0]?.endpointId).toBe('')
     expect(addAgent(state).id).toBe('agent-3')
+  })
+
+  it('exports independent accounts and exact chat/thread routes without reusing credentials or deleted IDs', () => {
+    const state = completedState()
+    for (const channel of state.channels) {
+      channel.enabled = channel.channel === 'telegram'
+    }
+    const telegram = required(state.channels[0])
+    const secondAgent = addAgent(state)
+    secondAgent.mcpToken = generateMcpToken()
+    const chat = addChat(telegram, secondAgent.id)
+    chat.chatId = required(telegram.chats[0]).chatId
+    chat.threadId = '42'
+    const secondAccount = addAccount(state, 'telegram')
+    secondAccount.senderIds = '987654321'
+    required(secondAccount.chats[0]).chatId = '-100123'
+    let config = buildConfig(state)
+    expect(validateDraft(state)).toEqual([])
+    expect(validateApp(config).relay.bindings).toEqual([
+      {
+        accountId: 'telegram-main',
+        chatId: '123456789',
+        endpointId: 'agent-1'
+      },
+      {
+        accountId: 'telegram-main',
+        chatId: '123456789',
+        threadId: '42',
+        endpointId: 'agent-2'
+      },
+      { accountId: 'telegram-2', chatId: '-100123', endpointId: 'agent-1' }
+    ])
+    expect(config.relay.accounts[1]).toMatchObject({
+      id: 'telegram-2',
+      allowedSenders: ['987654321'],
+      config: {
+        botToken: { env: 'TELEGRAM_BOT_TOKEN_2' },
+        webhookSecret: { env: 'TELEGRAM_WEBHOOK_SECRET_2' }
+      }
+    })
+    expect(webhookDetails(state)[1]?.webhookUrl).toBe(
+      'https://relay.test.example:8443/channels/telegram-2/webhook'
+    )
+    removeAgent(state, secondAgent.id)
+    expect(validateDraft(state)).toContainEqual({
+      code: 'mapping',
+      target: 'telegram-main.chat-2'
+    })
+    removeChat(telegram, chat.id)
+    removeAccount(state, secondAccount.id)
+    config = buildConfig(state)
+    expect(validateApp(config).relay.bindings).toHaveLength(1)
+    expect(environmentNames(config)).not.toContain('TELEGRAM_BOT_TOKEN_2')
+    expect(addAccount(state, 'telegram').id).toBe('telegram-3')
+    expect(addChat(telegram, 'agent-1').id).toBe('chat-3')
+  })
+
+  it('reports duplicate chat/thread pairs before exporting an unrunnable draft', () => {
+    const state = completedState()
+    const telegram = required(state.channels[0])
+    const duplicate = addChat(telegram, 'agent-1')
+    duplicate.chatId = ` ${required(telegram.chats[0]).chatId} `
+    expect(validateDraft(state)).toContainEqual({
+      code: 'duplicateChat',
+      target: 'telegram-main.chat-2'
+    })
+    expect(() => validateApp(buildConfig(state))).toThrow()
+    duplicate.threadId = '42'
+    expect(validateDraft(state)).toEqual([])
+    expect(validateApp(buildConfig(state)).relay.bindings).toHaveLength(16)
   })
 
   it('keeps unfinished values visible while reporting missing access and unsafe public hosts', () => {
@@ -324,11 +380,11 @@ describe('connection configurator production contracts', () => {
     expect(buildConfig(state).relay.accounts[0]?.allowedSenders).toEqual([])
     expect(validateDraft(state)).toContainEqual({
       code: 'chatId',
-      target: 'telegram'
+      target: 'telegram-main.chat-1'
     })
     expect(validateDraft(state)).toContainEqual({
       code: 'senderIds',
-      target: 'telegram'
+      target: 'telegram-main'
     })
     state.publicHost = 'http://relay.example.com/path'
     expect(validateDraft(state)).toContainEqual({
@@ -342,7 +398,7 @@ describe('connection configurator production contracts', () => {
     telegram.fields.botToken = 'not a valid env name'
     expect(validateDraft(state)).toContainEqual({
       code: 'environmentName',
-      target: 'telegram.botToken'
+      target: 'telegram-main.botToken'
     })
   })
 })

@@ -3,6 +3,7 @@ import { nextTick, useTemplateRef } from 'vue'
 import { useConfigurator } from './use-configurator.js'
 import ConfiguratorTutorial from './configurator-tutorial.vue'
 import PlatformLogo from './platform-logo.vue'
+import ChatFields from './chat-fields.vue'
 
 const {
   text,
@@ -17,7 +18,6 @@ const {
   feedback,
   selected,
   httpsChannels,
-  hasOAuth,
   lines,
   issues,
   issueMessages,
@@ -27,6 +27,9 @@ const {
   definition,
   channelName,
   visibleChannels,
+  toggleChannel,
+  appendAccount,
+  deleteAccount,
   regenerateToken,
   appendAgent,
   deleteAgent,
@@ -97,7 +100,16 @@ async function showDetails(): Promise<void> {
                   :key="channel.channel"
                   class="channel-choice"
                 >
-                  <input v-model="channel.enabled" type="checkbox" />
+                  <input
+                    :checked="channel.enabled"
+                    type="checkbox"
+                    @change="
+                      toggleChannel(
+                        channel.channel,
+                        ($event.target as HTMLInputElement).checked
+                      )
+                    "
+                  />
                   <PlatformLogo :platform="channel.channel" />
                   <span>{{ channelName(channel.channel) }}</span>
                 </label>
@@ -210,38 +222,52 @@ async function showDetails(): Promise<void> {
             <p v-if="!selected.length" class="connection-muted">
               {{ text('Choose a channel to get started.', '先选择一个渠道。') }}
             </p>
-            <div
-              v-for="channel in selected"
-              :key="channel.channel"
-              class="mapping-row"
-            >
-              <label :for="`${channel.channel}-target`" class="platform-label">
-                <PlatformLogo :platform="channel.channel" />
-                <span>{{ channelName(channel.channel) }}</span>
-              </label>
-              <span class="vpi-arrow-right" aria-hidden="true" />
-              <select
-                :id="`${channel.channel}-target`"
-                v-model="channel.endpointId"
-                :aria-label="
-                  text(
-                    `${channelName(channel.channel)} Agent`,
-                    `${channelName(channel.channel)} 接收 Agent`
-                  )
-                "
+            <template v-for="channel in selected" :key="channel.id">
+              <div
+                v-for="(chat, index) in channel.chats"
+                :key="chat.id"
+                class="mapping-row"
               >
-                <option disabled value="">
-                  {{ text('Choose an Agent', '选择 Agent') }}
-                </option>
-                <option
-                  v-for="agent in state.agents"
-                  :key="agent.id"
-                  :value="agent.id"
+                <label
+                  :for="`${channel.id}-${chat.id}-target`"
+                  class="platform-label"
                 >
-                  {{ agent.name || agent.id }}
-                </option>
-              </select>
-            </div>
+                  <PlatformLogo :platform="channel.channel" />
+                  <span
+                    >{{ channelName(channel.channel)
+                    }}<small
+                      >{{ channel.id }} ·
+                      {{
+                        chat.chatId ||
+                        text(`Chat ${index + 1}`, `聊天 ${index + 1}`)
+                      }}{{ chat.threadId ? ` / ${chat.threadId}` : '' }}</small
+                    ></span
+                  >
+                </label>
+                <span class="vpi-arrow-right" aria-hidden="true" />
+                <select
+                  :id="`${channel.id}-${chat.id}-target`"
+                  v-model="chat.endpointId"
+                  :aria-label="
+                    text(
+                      `${channel.id} chat ${index + 1} Agent`,
+                      `${channel.id} 聊天 ${index + 1} 接收 Agent`
+                    )
+                  "
+                >
+                  <option disabled value="">
+                    {{ text('Choose an Agent', '选择 Agent') }}
+                  </option>
+                  <option
+                    v-for="agent in state.agents"
+                    :key="agent.id"
+                    :value="agent.id"
+                  >
+                    {{ agent.name || agent.id }}
+                  </option>
+                </select>
+              </div>
+            </template>
           </section>
 
           <details
@@ -267,56 +293,51 @@ async function showDetails(): Promise<void> {
                 </li>
               </ul>
               <label for="public-host">{{
-                httpsChannels.length || hasOAuth
-                  ? text(
-                      'Public HTTPS address (required)',
-                      '公开 HTTPS 地址（必填）'
-                    )
-                  : text('Service address (optional)', '服务地址（可选）')
+                text(
+                  'Public HTTPS address (required)',
+                  '公开 HTTPS 地址（必填）'
+                )
               }}</label>
               <input
                 id="public-host"
                 v-model="state.publicHost"
-                :placeholder="
-                  httpsChannels.length || hasOAuth
-                    ? 'https://relay.example.com'
-                    : 'http://127.0.0.1:8787'
-                "
-                :required="httpsChannels.length > 0 || hasOAuth"
+                placeholder="https://relay.example.com"
+                required
                 aria-describedby="public-host-hint"
                 autocomplete="off"
               />
               <p id="public-host-hint" class="field-hint">
                 {{
-                  hasOAuth
+                  text(
+                    'dot and Grok access MCP through this address. Point it to your Relanox server, including when channels use outbound connections.',
+                    'dot 和 Grok 通过此地址访问 MCP。请将它指向 Relanox 服务，长连接渠道也需要填写。'
+                  )
+                }}
+                {{
+                  httpsChannels.length
                     ? text(
-                        'dot OAuth needs a public HTTPS address pointing to your Relanox server.',
-                        'dot OAuth 需要指向 Relanox 服务的公开 HTTPS 地址。'
+                        `${httpsChannels.join(', ')} also uses it for webhooks.`,
+                        `${httpsChannels.join('、')} 的回调也使用此地址。`
                       )
-                    : httpsChannels.length
-                      ? text(
-                          `${httpsChannels.join(', ')} needs HTTPS webhook delivery. Enter the address pointing to your Relanox server.`,
-                          `${httpsChannels.join('、')} 需要 HTTPS 回调地址，请填写指向 Relanox 服务的地址。`
-                        )
-                      : text(
-                          'These channels connect outward and do not need an HTTPS callback. Leave blank for http://127.0.0.1:8787; your Agent must still be able to reach the MCP address.',
-                          '所选渠道主动连接平台，无需 HTTPS 回调。留空使用 http://127.0.0.1:8787；Agent 仍需能够访问 MCP 地址。'
-                        )
+                    : text(
+                        'These channels need no separate webhook registration.',
+                        '所选渠道无需另行注册 webhook。'
+                      )
                 }}
               </p>
               <template v-if="activeChannel">
                 <label for="details-channel">{{
-                  text('Channel to configure', '配置渠道')
+                  text('Account to configure', '配置账号')
                 }}</label>
                 <div class="platform-select">
                   <PlatformLogo :platform="activeChannel.channel" />
                   <select id="details-channel" v-model="selectedDetails">
                     <option
                       v-for="channel in selected"
-                      :key="channel.channel"
-                      :value="channel.channel"
+                      :key="channel.id"
+                      :value="channel.id"
                     >
-                      {{ channelName(channel.channel) }}
+                      {{ channelName(channel.channel) }} · {{ channel.id }}
                     </option>
                   </select>
                 </div>
@@ -329,13 +350,33 @@ async function showDetails(): Promise<void> {
                     text('Where to find these values', '这些信息在哪里找')
                   }}</a
                 >
-                <label :for="`${activeChannel.channel}-chat`">{{
-                  text('Chat ID', '聊天 ID')
-                }}</label>
-                <input
-                  :id="`${activeChannel.channel}-chat`"
-                  v-model="activeChannel.chatId"
-                  :placeholder="definition(activeChannel.channel)?.chatExample"
+                <div class="account-actions">
+                  <button
+                    class="connection-link"
+                    @click="appendAccount(activeChannel.channel)"
+                  >
+                    {{ text('Add another account', '添加同渠道账号') }}
+                  </button>
+                  <button
+                    v-if="!activeChannel.id.endsWith('-main')"
+                    class="connection-link"
+                    @click="deleteAccount(activeChannel.id)"
+                  >
+                    {{ text('Remove this account', '移除此账号') }}
+                  </button>
+                </div>
+                <p class="field-hint">
+                  {{
+                    text(
+                      'Each account uses its own credentials. Multiple chats below share this account and its allowed users.',
+                      '每个账号使用独立凭据。下方多个聊天共用此账号及其允许用户。'
+                    )
+                  }}
+                </p>
+                <ChatFields
+                  :channel="activeChannel"
+                  :agents="state.agents"
+                  :chinese="chinese"
                 />
                 <label :for="`${activeChannel.channel}-senders`">{{
                   text('Allowed user IDs', '允许使用的用户 ID')
@@ -355,23 +396,8 @@ async function showDetails(): Promise<void> {
                     )
                   }}
                 </p>
-                <label :for="`${activeChannel.channel}-thread`">{{
-                  text('Thread ID (optional)', '话题 / 线程 ID（可选）')
-                }}</label>
-                <input
-                  :id="`${activeChannel.channel}-thread`"
-                  v-model="activeChannel.threadId"
-                  :placeholder="
-                    text(
-                      'Only for a specific thread',
-                      '仅绑定特定话题或线程时填写'
-                    )
-                  "
-                />
                 <div
-                  v-for="field in definition(
-                    activeChannel.channel
-                  )?.fields.filter((entry) => entry.kind !== 'env')"
+                  v-for="field in definition(activeChannel.channel)?.fields"
                   :key="field.key"
                   class="extra-field"
                 >

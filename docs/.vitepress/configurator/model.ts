@@ -3,6 +3,7 @@ import { CHANNELS } from './channels.js'
 import type {
   AgentState,
   ChannelState,
+  ChatState,
   ConfiguratorState,
   ConnectionDetails,
   FieldDefinition,
@@ -27,8 +28,10 @@ export function addAgent(state: ConfiguratorState): AgentState {
 export function removeAgent(state: ConfiguratorState, id: string): void {
   state.agents = state.agents.filter((agent) => agent.id !== id)
   for (const channel of state.channels) {
-    if (channel.endpointId === id) {
-      channel.endpointId = ''
+    for (const chat of channel.chats) {
+      if (chat.endpointId === id) {
+        chat.endpointId = ''
+      }
     }
   }
 }
@@ -38,22 +41,94 @@ export function createState(): ConfiguratorState {
     publicHost: '',
     agents: [],
     channels: [],
-    nextAgentNumber: 1
+    nextAgentNumber: 1,
+    nextAccountNumber: 2
   }
 
   const agent = addAgent(state)
-  state.channels = CHANNELS.map((channel) => ({
-    channel: channel.id,
-    enabled: channel.id === 'telegram',
-    fields: Object.fromEntries(
-      channel.fields.map((field) => [field.key, field.defaultValue])
-    ),
-    chatId: '',
-    senderIds: '',
-    threadId: '',
-    endpointId: agent.id
-  }))
+  state.channels = CHANNELS.map((channel) =>
+    newAccount(channel.id, `${channel.id}-main`, agent.id)
+  )
+
+  const telegram = state.channels.find(
+    (channel) => channel.channel === 'telegram'
+  )
+
+  if (telegram) {
+    telegram.enabled = true
+  }
   return state
+}
+
+function newAccount(
+  channelId: string,
+  id: string,
+  endpointId: string,
+  suffix = ''
+): ChannelState {
+  const definition = CHANNELS.find((channel) => channel.id === channelId)
+  if (!definition) {
+    throw new Error('Unknown channel')
+  }
+  return {
+    id,
+    channel: channelId,
+    enabled: false,
+    fields: Object.fromEntries(
+      definition.fields.map((field) => [
+        field.key,
+        field.kind === 'env'
+          ? `${field.defaultValue}${suffix}`
+          : field.defaultValue
+      ])
+    ),
+    senderIds: '',
+    chats: [{ id: 'chat-1', chatId: '', threadId: '', endpointId }],
+    nextChatNumber: 2
+  }
+}
+
+export function addAccount(
+  state: ConfiguratorState,
+  channelId: string
+): ChannelState {
+  const number = state.nextAccountNumber++
+
+  const account = newAccount(
+    channelId,
+    `${channelId}-${number}`,
+    state.agents[0]?.id ?? '',
+    `_${number}`
+  )
+
+  account.enabled = true
+  state.channels.push(account)
+  return account
+}
+
+export function removeAccount(state: ConfiguratorState, id: string): void {
+  if (id.endsWith('-main')) {
+    return
+  }
+  state.channels = state.channels.filter((channel) => channel.id !== id)
+}
+
+export function addChat(channel: ChannelState, endpointId: string): ChatState {
+  const chat = {
+    id: `chat-${channel.nextChatNumber++}`,
+    chatId: '',
+    threadId: '',
+    endpointId
+  }
+
+  channel.chats.push(chat)
+  return chat
+}
+
+export function removeChat(channel: ChannelState, id: string): void {
+  if (channel.chats.length > 1) {
+    channel.chats = channel.chats.filter((chat) => chat.id !== id)
+  }
 }
 
 export function splitIds(value: string): string[] {
@@ -66,7 +141,7 @@ export function splitIds(value: string): string[] {
 function publicOrigin(host: string): string {
   const value = host.trim()
   if (!value) {
-    return 'http://127.0.0.1:8787'
+    return ''
   }
   return value.includes('://') ? value.replace(/\/+$/u, '') : `https://${value}`
 }
@@ -150,7 +225,7 @@ export function buildConfig(state: ConfiguratorState): GeneratedConfig {
     publicUrl: publicOrigin(state.publicHost),
     relay: {
       accounts: enabled.map((channel) => ({
-        id: `${channel.channel}-main`,
+        id: channel.id,
         channel: channel.channel,
         allowedSenders: splitIds(channel.senderIds),
         config: accountConfig(channel)
@@ -160,7 +235,9 @@ export function buildConfig(state: ConfiguratorState): GeneratedConfig {
         agent: agent.type,
         config: endpointConfig(agent)
       })),
-      bindings: enabled.map(bindingFor),
+      bindings: enabled.flatMap((channel) =>
+        channel.chats.map((chat) => bindingFor(channel, chat))
+      ),
       storage: {
         plugin: 'sqlite',
         config: { filename: 'data/relanox.sqlite' }
@@ -170,16 +247,17 @@ export function buildConfig(state: ConfiguratorState): GeneratedConfig {
 }
 
 function bindingFor(
-  channel: ChannelState
+  channel: ChannelState,
+  chat: ChatState
 ): GeneratedConfig['relay']['bindings'][number] {
   const binding: GeneratedConfig['relay']['bindings'][number] = {
-    accountId: `${channel.channel}-main`,
-    chatId: channel.chatId.trim(),
-    endpointId: channel.endpointId
+    accountId: channel.id,
+    chatId: chat.chatId.trim(),
+    endpointId: chat.endpointId
   }
 
-  if (channel.threadId.trim()) {
-    binding.threadId = channel.threadId.trim()
+  if (chat.threadId.trim()) {
+    binding.threadId = chat.threadId.trim()
   }
   return binding
 }
@@ -239,23 +317,22 @@ export function publicHttpsChannels(state: ConfiguratorState): typeof CHANNELS {
 }
 
 function publicHostIssues(state: ConfiguratorState): DraftIssue[] {
-  const oauth = state.agents.some((agent) => agent.type === 'dot')
-  const required = publicHttpsChannels(state).length > 0 || oauth
+  const required =
+    state.agents.length > 0 || publicHttpsChannels(state).length > 0
+
   const host = state.publicHost.trim()
   if (!host && required) {
-    return [
-      {
-        code: oauth ? 'oauthPublicHost' : 'publicHostRequired',
-        target: 'publicHost'
-      }
-    ]
+    return [{ code: 'agentPublicHost', target: 'publicHost' }]
   }
   try {
     const origin = validatePublicUrl(publicOrigin(host))
-    if (required && !origin.startsWith('https:')) {
+    if (
+      required &&
+      (!origin.startsWith('https:') || isLocalHost(new URL(origin).hostname))
+    ) {
       return [
         {
-          code: oauth ? 'oauthPublicHost' : 'publicHostRequired',
+          code: 'agentPublicHost',
           target: 'publicHost'
         }
       ]
@@ -267,6 +344,24 @@ function publicHostIssues(state: ConfiguratorState): DraftIssue[] {
     return [{ code: 'placeholderHost', target: 'publicHost' }]
   }
   return []
+}
+
+function isLocalHost(host: string): boolean {
+  const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/u.test(host)
+
+  return (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '[::1]' ||
+    host === '[::]' ||
+    host === '0.0.0.0' ||
+    (ipv4 &&
+      (host.startsWith('127.') ||
+        host.startsWith('10.') ||
+        host.startsWith('192.168.') ||
+        /^172\.(?:1[6-9]|2[0-9]|3[01])\./u.test(host))) ||
+    host.endsWith('.local')
+  )
 }
 
 function validOrigin(value: string): boolean {
@@ -283,17 +378,12 @@ function channelIssues(
   state: ConfiguratorState
 ): DraftIssue[] {
   const issues: DraftIssue[] = []
-  const target = channel.channel
-  if (!channel.chatId.trim()) {
-    issues.push({ code: 'chatId', target })
-  }
+  const target = channel.id
+  issues.push(...chatIssues(channel, state))
   if (splitIds(channel.senderIds).length === 0) {
     issues.push({ code: 'senderIds', target })
   }
-  if (!state.agents.some((agent) => agent.id === channel.endpointId)) {
-    issues.push({ code: 'mapping', target })
-  }
-  const definition = CHANNELS.find((entry) => entry.id === target)
+  const definition = CHANNELS.find((entry) => entry.id === channel.channel)
   for (const field of definition?.fields ?? []) {
     const value = channel.fields[field.key] ?? ''
     if (!value.trim()) {
@@ -312,9 +402,32 @@ function channelIssues(
   return issues
 }
 
+function chatIssues(
+  channel: ChannelState,
+  state: ConfiguratorState
+): DraftIssue[] {
+  const issues: DraftIssue[] = []
+  const seen = new Set<string>()
+  for (const chat of channel.chats) {
+    const target = `${channel.id}.${chat.id}`
+    if (!chat.chatId.trim()) {
+      issues.push({ code: 'chatId', target })
+    }
+    if (!state.agents.some((agent) => agent.id === chat.endpointId)) {
+      issues.push({ code: 'mapping', target })
+    }
+    const key = JSON.stringify([chat.chatId.trim(), chat.threadId.trim()])
+    if (chat.chatId.trim() && seen.has(key)) {
+      issues.push({ code: 'duplicateChat', target })
+    }
+    seen.add(key)
+  }
+  return issues
+}
+
 export function webhookDetails(
   state: ConfiguratorState
-): { id: string; webhookUrl: string }[] {
+): { id: string; channel: string; webhookUrl: string }[] {
   return state.channels
     .filter(
       (channel) =>
@@ -325,8 +438,9 @@ export function webhookDetails(
         )
     )
     .map((channel) => ({
-      id: `${channel.channel}-main`,
-      webhookUrl: `${publicOrigin(state.publicHost)}/channels/${channel.channel}-main/${webhookPath(channel.channel)}`
+      id: channel.id,
+      channel: channel.channel,
+      webhookUrl: `${publicOrigin(state.publicHost)}/channels/${channel.id}/${webhookPath(channel.channel)}`
     }))
 }
 
@@ -388,7 +502,9 @@ export function connectionDetails(
 ): ConnectionDetails[] {
   return state.agents.map((agent) => ({
     id: agent.id,
-    mcpUrl: `${publicOrigin(state.publicHost)}/agents/${agent.type}/mcp/${agent.id}${agent.type === 'grok' && agent.mcpToken ? `/${encodeURIComponent(agent.mcpToken)}` : ''}`,
+    mcpUrl: !state.publicHost.trim()
+      ? ''
+      : `${publicOrigin(state.publicHost)}/agents/${agent.type}/mcp/${agent.id}${agent.type === 'grok' && agent.mcpToken ? `/${encodeURIComponent(agent.mcpToken)}` : ''}`,
     tokenEnv: `RELANOX_${agent.id.replaceAll('-', '_').toUpperCase()}_MCP_TOKEN`,
     token: agent.mcpToken,
     auth: agent.type === 'dot' ? 'oauth' : 'path'

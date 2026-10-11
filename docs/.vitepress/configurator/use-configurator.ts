@@ -5,6 +5,8 @@ import { CHANNELS } from './channels.js'
 import { draftMessage } from './draft-messages.js'
 import {
   addAgent,
+  addAccount,
+  removeAccount,
   buildConfig,
   connectionDetails,
   createState,
@@ -36,7 +38,6 @@ type ConfiguratorView = {
   feedback: Ref<string>
   selected: ComputedRef<ChannelState[]>
   httpsChannels: ComputedRef<string[]>
-  hasOAuth: ComputedRef<boolean>
   json: ComputedRef<string>
   lines: ComputedRef<{ text: string; kind: string }[][]>
   issues: ComputedRef<DraftIssue[]>
@@ -47,6 +48,9 @@ type ConfiguratorView = {
   definition(id: string): ChannelDefinition | undefined
   channelName(id: string): string
   visibleChannels: ComputedRef<ChannelState[]>
+  toggleChannel(id: string, enabled: boolean): void
+  appendAccount(channelId: string): void
+  deleteAccount(id: string): void
   regenerateToken(id: string): void
   appendAgent(): void
   deleteAgent(id: string): void
@@ -95,7 +99,7 @@ export function useConfigurator(): ConfiguratorView {
   const more = ref(false)
   const detailsOpen = ref(false)
   const tutorialOpen = ref(false)
-  const selectedDetails = ref('telegram')
+  const selectedDetails = ref('telegram-main')
   const feedback = ref('')
 
   const selected = computed(() =>
@@ -116,9 +120,8 @@ export function useConfigurator(): ConfiguratorView {
 
   const activeChannel = computed(
     () =>
-      selected.value.find(
-        (channel) => channel.channel === selectedDetails.value
-      ) ?? selected.value[0]
+      selected.value.find((channel) => channel.id === selectedDetails.value) ??
+      selected.value[0]
   )
 
   const definition = (id: string): ChannelDefinition | undefined =>
@@ -129,10 +132,6 @@ export function useConfigurator(): ConfiguratorView {
 
   const httpsChannels = computed(() =>
     publicHttpsChannels(state).map((channel) => local(channel.name))
-  )
-
-  const hasOAuth = computed(() =>
-    state.agents.some((agent) => agent.type === 'dot')
   )
 
   const common = ['telegram', 'feishu', 'discord', 'slack', 'wecom', 'dingtalk']
@@ -146,20 +145,35 @@ export function useConfigurator(): ConfiguratorView {
           )
         : [])
     ].flatMap((id) =>
-      state.channels.filter((channel) => channel.channel === id)
+      state.channels.filter((channel) => channel.id === `${id}-main`)
     )
   )
 
   watch(selected, (channels) => {
-    if (
-      !channels.some((channel) => channel.channel === selectedDetails.value)
-    ) {
-      selectedDetails.value = channels[0]?.channel ?? ''
+    if (!channels.some((channel) => channel.id === selectedDetails.value)) {
+      selectedDetails.value = channels[0]?.id ?? ''
     }
   })
   watch(json, () => {
     feedback.value = ''
   })
+
+  function toggleChannel(id: string, enabled: boolean): void {
+    for (const channel of state.channels.filter(
+      (entry) => entry.channel === id
+    )) {
+      channel.enabled = enabled
+    }
+  }
+
+  function appendAccount(channelId: string): void {
+    const account = addAccount(state, channelId)
+    selectedDetails.value = account.id
+  }
+
+  function deleteAccount(id: string): void {
+    removeAccount(state, id)
+  }
 
   function appendAgent(): void {
     const agent = addAgent(state)
@@ -223,7 +237,6 @@ export function useConfigurator(): ConfiguratorView {
     feedback,
     selected,
     httpsChannels,
-    hasOAuth,
     json,
     lines,
     issues,
@@ -234,6 +247,9 @@ export function useConfigurator(): ConfiguratorView {
     definition,
     channelName,
     visibleChannels,
+    toggleChannel,
+    appendAccount,
+    deleteAccount,
     regenerateToken,
     appendAgent,
     deleteAgent,
