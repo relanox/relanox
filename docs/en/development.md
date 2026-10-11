@@ -70,6 +70,8 @@ pnpm docs:preview
 
 Run `pnpm docs:build` before committing documentation changes. The public site is [relanox.github.io](https://relanox.github.io/). Its deployment repository checks for source updates every 30 minutes; maintainers can trigger its Documentation workflow for an immediate update.
 
+The connection configurator is a client-side Vue component. `pnpm typecheck` checks its templates with `vue-tsc` and the pinned `typescript-vue` compiler alias; Vue's checker requires the JavaScript compiler API that TypeScript 7 no longer exports. Runtime packages continue using TypeScript 7. Configurator tests pass generated JSON through the production configuration validator without connecting to platform accounts.
+
 ## Commit and submit
 
 Before every commit, inspect `git log --oneline -20` and follow the recent commit style. Run formatting, lint, type checking and relevant Vitest checks before committing; include the documentation build for documentation changes. Stage a coherent change and let the tracked hook pass. Keep secrets, reference clones, worktrees and build output out of commits.

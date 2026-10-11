@@ -10,8 +10,8 @@ hero:
       text: 开始使用
       link: /zh-CN/getting-started
     - theme: alt
-      text: 选择聊天渠道
-      link: /zh-CN/channels/
+      text: 配置连接
+      link: /zh-CN/connect
 features:
   - title: 留在熟悉的聊天里
     details: 通过 Telegram、飞书、企业微信等 15 个渠道与 Agent 对话，回复直接回到原会话。
