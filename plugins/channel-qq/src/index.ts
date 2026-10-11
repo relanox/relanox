@@ -63,6 +63,7 @@ const targetSchema = z
     type: z.enum(["c2c", "group"]),
     msgId: z.string().min(1),
     messageAt: z.number().int().nonnegative(),
+    scope: z.object({ appId: z.string().min(1), apiBase: z.url() }).strict(),
   })
   .strict();
 const tokenSchema = z.object({
@@ -194,6 +195,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
           type: group ? "group" : "c2c",
           msgId: message.id,
           messageAt: Date.parse(message.timestamp),
+          scope: { appId: config.appId, apiBase: new URL(config.apiBase).href },
         },
       },
       receivedAt: Date.now(),
@@ -410,6 +412,12 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         !target.success
       ) {
         return { status: "rejected", errorCode: "invalid_target" };
+      }
+      if (
+        target.data.scope.appId !== config.appId ||
+        target.data.scope.apiBase !== new URL(config.apiBase).href
+      ) {
+        return { status: "rejected", errorCode: "target_identity_changed" };
       }
       let allocation: Awaited<ReturnType<typeof allocate>>;
       try {

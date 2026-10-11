@@ -100,7 +100,12 @@ test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
   ]);
   expect(accepted.map((item) => item.snapshot.target.chatId).toSorted()).toEqual(["group", "user"]);
   expect(JSON.stringify(accepted)).not.toContain("secret.invalid");
-  const result = await plugin.send(sendInput("wecom", "group", { chattype: "group" }));
+  const result = await plugin.send(
+    sendInput("wecom", "group", {
+      chattype: "group",
+      scope: { botId: "robot", wsUrl: new URL(remote.ws).href },
+    }),
+  );
   expect(result).toEqual({ status: "sent", receipt: {} });
   expect(remote.frames.at(-1)).toMatchObject({
     cmd: "aibot_send_msg",
@@ -156,7 +161,14 @@ test("WeCom correlates heartbeats and preserves uncertain sends when the socket 
       { timeout: 3000 },
     )
     .toBe(true);
-  expect(await plugin.send(sendInput("wecom", "user", { chattype: "single" }))).toEqual({
+  expect(
+    await plugin.send(
+      sendInput("wecom", "user", {
+        chattype: "single",
+        scope: { botId: "robot", wsUrl: new URL(remote.ws).href },
+      }),
+    ),
+  ).toEqual({
     status: "unknown",
     errorCode: "transport_uncertain",
   });
@@ -224,7 +236,14 @@ test("WeCom stops recovery after the platform replaces this bot connection", asy
     setTimeout(resolve, 1200);
   });
   expect(remote.sockets).toHaveLength(1);
-  expect(await plugin.send(sendInput("wecom", "user", { chattype: "single" }))).toMatchObject({
+  expect(
+    await plugin.send(
+      sendInput("wecom", "user", {
+        chattype: "single",
+        scope: { botId: "robot", wsUrl: new URL(remote.ws).href },
+      }),
+    ),
+  ).toMatchObject({
     status: "retryable",
     errorCode: "not_connected",
   });
@@ -259,7 +278,14 @@ test.each(["missing credential", "rejected subscription"])(
     );
     await host.start();
     await expect.poll(() => remote.sockets[0]?.readyState).toBe(3);
-    expect(await plugin.send(sendInput("wecom", "user", { chattype: "single" }))).toMatchObject({
+    expect(
+      await plugin.send(
+        sendInput("wecom", "user", {
+          chattype: "single",
+          scope: { botId: "robot", wsUrl: new URL(remote.ws).href },
+        }),
+      ),
+    ).toMatchObject({
       status: "retryable",
       errorCode: "not_connected",
     });

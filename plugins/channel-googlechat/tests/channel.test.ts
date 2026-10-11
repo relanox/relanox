@@ -1,6 +1,10 @@
-import type { Json } from "@relanox/sdk";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Json, SendInput } from "@relanox/sdk";
 import { exportJWK, exportPKCS8, generateKeyPair, jwtVerify, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { createGoogleChatChannel } from "../src/index.js";
 import { harness, peer } from "./harness.js";
 
@@ -25,7 +29,7 @@ const body = JSON.stringify({
     thread: { name: "spaces/space/threads/thread" },
   },
 });
-async function setup() {
+async function setup(filename = ":memory:") {
   const remote = await peer();
   cleanup.push(remote.close);
   const keys = await generateKeyPair("RS256", { extractable: true });
@@ -55,6 +59,7 @@ async function setup() {
     "spaces/space",
     "users/alice",
     "spaces/space/threads/thread",
+    filename,
   );
   cleanup.push(local.close);
   async function token(
@@ -157,6 +162,89 @@ describe("native Google Chat", () => {
     expect((await local.core.fetch(await local.incoming(undefined, botBody))).status).toBe(200);
     expect((await local.storage.getStats()).pending).toBe(0);
   });
+
+  it.each(["service account", "server"])(
+    "rejects frozen targets after %s changes across SQLite reopen",
+    async (change) => {
+      const directory = await mkdtemp(join(tmpdir(), "relanox-chat-identity-"));
+      cleanup.push(() => rm(directory, { recursive: true, force: true }));
+      const filename = join(directory, "state.db");
+      const local = await setup(filename);
+      expect((await local.core.fetch(await local.incoming())).status).toBe(200);
+      await local.close();
+      const replacement = await peer();
+      cleanup.push(replacement.close);
+      replacement.respond(200, { name: "spaces/space/messages/wrong-server" });
+      if (change === "service account") {
+        vi.stubEnv(
+          "CHAT_SERVICE",
+          JSON.stringify({
+            type: "service_account",
+            client_email: "replacement@example.iam.gserviceaccount.com",
+            private_key: await exportPKCS8(local.keys.privateKey),
+          }),
+        );
+      }
+      const config = {
+        ...local.config,
+        ...(change === "server" ? { apiBase: replacement.base } : {}),
+      };
+      const plugin = createGoogleChatChannel();
+      const reopened = await harness(
+        plugin,
+        config,
+        "spaces/space",
+        "users/alice",
+        "spaces/space/threads/thread",
+        filename,
+      );
+      cleanup.push(reopened.close);
+      const item = (await reopened.storage.listInbound({ limit: 10 }))[0];
+      if (!item) {
+        throw new Error("Missing frozen target");
+      }
+      const input: SendInput = {
+        deliveryId: "delivery",
+        requestId: item.snapshot.requestId,
+        chunkIndex: 0,
+        signal: new AbortController().signal,
+        target: item.snapshot.target,
+        chunk: { text: "answer", idempotencyKey: "delivery:0", state: null },
+      };
+      expect(await plugin.send(input)).toMatchObject({ status: "rejected" });
+      expect(
+        [...local.remote.traffic, ...replacement.traffic].filter((entry) =>
+          entry.path.startsWith("/v1/"),
+        ),
+      ).toHaveLength(0);
+      await reopened.close();
+      const rotated = await generateKeyPair("RS256", { extractable: true });
+      vi.stubEnv(
+        "CHAT_SERVICE",
+        JSON.stringify({
+          type: "service_account",
+          client_email: "relay@example.iam.gserviceaccount.com",
+          private_key: await exportPKCS8(rotated.privateKey),
+        }),
+      );
+      const restoredPlugin = createGoogleChatChannel();
+      const restored = await harness(
+        restoredPlugin,
+        local.config,
+        "spaces/space",
+        "users/alice",
+        "spaces/space/threads/thread",
+        filename,
+      );
+      cleanup.push(restored.close);
+      const legacy = z.record(z.string(), z.json()).parse(input.target.data);
+      delete legacy.scope;
+      expect(
+        await restoredPlugin.send({ ...input, target: { ...input.target, data: legacy } }),
+      ).toMatchObject({ status: "rejected" });
+      expect(await restoredPlugin.send(input)).toMatchObject({ status: "sent" });
+    },
+  );
 
   it.each([
     [503, "pending"],

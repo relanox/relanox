@@ -1,6 +1,10 @@
-import type { Json } from "@relanox/sdk";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Json, SendInput } from "@relanox/sdk";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { createTeamsChannel } from "../src/index.js";
 import { harness, peer } from "./harness.js";
 
@@ -12,7 +16,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 const issuer = "https://api.botframework.com";
-async function setup(endorsements = ["msteams"]) {
+async function setup(endorsements = ["msteams"], filename = ":memory:") {
   vi.stubEnv("TEAMS_SECRET", "app-secret");
   const remote = await peer();
   cleanup.push(remote.close);
@@ -32,7 +36,7 @@ async function setup(endorsements = ["msteams"]) {
     allowLoopback: true,
   };
   const plugin = createTeamsChannel();
-  const local = await harness(plugin, config, "conversation-1", "user-id", "root-1");
+  const local = await harness(plugin, config, "conversation-1", "user-id", "root-1", filename);
   cleanup.push(local.close);
   const activity = {
     type: "message",
@@ -84,6 +88,7 @@ describe("native Microsoft Teams", () => {
       threadId: "root-1",
       replyToId: "activity-1",
       data: {
+        appId: "app-id",
         serviceUrl: `${local.remote.base}/teams/`,
         conversationId: "conversation-1",
         tenantId: "tenant-id",
@@ -150,6 +155,59 @@ describe("native Microsoft Teams", () => {
         .status,
     ).toBe(403);
     expect((await local.storage.getStats()).pending).toBe(0);
+  });
+
+  it("rejects frozen targets after application identity changes across SQLite reopen", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "relanox-teams-identity-"));
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const filename = join(directory, "state.db");
+    const local = await setup(["msteams"], filename);
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200);
+    await local.close();
+    const plugin = createTeamsChannel();
+    const reopened = await harness(
+      plugin,
+      { ...local.config, appId: "replacement-app" },
+      "conversation-1",
+      "user-id",
+      "root-1",
+      filename,
+    );
+    cleanup.push(reopened.close);
+    const item = (await reopened.storage.listInbound({ limit: 10 }))[0];
+    if (!item) {
+      throw new Error("Missing frozen target");
+    }
+    const input: SendInput = {
+      deliveryId: "delivery",
+      requestId: item.snapshot.requestId,
+      chunkIndex: 0,
+      signal: new AbortController().signal,
+      target: item.snapshot.target,
+      chunk: { text: "answer", idempotencyKey: "delivery:0", state: null },
+    };
+    expect(await plugin.send(input)).toMatchObject({ status: "rejected" });
+    expect(local.remote.traffic.filter((entry) => entry.path.startsWith("/teams/v3"))).toHaveLength(
+      0,
+    );
+    await reopened.close();
+    vi.stubEnv("TEAMS_SECRET", "rotated-secret");
+    const restoredPlugin = createTeamsChannel();
+    const restored = await harness(
+      restoredPlugin,
+      local.config,
+      "conversation-1",
+      "user-id",
+      "root-1",
+      filename,
+    );
+    cleanup.push(restored.close);
+    const legacy = z.record(z.string(), z.json()).parse(input.target.data);
+    delete legacy.appId;
+    expect(
+      await restoredPlugin.send({ ...input, target: { ...input.target, data: legacy } }),
+    ).toMatchObject({ status: "rejected" });
+    expect(await restoredPlugin.send(input)).toMatchObject({ status: "sent" });
   });
 
   it.each([

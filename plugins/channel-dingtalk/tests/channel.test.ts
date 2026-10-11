@@ -111,7 +111,13 @@ test("DingTalk authenticates Stream, ACKs durable stable messages and sends to s
     data: '{"opaque":"ping-value"}',
   });
   expect(
-    await plugin.send(sendInput("dingtalk", "staff", { type: "single", staffId: "staff" })),
+    await plugin.send(
+      sendInput("dingtalk", "staff", {
+        type: "single",
+        staffId: "staff",
+        scope: { clientId: "app", robotCode: "robot-code", apiBase: new URL(remote.http).href },
+      }),
+    ),
   ).toEqual({
     status: "sent",
     receipt: { data: { processQueryKey: "query-handle" } },
@@ -123,7 +129,11 @@ test("DingTalk authenticates Stream, ACKs durable stable messages and sends to s
         sendInput(
           "dingtalk",
           "group-conversation",
-          { type: "group", openConversationId: "group-conversation" },
+          {
+            type: "group",
+            openConversationId: "group-conversation",
+            scope: { clientId: "app", robotCode: "robot-code", apiBase: new URL(remote.http).href },
+          },
           "delivery:1",
         ),
       )
@@ -265,6 +275,12 @@ test.each([
     [{ chatId: "staff", senderId: "platform-sender" }],
   );
   expect(
-    await plugin.send(sendInput("dingtalk", "staff", { type: "single", staffId: "staff" })),
+    await plugin.send(
+      sendInput("dingtalk", "staff", {
+        type: "single",
+        staffId: "staff",
+        scope: { clientId: "app", robotCode: "robot-code", apiBase: new URL(remote.http).href },
+      }),
+    ),
   ).toEqual(result);
 });

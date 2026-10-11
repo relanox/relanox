@@ -168,7 +168,12 @@ test("QQ reserves sequences using real SQLite CAS, reuses them after reopen and 
   };
   const first = createQqChannel();
   const host = await assemble(first, config, [{ chatId: "group", senderId: "member" }], filename);
-  const target = { type: "group", msgId: "incoming", messageAt: Date.now() };
+  const target = {
+    type: "group",
+    msgId: "incoming",
+    messageAt: Date.now(),
+    scope: { appId: "app", apiBase: new URL(remote.http).href },
+  };
   const a = sendInput("qq", "group", target, "arbitrary-key-a");
   const b = sendInput("qq", "group", target, "arbitrary-key-b");
   const results = await Promise.all([first.send(a), first.send(b)]);
@@ -230,6 +235,7 @@ test.each([
             type,
             msgId: "incoming",
             messageAt: Date.now() - ageMs,
+            scope: { appId: "app", apiBase: new URL(remote.http).href },
           }),
         )
       ).status,
@@ -263,7 +269,12 @@ test.each([
       },
       [{ chatId: "user", senderId: "user" }],
     );
-    const target = { type, msgId: "incoming", messageAt: Date.now() };
+    const target = {
+      type,
+      msgId: "incoming",
+      messageAt: Date.now(),
+      scope: { appId: "app", apiBase: new URL(remote.http).href },
+    };
     for (let index = 0; index < max; index++) {
       expect((await plugin.send(sendInput("qq", "user", target, `chunk:${index}`))).status).toBe(
         "sent",
@@ -294,6 +305,7 @@ test.each([
           sendInput("qq", "user", {
             ...target,
             messageAt: Date.now() - 7_200_000,
+            scope: { appId: "app", apiBase: new URL(remote.http).href },
           }),
         )
       ).status,
@@ -361,6 +373,7 @@ test.each([
           type: "c2c",
           msgId: "incoming",
           messageAt: Date.now() - 7_200_000,
+          scope: { appId: "app", apiBase: new URL(remote.http).href },
         }),
       ),
     ).toEqual(result);
