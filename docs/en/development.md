@@ -21,23 +21,19 @@ CI runs independent build/quality, Linux/Windows test, and production container 
 
 ## Boundaries
 
-- `packages/sdk` defines the async Channel, Agent, Storage and Observability contracts.
-- `packages/core` validates routing/authorization, constructs scoped hosts and processes persisted due work. It does not create listeners, own a timer or import concrete plugins.
-- `plugins/channel-*` validate platform protocols and deliver to frozen targets; `plugins/agent-*` authenticate hosted-agent requests and dispatch notifications/text. Neither owns a second business queue.
-- Storage plugins implement the documented atomic transactions and durable claim/lease semantics. Changes to those rules require the same shared contract against both real backends.
-- `apps/cli` assembles concrete plugins, normalizes Node HTTP requests, controls startup/shutdown and runs the worker. Management routes use a separate loopback listener.
-
-Read [SDK](SDK.md), [Core](CORE.md) and the selected protocol document before changing these boundaries. A channel account has its own plugin instance and state namespace. An agent has one instance per kind, with per-endpoint authentication scopes. Environment-backed secrets are resolved at use; do not put resolved credentials into durable targets, snapshots, logs or tool results.
+Component ownership is described in [Architecture](architecture.md). Read [SDK](reference/sdk.md), [Core](reference/core.md) and the selected protocol document before changing these boundaries. A channel account has its own plugin instance and state namespace. An agent has one instance per kind, with per-endpoint authentication scopes. Environment-backed secrets are resolved at use; do not put resolved credentials into durable targets, snapshots, logs or tool results.
 
 ## Changes and tests
 
+Implementation tasks use a new branch/worktree under `.worktree/`. Assigned agents stay within their worktree and file scope and commit their work. The root task reviews, integrates to master, pushes and removes completed worktrees. Preserve other tasks' checkouts; dependent tasks start after prerequisite commits land.
+
 Inspect recent commit messages before each commit, match the existing style, and keep commits coherent. `prepare` installs the tracked pre-commit hook. Run `pnpm format` explicitly; the hook checks without silently modifying the index and rejects partially staged files.
 
-Test observable behavior and credible regressions. Explain the behavior protected, the failure it catches, and why existing coverage is insufficient in the pull request; do not create per-task test reports or production seams used only by tests. Use real storage and external HTTP/socket peers; peers may implement external protocol responses, never Relanox routing, authorization or persistence. A full relay test must exercise production ingress, agent authentication/claim/completion and outbound transport, not stitch together mocked business functions.
+Test observable behavior and credible regressions. Explain the behavior protected, the failure it catches, and why existing coverage is insufficient, and whether it requires a seam without a production caller in the pull request; do not create per-task test reports or production seams used only by tests. Use real storage and external HTTP/socket peers; peers may implement external protocol responses, never Relanox routing, authorization or persistence. A full relay test must exercise production ingress, agent authentication/claim/completion and outbound transport, not stitch together mocked business functions.
 
 Keep package dependencies exact, update the lockfile, inspect install scripts and license metadata, and refresh production notices when the runtime graph changes. No reference checkout is shipped. New protocol behavior must have a verified primary source and explicit limits in its channel documentation. Do not claim live-account compatibility from local tests.
 
-pnpm 12 retains its default release-age policy. The workspace exempts only the reviewed, already-pinned `oxlint-tsgolint` platform packages at `7.0.2004` and `process-warning@5.1.1`; other fresh releases remain subject to that policy. Dependency build scripts are allowed only for `esbuild@0.28.2`, whose install script validates its pinned executable. These exact exceptions are recorded in `pnpm-workspace.yaml`; do not disable the supply-chain policy globally when updating dependencies.
+Dependency age and allowed install-script policies are defined in `pnpm-workspace.yaml`. Review any narrow exception with its dependency update; keep the global policy enabled.
 
 ## Code quality and source organization
 
@@ -52,3 +48,9 @@ Oxfmt owns formatting and type-aware Oxlint owns linting. Use the root scripts a
 The static CLI catalog in `apps/cli/src/plugins.ts` has an explicit import limit of 18 for fifteen channels, two agents and the SDK contract; other files retain the default limit of ten. Other scoped rule exceptions are defined in `.oxlintrc.json`, including test method references and synchronous tooling subprocesses. Do not disable a rule merely to pass a check; justify any narrow policy change in the pull request.
 
 Document the current behavior, configuration and maintenance requirements. Keep task status, review reports, test-run results and dependency registry snapshots out of the repository; use pull requests and CI for change-specific evidence. Dependency versions and resolution belong in package manifests and the lockfile.
+
+## Documentation site
+
+Use `pnpm docs:dev`, `pnpm docs:build` and `pnpm docs:preview` to maintain the VitePress site. Keep matching pages under `docs/en/` and `docs/zh-CN/`, and keep internal links within the selected language. GitHub Pages serves static files at `/relanox/`; it cannot inspect HTTP Accept-Language. The root entry uses browser navigator.languages, selecting Chinese for exact zh-CN, and stores a manual language preference. Explicit language URLs stay on their selected language.
+
+The CSS side-effect import is narrowly allowed only in the theme entrypoint. VitePress's internal Vite uses esbuild 0.21.5; it and the workspace esbuild 0.28.2 have exact allowed build-script entries. Preserve narrow policies when updating the site dependencies.
