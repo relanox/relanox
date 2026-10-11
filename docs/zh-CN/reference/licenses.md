@@ -1,6 +1,6 @@
 # 生产依赖许可证
 
-生产依赖许可证概览。精确版本由 package manifests 与 lockfile 定义，本页说明声明许可证和随产品提供的 notices。完整版权/许可证/NOTICE 文字保存在 [THIRD_PARTY_NOTICES.txt](https://github.com/relanox/relanox/blob/master/THIRD_PARTY_NOTICES.txt). 开发工具不随运行镜像分发。
+生产依赖许可证概览。精确版本由 package manifests 与 lockfile 定义，本页说明声明许可证和随产品提供的 notices。依赖包原有的许可证文件保留在 `node_modules` 中。两个 npm 归档缺失的上游文本单独保存在 [licenses/](https://github.com/relanox/relanox/tree/master/licenses)，并随镜像分发。 开发工具不随运行镜像分发。
 
 | 依赖包                                  | 声明许可证 |
 | --------------------------------------- | ---------- |

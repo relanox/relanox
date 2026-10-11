@@ -1,6 +1,6 @@
 # Production dependency licenses
 
-Production dependency license overview. The package manifests and lockfile define exact versions; this page identifies the declared licenses and shipped notices. Full copyright/license/NOTICE texts are preserved in [THIRD_PARTY_NOTICES.txt](https://github.com/relanox/relanox/blob/master/THIRD_PARTY_NOTICES.txt). Development tools are not shipped in the runtime image.
+Production dependency license overview. The package manifests and lockfile define exact versions; this page identifies the declared licenses and shipped notices. Dependency archives retain their own license files in `node_modules`. Supplemental upstream texts missing from two npm archives are shipped under [licenses/](https://github.com/relanox/relanox/tree/master/licenses). Development tools are not shipped in the runtime image.
 
 | Package                                 | Declared license |
 | --------------------------------------- | ---------------- |
