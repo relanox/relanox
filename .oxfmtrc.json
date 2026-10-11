@@ -15,6 +15,7 @@
     ".firecrawl/**",
     ".worktree/**",
     "coverage/**",
+    "docs/.vitepress/cache/**",
     "pnpm-lock.yaml"
   ]
 }

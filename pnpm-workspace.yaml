@@ -3,7 +3,7 @@ packages:
   - plugins/*
   - apps/*
 
-# Reviewed versions already pinned before upgrading to pnpm 12.
+# Exact-version exceptions to the release-age policy.
 minimumReleaseAgeExclude:
   - oxlint-tsgolint@7.0.2004
   - "@oxlint-tsgolint/darwin-arm64@7.0.2004"
@@ -17,3 +17,4 @@ minimumReleaseAgeExclude:
 # esbuild verifies its pinned optional platform binary during installation.
 allowBuilds:
   esbuild@0.28.2: true
+  esbuild@0.21.5: true

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.docs.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint --deny-warnings --report-unused-disable-directives-severity error .",
@@ -12,7 +12,10 @@
     "lint:fix": "oxlint --fix .",
     "format:check": "oxfmt --check .",
     "prepare": "node scripts/install-hooks.mts",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.3.1",
@@ -23,6 +26,7 @@
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.4",
+    "vitepress": "1.6.4",
     "vitest": "5.0.3",
     "zod": "4.6.5"
   },
