@@ -203,11 +203,14 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
             </p>
           </div>
           <p>
-            <a :href="link('agents.html')" target="_blank" rel="noopener">{{
+            {{
               text(
-                'Copy the fixed reply instructions into each Agent',
-                '将固定回信指令复制到每个 Agent'
+                'Relanox provides reply and attachment instructions through MCP. No separate reply prompt is needed.',
+                'Relanox 通过 MCP 提供回信与附件说明，无需另配回信 prompt。'
               )
+            }}
+            <a :href="link('agents.html')" target="_blank" rel="noopener">{{
+              text('Agent connection details', 'Agent 连接说明')
             }}</a>
           </p>
         </li>

@@ -102,7 +102,7 @@ Add an MCP connection to your Grok Bot:
 - URL: `https://relay.example.com/agents/grok/mcp/grok-main`.
 - Authentication: Bearer using `GROK_MCP_TOKEN`. Enter the token alone in a token field, or `Bearer <token>` in an Authorization header field.
 
-Configure the Routine to use that bot and copy the fixed instructions from [Connect an agent](agents.md#give-the-agent-reply-instructions). Check its URL and Authorization against the environment variables. Restart Relanox after editing its configuration or deployment environment.
+Configure the Routine to use that bot. Relanox provides reply guidance through the MCP connection; no separate reply prompt is needed. See [Connect an agent](agents.md). Check its URL and Authorization against the environment variables. Restart Relanox after editing its configuration or deployment environment.
 
 ## 6. Receive your first reply
 
@@ -112,6 +112,6 @@ Start a private conversation with the Telegram bot and send `Hello, please reply
 node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main
 ```
 
-An incoming request marked `accepted` means the Routine accepted the notification. An outgoing delivery marked `sent` means Telegram accepted the reply. If only the incoming record appears, check Grok's MCP connection and reply instructions. If no incoming record appears, check the webhook, user ID and chat binding. [Operations](operations.md#find-and-recover-a-stalled-message) covers other states and recovery.
+An incoming request marked `accepted` means the Routine accepted the notification. An outgoing delivery marked `sent` means Telegram accepted the reply. If only the incoming record appears, check Grok's MCP connection and Routine execution; refresh the connection after updating Relanox. If no incoming record appears, check the webhook, user ID and chat binding. [Operations](operations.md#find-and-recover-a-stalled-message) covers other states and recovery.
 
 Add more conversations with [Configuration](configuration.md), choose a platform in [Channels](channels/index.md), and set up attachments with [Media transfer](media.md).
