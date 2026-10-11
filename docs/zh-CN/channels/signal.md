@@ -33,7 +33,7 @@ SSE `/api/v1/events?account=<account>` 持久接收后保存 ID，重连携带 L
 
 支持图片、音频、视频和文件附件，也接收纯附件消息；不处理阅后即焚、回执、输入状态或自身消息。附件元数据来自认证 daemon 事件，调用原生 JSON-RPC getAttachment，传入配置账号、附件 ID 和原发送者或群组 ID。验证返回的 `{data}` base64，并同时限制响应编码大小和解码字节数。Daemon 必须已经下载附件；文件缺失或超限时不推进 SSE 游标。不会读取任意 URL 或 daemon 文件路径。
 
-输出通过原生 send attachments 传递包含 MIME、文件名和完整字节的 RFC 2397 data URI。图片、音频、视频和文件使用同一原生附件接口，该接口没有独立时长或预览字段。媒体完整缓冲并持久保存，不支持流式传输；仍受 Signal 原生上限和 daemon 外部附件保留策略限制。本地 SSE、JSON-RPC、SQLite 和 MCP 测试验证字节收发与群组目标，不证明真实账号兼容。
+输出通过原生 send attachments 传递包含 MIME、文件名和完整字节的 RFC 2397 data URI。图片、音频、视频和文件使用同一原生附件接口。媒体完整缓冲并持久保存；仍受 Signal 原生上限和 daemon 外部附件保留策略限制。本地 SSE、JSON-RPC、SQLite 和 MCP 测试验证字节收发与群组目标。
 
 协议来源：[signal-cli 手册](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli.1.adoc#getattachment)、[JSON-RPC 手册](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli-jsonrpc.5.adoc)。
 

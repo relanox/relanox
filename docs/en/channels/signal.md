@@ -33,7 +33,7 @@ Targets freeze the bridge URL and configured Signal account as well as the recip
 
 Attachment metadata comes from the authenticated daemon event. Relanox calls native JSON-RPC `getAttachment` with the configured account, attachment ID and original sender or group ID, validates its `{data}` base64 result and enforces both encoded-response and decoded-byte limits. The daemon must already have downloaded the attachment; missing or oversized data does not advance the SSE cursor. Arbitrary URLs and daemon filesystem paths are never used as relay downloads.
 
-Output uses native `send` attachments as RFC 2397 data URIs with MIME, filename and complete bytes. Images, audio, video and files use the same native attachment contract; independent duration or preview fields are not supplied by this interface. Relanox buffers and persists media, without streaming. Native Signal limits and the daemon's external attachment retention still apply. Local SSE/JSON-RPC/SQLite/MCP tests verify byte relay and group addressing, not live-account compatibility.
+Output uses native `send` attachments as RFC 2397 data URIs with MIME, filename and complete bytes. Images, audio, video and files use the same native attachment contract. Relanox buffers and persists media. Native Signal limits and the daemon's external attachment retention still apply. Local SSE/JSON-RPC/SQLite/MCP tests verify byte relay and group addressing.
 
 Protocol sources: [signal-cli manual](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli.1.adoc#getattachment), [JSON-RPC manual](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli-jsonrpc.5.adoc).
 

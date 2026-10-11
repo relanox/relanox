@@ -31,7 +31,7 @@ The Gateway accepts attachment-only messages and text with attachments. `MESSAGE
 
 Generated images/audio/video/files use Create Message multipart `payload_json` and `files[0]`, retaining the frozen channel/thread, reply, mention suppression and nonce. The plugin uses a conservative 10 MiB upload cap, additionally bounded by relay limits. Guild tier limits and supported codecs still apply. An ambiguous multipart send remains unknown rather than being automatically replayed.
 
-See [Media transfer](../media.md) and Discord's [message API](https://docs.discord.com/developers/resources/message#create-message). Local Gateway/REST tests verify byte transport, not live-account permissions or playback.
+See [Media transfer](../media.md) and Discord's [message API](https://docs.discord.com/developers/resources/message#create-message). Local Gateway/REST tests verify byte transport.
 
 ## Account changes
 

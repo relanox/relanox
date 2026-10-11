@@ -14,7 +14,7 @@
 
 ## 接入与身份
 
-创建专用账号/设备并加入房间，使用 Client-Server `/sync` 接收和房间 API 发送。白名单为准确 MXID，绑定房间 ID 和可选原始 m.thread 根事件 ID。接收 m.text、m.image、m.audio、m.video 和 m.file，忽略自身事件、编辑/其他关系和成员操作。不支持加密房间，不解密或管理密钥。
+创建专用账号/设备并加入房间，使用 Client-Server `/sync` 接收和房间 API 发送。白名单为准确 MXID，绑定房间 ID 和可选原始 m.thread 根事件 ID。接收 m.text、m.image、m.audio、m.video 和 m.file，忽略自身事件、编辑/其他关系和成员操作。使用未加密房间。
 
 ## 投递与恢复
 
@@ -30,9 +30,9 @@
 
 ## 原生媒体
 
-图片、音频、视频和文件通过配置 homeserver 的认证接口 `/_matrix/client/v1/media/download/<server>/<mediaId>` 下载。`mxc://` 中的服务器名仅作媒体标识，不会变成携带凭证的下载目标。下载拒绝重定向并遵守核心字节限制；不支持加密文件。
+图片、音频、视频和文件通过配置 homeserver 的认证接口 `/_matrix/client/v1/media/download/<server>/<mediaId>` 下载。`mxc://` 中的服务器名仅作媒体标识，不会变成携带凭证的下载目标。下载拒绝重定向并遵守核心字节限制；附件使用未加密文件。
 
-输出先调用 `POST /_matrix/media/v3/upload`，再发送对应的 m.image、m.audio、m.video 或 m.file 房间事件。保留文件名、MIME、大小和可选时长；同一请求已有图片预览会上传并写入 thumbnail_url/thumbnail_info。核心按顺序在文本后发送结果附件。上传或发送结果不明确时遵守已有 unknown 恢复规则。媒体完整缓冲并持久保存，不支持流式传输；homeserver 上限可能低于核心上限。本地 HTTP、SQLite 和 MCP 测试验证协议约定，不证明真实账号兼容。
+输出先调用 `POST /_matrix/media/v3/upload`，再发送对应的 m.image、m.audio、m.video 或 m.file 房间事件。保留文件名、MIME、大小和可选时长；同一请求已有图片预览会上传并写入 thumbnail_url/thumbnail_info。核心按顺序在文本后发送结果附件。上传或发送结果不明确时遵守已有 unknown 恢复规则。媒体完整缓冲并持久保存；homeserver 上限可能低于核心上限。本地 HTTP、SQLite 和 MCP 测试验证协议约定。
 
 协议来源：[Matrix Client-Server API](https://spec.matrix.org/latest/client-server-api/)。
 

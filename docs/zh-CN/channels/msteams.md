@@ -24,7 +24,7 @@
 
 ## 参数与限制
 
-`issuer` 默认 `https://api.botframework.com`；`jwksUrl` 默认 `https://login.botframework.com/v1/.well-known/keys`；`tokenUrl` 默认 `https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token`；`allowLoopback` 默认 false。回环也要求 JWT，无模拟器/skills 绕过。不支持命令、创建会话、安装应用和编辑。
+`issuer` 默认 `https://api.botframework.com`；`jwksUrl` 默认 `https://login.botframework.com/v1/.well-known/keys`；`tokenUrl` 默认 `https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token`；`allowLoopback` 默认 false。回环也要求 JWT，无模拟器/skills 绕过。
 
 ## 账号变更
 

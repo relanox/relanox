@@ -21,7 +21,7 @@ READY 必须匹配 `botUserId`。原生处理心跳/ACK、Identify/Resume 和重
 
 ## 参数与限制
 
-`apiBaseUrl` 默认 `https://discord.com/api/v10`；`gatewayUrl` 默认 `wss://gateway.discord.gg`；`timeoutMs` 为 100–60,000，默认 10,000；`reconnectDelayMs` 为 100–30,000，默认 5,000；`allowInsecureLoopback` 默认 false。不支持交互、编辑、语音连接、分片及同一机器人并发会话。
+`apiBaseUrl` 默认 `https://discord.com/api/v10`；`gatewayUrl` 默认 `wss://gateway.discord.gg`；`timeoutMs` 为 100–60,000，默认 10,000；`reconnectDelayMs` 为 100–30,000，默认 5,000；`allowInsecureLoopback` 默认 false。每个机器人使用一个网关会话接收消息。
 
 ## 原生媒体
 

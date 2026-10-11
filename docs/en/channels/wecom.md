@@ -34,7 +34,7 @@ Accepted targets also freeze the bot ID and normalized WebSocket URL. Reusing a 
 
 Native image/video/file and mixed text/image callbacks download before durable ingestion. Each resource expires after five minutes and uses its own AES-256-CBC key, with PKCS#7 padding to 32-byte multiples. Voice callbacks supply transcription, not audio bytes, so voice input remains text. Download URLs and keys are not persisted as media.
 
-Output uses `aibot_upload_media_init`, 512 KiB base64 chunks and `aibot_upload_media_finish`, then independent `aibot_send_msg` with `media_id`. It requires neither a temporary callback handle nor streaming. PNG/JPEG/GIF images and MP4 video are limited to 10 MiB, AMR audio to 2 MiB, ordinary files to 20 MiB. Minimum upload is five bytes; filenames are at most 256 UTF-8 bytes. Captions are separate durable text chunks. Upload failure can retry; ambiguous final sends remain unknown.
+Output uses `aibot_upload_media_init`, 512 KiB base64 chunks and `aibot_upload_media_finish`, then independent `aibot_send_msg` with `media_id`. PNG/JPEG/GIF images and MP4 video are limited to 10 MiB, AMR audio to 2 MiB, ordinary files to 20 MiB. Minimum upload is five bytes; filenames are at most 256 UTF-8 bytes. Captions are separate durable text chunks. Upload failure can retry; ambiguous final sends remain unknown.
 
 `mediaOrigins` optionally lists exact administrator-configured private download origins. Public HTTPS downloads enforce DNS and byte limits and refuse redirects. Loopback HTTP also requires the exact origin and `allowInsecureLoopback:true`. The default core limit is 25 MiB; encrypted downloads allow only the additional padding envelope.
 

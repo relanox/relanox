@@ -18,7 +18,7 @@ Account `config` ([configuration](../configuration.md)):
 
 ## Setup and delivery
 
-Enable Stream in the application robot configuration, use the matching `robotCode`, and grant the application robot independent single/group message API permissions. Users must be reachable by the application; the robot must belong to the group. External identities without a usable `senderStaffId` are explicitly unsupported. Sender allowlists use the trusted callback's opaque `senderId`, which avoids assuming corporate staff IDs are globally unique. DM bindings use `senderStaffId`; group bindings use `conversationId` (the OpenAPI `openConversationId`). Callbacks with another robot code, own-bot sender or group `isInAtList != true` are ignored.
+Enable Stream in the application robot configuration, use the matching `robotCode`, and grant the application robot independent single/group message API permissions. Users must be reachable by the application; the robot must belong to the group. Direct-message recipients require a usable `senderStaffId`. Sender allowlists use the trusted callback's opaque `senderId`, which avoids assuming corporate staff IDs are globally unique. DM bindings use `senderStaffId`; group bindings use `conversationId` (the OpenAPI `openConversationId`). Callbacks with another robot code, own-bot sender or group `isInAtList != true` are ignored.
 
 Stream connections obtain fresh tickets. Ping/pong detects dead connections; bounded exponential reconnect obtains a new ticket. Shutdown stops the account’s socket and reconnect work.
 

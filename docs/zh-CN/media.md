@@ -1,8 +1,8 @@
 # 图片、音频、视频与文件
 
-Relanox 将入站媒体与请求一起保存，并把生成的媒体发回原会话。支持范围取决于各渠道的原生协议与权限。文字和附件组成一个持久请求，纯媒体消息不需要补占位文字。回复使用出站消息，不做流式更新。
+Relanox 将入站媒体与请求一起保存，并把生成的媒体发回原会话。支持范围取决于各渠道的原生协议与权限。文字和附件组成一个持久请求，纯媒体消息不需要补占位文字。每次回复作为独立的出站消息持久保存。
 
-[渠道指南](configuration.md) 分别说明收发方向、格式及平台限制。IRC 没有标准化的原生附件传输；LINE Messaging API 不能发送任意文件；Google Chat 机器人身份使用图片卡片和下载按钮，下载按钮不等于原生上传的文件附件；Teams 文件发送依赖私聊中的用户同意。即使托管 Agent 能生成文件，这些目标渠道限制仍然适用。
+[渠道指南](configuration.md) 分别说明收发方向、格式及配置要求。IRC 收发文字消息；LINE 接收文件并发送图片、音频和视频；Google Chat 机器人身份使用图片卡片和下载按钮；Teams 通过私聊中的用户同意流程发送文件。Agent 生成的文件按目标渠道的原生方式发送。
 
 ## Agent 工作流
 
@@ -13,7 +13,7 @@ dot 事件与 Grok Routine content 直接包含 replyTo 和附件元数据：id�
 3. 原生平台要求音视频时长时提供正整数 durationMs。图片 previewUrl 与主体原子下载/保存，previewMediaId 可引用同一输入已有的预览图。预览不需要作为单独回复附件。
 4. 同一 replyTo 可以多次发送。有附件时允许空文字。重试复用显式 idempotencyKey 和相同内容/附件顺序；无 key 时相同内容去重，有意重复发送可使用不同 key。`queued` 不表示已送达。
 
-没有独立上传或任务结算操作。SDK Host 可以将内存 MediaUpload 或 `{media,preview}` 对传给 sendMessage，MCP 客户端提供公网 HTTPS URL。dot 和 Grok 都暴露这两个工具。托管客户端需支持相应内联内容或资源下载，生成文件需可通过公网 URL 获取。本地协议测试不证明某个托管账号的行为。
+SDK Host 可以将内存 MediaUpload 或 `{media,preview}` 对传给 sendMessage，MCP 客户端提供公网 HTTPS URL。dot 和 Grok 都暴露这两个工具。托管客户端需支持相应内联内容或资源下载，生成文件需可通过公网 URL 获取。本地协议测试覆盖媒体工具与传输流程。
 
 ## 原生发送使用的公开 URL
 

@@ -1,6 +1,6 @@
 # 架构
 
-Relanox 是常驻消息网关：将渠道文字和媒体持久交给已有的 dot 或 Grok Bot，再把异步回复消息发回原会话。它不运行模型。[配置](configuration.md) 控制部署，[Core](reference/core.md) 和 [SDK](reference/sdk.md) 定义运行与持久契约。
+Relanox 是常驻消息网关：将渠道文字和媒体持久交给已有的 dot 或 Grok Bot，再把异步回复消息发回原会话。[配置](configuration.md) 控制部署，[Core](reference/core.md) 和 [SDK](reference/sdk.md) 定义运行与持久契约。
 
 ## 组件
 
@@ -66,4 +66,4 @@ Core 和插件依赖 SDK，CLI 装配具体实现。渠道和 Agent 只接收限
 | `plugins/observability-standard/src` | 配置、脱敏、背压、指标、trace 和生命周期                       |
 | `apps/cli/src`                       | 应用配置、插件目录、listener、工作生命周期和管理命令           |
 
-维护和验证方法见 [开发指南](development.md)。本地协议对端与真实存储测试保护契约，不证明真实账号兼容性。
+维护和验证方法见 [开发指南](development.md)。本地协议对端与真实存储测试保护契约性。

@@ -1,6 +1,6 @@
 # Google Chat HTTP app
 
-Configure a native HTTP Chat app, not a Workspace add-on. Its authentication audience must exactly match the public HTTPS `/channels/<accountId>/webhook` URL. Workspace add-on envelopes, Pub/Sub/Workspace Events and project-number JWT mode are unsupported.
+Configure a native HTTP Chat app. Its authentication audience must exactly match the public HTTPS `/channels/<accountId>/webhook` URL.
 
 Account `config` ([configuration](../configuration.md)):
 

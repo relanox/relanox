@@ -30,6 +30,6 @@ Configure a channel account, an Agent endpoint and a binding between them. Relan
 - [Send and receive media](media.md)
 - [Deploy, back up and recover deliveries](operations.md)
 
-## Support boundaries
+## Connect a channel
 
-Relanox handles text and media according to each channel's native capabilities. Streaming replies, multi-tenancy and a management UI are outside its current scope. Platform account compatibility remains experimental; review each channel's permissions and limitations before deployment.
+Relanox handles text and media according to each channel's native capabilities. Choose a channel and follow its guide to configure your account, permissions and message bindings.

@@ -25,7 +25,7 @@ Create a Meta app with WhatsApp Business Platform access, register the phone num
 
 ## Setup and delivery
 
-The version above is an example, not a promised account version. Sender allowlists and bindings' `chatId` use the customer's WhatsApp `from` ID. Source message IDs deduplicate within the configured account. There is no group/thread support in this Cloud integration. The plugin freezes the Business Account, canonical API base, phone and customer address and originating message reference, strips credential/raw-event material, and chunks at 4,096 UTF-16 units.
+The version above is an example, not a promised account version. Sender allowlists and bindings' `chatId` use the customer's WhatsApp `from` ID. Source message IDs deduplicate within the configured account. Messages use customer conversations. The plugin freezes the Business Account, canonical API base, phone and customer address and originating message reference, strips credential/raw-event material, and chunks at 4,096 UTF-16 units.
 
 GET verifies `hub.mode`, `hub.verify_token` and returns the supplied challenge. POST verifies exact-byte app-secret HMAC-SHA256 `X-Hub-Signature-256`, the Business Account ID and phone metadata before durable ingest. Status notifications and unsupported message types create no task. Text and native image/audio/video/document messages are durably accepted. Ingest policy exclusions are diagnosed; storage failures never receive successful ACKs.
 
@@ -43,7 +43,7 @@ Signed webhooks identify image, audio, video and document assets by media ID. Re
 
 Output first uploads multipart file/type/messaging_product to `POST /<apiVersion>/<phoneNumberId>/media`, then sends the returned ID through native image/audio/video/document message fields. Documents preserve filenames. The adapter permits JPEG/PNG images up to 5,000,000 bytes; AAC/AMR/MP3/MP4/OGG audio and MP4/3GPP video up to 16,000,000 bytes; text/PDF and supported Microsoft Office documents up to 100,000,000 bytes. A lower core limit still applies. Meta requires Opus mono OGG audio, H.264/AAC video and valid image formats; Relanox does not transcode or validate codec bitstreams. Independent SDK previews and durations are not accepted by these native message fields.
 
-The 24-hour customer-service window applies to media too. Pre-message upload failures are safe to retry; ambiguous message creation remains unknown. Media is buffered and durably stored, without streaming. Local signed HTTP/SQLite/MCP/multipart tests verify protocol byte relay, not live-account compatibility.
+The 24-hour customer-service window applies to media too. Pre-message upload failures are safe to retry; ambiguous message creation remains unknown. Media is buffered and durably stored. Local signed HTTP/SQLite/MCP/multipart tests verify protocol byte relay.
 
 Protocol source: [WhatsApp Business Platform media](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media).
 

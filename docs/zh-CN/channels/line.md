@@ -24,7 +24,7 @@
 
 ## 参数与限制
 
-`apiBase` 默认 `https://api.line.me`；`allowLoopback` 默认 false。不支持无法归属发送者的匿名事件、卡片、交互及 reply-token 发送。
+`apiBase` 默认 `https://api.line.me`；`allowLoopback` 默认 false。发送使用 push API，入站消息需要可识别的发送者。
 
 ## 原生媒体
 

@@ -16,7 +16,7 @@
 
 ## 接入与身份
 
-启用应用机器人 Stream，配置匹配的 `robotCode`，授予独立单聊/群聊机器人消息 API 权限。应用必须可触达用户，机器人必须在目标群中。白名单使用可信回调的不透明 `senderId`，私聊绑定 `senderStaffId`，群聊绑定 `conversationId`（OpenAPI 的 `openConversationId`）。不支持缺少可用 staff ID 的外部身份。
+启用应用机器人 Stream，配置匹配的 `robotCode`，授予独立单聊/群聊机器人消息 API 权限。应用必须可触达用户，机器人必须在目标群中。白名单使用可信回调的不透明 `senderId`，私聊绑定 `senderStaffId`，群聊绑定 `conversationId`（OpenAPI 的 `openConversationId`）。私聊接收者需具备可用的 `senderStaffId`。
 
 ## 投递与恢复
 
