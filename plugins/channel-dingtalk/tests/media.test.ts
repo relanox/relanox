@@ -59,12 +59,14 @@ test("DingTalk downloads a pure picture before durable ACK and uploads original 
     }),
   );
   await expect.poll(async () => (await records(local.storage)).length).toBe(1);
-  expect(remote.frames).toContainEqual(
-    expect.objectContaining({
-      code: 200,
-      headers: { contentType: "application/json", messageId: "callback" },
-    }),
-  );
+  await expect
+    .poll(() => remote.frames, { timeout: 5000 })
+    .toContainEqual(
+      expect.objectContaining({
+        code: 200,
+        headers: { contentType: "application/json", messageId: "callback" },
+      }),
+    );
   const scoped = local.principal();
   const task = (await scoped.listPending(10))[0];
   if (!task?.attachments?.[0]) {
