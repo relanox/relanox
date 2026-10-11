@@ -12,7 +12,7 @@ export function secret(
   }
   return value;
 }
-export async function readJson(response: Response): Promise<unknown> {
+export async function readJson(response: Response, maximum = 2_097_152): Promise<unknown> {
   if (!response.body) {
     throw new Error("empty_response");
   }
@@ -26,7 +26,7 @@ export async function readJson(response: Response): Promise<unknown> {
         break;
       }
       size += value.byteLength;
-      if (size > 2_097_152) {
+      if (size > maximum) {
         throw new Error("response_too_large");
       }
       pieces.push(value);
