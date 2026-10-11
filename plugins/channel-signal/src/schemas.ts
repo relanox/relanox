@@ -1,9 +1,17 @@
 import { z } from "zod";
 import { platformIdSchema } from "./config.js";
 
+export const attachmentSchema = z.object({
+  id: z.string().min(1).max(1024).nullable(),
+  contentType: z.string().min(1).max(128),
+  filename: z.string().min(1).max(255).nullable().optional(),
+  size: z.number().int().nonnegative().nullable().optional(),
+});
+
 const messageSchema = z.object({
   timestamp: z.number().int().nonnegative(),
   message: z.string().nullable().optional(),
+  attachments: z.array(attachmentSchema).max(10).default([]),
   groupInfo: z.object({ groupId: platformIdSchema }).nullable().optional(),
   viewOnce: z.boolean().nullable().optional(),
 });

@@ -5,11 +5,26 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
+import { outboundAttachments, receiveAttachments } from "./media.js";
 import { validateConfig, validateBaseUrl } from "./config.js";
 import type { SignalConfig } from "./config.js";
 import { delay, diagnose, httpFailure, ingest, readJson, secret, stopTask } from "./protocol.js";
 import { eventCursorSchema, receiveSchema, targetSchema, rpcSchema } from "./schemas.js";
 import { consumeEvents } from "./stream.js";
+
+async function saveEventCursor(host: ChannelHost, id: string | undefined): Promise<void> {
+  if (id !== undefined) {
+    const checkpoint = await host.state.get("events");
+    const saved = await host.state.compareAndSet({
+      key: "events",
+      expectedVersion: checkpoint?.version ?? null,
+      value: id,
+    });
+    if (saved.status !== "updated") {
+      throw new Error("event_checkpoint_conflict");
+    }
+  }
+}
 
 export function createSignalChannel(
   environment: Readonly<Record<string, string | undefined>> = process.env,
@@ -29,7 +44,7 @@ export function createSignalChannel(
     const { config } = configured();
     return config.authorization ? { Authorization: secret(config.authorization, environment) } : {};
   }
-  async function receive(data: string, id: string | undefined): Promise<void> {
+  async function receive(data: string, id: string | undefined, signal: AbortSignal): Promise<void> {
     const { host, config, account, base } = configured();
     const incoming = receiveSchema.parse(JSON.parse(data) as unknown);
     const envelope = incoming.envelope;
@@ -40,11 +55,23 @@ export function createSignalChannel(
         value === config.account || (config.selfUuid !== undefined && value === config.selfUuid),
     );
     if ((!incoming.account || incoming.account === config.account) && sender && message && !self) {
-      if (!message.message || message.viewOnce) {
+      if (!account.allowedSenders.includes(sender)) {
+        diagnose(host, "sender_not_allowed");
+      } else if ((!message.message && message.attachments.length === 0) || message.viewOnce) {
         diagnose(host, "nontext_unsupported");
       } else {
         const groupId = message.groupInfo?.groupId;
         const chatId = groupId ? `group:${groupId}` : `direct:${sender}`;
+        const attachments = await receiveAttachments(
+          message.attachments,
+          host,
+          config,
+          base,
+          headers(),
+          sender,
+          groupId,
+          signal,
+        );
         await ingest(host, {
           source: {
             channel: "signal",
@@ -52,7 +79,8 @@ export function createSignalChannel(
             eventId: `${sender}:${message.timestamp}:${chatId}`,
           },
           senderId: sender,
-          text: message.message,
+          text: message.message ?? "",
+          ...(attachments.length > 0 ? { attachments } : {}),
           receivedAt: envelope.timestamp,
           target: {
             channel: "signal",
@@ -66,18 +94,9 @@ export function createSignalChannel(
         });
       }
     }
-    if (id !== undefined) {
-      const checkpoint = await host.state.get("events");
-      const saved = await host.state.compareAndSet({
-        key: "events",
-        expectedVersion: checkpoint?.version ?? null,
-        value: id,
-      });
-      if (saved.status !== "updated") {
-        throw new Error("event_checkpoint_conflict");
-      }
-    }
+    await saveEventCursor(host, id);
   }
+
   async function connect(signal: AbortSignal): Promise<void> {
     const { host, config, base } = configured();
     const checkpoint = await host.state.get("events");
@@ -99,7 +118,7 @@ export function createSignalChannel(
       throw new Error("event_stream_failed");
     }
     host.connection("connected");
-    await consumeEvents(response, receive);
+    await consumeEvents(response, (data, id) => receive(data, id, signal));
   }
   async function loop(signal: AbortSignal): Promise<void> {
     const { host, config } = configured();
@@ -142,7 +161,12 @@ export function createSignalChannel(
           jsonrpc: "2.0",
           id: input.chunk.idempotencyKey,
           method: "send",
-          params: { account: config.account, message: input.chunk.text, ...address },
+          params: {
+            account: config.account,
+            message: input.chunk.text,
+            ...address,
+            ...outboundAttachments(input),
+          },
         }),
       });
       if (!response.ok) {
@@ -181,6 +205,10 @@ export function createSignalChannel(
       maxTextLength: 16_000,
       lengthUnit: "utf8",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(host, account, config) {
