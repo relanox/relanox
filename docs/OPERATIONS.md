@@ -1,10 +1,10 @@
 # Operations
 
-Relanox is one resident Node 24 process with one authoritative SQLite or PostgreSQL database. Back up the configuration and database before upgrades. Real platform accounts remain experimental; the repository verifies documented protocols with local peers.
+Relanox is one resident Node 26 process with one authoritative SQLite or PostgreSQL database. Back up the configuration and database before upgrades. Real platform accounts remain experimental; the repository verifies documented protocols with local peers.
 
 ## Container deployment
 
-The Dockerfile builds the workspace and deploys only CLI production dependencies. It runs as UID 1000, with a writable `/data` volume. The pinned Node 24.21.0 Debian image includes the Linux native runtime required by SQLite. No host `node_modules` or reference repositories enter the build context.
+The Dockerfile builds the workspace and deploys only CLI production dependencies. It runs as UID 1000, with a writable `/data` volume. Both stages pin the Node 26.11.1 Debian image by digest. SQLite ships its native binary in the installed package; the container test verifies it in the final production image. No host `node_modules` or reference repositories enter the build context.
 
 1. Copy `.env.example` to `.env` and `deploy/empty.example.json` to `deploy/relanox.json`.
 2. Replace the empty account, endpoint and binding arrays with your selected configuration from [CLI examples](CLI.md). The empty configuration only checks installation; it cannot relay messages. Set referenced credentials in `.env`.
