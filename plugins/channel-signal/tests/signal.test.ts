@@ -99,9 +99,102 @@ const rpcRequestSchema = z.object({
   params: z.object({
     account: z.string(),
     message: z.string(),
+    textStyle: z.array(z.string()).optional(),
     recipient: z.array(z.string()).optional(),
     groupId: z.string().optional()
   })
+})
+
+it('sends Markdown as UTF-16 Signal styles with explicit links and literal code', async () => {
+  const rpcs: z.infer<typeof rpcRequestSchema>[] = []
+
+  const peer = await httpPeer(async (request, response) => {
+    const rpc = rpcRequestSchema.parse(await body(request))
+    rpcs.push(rpc)
+    json(response, { jsonrpc: '2.0', id: rpc.id, result: { timestamp: 123 } })
+  })
+
+  const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: 'Bearer credential' })
+  await harness(
+    plugin,
+    config(peer.base),
+    [{ chatId: 'direct:alice' }],
+    ['alice'],
+    `${peer.base}/dispatch`
+  )
+  const input = sendInput(peer.base)
+  expect(
+    (
+      await plugin.send({
+        ...input,
+        chunk: {
+          ...input.chunk,
+          text: '😀 **bold** _ital_ ~~gone~~ `x*y` [site](https://example.com)'
+        }
+      })
+    ).status
+  ).toBe('sent')
+  expect(rpcs[0]?.params).toEqual({
+    account: '+10000000001',
+    recipient: ['alice'],
+    message: '😀 bold ital gone x*y site (https://example.com/)',
+    textStyle: [
+      '3:4:BOLD',
+      '8:4:ITALIC',
+      '13:4:STRIKETHROUGH',
+      '18:3:MONOSPACE'
+    ]
+  })
+})
+
+it('restarts native monospace ranges in each UTF-8-bounded code chunk', async () => {
+  const rpcs: z.infer<typeof rpcRequestSchema>[] = []
+
+  const peer = await httpPeer(async (request, response) => {
+    const rpc = rpcRequestSchema.parse(await body(request))
+    rpcs.push(rpc)
+    json(response, { jsonrpc: '2.0', id: rpc.id, result: { timestamp: 123 } })
+  })
+
+  const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: 'Bearer credential' })
+  await harness(
+    plugin,
+    config(peer.base),
+    [{ chatId: 'direct:alice' }],
+    ['alice'],
+    `${peer.base}/dispatch`
+  )
+  const input = sendInput(peer.base)
+
+  const parts =
+    plugin.splitText?.(
+      `\`\`\`ts\n${'界😀'.repeat(3000)}\n\`\`\``,
+      input.target
+    ) ?? []
+
+  expect(parts.length).toBeGreaterThan(1)
+  for (const [index, text] of parts.entries()) {
+    expect(
+      (
+        await plugin.send({
+          ...input,
+          chunkIndex: index,
+          chunk: { ...input.chunk, text }
+        })
+      ).status
+    ).toBe('sent')
+  }
+  expect(rpcs.map((rpc) => rpc.params.message).join('')).toBe(
+    '界😀'.repeat(3000)
+  )
+  for (const rpc of rpcs) {
+    expect(Buffer.byteLength(rpc.params.message, 'utf8')).toBeLessThanOrEqual(
+      16_000
+    )
+    expect(rpc.params.textStyle).toEqual([
+      `0:${rpc.params.message.length}:MONOSPACE`
+    ])
+  }
 })
 
 it.each([

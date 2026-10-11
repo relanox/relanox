@@ -1,3 +1,4 @@
+import { telegramMarkdown } from './markdown.js'
 import { REQUEST_TIMEOUT_MS } from './config.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
@@ -174,14 +175,18 @@ export async function sendMedia(
 
   if (
     media.data.byteLength > maximum ||
-    codepointLength(input.chunk.text) > 1024
+    codepointLength(telegramMarkdown(input.chunk.text).text) > 1024
   ) {
     return { status: 'rejected', errorCode: 'media_limit_exceeded' }
   }
   const body = new FormData()
   body.set('chat_id', input.target.chatId)
   if (input.chunk.text) {
-    body.set('caption', input.chunk.text)
+    const caption = telegramMarkdown(input.chunk.text)
+    body.set('caption', caption.text)
+    if (caption.entities) {
+      body.set('caption_entities', JSON.stringify(caption.entities))
+    }
   }
   if (input.target.threadId) {
     body.set('message_thread_id', input.target.threadId)

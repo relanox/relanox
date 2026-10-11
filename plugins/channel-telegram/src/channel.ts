@@ -6,6 +6,7 @@ import type { TelegramConfig } from './config.js'
 import { targetSchema, updateSchema } from './schemas.js'
 import { bytes, credential, equal, ingest, postJson } from './transport.js'
 import { hasMedia, receiveMedia, sendMedia } from './media.js'
+import { telegramMarkdown, splitTelegramMarkdown } from './markdown.js'
 
 /** One factory instance per configured account. Credentials are resolved only at use. */
 export function createTelegramChannel(
@@ -38,6 +39,7 @@ export function createTelegramChannel(
       }
     },
     validateConfig,
+    splitText: splitTelegramMarkdown,
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount
@@ -157,7 +159,7 @@ export function createTelegramChannel(
           {},
           {
             chat_id: input.target.chatId,
-            text: input.chunk.text,
+            ...telegramMarkdown(input.chunk.text),
             ...(input.target.threadId
               ? { message_thread_id: Number(input.target.threadId) }
               : {}),

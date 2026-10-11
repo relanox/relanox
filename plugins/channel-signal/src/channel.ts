@@ -1,3 +1,4 @@
+import { signalMarkdown, splitSignalMarkdown } from './markdown.js'
 import { requestTimeoutMs, reconnectDelayMs } from './constants.js'
 import type {
   AccountConfig,
@@ -247,7 +248,7 @@ export function createSignalChannel(
           method: 'send',
           params: {
             account: config.account,
-            message: input.chunk.text,
+            ...signalMarkdown(input.chunk.text),
             ...address,
             ...outboundAttachments(input)
           }
@@ -300,6 +301,7 @@ export function createSignalChannel(
       }
     },
     validateConfig,
+    splitText: splitSignalMarkdown,
     async setup(host, account, config) {
       if (runtime) {
         throw new Error('already_setup')

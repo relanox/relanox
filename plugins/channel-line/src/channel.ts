@@ -12,7 +12,7 @@ import { readJson } from '@relanox/transport'
 import { validateConfig, platformIdSchema } from './config.js'
 import type { LineConfig } from './config.js'
 import { receiveEvent } from './inbound.js'
-import { mediaError, messages } from './media.js'
+import { mediaError, messages, splitLineMarkdown } from './media.js'
 import {
   failure,
   parseBody,
@@ -159,6 +159,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       }
     },
     validateConfig,
+    splitText: splitLineMarkdown,
     async setup(host, account, config) {
       if (runtime) {
         throw new Error('already_setup')

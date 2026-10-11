@@ -172,6 +172,8 @@ async function prepareUpload(
   }
 }
 
+export { slackMarkdown, splitSlackMarkdown } from './markdown.js'
+
 export async function sendMedia(
   input: SendInput,
   host: ChannelHost,

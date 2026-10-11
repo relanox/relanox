@@ -20,7 +20,8 @@
     "@relanox/sdk": "workspace:*",
     "@relanox/transport": "workspace:*",
     "ws": "8.22.0",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@relanox/markdown": "workspace:*"
   },
   "devDependencies": {
     "@types/ws": "8.18.2"

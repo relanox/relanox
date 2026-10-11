@@ -18,7 +18,8 @@
   "dependencies": {
     "@relanox/channel-media": "workspace:*",
     "@relanox/sdk": "workspace:*",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@relanox/markdown": "workspace:*"
   },
   "devDependencies": {},
   "engines": {
