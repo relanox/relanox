@@ -5,6 +5,7 @@ import { validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
 import type { McpConfig } from './config.js'
 import { equalSecret, resolveAgentSecret } from './secrets.js'
+import { createUploadTransport } from './upload.js'
 
 const id = z.string().min(1).max(1024)
 
@@ -31,6 +32,7 @@ export function createMediaTransport(
 } {
   const origin = validatePublicUrl(publicUrl)
   const deploymentHost = new URL(origin).host
+  const upload = createUploadTransport(host, config, endpointId, agent, origin)
 
   const sign = (payload: string): string =>
     createHmac('sha256', resolveAgentSecret(config.token))
@@ -89,12 +91,19 @@ export function createMediaTransport(
     }
   }
 
-  const authorize = async (request: Request): Promise<Response | undefined> =>
-    decode(request)
+  async function authorize(request: Request): Promise<Response | undefined> {
+    if (upload.matches(request)) {
+      return upload.authorize(request)
+    }
+    return decode(request)
       ? undefined
       : Response.json({ error: 'unauthorized' }, { status: 401 })
+  }
 
   async function fetch(request: Request): Promise<Response> {
+    if (upload.matches(request)) {
+      return upload.fetch(request)
+    }
     const ticket = decode(request)
     if (!ticket || !host.media) {
       return Response.json({ error: 'unauthorized' }, { status: 401 })
@@ -114,6 +123,7 @@ export function createMediaTransport(
   }
 
   function register(server: McpServer): void {
+    upload.register(server)
     if (!host.media) {
       return
     }

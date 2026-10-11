@@ -32,7 +32,7 @@ Authenticate requests before obtaining an agent host scoped to the allowed endpo
 
 A reply call uses `sendMessage({ replyTo, text, idempotencyKey?, attachments? })`. Reuse an explicit key when retrying a call, and use different keys for intentional repeated replies. The returned `queued` result means the reply was saved for sending.
 
-Attachments can refer to received media or contain newly generated media bytes. Respect the target channel's formats and limits. See [Media transfer](../media.md) and the exported SDK types for the supported attachment shapes.
+Attachments can refer to received or uploaded media, or contain newly generated media bytes. `host.media.authorize({ requestId })` checks access before issuing an upload capability; `host.media.upload({ requestId, mediaId, upload })` saves an immutable request-owned asset and returns its reference. Storage rechecks scope, redaction, previews and cumulative quotas in the write transaction. Uploading does not enqueue a reply; pass the returned ID to `sendMessage` afterward. Respect the target channel's formats and limits. See [Media transfer](../media.md) and the exported SDK types for the supported attachment shapes.
 
 Register agent HTTP routes through the host beneath `/agents/<agentId>`. Keep endpoint credentials separate from the fields exposed in notifications and tool responses. dot and Grok already share MCP authentication and message tools in `packages/agent-mcp`; reuse those helpers when changing their integration.
 

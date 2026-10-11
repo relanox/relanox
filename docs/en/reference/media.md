@@ -6,15 +6,17 @@ Start with a small picture and ask, “Please describe this image.” Once the A
 
 ## Let the Agent read attachments
 
-The MCP connection provides attachment-reading instructions and the `relanox_read_media` and `relanox_send_message` tools. The Agent uses the incoming attachment `id` as `mediaId` and keeps the message’s `replyTo` when reading or replying. No separate attachment prompt is needed. You can continue sending attachments normally in your chat. See [Connect an Agent](../agents.md) for setup.
+The MCP connection provides attachment instructions and the `relanox_read_media`, `relanox_send_message` and `relanox_create_upload` tools. The Agent uses the incoming attachment `id` as `mediaId` and keeps the message’s `replyTo` when reading or replying. No separate attachment prompt is needed. You can continue sending attachments normally in your chat. See [Connect an Agent](../agents.md) for setup.
 
 ## Receive files created by the Agent
 
-To send a generated image or file, the Agent supplies a public HTTPS address that downloads the file directly. Relanox retrieves it and sends it using your chat platform's delivery method.
+dot can supply generated files through `relanox_send_message.files`, using the host's `openai/fileParams` file objects. Relanox downloads the supplied temporary URL and saves the bytes before sending. The OpenAI `file_id` is not a Relanox media ID.
 
-The MCP instructions explain how to supply the HTTPS download address, type and filename in `relanox_send_message` attachments, plus the duration and cover image required by the destination channel for audio or video.
+Grok Bot can call `relanox_create_upload`, PUT a file from its cloud computer to the returned signed URL, and use the successful response's `fileId` as `attachments[].mediaId`. This upload tool is also available to dot when it can use a terminal or HTTP tool. Uploads use the existing public address and database; no separate object-storage account is needed. See [Agent file tools](agents.md#upload-a-local-file) for the protocol and examples.
 
-The address should return the file itself. Open it in a browser to check that it downloads. Before sending audio or video, check the [channel guide](../channels/index.md) for formats, duration and cover images.
+A direct public HTTPS URL is also accepted in `attachments`. It must return the file itself. Audio/video destinations may require `durationMs` and a cover image; use the upload tool or URL attachment parameters for this metadata. Check the [channel guide](../channels/index.md) before sending.
+
+Signed upload URLs last five minutes and authorize one immutable file for the original `replyTo`. Retrying the same URL with identical bytes succeeds; different bytes cannot overwrite the file. Uploading saves the file but does not send it. Keep the returned file ID to retry the send without uploading again. Treat upload URLs as temporary credentials.
 
 ## Set up a file download address for your channel
 
@@ -60,7 +62,7 @@ Chat platforms have their own file requirements too. Check the type and size bef
 
 ## Where files are stored
 
-Relanox saves received attachments in your configured database. A database backup includes those files, so allow enough storage for pictures and videos.
+Relanox saves received attachments and Agent uploads in your configured database. Uploads count toward the original message's overall attachment allowance even before they are sent. A database backup includes those files, so allow enough storage for pictures and videos.
 
 Routine cleanup removes eligible old attachments, which also expires their download links. Leave enough time for recipients to download their files before cleaning up. See [Backups and cleanup](../operations.md) for the commands.
 
@@ -68,6 +70,6 @@ Routine cleanup removes eligible old attachments, which also expires their downl
 
 1. Send a text message to check that your account and Agent are connected.
 2. Try a small image to check whether the issue concerns file type or size.
-3. For a generated file, open its download address and confirm it downloads directly.
+3. For a generated file, check that the upload returned a file ID and the Agent used it in a send call. For URL attachments, confirm that the address downloads the file directly.
 4. For LINE, Google Chat or Teams group images, check the download address settings above.
 5. Check [message status and recovery](core.md) for the next action.

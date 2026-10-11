@@ -74,6 +74,7 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
   const alpha = await fx.client(runtime, 'alpha')
   expect((await alpha.listTools()).tools.map((tool) => tool.name)).toEqual([
     'relanox_send_message',
+    'relanox_create_upload',
     'relanox_read_media'
   ])
   const result = await sendMessage(alpha, request.replyTo)

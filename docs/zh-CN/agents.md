@@ -13,7 +13,7 @@
 3. 点击 Bot 名称，在 **详情 → 例行任务** 中打开该任务。**Webhook** 区域包含 **POST 到、密钥、标头**。Routine URL 使用“POST 到”的值；Routine Authorization 环境变量填写 `Bearer <密钥>`。如果复制的是“标头”，去掉开头的 `Authorization:` 字段名。
 4. 打开生成的接入教程，保存 MCP 密码、设置列出的环境变量，并让 Relanox 在公开 HTTPS 地址运行。启动步骤见[快速开始](getting-started.md)。
 5. 在同一 Cursor 账号的控制台打开 **Plugins & MCPs → Add → Custom MCP**。填写名称，类型保持 **URL**，把教程生成的完整 Grok MCP 地址粘贴到 **Server URL**。**HTTP headers、Client ID、Client Secret** 留空，点击 **Add MCP**。
-6. 回到 Grok Bot，打开 **连接应用 → 你的插件**，确认连接已就绪，并能看到 `relanox_send_message` 和 `relanox_read_media`。插件连接由账号共享，例行任务使用前面选定的 Bot。
+6. 回到 Grok Bot，打开 **连接应用 → 你的插件**，确认连接已就绪，并能看到 `relanox_send_message`、`relanox_read_media` 和 `relanox_create_upload`。插件连接由账号共享，例行任务使用前面选定的 Bot。
 7. 用允许的发送者在绑定聊天发一条短消息，确认回信出现在原聊天，而不只是 Grok Bot 对话里。
 
 这里没有统一的“MCP 回调”字段：Relanox 调用例行任务的 webhook 唤醒 Bot，Bot 再通过 MCP 连接把回复交回 Relanox。请妥善保存 Routine URL、密钥和完整 MCP 地址。

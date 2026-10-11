@@ -6,15 +6,17 @@
 
 ## 让 Agent 读取附件
 
-MCP 连接自带附件读取说明，并提供 `relanox_read_media` 和 `relanox_send_message` 工具。Agent 使用来信附件的 `id` 作为 `mediaId`，读取和回复时保留消息原有的 `replyTo`，无需另配附件 prompt。你照常在聊天中发送附件即可。详细连接步骤见[连接 Agent](../agents.md)。
+MCP 连接自带附件说明，并提供 `relanox_read_media`、`relanox_send_message` 和 `relanox_create_upload` 工具。Agent 使用来信附件的 `id` 作为 `mediaId`，读取和回复时保留消息原有的 `replyTo`，无需另配附件 prompt。你照常在聊天中发送附件即可。详细连接步骤见[连接 Agent](../agents.md)。
 
 ## 让 Agent 发回生成的文件
 
-Agent 生成图片或文件后，需要提供可直接下载的公网 HTTPS 链接。Relanox 读取文件，再按聊天平台的方式发送给你。
+dot 可以在 `relanox_send_message.files` 中传入宿主提供的 `openai/fileParams` 文件对象。Relanox 从其中的临时下载地址取得字节，保存后发送。OpenAI 的 `file_id` 不是 Relanox 媒体 ID。
 
-MCP 说明已包含生成文件的发送方式：在 `relanox_send_message` 的 `attachments` 中提供文件的 HTTPS 下载地址、类型和文件名；音频或视频按目标渠道要求提供时长和封面。
+Grok Bot 可以调用 `relanox_create_upload`，把云电脑中的文件通过 PUT 上传到返回的签名地址，再将成功响应中的 `fileId` 用作 `attachments[].mediaId`。能使用终端或 HTTP 工具的 dot 也可以走这条路径。上传沿用现有公网地址和数据库，无需另开对象存储账号。协议和示例见 [Agent 文件工具](agents.md#上传本地文件)。
 
-文件地址应直接返回文件内容。你可以先在浏览器中打开地址，确认能够下载。发送音视频前，按[对应渠道指南](../channels/index.md)准备文件格式、时长和封面。
+`attachments` 仍然接受直接返回文件内容的公网 HTTPS 链接。音视频目标渠道可能需要 `durationMs` 和封面，可通过上传工具或 URL 附件参数提供这些信息。发送前查看[对应渠道指南](../channels/index.md)。
+
+签名上传地址有效期为五分钟，只授权原始 `replyTo` 下的一个不可覆盖文件。使用相同地址重试相同字节会成功，不同字节不能覆盖已有文件。上传只会保存文件，不会发送；保留返回的文件 ID，即可重试发送而不必重新上传。请把上传地址当作临时凭据保管。
 
 ## 为部分渠道设置文件下载地址
 
@@ -60,7 +62,7 @@ Teams 私聊中的大图片和文件使用平台的文件接收确认流程。IR
 
 ## 文件保存在什么地方
 
-Relanox 把已接收的附件保存在配置的数据库中。备份数据库会同时备份这些文件，因此请为图片和视频留出存储空间。
+Relanox 把已接收的附件和 Agent 上传的文件保存在配置的数据库中。上传文件在发送前就会占用原始消息的附件总额度。备份数据库会同时备份这些文件，因此请为图片和视频留出存储空间。
 
 日常清理会删除符合条件的旧附件，相关下载链接也会随之失效。选择清理时间时，为收件人下载文件留出时间。具体命令见[备份与清理](../operations.md)。
 
@@ -68,6 +70,6 @@ Relanox 把已接收的附件保存在配置的数据库中。备份数据库会
 
 1. 先发一条文字，确认账号和 Agent 已接通。
 2. 使用小图片重试，检查是否与文件大小或格式有关。
-3. 如果由 Agent 生成文件，打开下载地址确认能直接下载。
+3. 如果由 Agent 生成文件，检查上传是否返回文件 ID，以及 Agent 是否用它调用发送工具；使用 URL 附件时，确认地址能直接下载文件。
 4. 使用 LINE、Google Chat 或 Teams 群聊图片时，检查上面的下载地址设置。
 5. 查看[消息状态与恢复](core.md)，按提示处理待发送的消息。

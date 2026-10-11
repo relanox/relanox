@@ -32,7 +32,7 @@ Core 从当前账号的绑定提供 `host.boundChatIds`。长连接渠道可用�
 
 回复调用为 `sendMessage({ replyTo, text, idempotencyKey?, attachments? })`。重试同一个调用时复用明确的键；有意发送重复回复时使用不同的键。返回 `queued` 表示回复已经保存，等待发送。
 
-附件可以引用收到的媒体，也可以包含新生成的媒体字节。请遵守目标渠道的格式和大小限制。支持的附件形式见[媒体传输](../media.md)和 SDK 导出的类型。
+附件可以引用收到或已上传的媒体，也可以包含新生成的媒体字节。签发上传凭证前，用 `host.media.authorize({ requestId })` 检查权限；`host.media.upload({ requestId, mediaId, upload })` 保存归属于该请求、不可覆盖的媒体，并返回引用。存储会在写入事务中重新检查权限、脱敏状态、封面和累计额度。上传不会创建待发送回复，之后再将返回的 ID 传给 `sendMessage`。请遵守目标渠道的格式和大小限制。支持的附件形式见[媒体传输](../media.md)和 SDK 导出的类型。
 
 通过 host 在 `/agents/<agentId>` 下注册 Agent HTTP 路由。不要把端点凭据混入通知或工具返回的字段。dot 和 Grok 已通过 `packages/agent-mcp` 共用 MCP 认证和消息工具；修改这些接入时可以复用现有辅助代码。
 
