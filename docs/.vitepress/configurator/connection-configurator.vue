@@ -164,36 +164,38 @@ async function showDetails(): Promise<void> {
                     <option value="grok">Grok</option>
                   </select>
                 </div>
-                <label :for="`${agent.id}-token`">{{
-                  text('MCP password', 'MCP 密码')
-                }}</label>
-                <input
-                  :id="`${agent.id}-token`"
-                  v-model="agent.mcpToken"
-                  type="text"
-                  autocomplete="off"
-                  spellcheck="false"
-                  :aria-describedby="`${agent.id}-token-hint`"
-                />
-                <button
-                  class="connection-link"
-                  @click="regenerateToken(agent.id)"
-                >
-                  {{ text('Generate new password', '重新生成密码') }}
-                </button>
-                <p :id="`${agent.id}-token-hint`" class="field-hint">
-                  {{
-                    agent.type === 'dot'
-                      ? text(
-                          'Select OAuth in dot. Enter this password on the Relanox authorization page.',
-                          '在 dot 选择 OAuth，在 Relanox 授权页面输入此密码。'
-                        )
-                      : text(
-                          'The MCP address includes this password. Paste the full address into Grok.',
-                          'MCP 地址包含此密码，将完整地址粘贴到 Grok。'
-                        )
-                  }}
-                </p>
+                <div class="agent-auth-fields">
+                  <label :for="`${agent.id}-token`">{{
+                    text('MCP password', 'MCP 密码')
+                  }}</label>
+                  <input
+                    :id="`${agent.id}-token`"
+                    v-model="agent.mcpToken"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    :aria-describedby="`${agent.id}-token-hint`"
+                  />
+                  <button
+                    class="connection-link"
+                    @click="regenerateToken(agent.id)"
+                  >
+                    {{ text('Generate new password', '重新生成密码') }}
+                  </button>
+                  <p :id="`${agent.id}-token-hint`" class="field-hint">
+                    {{
+                      agent.type === 'dot'
+                        ? text(
+                            'Select OAuth in dot. Enter this password on the Relanox authorization page.',
+                            '在 dot 选择 OAuth，在 Relanox 授权页面输入此密码。'
+                          )
+                        : text(
+                            'The MCP address includes this password. Paste the full address into Grok.',
+                            'MCP 地址包含此密码，将完整地址粘贴到 Grok。'
+                          )
+                    }}
+                  </p>
+                </div>
               </div>
               <button class="connection-link add-agent" @click="appendAgent">
                 <span class="vpi-plus" aria-hidden="true" />{{

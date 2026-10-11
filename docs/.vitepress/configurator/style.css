@@ -229,6 +229,17 @@
 .agent-type-select {
   grid-area: type-input;
 }
+.agent-auth-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  margin-top: 4px;
+}
+.agent-auth-fields > .connection-link {
+  justify-self: start;
+  min-height: 24px;
+}
 .connection-app .platform-logo {
   width: 24px;
   height: 24px;
