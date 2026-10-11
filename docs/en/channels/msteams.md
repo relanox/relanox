@@ -1,6 +1,8 @@
 # Microsoft Teams Bot Connector
 
-`@relanox/channel-msteams` exports `createTeamsChannel()`. The native Bot Connector activity endpoint receives authenticated Teams text and independently sends delayed conversation-reference replies. Real-account support remains experimental.
+Receive authenticated Teams activities and send independent conversation-reference replies.
+
+Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
 
 Register the bot's Microsoft application/Azure Bot resource, enable the Teams channel, publish/install the Teams app into its permitted users/teams, and configure the messaging endpoint as the public HTTPS `/channels/<accountId>/activities`. Proactive output needs a valid installed bot conversation and application credentials. This implementation uses the public Bot Connector issuer and `client_credentials` OAuth protocol; deployment administrators must choose a tenant/app credential configuration that is supported by their bot registration, including an appropriate token URL for single-tenant or sovereign deployments.
 
@@ -9,10 +11,14 @@ Register the bot's Microsoft application/Azure Bot resource, enable the Teams ch
   "appId": "microsoft_application_id",
   "botId": "28:bot_activity_recipient_id",
   "tenantId": "allowed_teams_tenant_id",
-  "appSecret": { "env": "TEAMS_APP_SECRET" },
+  "appSecret": {
+    "env": "TEAMS_APP_SECRET"
+  },
   "trustedServiceOrigins": ["https://smba.trafficmanager.net"]
 }
 ```
+
+## Setup and delivery
 
 The app ID (JWT audience/OAuth client) and bot ID (activity recipient/sender) have separate purposes. Configure trusted service **origins** explicitly for the deployed Teams region/cloud; include exact origins, without paths or trailing slashes. Do not trust an arbitrary activity `serviceUrl`. Sender allowlists use activity `from.id`; bindings use `conversation.id` and, for a reply with `replyToId`, that exact thread ID. The frozen target retains the service URL, conversation, bot, user, tenant and parent activity reference. Credentials are never stored in it.
 
@@ -22,10 +28,10 @@ Output obtains a bot OAuth token using `https://api.botframework.com/.default`, 
 
 Optional `issuer`, `jwksUrl` and `tokenUrl` select trusted operator infrastructure; public defaults use Bot Framework's keys and Microsoft OAuth. `allowLoopback:true` permits HTTP loopback for authentic signed local peers, without skipping any JWT check. Redirects reject. The plugin declares `idempotentSend:false`; 429 is retryable, explicit provider 4xx is rejected, and ambiguous network/5xx/malformed success is unknown for explicit operator recovery.
 
-Sources: [Connector JWT/OAuth and endorsement rules](https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0), [proactive conversation references and installation](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages), [activity protocol](https://github.com/microsoft/botframework-sdk/blob/main/specs/botframework-activity/botframework-activity.md). Local Vitest peers verify JWT trust, OAuth, frozen thread bytes and production core/SQLite; they do not prove live tenant/account compatibility.
+Temporary OAuth acquisition failures are retryable before message submission; explicit token 4xx rejections remain rejected.
 
-OAuth acquisition is classified before a message request is emitted: temporary token service failures stay retryable, explicit token 4xx rejections stay rejected, and only ambiguous message requests become unknown. Access tokens are opaque nonempty strings, independent of the identifier length limit.
-
-Accepted targets also freeze the Microsoft application ID in addition to the existing bot, tenant and service URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported. Stored targets without account scope are rejected as `invalid_target`. Restore the original account configuration for identity-mismatch results, then use explicit delivery recovery; legacy unscoped results need operator review and manual delivery rather than automatic rebinding.
+Accepted targets also freeze the Microsoft application ID in addition to the existing bot, tenant and service URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported. Restore matching account configuration before explicit recovery; see [configuration](../configuration.md) for unscoped targets.
 
 If an operator removes a previously trusted service origin, an existing frozen target is explicitly rejected before OAuth or message traffic. This configuration refusal is not an uncertain external send; restoring the origin allows explicit delivery recovery.
+
+Defaults: `issuer` is `https://api.botframework.com`; `jwksUrl` is `https://login.botframework.com/v1/.well-known/keys`; `tokenUrl` is `https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token`.
