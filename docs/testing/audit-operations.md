@@ -1,5 +1,14 @@
 # Operations audit test rationale
 
+## Reviewed coverage and local evidence
+
+- Observability: reviewed `plugins/observability-standard` and `docs/OBSERVABILITY.md` for bounded logging, lifecycle completion, finite diagnostic fields, metric cardinality, OTLP export isolation and management-handler behavior. The regressions below protect the confirmed fixes.
+- Deployment and packaging: reviewed `Dockerfile`, `.dockerignore`, `compose.yaml`, `deploy/empty.example.json`, `deploy/prometheus-alerts.yml`, `tests/deployment/container.test.ts`, workspace package manifests and the CLI production deployment layout. Checked the non-root runtime, read-only filesystem and data volume, explicit migration, private management health check, restart smoke coverage, production dependency selection and license-notice inclusion.
+- CI and tooling: reviewed `.github/workflows/ci.yml`, root quality scripts, `.githooks/pre-commit`, `scripts/install-hooks.mts`, `scripts/pre-commit.mts` and `tests/tooling/hooks.test.ts`. CI builds before type-aware checks, supplies real PostgreSQL, builds the image and enables the container smoke test. The deletion-only hook regression has its own rationale in `audit-hooks.md`.
+- Configuration and operating instructions: reviewed `.env.example`, both `examples/relanox.*.json` configurations, `README.md`, `docs/OPERATIONS.md`, `docs/DEVELOPMENT.md`, `docs/CODE_QUALITY.md` and the observability plugin README against the implemented build, migration, startup, health, backup and shutdown flow.
+- Local results: frozen-lockfile installation and workspace build succeeded. `node apps/cli/dist/main.js validate --config examples/relanox.all-channels.json` returned `ok: true` with 15 accounts and 2 endpoints; validation of `examples/relanox.sqlite.json` returned `ok: true` with 1 account and 1 endpoint. `docker compose config --no-env-resolution --quiet` passed; this checks Compose structure without resolving a local `.env` file.
+- Verification limits: the local Docker daemon was unavailable (`dockerDesktopLinuxEngine` named pipe missing), so the container runtime test was skipped locally. The CI image build and enabled container smoke test are authoritative for container execution; their final integrated result must be checked separately. This audit does not claim real-account validation.
+
 ## Asynchronous collector flush and shutdown
 
 1. Observable behavior: `flush` and `shutdown` wait for accepted log writes to finish, including writes below the collector's high-water mark, while respecting the lifecycle deadline. The caller can safely release its collector after shutdown.
