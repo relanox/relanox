@@ -34,7 +34,9 @@
 
 接收原生内联附件和私聊 `application/vnd.microsoft.teams.file.download.info` 文件，下载后持久接纳，支持纯媒体 Activity。内联凭据只发送到 `trustedServiceOrigins`，OneDrive 预授权下载不带机器人 Authorization。`mediaOrigins` 可额外配置私有下载 origin；下载限制 DNS 地址与字节、禁止跳转。应用清单需 `supportsFiles:true`。
 
-不超过 15,000 字节的图片以 base64 data URL 原生附件发送；更大图片使用持久媒体发布 URL，需配置顶层 `media.publicBaseUrl`。音频、视频、文件走原生私聊文件同意流程：持久 `application/vnd.microsoft.teams.card.file.consent`、认证 `fileConsent/invoke`、向同意后的 OneDrive URL PUT 原始字节、再发送 `application/vnd.microsoft.teams.card.file.info`。同意时检查冻结用户/会话/机器人；状态跨重启保留，等待不重复发卡。拒绝明确终止，同意卡发送状态不明需人工恢复。
+不超过 15,000 字节的图片以 base64 data URL 原生附件发送；私聊中的更大图片以及音频、视频、文件走原生文件同意流程：持久 `application/vnd.microsoft.teams.card.file.consent`、认证 `fileConsent/invoke`、向同意后的 OneDrive URL PUT 原始字节、再发送 `application/vnd.microsoft.teams.card.file.info`。同意时检查冻结用户/会话/机器人；状态跨重启保留，等待不重复发卡。拒绝明确终止，同意卡发送状态不明需人工恢复。
+
+私聊大图交付为 OneDrive 文件卡，而非内联图片预览，不需要 `media.publicBaseUrl`。应用清单必须启用 `supportsFiles:true`。
 
 `trustedUploadOrigins` 配置租户 OneDrive 上传服务的准确 origin，默认空，未受信地址拒绝，上传不附带机器人凭据。原生文件同意仅支持 `personal` 私聊；群/频道音频、视频、文件发送以 `file_consent_requires_personal_chat` 明确拒绝，需要另行授权 Graph 流程，本适配器不隐式启用。说明文字独立发送。
 
@@ -42,4 +44,4 @@
 
 [媒体传输](../media.md)
 
-超过 15,000 字节的图片使用限定范围的公开 URL，避免 base64 消息包络过大，需要顶层 `media.publicBaseUrl`。等待同意会消耗投递尝试预算；预算耗尽后，迟到的同意需要明确重排投递。
+群聊和频道中超过 15,000 字节的图片使用限定范围的公开 URL，避免 base64 消息包络过大，需要顶层 `media.publicBaseUrl`。Teams 文档中的机器人文件上传路径为私聊同意；全会话 Graph 文件交付需要额外的 OneDrive/SharePoint 授权，超出本适配器范围。等待同意会消耗投递尝试预算；预算耗尽后，迟到的同意需要明确重排投递。
