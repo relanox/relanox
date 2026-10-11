@@ -178,7 +178,45 @@ export function storageContract(
       })
     })
 
-    it('rejects forged targets, chunk content and initial delivery state before queue publication', async () => {
+    it('stores formatted Markdown parts while deduplicating by the original reply', async () => {
+      await s.acceptInbound(snapshot())
+      const original = completion()
+
+      const input = {
+        ...original,
+        message: { ...original.message, text: '**alpha beta**' },
+        outbound: {
+          ...original.outbound,
+          chunks: [
+            { text: '**alpha** ', idempotencyKey: 'c1', state: null },
+            { text: '**beta**', idempotencyKey: 'c2', state: null }
+          ]
+        }
+      }
+
+      expect(await s.enqueueMessage(input)).toEqual({
+        status: 'queued',
+        deliveryId: 'd-r1-message',
+        replay: false
+      })
+      expect((await s.listOutbound({ limit: 10 }))[0]?.chunks).toEqual([
+        { text: '**alpha** ', idempotencyKey: 'c1', state: null },
+        { text: '**beta**', idempotencyKey: 'c2', state: null }
+      ])
+      expect(await s.enqueueMessage(input)).toEqual({
+        status: 'queued',
+        deliveryId: 'd-r1-message',
+        replay: true
+      })
+      expect(
+        await s.enqueueMessage({
+          ...input,
+          message: { ...input.message, text: '**different**' }
+        })
+      ).toEqual({ status: 'conflict' })
+    })
+
+    it('rejects forged targets, empty plans and initial delivery state before queue publication', async () => {
       await s.acceptInbound(snapshot())
       const input = completion()
       for (const change of [
@@ -187,7 +225,7 @@ export function storageContract(
         { createdAt: 999 },
         { receipts: [{}] },
         { version: 2 },
-        { chunks: [{ text: 'wrong', state: null, idempotencyKey: 'x' }] }
+        { chunks: [] }
       ]) {
         expect(
           await s.enqueueMessage({

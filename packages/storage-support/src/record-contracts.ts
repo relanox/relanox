@@ -6,6 +6,7 @@ import type {
 } from '@relanox/sdk'
 import { equalDurableValues } from './record-codec.js'
 
+/** Core owns the rendered chunk plan; storage validates scope, identity and publication state. */
 export function matchesInitialMessage(
   outbound: OutboundRecord,
   request: InboundRecord,
@@ -23,8 +24,6 @@ export function matchesInitialMessage(
     outbound.attempts === 0 &&
     outbound.lease === undefined &&
     outbound.chunks.length > 0 &&
-    outbound.chunks.map((chunk) => chunk.text).join('') ===
-      input.message.text &&
     outbound.chunks.every(
       (chunk) => chunk.media === undefined || chunk.text === ''
     ) &&
