@@ -13,16 +13,14 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
 
   const readInbound = (id: string): InboundRecord | undefined => {
     const row = db.prepare("SELECT record FROM inbound WHERE id=?").get(id) as
-      | { record: string }
-      | undefined;
+      { record: string } | undefined;
 
     return row ? decodeDurableRecord(row.record) : undefined;
   };
 
   const readOutbound = (id: string): OutboundRecord | undefined => {
     const row = db.prepare("SELECT record FROM outbound WHERE id=?").get(id) as
-      | { record: string }
-      | undefined;
+      { record: string } | undefined;
 
     return row ? decodeDurableRecord(row.record) : undefined;
   };

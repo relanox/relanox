@@ -32,8 +32,7 @@ export function createMatrixChannel(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ChannelPlugin<MatrixConfig> {
   let runtime:
-    | { host: ChannelHost; account: AccountConfig; config: MatrixConfig; base: string }
-    | undefined;
+    { host: ChannelHost; account: AccountConfig; config: MatrixConfig; base: string } | undefined;
 
   let controller: AbortController | undefined;
   let task: Promise<void> | undefined;
