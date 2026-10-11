@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { wireText } from "../../channel-wecom/src/transport.js";
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
@@ -378,3 +379,104 @@ test("QQ rejects deprecated static token configuration and remote insecure API b
     }),
   ).toThrow();
 });
+
+test("QQ resumes before a failed SQLite write even with later dispatches already buffered", async () => {
+  vi.stubEnv("QQ_SECRET", "secret");
+  let address = "";
+  const remote = await peer(
+    (request) =>
+      request.path === "/app/getAppAccessToken"
+        ? { body: { access_token: "token", expires_in: 7200 } }
+        : { body: { url: address } },
+    (socket) => {
+      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }));
+      socket.on("message", (data) => {
+        const received = z.object({ op: z.number() }).parse(JSON.parse(wireText(data)));
+        if (received.op === 2) {
+          socket.send(frame(1, "READY", { session_id: "session" }));
+        }
+        if (received.op === 1) {
+          socket.send(JSON.stringify({ op: 11 }));
+        }
+        if (received.op === 6) {
+          socket.send(frame(2, "C2C_MESSAGE_CREATE", createEvent("failed-write")));
+          socket.send(frame(3, "C2C_MESSAGE_CREATE", createEvent("next-message")));
+          socket.send(frame(4, "RESUMED", ""));
+        }
+      });
+    },
+  );
+  address = remote.ws;
+  const filename = await temporaryDatabase();
+  const host = await assemble(
+    createQqChannel(),
+    {
+      appId: "app",
+      clientSecret: { env: "QQ_SECRET" },
+      apiBase: remote.http,
+      allowInsecureLoopback: true,
+    },
+    [{ chatId: "user", senderId: "user" }],
+    filename,
+  );
+  using database = new DatabaseSync(filename);
+  database.exec(
+    "CREATE TRIGGER fail_selected BEFORE INSERT ON inbound WHEN NEW.event LIKE '%failed-write%' BEGIN SELECT RAISE(FAIL, 'injected write failure'); END",
+  );
+  await host.start();
+  await expect.poll(() => remote.frames, { timeout: 2500 }).toContainEqual({ op: 1, d: 1 });
+  const socket = remote.sockets[0];
+  if (!socket) {
+    throw new Error("Peer not connected");
+  }
+  socket.send(frame(2, "C2C_MESSAGE_CREATE", createEvent("failed-write")));
+  socket.send(frame(3, "C2C_MESSAGE_CREATE", createEvent("next-message")));
+  await expect.poll(() => socket.readyState).toBe(3);
+  database.exec("DROP TRIGGER fail_selected");
+  await expect
+    .poll(() => remote.frames, { timeout: 4000 })
+    .toContainEqual({
+      op: 6,
+      d: { token: "QQBot token", session_id: "session", seq: 1 },
+    });
+  await expect.poll(async () => (await records(host.storage)).length).toBe(2);
+  expect(
+    (await records(host.storage))
+      .map((record) => record.snapshot.target.replyToId ?? "")
+      .toSorted(),
+  ).toEqual(["failed-write", "next-message"]);
+});
+
+test("QQ authentication still times out when an unready gateway acknowledges heartbeats", async () => {
+  vi.stubEnv("QQ_SECRET", "secret");
+  let address = "";
+  const remote = await peer(
+    (request) =>
+      request.path === "/app/getAppAccessToken"
+        ? { body: { access_token: "token", expires_in: 7200 } }
+        : { body: { url: address } },
+    (socket) => {
+      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }));
+      socket.on("message", (data) => {
+        const received = z.object({ op: z.number() }).parse(JSON.parse(wireText(data)));
+        if (received.op === 1) {
+          socket.send(JSON.stringify({ op: 11 }));
+        }
+      });
+    },
+  );
+  address = remote.ws;
+  const host = await assemble(
+    createQqChannel(),
+    {
+      appId: "app",
+      clientSecret: { env: "QQ_SECRET" },
+      apiBase: remote.http,
+      allowInsecureLoopback: true,
+    },
+    [{ chatId: "user", senderId: "user" }],
+  );
+  await host.start();
+  await expect.poll(() => remote.sockets.length, { timeout: 13_000 }).toBe(2);
+  expect(await records(host.storage)).toHaveLength(0);
+}, 15_000);

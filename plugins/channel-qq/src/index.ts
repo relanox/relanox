@@ -110,6 +110,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   let ready = false;
   let awaitingHeartbeat = false;
   let dispatchQueue = Promise.resolve();
+  let dispatchSocket: Connection["socket"];
   const api = (path: string) => `${config.apiBase.replace(/\/$/u, "")}${path}`;
   async function access(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret);
@@ -271,8 +272,13 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         return;
       }
       case 0: {
+        if (dispatchSocket !== connection.socket) {
+          dispatchSocket = connection.socket;
+          dispatchQueue = dispatchQueue.catch(() => {});
+        }
+        // A failed dispatch poisons this socket queue: no later cursor may skip it.
         const task = dispatchQueue.then(() => dispatch(frame));
-        dispatchQueue = task.catch(() => {});
+        dispatchQueue = task;
         await task;
       }
     }
