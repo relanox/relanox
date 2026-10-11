@@ -1,119 +1,35 @@
-# Connect an agent
+# Connect an Agent
 
-Connect your existing dot or Grok Bot to receive channel messages and send replies. Each Agent connection has an HTTPS MCP address: Grok uses a token in its URL, and dot uses OAuth. Relanox also needs a way to notify it: a Grok Routine webhook or a dot Events subscription.
+Use the [connection configurator](connect.md) to connect an existing dot or Grok Bot to your conversations. Prepare your public HTTPS address, choose the Agent, and select it for each chat that should receive its replies.
 
-| Agent | Setup                                                                      |
-| ----- | -------------------------------------------------------------------------- |
-| Grok  | MCP connection, Routine webhook URL and complete Authorization value       |
-| dot   | MCP connection and Events subscription with an authorized callback address |
-
-Set top-level `publicUrl` to your public HTTPS address once, for example `https://relay.example.com`. Use the connector/Routine setup available in your account with the values below. Interface names can vary; these steps describe the required addresses and credentials.
-
-Each example below configures a first Agent as `agent-1`. Keep the IDs and environment references in your downloaded configuration. For another Agent, use `agent-2` and `RELANOX_AGENT_2_*` instead of reusing the first entry.
+Download the configuration and open **Your setup guide**. Keep the guide open while setting up: its addresses and passwords belong to your selected Agents. Save the generated passwords securely before closing or reloading the page.
 
 ## Connect Grok
 
-1. Select the Grok Bot that should answer messages, and configure its Routine to accept a webhook trigger.
-2. Copy the complete webhook URL and Authorization value. Supply them as `RELANOX_AGENT_1_ROUTINE_URL` and `RELANOX_AGENT_1_ROUTINE_AUTHORIZATION` in Relanox's environment.
-3. Use the configurator’s generated MCP token, or generate a random token for manual setup. Supply it as `RELANOX_AGENT_1_MCP_TOKEN`. For manual setup, add this entry to `relay.endpoints`:
+1. In the configurator, add a Grok Agent and select it for your chat.
+2. In Grok, choose the Bot that should answer and create a Routine with a webhook trigger. Copy its complete webhook URL and Authorization value.
+3. Open the generated setup guide. Set the environment variables it lists: use the generated MCP password and the Routine values from Grok. Keep the Authorization value exactly as supplied, including its prefix. [Quick start](getting-started.md) explains how to set variables and start Relanox.
+4. Start Relanox with the downloaded configuration and make its public HTTPS address reachable. Follow [Deployment and daily use](operations.md) for HTTPS setup.
+5. Copy the full Grok MCP address from the generated guide into the Bot's MCP connection. Select no additional authentication. Set the Routine to use this Bot.
+6. Send a short message from an allowed sender in the selected chat and check that the answer arrives there.
 
-```json
-{
-  "id": "agent-1",
-  "agent": "grok",
-  "config": {
-    "mcp": {
-      "auth": "path",
-      "token": { "env": "RELANOX_AGENT_1_MCP_TOKEN" }
-    },
-    "routineUrl": { "env": "RELANOX_AGENT_1_ROUTINE_URL" },
-    "routineAuthorization": { "env": "RELANOX_AGENT_1_ROUTINE_AUTHORIZATION" }
-  }
-}
-```
-
-4. Restart Relanox with your `publicUrl` setting. [Operations](operations.md) covers HTTPS setup.
-5. Add the MCP connection at `https://relay.example.com/agents/grok/mcp/agent-1/<URL-encoded-RELANOX_AGENT_1_MCP_TOKEN>`. Replace the last segment with your token, URL-encoded as a path segment. Select no additional authentication; no Authorization header is required.
-6. Set the conversation binding's `endpointId` to `agent-1`.
-7. Send a short message in that conversation and check the reply. Use `status` if it stalls.
-
-The Routine Authorization variable holds exactly the supplied value, including any prefix. The MCP variable holds the raw token. Protect all three variables; a Routine URL may contain a secret.
+Protect the Routine URL, Authorization value and MCP address: they may contain credentials. Copy the generated MCP address as a whole rather than rebuilding it yourself.
 
 ## Connect dot
 
-1. Use the configurator's generated authorization password, or generate a random value of at least 32 characters, and supply it as `RELANOX_AGENT_1_MCP_TOKEN`.
-2. For manual setup, add this entry to `relay.endpoints`:
+1. In the configurator, add a dot Agent and select it for your chat.
+2. Open the generated setup guide. Save its authorization password and set the listed environment variable to that value. [Quick start](getting-started.md) covers starting Relanox with your downloaded configuration.
+3. With Relanox running at your public HTTPS address, copy the dot MCP address from the guide into dot's connection settings. Select **OAuth**; if asked for the registration method, select **Dynamic Client Registration (DCR)**.
+4. On the Relanox authorization page, enter the generated password and allow access.
+5. Through the connection's Events support, enable the `relanox.message_available` subscription and automatic renewal.
+6. Send a short message from an allowed sender in the selected chat and check that the answer arrives there.
 
-```json
-{
-  "id": "agent-1",
-  "agent": "dot",
-  "config": {
-    "mcp": {
-      "auth": "oauth",
-      "token": { "env": "RELANOX_AGENT_1_MCP_TOKEN" }
-    }
-  }
-}
-```
-
-3. Restart Relanox and connect dot to `https://relay.example.com/agents/dot/mcp/agent-1` using OAuth. If asked, select **Dynamic Client Registration (DCR)**. Discovery is automatic. Enter `RELANOX_AGENT_1_MCP_TOKEN` as the password on the Relanox consent page, then allow access. It is not a static Bearer access token.
-4. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
-5. Set your conversation binding's `endpointId` to `agent-1` and send a message through that conversation.
-
-dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens rotate on use, with a 30-day lifetime from the initial authorization. Grants persist in your configured database. Reusing an old refresh token revokes its authorization; changing the configured password and restarting requires reconnecting dot.
-
-`mcp.auth` accepts `bearer`, `path` or `oauth` and defaults to `bearer` for existing configurations. Grok supports `bearer` and `path`; explicit `bearer` uses the clean MCP URL and `Authorization: Bearer <token>`. Relanox supports existing dot Bearer configurations, but the dot platform requires OAuth.
-
-dot provides its callback URL when it subscribes through MCP. Relanox accepts the native `https://connectors.api.openai.com` origin and checks that DNS resolves to public addresses before delivery. There is no `callback` configuration section.
-
-Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MiB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds.
-
-Keep subscription renewal enabled. The default lifetime is one day. If status reports `dot_no_active_subscription`, reconnect or renew; if the request exhausted retries, use [Operations](operations.md#find-and-recover-a-stalled-message) to recover it.
-
-## Reply guidance comes with MCP
-
-Relanox supplies reply instructions when the Agent connects to MCP. Tool descriptions also explain their parameters. You do not need to copy a reply prompt into the bot or Routine.
-
-The instructions explain how to read a dot event or Grok Routine message, preserve `replyTo`, inspect attachments, send replies to the original chat and retry without duplicate messages. Incoming text, context and attachments remain untrusted user content. A `queued` tool result means the reply is saved for delivery; it does not confirm platform delivery.
-
-After updating Relanox, reconnect or refresh the Agent's MCP connection so it reloads the server instructions and tool definitions. The Agent host decides how to use this metadata; verify setup by sending a message and checking that a reply arrives.
-
-## Send text and attachments
-
-For a text reply, call `relanox_send_message`:
-
-```json
-{
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
-  "text": "Hello! How can I help?",
-  "idempotencyKey": "COPY_FROM_THE_INCOMING_MESSAGE:answer:1"
-}
-```
-
-To inspect a received attachment, call `relanox_read_media` with the same `replyTo` and the attachment's `id` as `mediaId`. It returns readable image/audio content or a download link. Links expire after five minutes.
-
-To return a received attachment, include `{ "mediaId": "..." }` in `attachments`. For a generated file, use a public HTTPS URL:
-
-```json
-{
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
-  "text": "Here is your image.",
-  "attachments": [
-    {
-      "url": "https://files.example.com/result.png",
-      "kind": "image",
-      "mimeType": "image/png",
-      "fileName": "result.png"
-    }
-  ]
-}
-```
-
-Relanox downloads and saves the file before sending. Use a directly accessible URL with the correct type and size. Audio/video destinations may require `durationMs`; video may need `previewUrl` or a received `previewMediaId`. See [Media transfer](media.md) and your channel guide.
+If you change the authorization password, restart Relanox and reconnect dot. If dot stops receiving new messages, check that its subscription is still active and renew or reconnect it.
 
 ## Check the connection
 
-Send a channel message and receive the Agent's reply. In `status`, incoming `accepted` means the notification was accepted; outgoing `sent` means the platform accepted the reply. MCP `queued` means Relanox saved the reply for sending.
+You do not need to copy a separate reply prompt into the Bot or Routine. After updating Relanox, refresh or reconnect the Agent's MCP connection, then send another message to check the reply.
 
-If MCP authentication fails, compare the token and URL, check `publicUrl` against your public address, and preserve Host through your proxy. Add the client's exact Origin to `mcp.allowedOrigins` when it sends that header. If Grok receives nothing, compare the Routine URL and Authorization. If dot receives nothing, check the active subscription and connectivity to the native OpenAI callback.
+If no reply arrives, first check that the chat uses the intended Agent and that the sender is allowed. Compare the connection address and password with the generated guide. For Grok, also compare the Routine URL and complete Authorization value; for dot, check authorization and Events renewal. Use [message status and recovery](reference/core.md) to find where a message stopped.
+
+For manual JSON setup, authentication details and MCP tool contracts, see [Agent configuration and protocol](reference/agents.md). For attachments, see [Send pictures and files](media.md).
