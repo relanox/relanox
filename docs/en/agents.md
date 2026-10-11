@@ -68,14 +68,16 @@ For an operator-controlled receiver on the same host, dot `callback.transport: "
 
 MCP uses `@modelcontextprotocol/server` and `createMcpHandler(factory)`, with a fresh server per HTTP request. dot rejects the legacy era and requires `2026-07-28`. Grok uses the SDK's default stateless legacy compatibility and modern negotiation on the same route. No handcrafted initialize/session/version compatibility layer is present. All tool inputs and outputs are strict schemas. JSON/tool validation failures follow the SDK's own protocol/error envelope; durable business failures have `isError: true` with `structuredContent.status` and a text JSON mirror.
 
-| Tool                   | Inputs                                        | Success                                        |
-| ---------------------- | --------------------------------------------- | ---------------------------------------------- |
-| `relanox_list_pending` | optional `limit` (1–100, default 20)          | `{requests:[...]}`                             |
-| `relanox_claim`        | `requestId`, `claimKey`                       | `{status:"claimed",request,claimToken,replay}` |
-| `relanox_complete`     | `requestId`, `claimToken`, `resultId`, `text` | `{status:"completed",deliveryId,replay}`       |
-| `relanox_fail`         | `requestId`, `claimToken`, `errorCode`        | `{status:"updated",version}`                   |
+| Tool                     | Inputs                                                                        | Success                                        |
+| ------------------------ | ----------------------------------------------------------------------------- | ---------------------------------------------- |
+| `relanox_list_pending`   | optional `limit` (1–100, default 20)                                          | `{requests:[...]}`                             |
+| `relanox_claim`          | `requestId`, `claimKey`                                                       | `{status:"claimed",request,claimToken,replay}` |
+| `relanox_complete`       | `requestId`, `claimToken`, `resultId`, `text`, optional ordered `attachments` | `{status:"completed",deliveryId,replay}`       |
+| `relanox_fail`           | `requestId`, `claimToken`, `errorCode`                                        | `{status:"updated",version}`                   |
+| `relanox_read_media`     | `requestId`, `claimToken`, `mediaId`                                          | Inline image/audio or binary resource link     |
+| `relanox_media_transfer` | Request/claim, `mediaId`, `method`, upload `metadata`                         | Five-minute binary URL and byte limit          |
 
-Only listing is read-only; mutations are declared as mutations. IDs/claim keys/tokens are nonempty bounded strings, errorCode uses a bounded lowercase identifier, and final text is bounded. Request projection is exactly `{requestId,text,context,source:{channel,eventId}}`. It never includes endpoint configuration, SecretRefs, sender identifiers, private Routine URLs, account credentials, or reply destinations. Context is trusted channel protocol context, with no authority derived from message text.
+Listing, media reads and transfer-URL issuance are read-only tools; binary PUT and completion perform the writes. IDs/claim keys/tokens are nonempty bounded strings, errorCode uses a bounded lowercase identifier, and final text is bounded. Request projection is `{requestId,text,context,source:{channel,eventId},attachments?}`; attachments contain durable metadata, never binary bytes. It never includes endpoint configuration, SecretRefs, sender identifiers, private Routine URLs, account credentials, or reply destinations. Context is trusted channel protocol context, with no authority derived from message text. See [Media transfer](media.md) for binary upload/download, duration and preview metadata, limits and hosted-client prerequisites.
 
 Remote fixed instructions: claim before work or side effects; create an independent claimKey per remote run and reuse it only for a retry of that run. Proceed only after `status: claimed`. Complete using the returned claimToken, a stable resultId and final text; fail with a safe error code on terminal remote failure. Repeated notifications/Routine triggers may overlap: core's durable claim/token/final rules serialize the endpoint. HTTP receipt does not claim or complete a task. Claimed work is never automatically released/re-executed by a timeout. Remote model obedience and exactly-once external effects are not guaranteed.
 

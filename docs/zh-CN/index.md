@@ -4,7 +4,7 @@ title: 文档
 hero:
   name: Relanox
   text: 在消息渠道中使用已有的 Agent。
-  tagline: 面向 dot 和 Grok Bot 的自托管消息网关。接收文字、持久保存交接状态，再将结果发回原会话。
+  tagline: 面向 dot 和 Grok Bot 的自托管消息网关。接收文字和媒体、持久保存交接状态，再将结果发回原会话。
   actions:
     - theme: brand
       text: 快速开始
@@ -23,12 +23,13 @@ features:
 
 ## 从一条完整的消息路径开始
 
-配置渠道账号、Agent endpoint 和两者之间的绑定。Relanox 负责文字传输，由你的托管 Agent 完成任务。
+配置渠道账号、Agent endpoint 和两者之间的绑定。Relanox 负责消息传输，由你的托管 Agent 完成任务。
 
 - [安装并启动服务](getting-started.md)
 - [连接 dot 或 Grok Bot](agents.md)
+- [收发媒体](media.md)
 - [部署、备份与恢复发送](operations.md)
 
 ## 支持范围
 
-Relanox 处理文字消息，目前不支持媒体、流式回复、多租户或管理界面。真实平台账号的兼容性仍为实验性；部署前请查看各渠道的权限要求与限制。
+Relanox 按各渠道原生能力处理文字和媒体，目前不支持流式回复、多租户或管理界面。真实平台账号的兼容性仍为实验性；部署前请查看各渠道的权限要求与限制。

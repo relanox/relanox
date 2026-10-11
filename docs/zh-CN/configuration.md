@@ -1,6 +1,6 @@
 # 配置与 CLI
 
-CLI 接收严格 JSON 对象：必需的 `relay` 和可选的 `server`。安装与首个账号示例见 [快速开始](getting-started.md)。配置和 SecretRef 在进程生命周期内固定；修改 JSON 后重启进程。凭据在使用时从引用的环境变量解析，诊断和命令错误不输出其值。
+CLI 接收严格 JSON 对象：必需的 `relay` 和可选的 `server`、`media`、`mediaLimits`。公开 URL 发布与二进制限额见[媒体传输](media.md)，安装与首个账号示例见[快速开始](getting-started.md)。配置和 SecretRef 在进程生命周期内固定；修改 JSON 后重启进程。凭据在使用时从引用的环境变量解析，诊断和命令错误不输出其值。
 
 ## Relay 配置
 

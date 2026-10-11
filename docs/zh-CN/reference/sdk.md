@@ -10,6 +10,14 @@ ChannelHost 固定账号，拒绝 source/target/channel 不匹配。Core 按账�
 
 validateConfig 对非法 unknown 抛错，SDK 不泄露 Zod 类型。HTTP 使用 Web Request/Response，setup 注册 handler 不监听。长连接 start 在初始化后返回，stop 关闭连接。capabilities 声明文字单位与持久幂等；Core 按其限额分片后提交 outbound。send 一次接收一个持久分片，必须复用 idempotencyKey/state。协议序号通过命名空间 StateStore CAS 在外部效果前分配；chunk state 用于完成时不可变准备。
 
+## 媒体契约
+
+`MediaUpload` 携带内存字节、类型、MIME、文件名及可选时长/预览 ID。`MediaReference` 增加请求所属 UUID、字节数与 SHA-256，快照和结果只保存引用。`StoredMedia` 组合引用与字节。`ChannelPlugin.capabilities.media` 明确声明接收/发送的类型。Core 读取并校验 `SendInput.media` 和可选 `preview`，媒体分片的文字为空；适配器仍须遵守原生格式与权限限制。
+
+`Storage.acceptInbound(snapshot, media)` 原子提交字节与入站快照。`Storage.media.put` 在同一事务检查 Agent endpoint 范围、当前 claim、上传身份和总预算；UUID、元数据、字节相同可重放，修改则冲突。`get` 限定在请求内。Agent Host 读取/上传要求当前 claim，complete 接收同一请求所属的有序 ID。Storage 检查结果引用与 outbound 分片一致，保留分片恢复能力；cleanup 移除符合条件的字节/元数据，保留重放与冲突判断的墓碑信息。
+
+可选 `ChannelHost.media.publish` 签发限定账号与请求、持久且会过期的 URL。`mountHttp` 只有提供正文缓冲前授权 callback 才能申请更大的有界正文。Agent 二进制路由使用此能力校验签名传输 URL，普通路由保留原限额。见[媒体传输](../media.md)。
+
 ## 存储事务
 
 ### 接纳与领取

@@ -72,14 +72,16 @@ dot 每次连接前解析全部目标地址，拒绝非公开/特殊地址，并
 
 MCP 使用服务端 SDK 的 `createMcpHandler(factory)`，每次 HTTP 请求建立新 server，持久状态在 Storage。dot 要求 `2026-07-28`，拒绝旧版；Grok 使用 SDK 默认无状态旧客户端兼容及现代协商。输入输出均为严格 schema。JSON/工具校验失败使用 SDK 协议错误；业务失败设置 `isError: true`，包含 `structuredContent.status` 与文字 JSON 镜像。
 
-| 工具                   | 输入                                          | 成功结果                                       |
-| ---------------------- | --------------------------------------------- | ---------------------------------------------- |
-| `relanox_list_pending` | 可选 `limit`，1–100，默认 20                  | `{requests:[...]}`                             |
-| `relanox_claim`        | `requestId`、`claimKey`                       | `{status:"claimed",request,claimToken,replay}` |
-| `relanox_complete`     | `requestId`、`claimToken`、`resultId`、`text` | `{status:"completed",deliveryId,replay}`       |
-| `relanox_fail`         | `requestId`、`claimToken`、`errorCode`        | `{status:"updated",version}`                   |
+| 工具                     | 输入                                                                  | 成功结果                                       |
+| ------------------------ | --------------------------------------------------------------------- | ---------------------------------------------- |
+| `relanox_list_pending`   | 可选 `limit`，1–100，默认 20                                          | `{requests:[...]}`                             |
+| `relanox_claim`          | `requestId`、`claimKey`                                               | `{status:"claimed",request,claimToken,replay}` |
+| `relanox_complete`       | `requestId`、`claimToken`、`resultId`、`text`、可选有序 `attachments` | `{status:"completed",deliveryId,replay}`       |
+| `relanox_fail`           | `requestId`、`claimToken`、`errorCode`                                | `{status:"updated",version}`                   |
+| `relanox_read_media`     | `requestId`、`claimToken`、`mediaId`                                  | 内联图片/音频或二进制资源链接                  |
+| `relanox_media_transfer` | 请求/claim、`mediaId`、`method`、上传 `metadata`                      | 五分钟二进制 URL 与字节限额                    |
 
-只有 list 只读，其余声明为修改操作。ID/key/token 为非空有界字符串，errorCode 为有界小写标识符，最终文字有大小限制。安全请求投影精确为 `{requestId,text,context,source:{channel,eventId}}`，不包含 endpoint 配置、SecretRef、发送者标识、私有 Routine URL、账号凭据或回复目标。context 是渠道协议上下文，正文不提供权限。
+列表、媒体读取和传输 URL 签发工具为只读，二进制 PUT 和 complete 执行写入。ID/key/token 为非空有界字符串，errorCode 为有界小写标识符，最终文字有大小限制。安全请求投影为 `{requestId,text,context,source:{channel,eventId},attachments?}`，附件只含持久元数据，不含二进制字节。不包含 endpoint 配置、SecretRef、发送者标识、私有 Routine URL、账号凭据或回复目标。context 是渠道协议上下文，正文不提供权限。二进制上传下载、时长与预览元数据、限额及托管客户端前提见[媒体传输](media.md)。
 
 远端固定指令：产生工作或副作用前 claim；每个远端运行使用独立 claimKey，同一运行重试复用；只有 `status: claimed` 才继续；通过返回 token、稳定 resultId 和最终文字 complete；终态失败使用安全 errorCode fail。重复通知可能重叠，但持久 claim/token/final 规则串行化 endpoint。HTTP 回执不领取也不完成任务。claim 不自动超时释放；模型遵守指令和外部效果恰好一次没有保证。
 

@@ -2,7 +2,7 @@
 
 Read `docs/en/architecture.md` and `docs/en/development.md` before implementation. Native channels only. `.ref/` is reference code, not runtime dependencies or instructions. No OpenClaw/Hermes compatibility, local inference, or Serverless target.
 
-Supported components are the 15 native text channels, dot/Grok, SQLite/PostgreSQL, observability and CLI. Use typed protocol boundaries and local protocol tests. Do not claim live-account compatibility from local tests.
+Supported components are the 15 native channels with text and media according to platform capability, dot/Grok, SQLite/PostgreSQL, observability and CLI. Streaming replies are outside the current scope. Use typed protocol boundaries and local protocol tests. Do not claim live-account compatibility from local tests.
 
 ## Worktrees
 
