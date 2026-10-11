@@ -7,6 +7,12 @@ export function retryDelay(
   worker: WorkerConfig
 ): number {
   let delay = 0
+  if (outcome.status === 'pending') {
+    return Math.max(
+      worker.retryBaseMs,
+      Math.min(worker.retryMaxMs, outcome.retryAfterMs)
+    )
+  }
   if (outcome.status === 'retryable') {
     delay = Math.max(
       worker.retryBaseMs,

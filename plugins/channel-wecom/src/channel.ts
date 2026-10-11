@@ -206,11 +206,11 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
     runtime: 'node',
     kind: 'channel',
     channel: 'wecom',
-    // Independent sends have no documented idempotency promise. Escaping can double UTF-8 size.
+    // Independent sends have no documented idempotency promise.
     capabilities: {
       receive: true,
       transport: 'connection',
-      maxTextLength: 2048,
+      maxTextLength: 20_480,
       lengthUnit: 'utf8',
       idempotentSend: false,
       media: {
@@ -300,12 +300,9 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
         }
       }
 
-      const content = input.chunk.text.replaceAll(
-        /[\\`*_{}[\]()#+.!>~|-]/gu,
-        String.raw`\$&`
-      )
+      const content = input.chunk.text
 
-      if (Buffer.byteLength(content) > 4096) {
+      if (Buffer.byteLength(content) > 20_480) {
         return { status: 'rejected', errorCode: 'text_too_long' }
       }
       let transmitting = false

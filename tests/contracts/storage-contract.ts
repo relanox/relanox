@@ -347,6 +347,39 @@ export function storageContract(
       expect(recovered.lease.token).not.toBe(original.lease.token)
     })
 
+    it('defers a pending platform retrieval without spending a retry attempt or advancing the delivery', async () => {
+      await s.acceptInbound(snapshot())
+      await dispatch()
+      await s.enqueueMessage(completion())
+      const first = required((await due(110))[0])
+      await s.settleAttempt({
+        kind: 'send',
+        id: 'd-r1-message',
+        lease: first.lease,
+        outcome: { status: 'retryable', errorCode: 'temporary_failure' },
+        now: 111,
+        nextDueAt: 120
+      })
+      const pending = required((await due(120))[0])
+      await s.settleAttempt({
+        kind: 'send',
+        id: 'd-r1-message',
+        lease: pending.lease,
+        outcome: { status: 'pending', retryAfterMs: 30 },
+        now: 121,
+        nextDueAt: 151
+      })
+      expect(await s.getOutbound('d-r1-message')).toMatchObject({
+        status: 'pending',
+        attempts: 1,
+        dueAt: 151,
+        currentChunk: 0,
+        receipts: []
+      })
+      expect(await due(150)).toEqual([])
+      expect((await due(151)).map((item) => item.kind)).toEqual(['send'])
+    })
+
     it('sends each request in enqueue order despite reversed IDs and holds later messages behind leased, future or unknown predecessors', async () => {
       await s.acceptInbound(snapshot())
       await dispatch()

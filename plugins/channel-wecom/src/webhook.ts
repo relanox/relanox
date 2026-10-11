@@ -10,12 +10,19 @@ import { webhookConfigSchema } from './config.js'
 import type { WebhookConfig } from './config.js'
 import {
   callbackKey,
+  encryptedCallback,
   decryptCallback,
   verifyCallback
 } from './callback-crypto.js'
 import { messageSchema } from './schemas.js'
 import { receiveParts } from './media.js'
 import { ingestText, secret } from './transport.js'
+import {
+  passiveResponse,
+  stagePassive,
+  startPassive,
+  streamId
+} from './passive.js'
 
 const maximumBody = 1024 * 1024
 
@@ -37,8 +44,27 @@ const replyStateSchema = z.object({
   chatId: z.string(),
   eventId: z.string(),
   botId: z.string(),
+  streamId: z.string().default(''),
   usedAt: z.number().optional()
 })
+
+function retainedStream(
+  value: unknown,
+  id: string,
+  chatId: string,
+  botId: string
+): string {
+  const previous = replyStateSchema.safeParse(value)
+  if (
+    value !== undefined &&
+    (!previous.success ||
+      previous.data.chatId !== chatId ||
+      previous.data.botId !== botId)
+  ) {
+    throw new Error('callback_identity_mismatch')
+  }
+  return previous.success ? previous.data.streamId : id
+}
 
 function responseUrl(value: string): string {
   const url = new URL(value)
@@ -90,10 +116,7 @@ function replyBody(input: SendInput): object {
     throw new Error('text_too_long')
   }
 
-  const content = input.chunk.text.replaceAll(
-    /[\\`*_{}[\]()#+.!>~|-]/gu,
-    String.raw`\$&`
-  )
+  const content = input.chunk.text
 
   if (Buffer.byteLength(content) > 4096) {
     throw new Error('text_too_long')
@@ -145,7 +168,10 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
   const stateKey = (eventId: string): string =>
     `callback:${config.botId}:${eventId}`
 
-  async function receive(raw: unknown, signal: AbortSignal): Promise<void> {
+  async function receive(
+    raw: unknown,
+    signal: AbortSignal
+  ): Promise<object | undefined> {
     const envelope = z
       .object({ aibotid: z.string(), msgtype: z.string() })
       .parse(raw)
@@ -153,16 +179,34 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     if (envelope.aibotid !== config.botId) {
       throw new Error('callback_identity_mismatch')
     }
+    if (envelope.msgtype === 'stream') {
+      const refresh = z
+        .object({
+          stream: z.object({ id: z.string().min(1) }),
+          chattype: z.enum(['single', 'group']),
+          chatid: z.string().min(1).optional(),
+          from: z.object({ userid: z.string().min(1) })
+        })
+        .parse(raw)
+
+      const chatId =
+        refresh.chattype === 'group' ? refresh.chatid : refresh.from.userid
+
+      if (!chatId) {
+        throw new Error('missing_group_address')
+      }
+      return passiveResponse(host, refresh.stream.id, chatId)
+    }
     if (
       !['text', 'image', 'file', 'video', 'mixed', 'voice'].includes(
         envelope.msgtype
       )
     ) {
-      return
+      return undefined
     }
     const message = callbackMessageSchema.parse(raw)
     if (message.from.userid === config.botId) {
-      return
+      return undefined
     }
 
     const chatId =
@@ -173,14 +217,13 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     }
     if (host.discoverConversation) {
       host.discoverConversation({ chatId, senderId: message.from.userid })
-      return
+      return undefined
     }
-    if (!message.response_url) {
-      throw new Error('missing_response_url')
-    }
-    const url = responseUrl(message.response_url)
+    const url = message.response_url ? responseUrl(message.response_url) : ''
     const key = stateKey(message.msgid)
+    const id = streamId(config.botId, message.msgid)
     const saved = await host.state.get(key)
+    const passiveId = retainedStream(saved?.value, id, chatId, config.botId)
     if (!saved) {
       const expiresAt = Date.now() + 60 * 60 * 1000
 
@@ -193,7 +236,8 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
           expiresAt,
           chatId,
           eventId: message.msgid,
-          botId: config.botId
+          botId: config.botId,
+          streamId: id
         }
       })
 
@@ -210,9 +254,12 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     )
 
     if (!text && attachments.length === 0) {
-      return
+      return undefined
     }
     signal.throwIfAborted()
+    if (passiveId) {
+      await startPassive(host, passiveId, message.msgid, chatId)
+    }
     await ingestText(host, {
       source: {
         channel: 'wecom',
@@ -236,6 +283,7 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       receivedAt: Date.now(),
       context: null
     })
+    return passiveId ? passiveResponse(host, passiveId, chatId) : undefined
   }
 
   async function callback(request: Request): Promise<Response> {
@@ -275,11 +323,20 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       return new Response(null, { status: 400 })
     }
     try {
-      await receive(
+      const body = await receive(
         decoded,
         AbortSignal.any([controller.signal, request.signal])
       )
-      return new Response(null, { status: 200 })
+
+      return body
+        ? Response.json(
+            encryptedCallback(
+              body,
+              callbackKey(secret(config.encodingAESKey)),
+              secret(config.token)
+            )
+          )
+        : new Response(null, { status: 200 })
     } catch {
       return new Response(null, { status: 503 })
     }
@@ -314,6 +371,12 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     }
     if (state.data.usedAt !== undefined) {
       return { status: 'rejected', errorCode: 'response_url_used' }
+    }
+    if (state.data.streamId) {
+      if (controller.signal.aborted) {
+        return { status: 'retryable', errorCode: 'callback_stopped' }
+      }
+      return stagePassive(host, state.data.streamId, input)
     }
     let body: object
     let url: string
@@ -358,11 +421,13 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     capabilities: {
       receive: true,
       transport: 'both',
-      maxTextLength: 2048,
-      maxChunksPerMessage: 1,
+      maxTextLength: 20_480,
+      maxTextLengthPerMessage: 20_480,
+      maxChunksPerMessage: 11,
+      maxAttachmentsPerMessage: 10,
       lengthUnit: 'utf8',
       idempotentSend: false,
-      media: { receive: ['image', 'video', 'file'], send: [] }
+      media: { receive: ['image', 'video', 'file'], send: ['image'] }
     },
     validateConfig: (value) => webhookConfigSchema.parse(value),
     async setup(nextHost, nextAccount, nextConfig) {

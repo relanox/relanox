@@ -1,4 +1,82 @@
-import { createCipheriv, createHash } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash } from 'node:crypto'
+import { z } from 'zod'
+
+export async function callbackReply(response: Response): Promise<{
+  msgtype: string
+  stream: {
+    id: string
+    finish: boolean
+    content: string
+    msg_item?:
+      { msgtype: string; image: { base64: string; md5: string } }[] | undefined
+  }
+}> {
+  const envelope = z
+    .object({
+      encrypt: z.string(),
+      msgsignature: z.string(),
+      timestamp: z.string(),
+      nonce: z.string()
+    })
+    .parse(await response.json())
+
+  const signature = createHash('sha1')
+    .update(
+      ['callback-token', envelope.timestamp, envelope.nonce, envelope.encrypt]
+        .toSorted()
+        .join('')
+    )
+    .digest('hex')
+
+  if (signature !== envelope.msgsignature) {
+    throw new Error('invalid reply signature')
+  }
+
+  const decipher = createDecipheriv(
+    'aes-256-cbc',
+    callbackKey,
+    callbackKey.subarray(0, 16)
+  )
+
+  decipher.setAutoPadding(false)
+
+  const bytes = Buffer.concat([
+    decipher.update(Buffer.from(envelope.encrypt, 'base64')),
+    decipher.final()
+  ])
+
+  return z
+    .object({
+      msgtype: z.string(),
+      stream: z.object({
+        id: z.string(),
+        finish: z.boolean(),
+        content: z.string(),
+        msg_item: z
+          .array(
+            z.object({
+              msgtype: z.string(),
+              image: z.object({ base64: z.string(), md5: z.string() })
+            })
+          )
+          .optional()
+      })
+    })
+    .parse(
+      JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32BE(16)).toString())
+    )
+}
+
+export function streamRefresh(id: string, chatId = 'user'): Request {
+  return callbackRequest({
+    msgid: 'refresh-request',
+    aibotid: 'robot',
+    chattype: 'single',
+    from: { userid: chatId },
+    msgtype: 'stream',
+    stream: { id }
+  })
+}
 
 export const callbackKey = Buffer.from('0123456789abcdef0123456789abcdef')
 
