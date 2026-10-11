@@ -72,6 +72,7 @@ export type InboundRecord = {
 }
 
 export type DeliveryChunk = {
+  /** Destination-ready Markdown; closed formatting means chunks need not concatenate to the source. */
   readonly text: string
   /** A media chunk has empty text; preceding text chunks preserve the caption. */
   readonly media?: MediaReference
