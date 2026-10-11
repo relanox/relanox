@@ -224,7 +224,12 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     },
     validateConfig(value) {
       const config = configSchema.parse(value);
-      for (const url of [config.apiBase, config.tokenUrl, config.jwksUrl]) {
+      const apiBase = endpoint(config.apiBase, config.allowLoopback);
+      if (/[?#]/u.test(apiBase.href)) {
+        throw new Error("invalid_api_base");
+      }
+      config.apiBase = apiBase.href.replace(/\/+$/u, "");
+      for (const url of [config.tokenUrl, config.jwksUrl]) {
         endpoint(url, config.allowLoopback);
       }
       return config;
