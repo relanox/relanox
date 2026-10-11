@@ -146,6 +146,8 @@ export interface SendInput {
   readonly chunkIndex: number;
   /** Resolved by core from durable storage, bound to this request and chunk. */
   readonly media?: StoredMedia;
+  /** Preview resolved from the same request by core. */
+  readonly preview?: StoredMedia;
   readonly signal: AbortSignal;
 }
 export interface DispatchInput {
