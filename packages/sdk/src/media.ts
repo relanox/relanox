@@ -7,6 +7,10 @@ export interface MediaUpload {
   readonly kind: MediaKind;
   readonly mimeType: string;
   readonly fileName: string;
+  /** Duration in milliseconds when required by the native platform. */
+  readonly durationMs?: number;
+  /** Optional image asset owned by the same request, used as a native preview. */
+  readonly previewMediaId?: string;
   readonly data: Uint8Array;
 }
 
@@ -16,6 +20,10 @@ export interface MediaReference {
   readonly kind: MediaKind;
   readonly mimeType: string;
   readonly fileName: string;
+  /** Duration in milliseconds when required by the native platform. */
+  readonly durationMs?: number;
+  /** Optional image asset owned by the same request, used as a native preview. */
+  readonly previewMediaId?: string;
   readonly size: number;
   readonly sha256: string;
 }
