@@ -14,6 +14,7 @@ export function createLifecycle(timeoutMs: number, plugins: readonly Lifecycle[]
   let stopPromise: Promise<void> | undefined;
   let deadlineAt = 0;
   const remaining = () => Math.max(0, deadlineAt - Date.now());
+
   const attempt = async (action: () => Promise<void>): Promise<boolean> => {
     try {
       await deadline(action(), remaining());
@@ -22,6 +23,7 @@ export function createLifecycle(timeoutMs: number, plugins: readonly Lifecycle[]
       return false;
     }
   };
+
   return {
     signal: abort.signal,
     servers,
@@ -42,18 +44,22 @@ export function createLifecycle(timeoutMs: number, plugins: readonly Lifecycle[]
         stopping = true;
         stopAccepting();
         abort.abort();
+
         const draining = await Promise.all([
           attempt(stopWorker),
           ...servers.map((server) => attempt(() => closeServer(server))),
           ...plugins.map((plugin) => attempt(async () => plugin.stop?.())),
         ]);
+
         for (const server of servers) {
           server.closeAllConnections();
         }
         const closedStorage = await attempt(async () => storage?.close());
+
         const closedObserve = await attempt(async () =>
           observability?.shutdown(AbortSignal.timeout(remaining())),
         );
+
         if (!closedStorage || !closedObserve || draining.includes(false)) {
           throw new Error("shutdown_incomplete");
         }

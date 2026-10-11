@@ -19,10 +19,12 @@ export const messageSchema = z.object({
   video: mediaSchema.optional(),
   document: mediaSchema.optional(),
 });
+
 const valueSchema = z.object({
   metadata: z.object({ phone_number_id: platformIdSchema }),
   messages: z.array(messageSchema).optional(),
 });
+
 export const webhookSchema = z.object({
   object: z.literal("whatsapp_business_account"),
   entry: z.array(
@@ -32,6 +34,7 @@ export const webhookSchema = z.object({
     }),
   ),
 });
+
 export const targetSchema = z.strictObject({
   phoneNumberId: platformIdSchema,
   businessAccountId: platformIdSchema,
@@ -39,6 +42,7 @@ export const targetSchema = z.strictObject({
   customer: platformIdSchema,
   windowUntil: z.number().int().nonnegative(),
 });
+
 export const responseSchema = z.object({
   messaging_product: z.literal("whatsapp"),
   messages: z.array(z.object({ id: platformIdSchema })).min(1),

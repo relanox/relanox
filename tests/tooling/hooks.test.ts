@@ -15,6 +15,7 @@ async function execute(directory: string, command: string, args: readonly string
       env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "" },
       stdio: ["ignore", "pipe", "pipe"],
     });
+
     let output = "";
     child.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString();
@@ -43,7 +44,7 @@ afterEach(async () => {
   }
 });
 
-it("enforces format and type-aware lint on real commits without overwriting staged changes", async () => {
+it("enforces format, declaration spacing and type-aware lint on real commits without overwriting staged changes", async () => {
   const folder = await mkdtemp(path.join(tmpdir(), "relanox-hooks-"));
   folders.push(folder);
   expect((await git(folder, ["init", "--quiet"])).code).toBe(0);
@@ -65,10 +66,12 @@ it("enforces format and type-aware lint on real commits without overwriting stag
     path.join(folder, "tsconfig.json"),
     '{ "extends": "./tsconfig.base.json", "compilerOptions": {"types": ["node"]}, "include": ["*.ts", "scripts/**/*.mts"] }\n',
   );
+
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as {
     scripts: Record<string, string>;
     packageManager: string;
   };
+
   await writeFile(
     path.join(folder, "package.json"),
     `${JSON.stringify(
@@ -110,6 +113,78 @@ it("enforces format and type-aware lint on real commits without overwriting stag
   expect(partial.output).toContain("Partially staged files detected");
   expect((await git(folder, ["show", ":sample.ts"])).output).toBe("Promise.resolve(42);\n");
 
+  const adjacentDeclarations = [
+    "/** Input contract. */",
+    "export interface Input {",
+    "  value: number;",
+    "}",
+    "/** Return the input value. */",
+    "export function read(input: Input): number {",
+    "  return input.value;",
+    "}",
+    "// Output contract.",
+    "export interface Output {",
+    "  value: number;",
+    "}",
+    "/** Build an output value. */",
+    "export function output(value: number): Output {",
+    "  return { value };",
+    "}",
+    "",
+  ].join("\n");
+
+  await writeFile(path.join(folder, "sample.ts"), adjacentDeclarations);
+  expect(
+    (
+      await execute(folder, process.execPath, [
+        path.join(root, "node_modules/oxfmt/bin/oxfmt"),
+        "--write",
+        "sample.ts",
+      ])
+    ).code,
+  ).toBe(0);
+  const formattedDeclarations = await readFile(path.join(folder, "sample.ts"), "utf8");
+  expect(formattedDeclarations).toBe(adjacentDeclarations);
+  await stage(folder);
+  const adjacent = await git(folder, ["commit", "-m", "test: adjacent declarations"]);
+  expect(adjacent.code).not.toBe(0);
+  expect(adjacent.output).toContain("padding-line-between-statements");
+  expect(await readFile(path.join(folder, "sample.ts"), "utf8")).toBe(formattedDeclarations);
+  expect(
+    (
+      await execute(folder, process.execPath, [
+        path.join(root, "node_modules/oxlint/bin/oxlint"),
+        "--fix",
+        "sample.ts",
+      ])
+    ).code,
+  ).toBe(0);
+  expect(
+    (
+      await execute(folder, process.execPath, [
+        path.join(root, "node_modules/oxfmt/bin/oxfmt"),
+        "--write",
+        "sample.ts",
+      ])
+    ).code,
+  ).toBe(0);
+  const spacedDeclarations = await readFile(path.join(folder, "sample.ts"), "utf8");
+  expect(spacedDeclarations.replaceAll(/\s/gu, "")).toBe(
+    adjacentDeclarations.replaceAll(/\s/gu, ""),
+  );
+  expect(spacedDeclarations).toContain("}\n\n/** Return the input value. */\nexport function read");
+  expect(spacedDeclarations).toContain("}\n\n// Output contract.\nexport interface Output");
+  expect(spacedDeclarations).toContain(
+    "}\n\n/** Build an output value. */\nexport function output",
+  );
+  await stage(folder);
+  const spaced = await git(folder, ["commit", "-m", "test: valid declaration spacing"]);
+  if (spaced.code !== 0) {
+    throw new Error(spaced.output);
+  }
+  expect((await git(folder, ["show", "HEAD:sample.ts"])).output).toBe(spacedDeclarations);
+
+  await writeFile(path.join(folder, "sample.ts"), "export const answer = 42;\n");
   await stage(folder);
   const clean = await git(folder, ["commit", "-m", "test: valid style"]);
   if (clean.code !== 0) {

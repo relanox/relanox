@@ -26,16 +26,20 @@ afterEach(async () => {
   delete process.env.AGENT_TEST_TOKEN_0;
   delete process.env.AGENT_TEST_TOKEN_1;
 });
+
 function verify(traffic: Traffic | undefined, secret = signingKey) {
   if (traffic === undefined) {
     throw new Error("missing_callback_traffic");
   }
   const bytes = `${String(traffic.headers["webhook-id"])}.${String(traffic.headers["webhook-timestamp"])}.${traffic.body}`;
+
   const signature = `v1,${createHmac("sha256", Buffer.from(secret.slice(6), "base64"))
     .update(bytes)
     .digest("base64")}`;
+
   expect(String(traffic.headers["webhook-signature"]).split(" ")).toContain(signature);
 }
+
 const subResult = z
   .strictObject({
     id: z.string(),
@@ -44,10 +48,12 @@ const subResult = z
     truncated: z.boolean(),
   })
   .loose();
+
 const callbackBody = z.looseObject({
   type: z.string().optional(),
   challenge: z.string().optional(),
 });
+
 function subscribe(url: string, secret = signingKey, ttlMs = 1000) {
   return {
     method: "events/subscribe",
@@ -59,6 +65,7 @@ function subscribe(url: string, secret = signingKey, ttlMs = 1000) {
     },
   };
 }
+
 async function setup(
   reply: Parameters<typeof peer>[0] = (record: Traffic) => ({
     status: 200,
@@ -68,6 +75,7 @@ async function setup(
 ) {
   const receiver = await peer(reply);
   cleanups.push(receiver.close);
+
   const config = {
     mcp: mcp(),
     callback: {
@@ -78,30 +86,38 @@ async function setup(
     subscriptionTtlMs: 60_000,
     rotationWindowMs: 1000,
   };
+
   const plugin = createDotAgentPlugin();
+
   const fx = await fixture(
     "dot",
     plugin,
     two ? [config, { ...config, mcp: mcp("AGENT_TEST_TOKEN_1") }] : [config],
   );
+
   cleanups.push(() => fx.close());
   return { receiver, plugin, fx, url: `${receiver.origin}/callback` };
 }
+
 describe("dot MCP Events and tools", () => {
   it("accepts request metadata on Events methods without changing subscription identity", async () => {
     const { fx, url } = await setup();
     const client = await fx.client();
     const metadata = { progressToken: "subscription-progress", "com.example/correlation": "trace" };
+
     const catalog = await client.request(
       { method: "events/list", params: { _meta: metadata } },
       z.object({ events: z.array(z.object({ name: z.string() })) }),
     );
+
     expect(catalog.events.map((event) => event.name)).toEqual(["relanox.message_available"]);
     const request = subscribe(url, signingKey, 10_000);
+
     const created = await client.request(
       { ...request, params: { ...request.params, _meta: metadata } },
       subResult,
     );
+
     expect((await client.request(request, subResult)).id).toBe(created.id);
     await client.request(
       {
@@ -126,6 +142,7 @@ describe("dot MCP Events and tools", () => {
   it("rejects an already-aborted request without waiting for its stalled body", async () => {
     const controller = new AbortController();
     controller.abort();
+
     const init: RequestInit & { duplex: "half" } = {
       method: "POST",
       headers: { Authorization: "Bearer secret-0" },
@@ -133,10 +150,12 @@ describe("dot MCP Events and tools", () => {
       duplex: "half",
       signal: controller.signal,
     };
+
     const response = await guard(
       new Request("http://relanox.test/agents/dot/mcp/endpoint0", init),
       mcp(),
     );
+
     if (!(response instanceof Response)) {
       throw new Error("aborted_body_accepted");
     }
@@ -172,10 +191,12 @@ describe("dot MCP Events and tools", () => {
       true,
       true,
     ]);
+
     const pending = await client.callTool({
       name: "relanox_list_pending",
       arguments: {},
     });
+
     expect(pending.structuredContent).toEqual({
       requests: [
         {
@@ -186,10 +207,12 @@ describe("dot MCP Events and tools", () => {
         },
       ],
     });
+
     const denied = await client.callTool({
       name: "relanox_claim",
       arguments: { requestId: other.requestId, claimKey: "run-1" },
     });
+
     expect(denied).toMatchObject({
       isError: true,
       structuredContent: { status: "not_found" },
@@ -200,15 +223,18 @@ describe("dot MCP Events and tools", () => {
         arguments: { endpointIds: ["endpoint1"] },
       }),
     ).toMatchObject({ isError: true });
+
     const claim = await client.callTool({
       name: "relanox_claim",
       arguments: { requestId: first.requestId, claimKey: "run-1" },
     });
+
     expect(claim).toMatchObject({
       isError: false,
       structuredContent: { status: "claimed", replay: false },
     });
     const token = z.object({ claimToken: z.string() }).parse(claim.structuredContent).claimToken;
+
     const completed = await client.callTool({
       name: "relanox_complete",
       arguments: {
@@ -218,6 +244,7 @@ describe("dot MCP Events and tools", () => {
         text: "done",
       },
     });
+
     expect(completed).toMatchObject({
       isError: false,
       structuredContent: { status: "completed", replay: false },
@@ -299,10 +326,12 @@ describe("dot MCP Events and tools", () => {
     expect((await afterRestart.request(subscribe(url, newKey, 10_000), subResult)).id).toBe(
       first.id,
     );
+
     const state = await fx.storage.listState(
       { pluginId: "agent-dot", ownerId: "dot" },
       { prefix: "subscriptions/", limit: 100 },
     );
+
     expect(state).toHaveLength(1);
     const request = (await fx.storage.getInbound(received.requestId))?.snapshot;
     if (!request) {
@@ -317,6 +346,7 @@ describe("dot MCP Events and tools", () => {
     const rotated = receiver.traffic.at(-1) as Traffic;
     verify(rotated, newKey);
     verify(rotated, signingKey);
+
     const ended = await afterRestart.request(
       {
         method: "events/unsubscribe",
@@ -328,6 +358,7 @@ describe("dot MCP Events and tools", () => {
       },
       z.object({}),
     );
+
     expect(ended).toMatchObject({});
     const before = receiver.traffic.length;
     expect(
@@ -353,6 +384,7 @@ describe("dot MCP Events and tools", () => {
       status: 200,
       body: '{"challenge":"wrong"}',
     }));
+
     const client = await fx.client();
     await expect(client.request(subscribe(url), subResult)).rejects.toMatchObject({
       code: -32_015,
@@ -395,6 +427,7 @@ describe("dot MCP Events and tools", () => {
           ? { status: 200, body: JSON.stringify({ challenge: body.challenge }) }
           : { status, headers: { Location: "http://127.0.0.1:1/private" } };
       });
+
       const client = await fx.client();
       const subscription = await client.request(subscribe(url), subResult);
       const receipt = await fx.ingest();
@@ -455,6 +488,7 @@ describe("dot MCP Events and tools", () => {
           ? { status: 200, body: JSON.stringify({ challenge: body.challenge }) }
           : { status, body: "x".repeat(20_000) };
       });
+
       const client = await fx.client();
       await client.request(subscribe(url, signingKey, 10_000), subResult);
       const receipt = await fx.ingest();
@@ -523,12 +557,15 @@ describe("dot MCP Events and tools", () => {
     async (mode) => {
       let release: (() => void) | undefined;
       let observed: (() => void) | undefined;
+
       const received = new Promise<void>((resolve) => {
         observed = resolve;
       });
+
       const held = new Promise<void>((resolve) => {
         release = resolve;
       });
+
       const { fx, url } = await setup(async (record) => {
         const body = callbackBody.parse(parseWire(record.body));
         if (body.type === "verification") {
@@ -541,6 +578,7 @@ describe("dot MCP Events and tools", () => {
         await held;
         return { status: 410 };
       });
+
       const client = await fx.client();
       const subscription = await client.request(subscribe(url, signingKey, 10_000), subResult);
       const receipt = await fx.ingest();
@@ -548,10 +586,12 @@ describe("dot MCP Events and tools", () => {
       if (!request) {
         throw new Error("missing_request");
       }
+
       const delivery = fx.agent.dispatch({
         request,
         signal: new AbortController().signal,
       });
+
       await received;
       if (mode === "recreated") {
         await client.request(

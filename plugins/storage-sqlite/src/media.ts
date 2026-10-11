@@ -21,6 +21,7 @@ const digest = (media: StoredMedia): string =>
       ]),
     )
     .digest("hex");
+
 export function readMedia(
   context: DatabaseContext,
   requestId: string,
@@ -29,10 +30,12 @@ export function readMedia(
   const row = context.db
     .prepare("SELECT reference,data FROM media WHERE request_id=? AND id=? AND data IS NOT NULL")
     .get(requestId, mediaId) as { reference: string; data: Buffer } | undefined;
+
   return row
     ? { reference: decodeDurableRecord(row.reference), data: new Uint8Array(row.data) }
     : undefined;
 }
+
 export function insertIncomingMedia(
   context: DatabaseContext,
   requestId: string,
@@ -50,6 +53,7 @@ export function insertIncomingMedia(
       );
   }
 }
+
 export function createMediaOperations(context: DatabaseContext): MediaStorage {
   return {
     async get(requestId, mediaId) {
@@ -67,19 +71,23 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
         if (record.status !== "claimed" || !validMedia(input.media)) {
           return { status: "conflict" };
         }
+
         const existing = context.db
           .prepare("SELECT request_id,digest FROM media WHERE id=?")
           .get(input.media.reference.id) as { request_id: string; digest: string } | undefined;
+
         if (existing) {
           return existing.request_id === input.requestId && existing.digest === digest(input.media)
             ? { status: "stored", media: input.media.reference, replay: true }
             : { status: "conflict" };
         }
+
         const usage = context.db
           .prepare(
             "SELECT COUNT(*) count,COALESCE(SUM(length(data)),0) bytes FROM media WHERE request_id=? AND data IS NOT NULL",
           )
           .get(input.requestId) as { count: number; bytes: number };
+
         if (!withinMediaBudget(input, usage.count, usage.bytes)) {
           return { status: "conflict" };
         }

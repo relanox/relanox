@@ -14,6 +14,7 @@ afterEach(async () => {
   }
   vi.unstubAllEnvs();
 });
+
 const config = (base: string): Json => ({
   phoneNumberId: "phone",
   businessAccountId: "business-1",
@@ -24,6 +25,7 @@ const config = (base: string): Json => ({
   apiBase: base,
   allowLoopback: true,
 });
+
 function webhook(
   timestamp = Math.floor(Date.now() / 1000),
   phone = "phone",
@@ -58,6 +60,7 @@ function webhook(
     ],
   });
 }
+
 function incoming(body: string, signature?: string) {
   const expected = `sha256=${createHmac("sha256", "secret").update(body).digest("hex")}`;
   return new Request("http://local/channels/business/webhook", {
@@ -66,6 +69,7 @@ function incoming(body: string, signature?: string) {
     body,
   });
 }
+
 async function setup(filename = ":memory:") {
   vi.stubEnv("WA_SECRET", "secret");
   vi.stubEnv("WA_VERIFY", "verify");
@@ -74,6 +78,7 @@ async function setup(filename = ":memory:") {
   cleanup.push(remote.close);
   remote.respond(200, { messaging_product: "whatsapp", messages: [{ id: "wamid.sent" }] });
   const plugin = createWhatsAppChannel();
+
   const local = await harness(
     plugin,
     config(remote.base),
@@ -82,6 +87,7 @@ async function setup(filename = ":memory:") {
     undefined,
     filename,
   );
+
   cleanup.push(local.close);
   return { remote, plugin, ...local };
 }
@@ -106,9 +112,11 @@ describe("native WhatsApp Cloud", () => {
         messages: [{ id: "wamid.other" }],
       });
       const plugin = createWhatsAppChannel();
+
       const next = plugin.validateConfig(
         config(change === "server" ? replacement.base : `${local.remote.base}/`),
       );
+
       if (change === "business") {
         next.businessAccountId = "business-2";
       }
@@ -181,11 +189,13 @@ describe("native WhatsApp Cloud", () => {
 
   it("verifies challenge and exact HMAC, deduplicates and independently sends Graph text", async () => {
     const local = await setup();
+
     const challenge = await local.core.fetch(
       new Request(
         "http://local/channels/business/webhook?hub.mode=subscribe&hub.verify_token=verify&hub.challenge=12345",
       ),
     );
+
     expect(challenge.status).toBe(200);
     expect(await challenge.text()).toBe("12345");
     expect(
@@ -233,6 +243,7 @@ describe("native WhatsApp Cloud", () => {
     if (!outbound?.chunks[0]) {
       throw new Error("No outbound");
     }
+
     const send: SendInput = {
       deliveryId: outbound.deliveryId,
       requestId: outbound.requestId,
@@ -241,6 +252,7 @@ describe("native WhatsApp Cloud", () => {
       chunkIndex: 0,
       signal: new AbortController().signal,
     };
+
     expect(
       (await local.core.fetch(incoming(webhook(undefined, "phone", "wamid.2", "reaction")))).status,
     ).toBe(200);

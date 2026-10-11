@@ -15,6 +15,7 @@ const messageSchema = z.object({
   groupInfo: z.object({ groupId: platformIdSchema }).nullable().optional(),
   viewOnce: z.boolean().nullable().optional(),
 });
+
 const envelopeSchema = z.object({
   source: platformIdSchema.nullable().optional(),
   sourceNumber: platformIdSchema.nullable().optional(),
@@ -22,10 +23,12 @@ const envelopeSchema = z.object({
   timestamp: z.number().int().nonnegative(),
   dataMessage: messageSchema.nullable().optional(),
 });
+
 export const receiveSchema = z.object({
   envelope: envelopeSchema,
   account: platformIdSchema.optional(),
 });
+
 export const targetSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("direct"),
@@ -40,6 +43,7 @@ export const targetSchema = z.discriminatedUnion("kind", [
     account: platformIdSchema,
   }),
 ]);
+
 export const rpcSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.string(),

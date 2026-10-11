@@ -18,6 +18,7 @@ export function createDispatch(
       return { status: "rejected", errorCode: "dot_endpoint_revoked" };
     }
     const now = Date.now();
+
     const subscriptions = (await subscriptionStore.activeEntries(request.endpoint.id))
       .map((entry) => ({ entry, sub: subscriptionSchema.parse(entry.value) }))
       .filter(
@@ -26,10 +27,12 @@ export function createDispatch(
           sub.endpointId === request.endpoint.id &&
           sub.expiresAt > now,
       );
+
     if (subscriptions.length === 0) {
       return { status: "retryable", errorCode: "dot_no_active_subscription" };
     }
     const eventId = `evt_${request.requestId}`;
+
     const body = JSON.stringify({
       eventId,
       name,
@@ -37,20 +40,24 @@ export function createDispatch(
       data: { requestId: request.requestId },
       cursor: null,
     });
+
     if (Buffer.byteLength(body) > 262_144) {
       return { status: "rejected", errorCode: "dot_event_too_large" };
     }
     let outcome: DispatchResult = { status: "accepted" };
     const priority = { accepted: 0, rejected: 1, retryable: 2, unknown: 3 };
+
     const merge = (next: DispatchResult) => {
       if (priority[next.status] > priority[outcome.status]) {
         outcome = next;
       }
     };
+
     for (const { sub, entry } of subscriptions) {
       try {
         // Recheck current deployment authorization after restart/config change.
         callbackUrl(sub.url, currentConfig.callback);
+
         const response = await postCallback(
           sub.url,
           config.callback,
@@ -59,6 +66,7 @@ export function createDispatch(
           signal,
           "headers",
         );
+
         if (response.status >= 200 && response.status < 300) {
           continue;
         }

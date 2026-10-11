@@ -2,12 +2,14 @@ import { z } from "zod";
 import { platformIdSchema } from "./config.js";
 
 export const targetSchema = z.object({ botId: platformIdSchema, apiBaseUrl: z.string() });
+
 export const packetSchema = z.looseObject({
   op: z.number().int(),
   d: z.unknown().optional(),
   s: z.number().int().nullable().optional(),
   t: z.string().nullable().optional(),
 });
+
 export const sessionSchema = z.object({
   session_id: platformIdSchema,
   resume_gateway_url: z.string(),
@@ -16,11 +18,13 @@ export const sessionSchema = z.object({
   apiBaseUrl: z.string(),
   gatewayUrl: z.string(),
 });
+
 export const readySchema = z.looseObject({
   session_id: platformIdSchema,
   resume_gateway_url: z.string(),
   user: z.looseObject({ id: platformIdSchema }),
 });
+
 export const messageSchema = z.looseObject({
   id: platformIdSchema,
   channel_id: platformIdSchema,

@@ -20,6 +20,7 @@ export function secret(ref: { env: string }): string {
   }
   return value;
 }
+
 /** Policy rejections discard input; storage/unknown failures must remain unacknowledged. */
 export async function ingestText(host: ChannelHost, input: IngestInput): Promise<void> {
   try {
@@ -28,12 +29,14 @@ export async function ingestText(host: ChannelHost, input: IngestInput): Promise
     const rejection = z
       .object({ code: z.enum(["sender_not_allowed", "unbound_conversation"]) })
       .safeParse(error);
+
     if (!rejection.success) {
       throw error;
     }
     host.observe.log("info", "channel_input_discarded", { errorCode: rejection.data.code });
   }
 }
+
 /** Each account owns exactly one socket. Initialization is short; recovery uses bounded delays. */
 export class JsonSocketConnection {
   socket: WebSocket | undefined;
@@ -46,6 +49,7 @@ export class JsonSocketConnection {
   private attempts = 0;
   private queued = 0;
   private active = false;
+
   constructor(
     readonly host: ChannelHost,
     readonly url: (signal: AbortSignal) => Promise<string>,
@@ -54,6 +58,7 @@ export class JsonSocketConnection {
     readonly onClose: (code?: number) => void,
     readonly maxAttempts: number,
   ) {}
+
   async start(signal: AbortSignal): Promise<void> {
     if (this.active) {
       throw new Error("already_started");
@@ -74,6 +79,7 @@ export class JsonSocketConnection {
       this.schedule();
     }
   }
+
   private schedule(): void {
     if (!this.active || this.signal.aborted || this.reconnect) {
       return;
@@ -91,13 +97,16 @@ export class JsonSocketConnection {
       });
     }, delay);
   }
+
   private async connect(): Promise<void> {
     const address = await this.url(this.signal);
     this.signal.throwIfAborted();
+
     const socket = new WebSocket(address, {
       handshakeTimeout: 10_000,
       maxPayload: 1_048_576,
     });
+
     this.socket = socket;
     socket.on("error", () => {
       this.host.connection("degraded", "socket_error");
@@ -143,10 +152,13 @@ export class JsonSocketConnection {
         socket.terminate();
         reject(new Error("aborted"));
       };
+
       this.signal.addEventListener("abort", abort, { once: true });
+
       const cleanup = () => {
         this.signal.removeEventListener("abort", abort);
       };
+
       socket.once("open", () => {
         cleanup();
         resolve();
@@ -171,6 +183,7 @@ export class JsonSocketConnection {
       throw error;
     }
   }
+
   ready(): void {
     if (this.authenticationDeadline) {
       clearTimeout(this.authenticationDeadline);
@@ -179,12 +192,14 @@ export class JsonSocketConnection {
     this.attempts = 0;
     this.host.connection("connected");
   }
+
   send(frame: unknown): void {
     if (this.signal.aborted || this.socket?.readyState !== WebSocket.OPEN) {
       throw new Error("not_connected");
     }
     this.socket.send(JSON.stringify(frame));
   }
+
   setHeartbeat(ms: number, tick: () => void): void {
     this.clearHeartbeat();
     this.heartbeat = setInterval(() => {
@@ -195,6 +210,7 @@ export class JsonSocketConnection {
       }
     }, ms);
   }
+
   private clearHeartbeat(): void {
     if (this.heartbeat) {
       clearInterval(this.heartbeat);
@@ -205,6 +221,7 @@ export class JsonSocketConnection {
     }
     this.authenticationDeadline = undefined;
   }
+
   async stop(): Promise<void> {
     this.active = false;
     if (this.abortListener) {

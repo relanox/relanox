@@ -21,14 +21,17 @@ export async function mediaFixture(
   const directory = await mkdtemp(join(tmpdir(), "relanox-core-media-"));
   const filename = join(directory, "relay.sqlite");
   let storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
+
   const close = async () => {
     await storage.close();
     await rm(directory, { recursive: true, force: true });
   };
+
   await storage.initialize();
   let channelHost: ChannelHost | undefined;
   let agentHost: AgentHost | undefined;
   const sent: SendInput[] = [];
+
   const channel: ChannelPlugin = {
     id: "channel-telegram",
     kind: "channel",
@@ -52,6 +55,7 @@ export async function mediaFixture(
       return { status: "sent", receipt: { platformMessageId: String(sent.length) } };
     },
   };
+
   const agent: AgentPlugin = {
     id: "agent-grok",
     kind: "agent",
@@ -74,6 +78,7 @@ export async function mediaFixture(
       return { status: "accepted" };
     },
   };
+
   const config: RelanoxConfig = {
     accounts: [{ id: "bot", channel: "telegram", config: null, allowedSenders: ["alice"] }],
     endpoints: [
@@ -84,6 +89,7 @@ export async function mediaFixture(
     storage: { plugin: "sqlite", config: {} },
     observability: { plugin: "none", config: {} },
   };
+
   try {
     const assemble = () =>
       createCore({
@@ -99,6 +105,7 @@ export async function mediaFixture(
           maxAttachments: 2,
         },
       });
+
     const runtime = await assemble();
     if (!channelHost || !agentHost) {
       throw new Error("Hosts not initialized");
@@ -123,6 +130,7 @@ export async function mediaFixture(
     throw error;
   }
 }
+
 export const incoming = {
   source: { channel: "telegram" as const, accountId: "bot", eventId: "media-event" },
   senderId: "alice",
@@ -131,6 +139,7 @@ export const incoming = {
   context: null,
   receivedAt: 1,
 };
+
 export const picture = {
   kind: "image" as const,
   mimeType: "image/png",

@@ -22,6 +22,7 @@ function config(base: string) {
     reconnectMs: 100,
   };
 }
+
 function posted(id: string, userId = "alice", channelId = "channel", rootId = "root") {
   return {
     event: "posted",
@@ -39,6 +40,7 @@ function posted(id: string, userId = "alice", channelId = "channel", rootId = "r
     seq: 2,
   };
 }
+
 function sendInput(base: string): SendInput {
   return {
     deliveryId: "delivery",
@@ -55,6 +57,7 @@ function sendInput(base: string): SendInput {
     signal: new AbortController().signal,
   };
 }
+
 function sockets(peer: Awaited<ReturnType<typeof httpPeer>>) {
   const server = new WebSocketServer({ server: peer.server, path: "/api/v4/websocket" });
   cleanup(async () => {
@@ -74,6 +77,7 @@ it("authenticates WebSocket, deduplicates posted frames across reconnect and sen
   const sent: { data: unknown; authorization: string | undefined }[] = [];
   const dispatches: unknown[] = [];
   const challenges: unknown[] = [];
+
   const peer = await httpPeer(async (request, response) => {
     const data = await body(request);
     if (request.url === "/api/v4/posts") {
@@ -84,6 +88,7 @@ it("authenticates WebSocket, deduplicates posted frames across reconnect and sen
       json(response, {});
     }
   });
+
   const server = sockets(peer);
   server.on("connection", (socket) => {
     socket.once("message", (bytes) => {
@@ -104,6 +109,7 @@ it("authenticates WebSocket, deduplicates posted frames across reconnect and sen
     });
   });
   const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "mattermost-access-secret" });
+
   const fixture = await harness(
     plugin,
     config(peer.base),
@@ -111,6 +117,7 @@ it("authenticates WebSocket, deduplicates posted frames across reconnect and sen
     ["alice"],
     `${peer.base}/dispatch`,
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
   for (const socket of server.clients) {
@@ -156,9 +163,11 @@ it("authenticates WebSocket, deduplicates posted frames across reconnect and sen
 
 it("diagnoses failed authentication and refuses posted frames before an OK response", async () => {
   const observation = observations();
+
   const peer = await httpPeer((_request, response) => {
     json(response, {});
   });
+
   const server = sockets(peer);
   server.on("connection", (socket) => {
     socket.once("message", () => {
@@ -167,6 +176,7 @@ it("diagnoses failed authentication and refuses posted frames before an OK respo
     });
   });
   const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "invalid" });
+
   const fixture = await harness(
     plugin,
     config(peer.base),
@@ -175,6 +185,7 @@ it("diagnoses failed authentication and refuses posted frames before an OK respo
     `${peer.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(() =>
     observation.logs.some((entry) => entry.fields?.errorCode === "authentication_failed"),
@@ -186,6 +197,7 @@ it("diagnoses failed authentication and refuses posted frames before an OK respo
 
 it("keeps an uncertain REST POST unknown without automatic resend", async () => {
   let sends = 0;
+
   const peer = await httpPeer(async (request, response) => {
     if (request.url === "/api/v4/posts") {
       await body(request);
@@ -195,6 +207,7 @@ it("keeps an uncertain REST POST unknown without automatic resend", async () => 
     }
     json(response, {});
   });
+
   const server = sockets(peer);
   server.on("connection", (socket) => {
     socket.once("message", () => {
@@ -203,6 +216,7 @@ it("keeps an uncertain REST POST unknown without automatic resend", async () => 
     });
   });
   const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "token" });
+
   const fixture = await harness(
     plugin,
     config(peer.base),
@@ -210,6 +224,7 @@ it("keeps an uncertain REST POST unknown without automatic resend", async () => 
     ["alice"],
     `${peer.base}/dispatch`,
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
   await plugin.stop?.();
@@ -233,6 +248,7 @@ it.each([
     response.setHeader("Retry-After", "7");
     json(response, {}, status);
   });
+
   const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "token" });
   await harness(
     plugin,
@@ -250,9 +266,11 @@ it.each([
 
 it("validates protocol JSON instead of admitting malformed nested posts", async () => {
   const observation = observations();
+
   const peer = await httpPeer((_request, response) => {
     json(response, {});
   });
+
   const server = sockets(peer);
   server.on("connection", (socket) => {
     socket.once("message", () => {
@@ -261,6 +279,7 @@ it("validates protocol JSON instead of admitting malformed nested posts", async 
     });
   });
   const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "token" });
+
   const fixture = await harness(
     plugin,
     config(peer.base),
@@ -269,6 +288,7 @@ it("validates protocol JSON instead of admitting malformed nested posts", async 
     `${peer.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(() =>
     observation.logs.some((entry) => entry.fields?.errorCode === "receive_failed"),

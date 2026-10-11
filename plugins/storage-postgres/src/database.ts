@@ -15,11 +15,13 @@ export function openDatabase(
     error !== null && typeof error === "object" && "code" in error && typeof error.code === "string"
       ? error.code
       : undefined;
+
   const config = configSchema.parse(configuration);
   const connectionString = process.env[config.connectionString.env];
   if (!connectionString) {
     throw new Error("PostgreSQL connection secret is unavailable");
   }
+
   const pool = new Pool({
     connectionString,
     max: config.maxConnections,
@@ -28,6 +30,7 @@ export function openDatabase(
     statement_timeout: config.statementTimeoutMs,
     options: `-c search_path=${config.schema} -c idle_in_transaction_session_timeout=${config.statementTimeoutMs}`,
   });
+
   // An idle socket failure must not become an unhandled EventEmitter error.
   pool.on("error", () => {
     try {
@@ -39,11 +42,13 @@ export function openDatabase(
       /* Telemetry is best effort */
     }
   });
+
   const query = async <T extends QueryResultRow>(
     client: Pool | PoolClient,
     sql: string,
     values: unknown[] = [],
   ): Promise<T[]> => (await client.query<T>(sql, values)).rows;
+
   const transaction = async <T>(fn: (client: PoolClient) => Promise<T>): Promise<T> => {
     const started = performance.now();
     let span: Span | undefined;
@@ -101,6 +106,7 @@ export function openDatabase(
       }
     }
   };
+
   const readInbound = async (
     client: Pool | PoolClient,
     id: string,
@@ -112,6 +118,7 @@ export function openDatabase(
         [id],
       )
     )[0]?.record;
+
   const readOutbound = async (
     client: Pool | PoolClient,
     id: string,
@@ -121,6 +128,7 @@ export function openDatabase(
         id,
       ])
     )[0]?.record;
+
   const saveInbound = async (
     client: PoolClient,
     record: InboundRecord,
@@ -136,10 +144,12 @@ export function openDatabase(
         expectedVersion,
       ],
     );
+
     if (changed.rowCount !== 1) {
       throw new Error("Inbound version conflict");
     }
   };
+
   const saveOutbound = async (
     client: PoolClient,
     record: OutboundRecord,
@@ -155,10 +165,12 @@ export function openDatabase(
         expectedVersion,
       ],
     );
+
     if (changed.rowCount !== 1) {
       throw new Error("Outbound version conflict");
     }
   };
+
   const isEndpointHead = async (client: PoolClient, record: InboundRecord) =>
     (
       await query(
@@ -187,6 +199,7 @@ export function openDatabase(
         ],
       )
     ).length === 0;
+
   return {
     config,
     pool,

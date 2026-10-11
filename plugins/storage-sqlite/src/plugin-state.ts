@@ -13,6 +13,7 @@ export function createStateOperations(
           "SELECT record FROM plugin_state WHERE plugin=? AND owner=? AND key=? AND record!='null'",
         )
         .get(ns.pluginId, ns.ownerId, key) as { record: string } | undefined;
+
       return row ? decodeDurableRecord<StateEntry>(row.record) : undefined;
     },
     async listState(ns, input) {
@@ -41,6 +42,7 @@ export function createStateOperations(
           .get(ns.pluginId, ns.ownerId, input.key) as
           | { version: number; record: string }
           | undefined;
+
         const active = old?.record !== undefined && old.record !== "null";
         if (
           input.expectedVersion === null
@@ -50,12 +52,14 @@ export function createStateOperations(
           return { status: "conflict" };
         }
         const version = (old?.version ?? 0) + 1;
+
         const entry: StateEntry = {
           key: input.key,
           value: input.value,
           version,
           ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
         };
+
         db.prepare(
           `
             INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record)
@@ -81,6 +85,7 @@ export function createStateOperations(
             "SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=? AND record!='null'",
           )
           .get(ns.pluginId, ns.ownerId, key) as { version: number } | undefined;
+
         if (!old) {
           return { status: "not_found" };
         }

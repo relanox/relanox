@@ -39,6 +39,8 @@ Dependency age and allowed install-script policies are defined in `pnpm-workspac
 
 Oxfmt owns formatting and type-aware Oxlint owns linting. Use the root scripts and configuration; do not add another formatter or bypass the tracked hook. CI builds workspace declarations first, then runs the same checks. New test directories need a discoverable TypeScript configuration.
 
+Oxlint also enforces blank lines around function, class, interface, type and enum declarations, multiline exports and variable declarations, after imports, and between class methods. These spacing rules run through Oxlint's JavaScript plugin support. Oxfmt preserves declaration spacing but does not insert the required blank lines. Run `pnpm lint:fix` followed by `pnpm format` to apply spacing and formatting; `pnpm lint` and the pre-commit hook reject missing spacing. No separate ESLint command is needed.
+
 - Keep configuration schemas below runtime modules in the import graph. Validation must not resolve secrets, open resources or initialize live state.
 - Organize modules by responsibility. Keep transactions and connection state machines under one owner; file length alone is not a reason to split them.
 - Keep SDK contracts explicit and import concrete siblings rather than a package's own public entrypoint. Preserve discriminated work/result types through settlement.

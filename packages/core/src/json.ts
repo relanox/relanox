@@ -5,6 +5,7 @@ import { z } from "zod";
 export function jsonSnapshot<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
+
 export function validateJson(value: unknown): Json {
   return z.json().parse(value);
 }

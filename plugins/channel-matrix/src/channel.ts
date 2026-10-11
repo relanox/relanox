@@ -27,23 +27,28 @@ function outboundRelation(target: SendInput["target"]) {
   }
   return null;
 }
+
 export function createMatrixChannel(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ChannelPlugin<MatrixConfig> {
   let runtime:
     | { host: ChannelHost; account: AccountConfig; config: MatrixConfig; base: string }
     | undefined;
+
   let controller: AbortController | undefined;
   let task: Promise<void> | undefined;
+
   function configured() {
     if (!runtime) {
       throw new Error("not_setup");
     }
     return runtime;
   }
+
   function headers() {
     return { Authorization: `Bearer ${secret(configured().config.accessToken, environment)}` };
   }
+
   async function receive(
     room: string,
     event: z.infer<typeof eventSchema>,
@@ -65,9 +70,11 @@ export function createMatrixChannel(
       return;
     }
     const parsed = textSchema.safeParse(event.content);
+
     const attachments = parsed.success
       ? []
       : await receiveMedia(event.content, host, config, base, headers(), signal);
+
     if (!parsed.success && attachments.length === 0) {
       diagnose(host, "nontext_unsupported");
       return;
@@ -98,6 +105,7 @@ export function createMatrixChannel(
       context: null,
     });
   }
+
   async function synchronize(signal: AbortSignal): Promise<void> {
     const { host, base, config } = configured();
     const checkpoint = await host.state.get("sync");
@@ -107,6 +115,7 @@ export function createMatrixChannel(
     if (since) {
       url.searchParams.set("since", since);
     }
+
     const response = await fetch(url, {
       headers: headers(),
       redirect: "error",
@@ -115,6 +124,7 @@ export function createMatrixChannel(
         AbortSignal.timeout(config.timeoutMs + config.syncTimeoutMs),
       ]),
     });
+
     if (!response.ok) {
       await response.body?.cancel();
       throw new Error(response.status === 401 ? "authentication_failed" : "sync_failed");
@@ -128,16 +138,19 @@ export function createMatrixChannel(
         await receive(room, event, signal);
       }
     }
+
     const saved = await host.state.compareAndSet({
       key: "sync",
       expectedVersion: checkpoint?.version ?? null,
       value: data.next_batch,
     });
+
     if (saved.status !== "updated") {
       throw new Error("sync_checkpoint_conflict");
     }
     host.connection("connected");
   }
+
   async function loop(signal: AbortSignal): Promise<void> {
     const { host, config } = configured();
     while (!signal.aborted) {
@@ -152,6 +165,7 @@ export function createMatrixChannel(
             )
               ? error.message
               : "sync_failed";
+
           host.connection("degraded", code);
           diagnose(host, code);
         }
@@ -160,6 +174,7 @@ export function createMatrixChannel(
     }
     host.connection("disconnected");
   }
+
   async function checkEncryption(room: string, signal: AbortSignal): Promise<SendResult | null> {
     const { base } = configured();
     try {
@@ -167,6 +182,7 @@ export function createMatrixChannel(
         `${base}/_matrix/client/v3/rooms/${room}/state/m.room.encryption`,
         { headers: headers(), redirect: "error", signal },
       );
+
       await encryption.body?.cancel();
       if (encryption.ok) {
         return { status: "rejected", errorCode: "encrypted_unsupported" };
@@ -183,6 +199,7 @@ export function createMatrixChannel(
       return { status: "retryable", errorCode: "encryption_check_failed" };
     }
   }
+
   async function send(input: SendInput): Promise<SendResult> {
     const { account, base, config } = configured();
     const destination = targetSchema.safeParse(input.target.data);
@@ -207,6 +224,7 @@ export function createMatrixChannel(
       if ("status" in content) {
         return content;
       }
+
       const response = await fetch(
         `${base}/_matrix/client/v3/rooms/${room}/send/m.room.message/${encodeURIComponent(input.chunk.idempotencyKey)}`,
         {
@@ -220,6 +238,7 @@ export function createMatrixChannel(
           }),
         },
       );
+
       if (!response.ok) {
         await response.body?.cancel();
         return httpFailure(response);
@@ -230,6 +249,7 @@ export function createMatrixChannel(
       return { status: "unknown", errorCode: "send_outcome_unknown" };
     }
   }
+
   return {
     id: "channel-matrix",
     sdkMajor: 1,

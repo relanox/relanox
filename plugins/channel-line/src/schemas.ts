@@ -27,20 +27,24 @@ export const eventSchema = z.object({
     })
     .optional(),
 });
+
 export const webhookSchema = z.object({
   destination: platformIdSchema,
   events: z.array(eventSchema),
 });
+
 export const targetSchema = z.strictObject({
   destination: platformIdSchema,
   sourceType: z.enum(["user", "group", "room"]),
   botId: platformIdSchema,
   apiBaseUrl: z.string(),
 });
+
 export const retrySchema = z.strictObject({
   retryKey: z.uuid(),
   startedAt: z.number().int().nonnegative(),
 });
+
 export const receiptSchema = z.object({
   sentMessages: z.array(z.object({ id: platformIdSchema })).optional(),
 });

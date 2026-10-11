@@ -4,6 +4,7 @@ import { z } from "zod";
 export const secretRefSchema = z.strictObject({
   env: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
 });
+
 /** Called by assembly/plugins at the point of use, never by durable snapshot creation. */
 export function resolveSecretRef(
   ref: SecretRef,

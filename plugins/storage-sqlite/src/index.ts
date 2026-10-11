@@ -23,6 +23,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
     ...createInspectionOperations(context),
   };
 }
+
 export const sqliteStoragePlugin: StoragePlugin<SqliteConfig> = {
   id: "sqlite",
   kind: "storage",

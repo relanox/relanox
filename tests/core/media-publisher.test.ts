@@ -21,6 +21,7 @@ async function throughHttp(
         response.end();
       });
   });
+
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -94,6 +95,7 @@ it("expires public URLs and prunes expired durable tickets before publishing", a
     publicBaseUrl: "https://media.example",
     urlLifetimeMs: 1,
   });
+
   try {
     const receipt = await f.channel.ingest({ ...incoming, attachments: [picture] });
     const id = (await f.storage.getInbound(receipt.requestId))?.snapshot.attachments?.[0]?.id;
@@ -132,6 +134,7 @@ it("allows explicitly configured loopback HTTP and leaves unconfigured hosts wit
     publicBaseUrl: "http://127.0.0.1:8080",
     allowInsecureLocalhost: true,
   });
+
   const absent = await mediaFixture();
   try {
     expect(local.channel.media).toBeDefined();

@@ -7,14 +7,17 @@ export interface Traffic {
   readonly headers: IncomingHttpHeaders;
   readonly body: string;
 }
+
 export interface PeerReply {
   readonly status?: number;
   readonly body?: unknown;
   readonly dropConnection?: boolean;
 }
+
 /** Simulates only the external HTTP service. Relanox owns all durable business behavior. */
 export async function peer(reply: (traffic: Traffic, index: number) => PeerReply) {
   const traffic: Traffic[] = [];
+
   async function receive(request: IncomingMessage, response: ServerResponse) {
     const chunks: Uint8Array[] = [];
     for await (const received of request) {
@@ -24,12 +27,14 @@ export async function peer(reply: (traffic: Traffic, index: number) => PeerReply
       }
       chunks.push(chunk);
     }
+
     const record = {
       method: request.method ?? "",
       url: request.url ?? "",
       headers: request.headers,
       body: Buffer.concat(chunks).toString("utf8"),
     };
+
     traffic.push(record);
     const result = reply(record, traffic.length - 1);
     if (result.dropConnection === true) {
@@ -39,11 +44,13 @@ export async function peer(reply: (traffic: Traffic, index: number) => PeerReply
     response.writeHead(result.status ?? 200, { "Content-Type": "application/json" });
     response.end(JSON.stringify(result.body ?? {}));
   }
+
   const server = createServer((request, response) => {
     void receive(request, response).catch(() => {
       response.destroy();
     });
   });
+
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
@@ -70,6 +77,7 @@ export async function peer(reply: (traffic: Traffic, index: number) => PeerReply
       }),
   };
 }
+
 export async function availablePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve, reject) => {

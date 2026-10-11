@@ -13,6 +13,7 @@ export async function consumeEvents(
   let id: string | undefined;
   let event = "";
   let size = 0;
+
   async function line(value: string): Promise<void> {
     if (value === "") {
       if (data.length > 0 && (!event || event === "receive")) {
@@ -41,6 +42,7 @@ export async function consumeEvents(
       id = content;
     }
   }
+
   try {
     for (;;) {
       const chunk = await reader.read();

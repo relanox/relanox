@@ -9,14 +9,18 @@ import { createStandardObservability, validateStandardConfig } from "../src/inde
 const runtimes: ObservabilityRuntime[] = [];
 const servers: Server[] = [];
 const signal = () => AbortSignal.timeout(3000);
+
 async function runtime(config: Record<string, unknown> = {}, destination?: Writable) {
   const plugin = createStandardObservability(destination ? { logDestination: destination } : {});
+
   const result = await plugin.setup(
     plugin.validateConfig({ logs: false, processMetrics: false, ...config }),
   );
+
   runtimes.push(result);
   return result;
 }
+
 async function metrics(value: ObservabilityRuntime): Promise<string> {
   if (!value.metrics) {
     throw new Error("missing metrics handler");
@@ -25,6 +29,7 @@ async function metrics(value: ObservabilityRuntime): Promise<string> {
   expect(response.status).toBe(200);
   return response.text();
 }
+
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map((value) => value.shutdown(signal())));
   await Promise.all(
@@ -69,10 +74,12 @@ describe("jSON log boundary", () => {
       errorCode: "unsupported_SECRET",
     });
     await value.flush(signal());
+
     const lines = text
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
+
     expect(lines[0]).toMatchObject({
       event: expectedEvent,
       operation: "ingest",
@@ -88,18 +95,22 @@ describe("jSON log boundary", () => {
     "%s waits for accepted asynchronous collector writes below the high-water mark",
     async (operation) => {
       let release: (() => void) | undefined;
+
       const output = new Writable({
         write(_chunk, _encoding, callback) {
           release = callback;
         },
       });
+
       const value = await runtime({ logs: true }, output);
       value.observe.log("info", "shutdown.completed", { plugin: "core" });
       let finished = false;
+
       const completion = value[operation](signal()).then(() => {
         finished = true;
         return finished;
       });
+
       try {
         await new Promise<void>((resolve) => {
           setImmediate(resolve);
@@ -138,10 +149,12 @@ describe("jSON log boundary", () => {
       errorCode: "call_timeout",
     });
     await value.flush(signal());
+
     const lines = text
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
+
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatchObject({
       level: 30,
@@ -168,6 +181,7 @@ describe("jSON log boundary", () => {
   it("bounds backpressured logging and absorbs collector failure", async () => {
     let release: (() => void) | undefined;
     let writes = 0;
+
     const output = new Writable({
       highWaterMark: 1,
       write(_chunk, _encoding, callback) {
@@ -177,6 +191,7 @@ describe("jSON log boundary", () => {
         };
       },
     });
+
     output.on("error", () => {});
     const value = await runtime({ logs: true, logBufferBytes: 1024 }, output);
     for (let index = 0; index < 1000; index++) {
@@ -219,9 +234,11 @@ describe("prometheus public facade", () => {
     expect(body).toMatch(/relanox_send_duration_seconds_sum\{[^\n]*\} 0.25/u);
     expect(body).toMatch(/relanox_send_duration_seconds_bucket\{le="0.5"[^\n]*\} 1/u);
     expect(await metrics(second)).not.toMatch(/channel="telegram"/u);
+
     const response = await first.metrics?.(
       new Request("http://localhost/metrics", { method: "POST" }),
     );
+
     expect(response?.status).toBe(405);
     expect(response?.headers.get("allow")).toBe("GET, HEAD");
     const head = await first.metrics?.(new Request("http://localhost/metrics", { method: "HEAD" }));
@@ -323,6 +340,7 @@ async function collector(status = 200) {
     headers: Record<string, string | string[] | undefined>;
     body: string;
   }[] = [];
+
   const server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk: Buffer) => {
@@ -337,6 +355,7 @@ async function collector(status = 200) {
       response.end("{}");
     });
   });
+
   servers.push(server);
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -347,37 +366,46 @@ async function collector(status = 200) {
   }
   return { endpoint: `http://127.0.0.1:${address.port}/v1/traces`, requests };
 }
+
 function wireSpans(requests: { body: string }[]): Record<string, unknown>[] {
   return requests.flatMap((request) => {
     const body = JSON.parse(request.body) as {
       resourceSpans: { scopeSpans: { spans: Record<string, unknown>[] }[] }[];
     };
+
     return body.resourceSpans.flatMap(
       (resource: { scopeSpans: { spans: Record<string, unknown>[] }[] }) =>
         resource.scopeSpans.flatMap((scope) => scope.spans),
     );
   });
 }
+
 describe("real OTLP HTTP transport", () => {
   it("exports one safe short span and serialized durable parent, independently per runtime", async () => {
     const first = await collector();
     const second = await collector();
+
     const left = await runtime({
       tracing: { endpoint: first.endpoint, sampleRatio: 1 },
     });
+
     const right = await runtime({
       tracing: { endpoint: second.endpoint, sampleRatio: 1 },
     });
+
     const root = left.observe.span("ingest", {
       requestId: "11223344-1122-4433-8899-112233445566",
       text: "PRIVATE",
     } as LogFields);
+
     expect(root.context?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/u);
+
     const child = left.observe.span(
       "send",
       { errorCode: "SECRET" },
       JSON.parse(JSON.stringify(root.context)) as typeof root.context,
     );
+
     root.end();
     root.end("error");
     child.end("error");
@@ -399,6 +427,7 @@ describe("real OTLP HTTP transport", () => {
 
   it("collector errors do not reject business or lifecycle calls", async () => {
     const peer = await collector(400);
+
     const value = await runtime({
       tracing: {
         endpoint: peer.endpoint,
@@ -407,6 +436,7 @@ describe("real OTLP HTTP transport", () => {
       },
       lifecycleTimeoutMs: 100,
     });
+
     expect(() => {
       value.observe.span("send").end("error");
       value.observe.count("relanox_delivery_total", { outcome: "unknown" });
@@ -418,6 +448,7 @@ describe("real OTLP HTTP transport", () => {
 
   it("bounds lifecycle when a collector accepts HTTP but never responds", async () => {
     const peer = await collector(0);
+
     const value = await runtime({
       tracing: {
         endpoint: peer.endpoint,
@@ -426,7 +457,9 @@ describe("real OTLP HTTP transport", () => {
       },
       lifecycleTimeoutMs: 100,
     });
+
     value.observe.span("send").end();
+
     const result = await Promise.race([
       value.flush(signal()).then(() => "finished"),
       new Promise<string>((resolve) => {
@@ -435,6 +468,7 @@ describe("real OTLP HTTP transport", () => {
         }, 1000);
       }),
     ]);
+
     expect(result).toBe("finished");
     expect(peer.requests).toHaveLength(1);
     const alreadyAborted = AbortSignal.abort();
@@ -443,9 +477,11 @@ describe("real OTLP HTTP transport", () => {
 
   it("ratio-zero sampling preserves context without exporting message metadata", async () => {
     const peer = await collector();
+
     const value = await runtime({
       tracing: { endpoint: peer.endpoint, sampleRatio: 0 },
     });
+
     const span = value.observe.span("ingest");
     expect(span.context?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/u);
     span.end();

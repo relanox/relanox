@@ -22,15 +22,18 @@ export function createSlackChannel(
   let host: ChannelHost;
   let account: AccountConfig;
   let config: SlackConfig;
+
   const identity = () => ({
     teamId: config.teamId,
     appId: config.appId,
     botId: config.botUserId,
     apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, ""),
   });
+
   let controller: AbortController | undefined;
   let task: Promise<void> | undefined;
   let socket: WebSocket | undefined;
+
   async function ingestEnvelope(value: unknown) {
     const envelope = envelopeSchema.parse(value);
     if (envelope.type !== "event_callback") {
@@ -94,10 +97,12 @@ export function createSlackChannel(
       receivedAt: Date.now(),
     });
   }
+
   async function connect(signal: AbortSignal) {
     if (config.receiveMode !== "socket") {
       return;
     }
+
     const response = await postJson(
       `${config.apiBaseUrl.replace(/\/$/u, "")}/apps.connections.open`,
       { authorization: `Bearer ${credential(config.appToken, environment)}` },
@@ -105,19 +110,23 @@ export function createSlackChannel(
       signal,
       config.timeoutMs,
     );
+
     const result = socketOpenResponseSchema.parse(await jsonResponse(response));
     if (!response.ok || !result.ok || !result.url) {
       throw new Error("socket_open_failed");
     }
+
     const ws = new WebSocket(validateTransportUrl(result.url, config.allowInsecureLoopback, true), {
       maxPayload: 1_048_576,
       handshakeTimeout: config.timeoutMs,
     });
+
     socket = ws;
     let chain = Promise.resolve();
     let pending = 0;
     let failed = false;
     let alive = true;
+
     const ping = setInterval(() => {
       if (!alive) {
         ws.terminate();
@@ -128,9 +137,11 @@ export function createSlackChannel(
         ws.ping();
       }
     }, 30_000);
+
     const abort = () => {
       ws.terminate();
     };
+
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) {
       abort();
@@ -159,6 +170,7 @@ export function createSlackChannel(
             }
           })(),
         );
+
         if (!parsed.success) {
           ws.terminate();
           return;
@@ -179,6 +191,7 @@ export function createSlackChannel(
           ws.terminate();
           return;
         }
+
         const consume = async () => {
           if (signal.aborted || failed) {
             return;
@@ -197,6 +210,7 @@ export function createSlackChannel(
             ws.send(JSON.stringify({ envelope_id: frame.envelope_id }));
           }
         };
+
         chain = chain
           .then(consume)
           .catch(() => {
@@ -211,6 +225,7 @@ export function createSlackChannel(
     });
     await chain;
   }
+
   async function run(signal: AbortSignal) {
     let failures = 0;
     while (!signal.aborted) {
@@ -229,6 +244,7 @@ export function createSlackChannel(
       ).catch(() => {});
     }
   }
+
   return {
     id: "channel-slack",
     sdkMajor: 1,
@@ -274,10 +290,12 @@ export function createSlackChannel(
         if (config.receiveMode !== "http") {
           return new Response(null, { status: 404 });
         }
+
         const digest = createHmac("sha256", credential(config.signingSecret, environment))
           .update(`v0:${timestamp}:`)
           .update(body)
           .digest("hex");
+
         if (!equal(request.headers.get("x-slack-signature") ?? "", `v0=${digest}`)) {
           return new Response(null, { status: 401 });
         }
@@ -339,6 +357,7 @@ export function createSlackChannel(
         if (input.chunk.media) {
           return await sendMedia(input, host, config, credential(config.botToken, environment));
         }
+
         const response = await postJson(
           `${config.apiBaseUrl.replace(/\/$/u, "")}/chat.postMessage`,
           {
@@ -359,6 +378,7 @@ export function createSlackChannel(
           input.signal,
           config.timeoutMs,
         );
+
         return await sendOutcome(response);
       } catch {
         return { status: "unknown", errorCode: "slack_transport_error" };

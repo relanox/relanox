@@ -32,6 +32,7 @@ it("persists pure media, fences claim scope and sends ordered media after text",
       await f.agent.forPrincipal({ subject: "other", endpointIds: ["other"] }).media?.read(args),
     ).toBeUndefined();
     const uploadId = crypto.randomUUID();
+
     const upload = {
       requestId: receipt.requestId,
       claimToken: claim.claimToken,
@@ -43,6 +44,7 @@ it("persists pure media, fences claim scope and sends ordered media after text",
         data: new Uint8Array([4, 5]),
       },
     };
+
     expect(await scoped.media.upload(upload)).toMatchObject({ status: "stored", replay: false });
     expect(await scoped.media.upload(upload)).toMatchObject({ status: "stored", replay: true });
     expect(
@@ -51,6 +53,7 @@ it("persists pure media, fences claim scope and sends ordered media after text",
         media: { ...upload.media, data: new Uint8Array([9]) },
       }),
     ).toEqual({ status: "conflict" });
+
     const result = {
       requestId: receipt.requestId,
       claimToken: claim.claimToken,
@@ -58,6 +61,7 @@ it("persists pure media, fences claim scope and sends ordered media after text",
       text: "abcdef",
       attachments: [uploadId, ref.id],
     };
+
     expect(await scoped.complete(result)).toMatchObject({ status: "completed", replay: false });
     expect(await scoped.complete(result)).toMatchObject({ status: "completed", replay: true });
     expect(await scoped.complete({ ...result, attachments: [ref.id, uploadId] })).toEqual({
@@ -179,6 +183,7 @@ it("authenticates media routes before reading and preserves ordinary body limits
   try {
     let reads = 0;
     let cancelled = false;
+
     const body = new ReadableStream<Uint8Array>(
       {
         pull() {
@@ -190,6 +195,7 @@ it("authenticates media routes before reading and preserves ordinary body limits
       },
       { highWaterMark: 0 },
     );
+
     const denied = await f.runtime.fetch(
       new Request("http://localhost/agents/grok/media/asset", {
         method: "PUT",
@@ -197,15 +203,18 @@ it("authenticates media routes before reading and preserves ordinary body limits
         duplex: "half",
       } as RequestInit & { duplex: "half" }),
     );
+
     expect(denied.status).toBe(401);
     expect(reads).toBe(0);
     expect(cancelled).toBe(true);
+
     const request = (path: string, length: number) =>
       new Request(`http://localhost/agents/grok/${path}`, {
         method: "PUT",
         headers: { authorization: "Bearer test" },
         body: new Uint8Array(length),
       });
+
     expect((await f.runtime.fetch(request("media/asset", 16))).status).toBe(200);
     expect((await f.runtime.fetch(request("media/asset", 17))).status).toBe(413);
     expect((await f.runtime.fetch(request("json", 9))).status).toBe(413);
@@ -269,6 +278,7 @@ it.each(["count", "bytes"])(
       }
       const accepted = budget === "count" ? 3 : 2;
       const size = budget === "count" ? 3 : 16;
+
       const upload = (uploadId: string) => ({
         requestId: receipt.requestId,
         claimToken: claim.claimToken,
@@ -280,6 +290,7 @@ it.each(["count", "bytes"])(
           data: new Uint8Array(size),
         },
       });
+
       const firstId = crypto.randomUUID();
       expect(await scoped.media.upload(upload(firstId))).toMatchObject({
         status: "stored",

@@ -7,6 +7,7 @@ test("DingTalk downloads a pure picture before durable ACK and uploads original 
   const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 4, 5, 6]);
   let websocket = "";
   let downloadUrl = "";
+
   const remote = await peer((request) => {
     if (request.path === "/v1.0/gateway/connections/open") {
       return { body: { endpoint: websocket, ticket: "ticket" } };
@@ -25,9 +26,11 @@ test("DingTalk downloads a pure picture before durable ACK and uploads original 
     }
     return { body: { processQueryKey: "sent" } };
   });
+
   websocket = remote.ws;
   downloadUrl = `${remote.http}/picture.png`;
   const plugin = createDingTalkChannel();
+
   const local = await assemble(
     plugin,
     {
@@ -41,6 +44,7 @@ test("DingTalk downloads a pure picture before durable ACK and uploads original 
     },
     [{ chatId: "staff", senderId: "sender" }],
   );
+
   await local.start();
   remote.sockets[0]?.send(
     JSON.stringify({

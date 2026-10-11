@@ -25,9 +25,11 @@ export function applyLanguagePreference(base: string): void {
     // Language detection works without persistent storage.
   }
   const languages = navigator.languages.length > 0 ? navigator.languages : [navigator.language];
+
   const detected = languages.some((language) => language.toLowerCase() === "zh-cn")
     ? "zh-CN"
     : "en";
+
   const locale = saved === "en" || saved === "zh-CN" ? saved : detected;
   globalThis.location.replace(`${base}${locale}/${search}${hash}`);
 }

@@ -2,6 +2,7 @@ import { CoreError } from "./errors.js";
 import { z } from "zod";
 
 export const textId = z.string().min(1).max(1024);
+
 export const ingestSchema = z.strictObject({
   source: z.strictObject({
     channel: textId,
@@ -27,6 +28,7 @@ export const ingestSchema = z.strictObject({
     })
     .optional(),
 });
+
 export function limit(value: number): number {
   return z.number().int().min(1).max(1000).parse(value);
 }

@@ -8,12 +8,14 @@ const environment = {
   OTHER_TOKEN: "456:changed",
   ROTATED_TOKEN: "123:rotated",
 };
+
 const account = {
   id: "tg",
   channel: "telegram" as const,
   config: null,
   allowedSenders: ["42"],
 };
+
 const target = {
   channel: "telegram" as const,
   accountId: "tg",
@@ -22,12 +24,14 @@ const target = {
   replyToId: "9",
   data: { botId: "123", apiBaseUrl: "https://api.telegram.org" },
 };
+
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0)) {
     await close();
   }
 });
+
 async function setup(
   apiBaseUrl = "https://api.telegram.org",
   onIngest?: Parameters<typeof recorder>[0],
@@ -55,6 +59,7 @@ async function setup(
     >,
   };
 }
+
 function webhook(secret = "webhook-secret", extra: Record<string, unknown> = {}) {
   return new Request("https://relay.example/channels/tg/webhook", {
     method: "POST",
@@ -72,6 +77,7 @@ function webhook(secret = "webhook-secret", extra: Record<string, unknown> = {})
     }),
   });
 }
+
 describe("telegram native protocol", () => {
   it.each(["sender_not_allowed", "unbound_conversation"])(
     "acknowledges terminal core policy rejection: %s",
@@ -79,6 +85,7 @@ describe("telegram native protocol", () => {
       const test = await setup(undefined, async () => {
         throw Object.assign(new Error(code), { code });
       });
+
       expect((await test.handler(webhook())).status).toBe(204);
       expect(test.received).toEqual([]);
     },
@@ -96,11 +103,13 @@ describe("telegram native protocol", () => {
         throw new Error("Missing accepted reply target");
       }
       const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+
       const restarted = await setup(
         nextBase,
         undefined,
         change === "identity" ? { botToken: { env: "OTHER_TOKEN" } } : {},
       );
+
       expect(
         await restarted.plugin.send(
           sendInput(change === "legacy" ? { ...frozen, data: null } : frozen),
@@ -117,9 +126,11 @@ describe("telegram native protocol", () => {
     const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
     cleanup.push(remote.close);
     const initial = await setup(remote.url);
+
     const restarted = await setup(`${remote.url}/`, undefined, {
       botToken: { env: "ROTATED_TOKEN" },
     });
+
     expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
     expect(remote.requests).toHaveLength(1);
   });
@@ -128,11 +139,13 @@ describe("telegram native protocol", () => {
     const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
+
     const oversized = new Request("https://relay.example/channels/tg/webhook", {
       method: "POST",
       headers: { "x-telegram-bot-api-secret-token": "webhook-secret" },
       body: "x".repeat(1_048_577),
     });
+
     expect((await test.handler(oversized)).status).toBe(413);
     expect(test.received).toEqual([]);
     const controller = new AbortController();
@@ -160,24 +173,30 @@ describe("telegram native protocol", () => {
 
   it("holds ACK until handoff finishes and returns failure when ingest fails", async () => {
     let finish: (() => void) | undefined;
+
     const gate = new Promise<void>((resolve) => {
       finish = resolve;
     });
+
     const test = await setup(undefined, async () => gate);
     let acknowledged = false;
+
     const pending = test.handler(webhook()).then((response) => {
       acknowledged = true;
       return response;
     });
+
     await new Promise((resolve) => {
       setTimeout(resolve, 20);
     });
     expect(acknowledged).toBe(false);
     finish?.();
     expect((await pending).status).toBe(204);
+
     const failing = await setup(undefined, async () => {
       throw new Error("storage unavailable");
     });
+
     expect((await failing.handler(webhook())).status).toBe(503);
   });
 
@@ -205,6 +224,7 @@ describe("telegram native protocol", () => {
     const remote = await peer(() => ({
       body: { ok: true, result: { message_id: 100 } },
     }));
+
     cleanup.push(remote.close);
     const test = await setup(remote.url);
     expect(await test.plugin.send(sendInput(test.target))).toEqual({

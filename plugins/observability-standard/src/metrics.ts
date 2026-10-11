@@ -8,14 +8,17 @@ export interface MetricsRuntime extends Pick<Observability, "count" | "record"> 
   readonly dropped: Counter<string>;
   metrics(this: void, request: Request): Promise<Response>;
 }
+
 export function createMetrics(config: StandardConfig): MetricsRuntime {
   const registry = new Registry();
+
   const dropped = new Counter({
     name: "relanox_telemetry_dropped_total",
     help: "Dropped telemetry records",
     labelNames: ["signal"],
     registers: [registry],
   });
+
   const counters = new Map<string, Counter<string>>();
   const histograms = new Map<string, Histogram<string>>();
   const gauges = new Map<string, Gauge<string>>();
@@ -26,6 +29,7 @@ export function createMetrics(config: StandardConfig): MetricsRuntime {
       labelNames,
       registers: [registry],
     };
+
     if (kind === "counter") {
       counters.set(name, new Counter(shared));
     }
@@ -46,6 +50,7 @@ export function createMetrics(config: StandardConfig): MetricsRuntime {
     collectDefaultMetrics({ register: registry, prefix: "relanox_" });
   }
   const series = new Map<string, Set<string>>();
+
   const labelsFor = (name: string, labels?: MetricLabels): Record<string, string> | undefined => {
     const safe = safeLabels(labels);
     if (!safe) {
@@ -61,6 +66,7 @@ export function createMetrics(config: StandardConfig): MetricsRuntime {
     series.set(name, tuples);
     return safe;
   };
+
   const metrics = async (request: Request): Promise<Response> => {
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response(null, {
@@ -79,6 +85,7 @@ export function createMetrics(config: StandardConfig): MetricsRuntime {
       return new Response("metrics unavailable\n", { status: 503 });
     }
   };
+
   const observe: Pick<Observability, "count" | "record"> = {
     count(name, labels, value = 1) {
       if (!config.metrics || !Number.isFinite(value) || value < 0) {
@@ -107,5 +114,6 @@ export function createMetrics(config: StandardConfig): MetricsRuntime {
       gauges.get(name)?.set(safe, value);
     },
   };
+
   return { ...observe, metrics, registry, dropped };
 }

@@ -4,12 +4,14 @@ export interface IrcMessage {
   readonly command: string;
   readonly params: readonly string[];
 }
+
 function unescapeTag(value: string): string {
   return value.replaceAll(
     /\\(?<character>.)/gu,
     (_, char: string) => ({ ":": ";", s: " ", r: "\r", n: "\n", "\\": "\\" })[char] ?? char,
   );
 }
+
 export function parseMessage(line: string): IrcMessage {
   if (/[\r\n\0]/u.test(line)) {
     throw new Error("invalid_irc_line");
@@ -48,6 +50,7 @@ export function parseMessage(line: string): IrcMessage {
   }
   return { tags, ...(prefix ? { prefix } : {}), command: command.toUpperCase(), params: words };
 }
+
 export function foldNick(value: string): string {
   return value
     .toLowerCase()
@@ -56,6 +59,7 @@ export function foldNick(value: string): string {
       (char) => ({ "[": "{", "]": "}", "\\": "|", "^": "~" })[char] ?? char,
     );
 }
+
 export function wireLine(text: string): string {
   if (/[\r\n\0]/u.test(text) || Buffer.byteLength(text, "utf8") + 2 > 512) {
     throw new Error("invalid_outbound_line");

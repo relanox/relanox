@@ -34,6 +34,7 @@ async function retryIdentity(host: ChannelHost, key: string): Promise<z.infer<ty
 
 export function createLineChannel(): ChannelPlugin<LineConfig> {
   let runtime: { host: ChannelHost; account: AccountConfig; config: LineConfig } | undefined;
+
   async function send(input: SendInput): Promise<SendResult> {
     if (
       !runtime ||
@@ -61,10 +62,12 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
     if (Date.now() - retry.startedAt >= 86_400_000) {
       return { status: "unknown", errorCode: "retry_key_expired" };
     }
+
     const outgoing = await messages(input, host).catch(() => ({
       status: "retryable" as const,
       errorCode: "media_publication_failed",
     }));
+
     if (!Array.isArray(outgoing)) {
       return outgoing;
     }
@@ -85,6 +88,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
         },
         input.signal,
       );
+
       const acceptedId = response.headers.get("x-line-accepted-request-id");
       if (response.status === 409 && acceptedId) {
         return { status: "sent", receipt: { data: { acceptedRequestId: acceptedId } } };
@@ -99,6 +103,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       return unavailable();
     }
   }
+
   return {
     id: "channel-line",
     sdkMajor: 1,

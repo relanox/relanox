@@ -18,6 +18,7 @@ afterEach(async () => {
 
 test("assembled Telegram ingress persists before ACK and status projects only opted-in text", async () => {
   const value = await setup();
+
   const relay = {
     ...value.config.relay,
     accounts: [
@@ -45,12 +46,14 @@ test("assembled Telegram ingress persists before ACK and status projects only op
     ],
     bindings: [{ accountId: "telegram-bot", chatId: "22", endpointId: "grok-main" }],
   };
+
   const config = { ...value.config, relay };
   await value.save(config);
   vi.stubEnv("CLI_TEST_BOT_TOKEN", "123:valid-token");
   vi.stubEnv("CLI_TEST_WEBHOOK_SECRET", "valid-webhook-secret");
   const runtime = await startRuntime(config);
   stops.push(runtime.stop);
+
   const response = await fetch(`${runtime.businessUrl}/channels/telegram-bot/webhook`, {
     method: "POST",
     headers: {
@@ -67,6 +70,7 @@ test("assembled Telegram ingress persists before ACK and status projects only op
       },
     }),
   });
+
   expect(response.status).toBe(204);
   const plain = await cli(value.configPath, ["status"]);
   expect(plain.code).toBe(0);
@@ -109,6 +113,7 @@ test("requeue passes exact version and explicit unknown-effect acknowledgement i
       acceptedAt: 1,
       endpoint: { id: "endpoint", agent: "grok", dispatchMode: "push", config: {} },
     });
+
     const [work] = await db.takeDue({
       now: 2,
       leaseMs: 1000,
@@ -116,6 +121,7 @@ test("requeue passes exact version and explicit unknown-effect acknowledgement i
       leaseOwner: "operator",
       safeRetryAccountIds: [],
     });
+
     if (work?.kind !== "dispatch") {
       throw new Error("Expected real due dispatch");
     }
@@ -133,6 +139,7 @@ test("requeue passes exact version and explicit unknown-effect acknowledgement i
     if (!held) {
       throw new Error("Expected persisted unknown request");
     }
+
     const base = [
       "requeue",
       "--kind",
@@ -142,9 +149,11 @@ test("requeue passes exact version and explicit unknown-effect acknowledgement i
       "--expected-version",
       String(held.version),
     ];
+
     const unacknowledged = await cli(value.configPath, base);
     expect(unacknowledged.code).toBe(2);
     expect(JSON.parse(unacknowledged.stdout)).toEqual({ status: "conflict" });
+
     const stale = await cli(value.configPath, [
       "requeue",
       "--kind",
@@ -155,6 +164,7 @@ test("requeue passes exact version and explicit unknown-effect acknowledgement i
       "1",
       "--acknowledge-unknown",
     ]);
+
     expect(stale.code).toBe(2);
     expect(JSON.parse(stale.stdout)).toEqual({ status: "conflict" });
     const recovered = await cli(value.configPath, [...base, "--acknowledge-unknown"]);
@@ -168,6 +178,7 @@ test("requeue passes exact version and explicit unknown-effect acknowledgement i
     await db.close();
   }
 });
+
 async function setup() {
   const value = await fixture();
   directories.push(value.directory);
@@ -249,6 +260,7 @@ test("run initializes a new database and preserves work on restart while diagnos
 
 test("real listeners isolate management endpoints and release both ports on shutdown", async () => {
   const value = await setup();
+
   const input = {
     ...value.config,
     relay: {
@@ -259,6 +271,7 @@ test("real listeners isolate management endpoints and release both ports on shut
       },
     },
   };
+
   const runtime = await startRuntime(input);
   stops.push(runtime.stop);
   for (const path of ["/health/live", "/health/ready", "/metrics"]) {

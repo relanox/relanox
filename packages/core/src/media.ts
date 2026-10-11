@@ -20,7 +20,9 @@ const uploadSchema = z.strictObject({
   durationMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   previewMediaId: z.uuid().optional(),
 });
+
 export const mediaId = z.uuid();
+
 export function storeUpload(upload: MediaUpload, id: string, maximum: number): StoredMedia {
   const valid = uploadSchema.parse(upload);
   if (valid.data.byteLength < 1 || valid.data.byteLength > maximum) {
@@ -44,11 +46,13 @@ export function storeUpload(upload: MediaUpload, id: string, maximum: number): S
     data,
   };
 }
+
 export function validateMediaCount(count: number, maximum: number): void {
   if (!Number.isSafeInteger(count) || count < 0 || count > maximum) {
     throw new CoreError("too_many_attachments");
   }
 }
+
 export function verifiedMedia(
   media: StoredMedia,
   reference: MediaReference,
@@ -70,6 +74,7 @@ export function verifiedMedia(
     media.reference.id,
     maximum,
   );
+
   if (
     checked.reference.id !== reference.id ||
     checked.reference.kind !== reference.kind ||

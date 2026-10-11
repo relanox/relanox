@@ -45,6 +45,7 @@ const common = {
   reconnectDelayMs: z.number().int().min(100).max(30_000).default(1000),
   ...transportOptions,
 };
+
 const configSchema = z.discriminatedUnion("receiveMode", [
   z.strictObject({
     ...common,
@@ -57,6 +58,7 @@ const configSchema = z.discriminatedUnion("receiveMode", [
     appToken: secretRefSchema,
   }),
 ]);
+
 export type SlackConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(input: unknown): SlackConfig {

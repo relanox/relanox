@@ -6,6 +6,7 @@ export type AgentRequestPayload = Pick<
 > & {
   readonly source: Pick<InboundSnapshot["source"], "channel" | "eventId">;
 };
+
 export function projectAgentRequest(request: InboundSnapshot): AgentRequestPayload {
   return {
     requestId: request.requestId,

@@ -12,6 +12,7 @@ const byteCount = z
   .regex(/^[0-9]+$/u)
   .transform(Number)
   .pipe(z.number().int().positive().max(209_715_200));
+
 const preparedSchema = z.object({
   upload_id: z.string().min(1).max(1024),
   block_size: byteCount,
@@ -26,11 +27,13 @@ const preparedSchema = z.object({
     .min(1)
     .max(10_000),
 });
+
 const formats: Readonly<Record<string, readonly string[]>> = {
   image: ["image/png", "image/jpeg"],
   audio: ["audio/silk", "audio/x-silk"],
   video: ["video/mp4"],
 };
+
 const digest = (algorithm: string, bytes: Uint8Array) =>
   createHash(algorithm).update(bytes).digest("hex");
 
@@ -40,6 +43,7 @@ async function apiRequest(url: string, body: unknown, credential: string, signal
     jsonPostRequest(body, { Authorization: `QQBot ${credential}` }),
     signal,
   );
+
   const failure = apiError(raw, true);
   if (failure) {
     throw new RemoteError(failure, raw);
@@ -58,8 +62,10 @@ function validateParts(prepared: z.infer<typeof preparedSchema>, size: number, c
       throw new Error("invalid_upload_part_size");
     }
     const url = new URL(part.presigned_url);
+
     const allowLoopback =
       config.allowInsecureLoopback && url.origin === new URL(config.apiBase).origin;
+
     return {
       index,
       block_size: part.block_size,
@@ -78,6 +84,7 @@ async function putPart(url: string, bytes: Uint8Array, signal: AbortSignal): Pro
     headers: { "content-type": "application/octet-stream" },
     body: new Blob([new Uint8Array(bytes)]),
   });
+
   await response.body?.cancel();
   if (!response.ok) {
     throw new RemoteError({ status: "retryable", errorCode: "media_part_upload_failed" });
@@ -107,6 +114,7 @@ export async function uploadMedia(
   const base = `${config.apiBase.replace(/\/$/u, "")}/v2/${type === "c2c" ? "users" : "groups"}/${encodeURIComponent(input.target.chatId)}`;
   const fileType = { image: 1, video: 2, audio: 3, file: 4 }[kind];
   const md5 = digest("md5", bytes);
+
   const prepared = preparedSchema.parse(
     await apiRequest(
       `${base}/upload_prepare`,
@@ -123,6 +131,7 @@ export async function uploadMedia(
       input.signal,
     ),
   );
+
   const parts = validateParts(prepared, bytes.byteLength, config);
   for (const part of parts) {
     if (part.index > 0) {
@@ -143,6 +152,7 @@ export async function uploadMedia(
       input.signal,
     );
   }
+
   const response = await apiRequest(
     `${base}/files`,
     {
@@ -154,6 +164,7 @@ export async function uploadMedia(
     credential,
     input.signal,
   );
+
   return z
     .object({ file_info: z.string().min(1), ttl: z.number().int().nonnegative() })
     .parse(response).file_info;

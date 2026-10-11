@@ -5,12 +5,14 @@ export interface StateNamespace {
   readonly pluginId: string;
   readonly ownerId: string;
 }
+
 export interface StateEntry {
   readonly key: string;
   readonly value: Json;
   readonly version: number;
   readonly expiresAt?: EpochMs;
 }
+
 export interface StateStore {
   get(key: string): Promise<StateEntry | undefined>;
   list(input: {

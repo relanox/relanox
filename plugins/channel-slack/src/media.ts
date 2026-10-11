@@ -8,10 +8,12 @@ import { failure, jsonResponse, postJson } from "./transport.js";
 import { apiError } from "./client.js";
 
 export { sendOutcome } from "./client.js";
+
 async function fileMetadata(file: z.infer<typeof fileSchema>, config: SlackConfig, token: string) {
   if (file.url_private_download ?? file.url_private) {
     return file;
   }
+
   const response = await fetch(
     `${config.apiBaseUrl.replace(/\/$/u, "")}/files.info?file=${encodeURIComponent(file.id)}`,
     {
@@ -20,9 +22,11 @@ async function fileMetadata(file: z.infer<typeof fileSchema>, config: SlackConfi
       redirect: "error",
     },
   );
+
   const metadata = z
     .looseObject({ ok: z.literal(true), file: fileSchema })
     .parse(await jsonResponse(response));
+
   if (!response.ok || metadata.file.id !== file.id) {
     throw new Error("file_metadata_unavailable");
   }
@@ -45,6 +49,7 @@ export async function receiveMedia(
       if (!url) {
         throw new Error("missing_file_url");
       }
+
       const downloaded = await downloadMedia(url, {
         maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
         signal: AbortSignal.timeout(config.timeoutMs),
@@ -52,6 +57,7 @@ export async function receiveMedia(
         allowInsecureLocalhost: config.allowInsecureLoopback,
         headers: { authorization: `Bearer ${token}` },
       });
+
       const mimeType = file.mimetype ?? downloaded.mimeType;
       return {
         kind: mediaKind(mimeType),
@@ -62,20 +68,24 @@ export async function receiveMedia(
     }),
   );
 }
+
 const uploadSchema = z.looseObject({
   ok: z.boolean(),
   upload_url: z.url().optional(),
   file_id: z.string().min(1).optional(),
   error: z.string().optional(),
 });
+
 const completeSchema = z.looseObject({
   ok: z.boolean(),
   files: z.array(z.looseObject({ id: z.string() })).optional(),
   error: z.string().optional(),
 });
+
 function uploadFailure(result: SendResult): SendResult {
   return result.status === "unknown" ? { ...result, status: "retryable" } : result;
 }
+
 async function prepareUpload(
   input: SendInput,
   config: SlackConfig,
@@ -97,6 +107,7 @@ async function prepareUpload(
       signal: AbortSignal.any([input.signal, AbortSignal.timeout(config.timeoutMs)]),
       redirect: "error",
     });
+
     if (!requested.ok) {
       return uploadFailure(failure(requested));
     }
@@ -116,12 +127,14 @@ async function prepareUpload(
     ) {
       return { status: "rejected", errorCode: "invalid_upload_url" };
     }
+
     const uploaded = await fetch(url, {
       method: "POST",
       body: mediaBlob(input.media),
       signal: AbortSignal.any([input.signal, AbortSignal.timeout(config.timeoutMs)]),
       redirect: "error",
     });
+
     if (!uploaded.ok) {
       return uploadFailure(failure(uploaded));
     }
@@ -130,6 +143,7 @@ async function prepareUpload(
     return { status: "retryable", errorCode: "slack_upload_transport_error" };
   }
 }
+
 export async function sendMedia(
   input: SendInput,
   host: ChannelHost,
@@ -146,6 +160,7 @@ export async function sendMedia(
     return prepared;
   }
   const upload = prepared;
+
   const response = await postJson(
     `${base}/files.completeUploadExternal`,
     headers,
@@ -165,6 +180,7 @@ export async function sendMedia(
     input.signal,
     config.timeoutMs,
   );
+
   if (!response.ok) {
     return failure(response);
   }

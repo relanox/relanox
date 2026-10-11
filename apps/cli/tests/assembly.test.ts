@@ -12,6 +12,7 @@ test("the shipped all-channel example validates every native factory and both ag
         "utf8",
       ),
     );
+
     const config = appConfigSchema.parse(input);
     expect(config.relay.accounts.map((account) => account.channel).toSorted()).toEqual([
       "dingtalk",

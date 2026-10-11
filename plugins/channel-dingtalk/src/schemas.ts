@@ -10,6 +10,7 @@ export const streamSchema = z.object({
   }),
   data: z.string(),
 });
+
 export const messageSchema = z.object({
   msgId: z.string().min(1),
   conversationType: z.enum(["1", "2"]),
@@ -23,10 +24,12 @@ export const messageSchema = z.object({
   content: contentSchema.optional(),
   text: z.object({ content: z.string().min(1) }).optional(),
 });
+
 export const tokenSchema = z.object({
   accessToken: z.string().min(1),
   expireIn: z.number().int().positive(),
 });
+
 export const scopeSchema = z
   .object({
     clientId: z.string().min(1),
@@ -35,12 +38,14 @@ export const scopeSchema = z
     uploadBase: z.url().optional(),
   })
   .strict();
+
 export const targetSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("single"), staffId: z.string().min(1), scope: scopeSchema }).strict(),
   z
     .object({ type: z.literal("group"), openConversationId: z.string().min(1), scope: scopeSchema })
     .strict(),
 ]);
+
 export const sendResponse = z.object({
   processQueryKey: z.string().min(1),
   invalidStaffIdList: z.array(z.string()).optional(),

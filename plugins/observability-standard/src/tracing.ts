@@ -11,6 +11,7 @@ export interface TracingRuntime {
   readonly provider: NodeTracerProvider | undefined;
   readonly span: Observability["span"];
 }
+
 export function createTracing(
   config: StandardConfig,
   isClosed: () => boolean,
@@ -49,7 +50,9 @@ export function createTracing(
         ],
       })
     : undefined;
+
   const tracer = provider?.getTracer("relanox-observability", "0.1.0");
+
   const observe: Pick<Observability, "span"> = {
     span(name, fields, parent): Span {
       if (isClosed() || !tracer || !allowedVocabularyValue(name, operations)) {
@@ -72,9 +75,11 @@ export function createTracing(
         }
         const span = tracer.startSpan(name, { attributes: safeFields(fields) }, context);
         const spanContext = span.spanContext();
+
         const durable: TraceContext = {
           traceparent: `00-${spanContext.traceId}-${spanContext.spanId}-${(spanContext.traceFlags & 1) === 1 ? "01" : "00"}`,
         };
+
         let ended = false;
         return {
           context: durable,
@@ -97,5 +102,6 @@ export function createTracing(
       }
     },
   };
+
   return { provider, span: observe.span };
 }

@@ -22,6 +22,7 @@ export async function accessToken(
     },
     signal,
   );
+
   if (!response.ok) {
     return response.status >= 500
       ? { status: "retryable", errorCode: "oauth_unavailable" }

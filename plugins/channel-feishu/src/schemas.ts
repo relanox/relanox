@@ -7,6 +7,7 @@ export const targetSchema = z.object({
   botId: platformIdSchema,
   apiBaseUrl: z.string(),
 });
+
 const headerSchema = z.looseObject({
   event_id: platformIdSchema,
   event_type: platformIdSchema,
@@ -14,16 +15,19 @@ const headerSchema = z.looseObject({
   tenant_key: platformIdSchema,
   token: platformIdSchema,
 });
+
 export const challengeSchema = z.looseObject({
   type: z.literal("url_verification"),
   token: platformIdSchema,
   challenge: platformIdSchema,
 });
+
 export const eventSchema = z.looseObject({
   schema: z.literal("2.0"),
   header: headerSchema,
   event: z.unknown(),
 });
+
 export const messageSchema = z.looseObject({
   sender: z.looseObject({
     sender_type: platformIdSchema,
@@ -42,6 +46,7 @@ export const messageSchema = z.looseObject({
     thread_id: platformIdSchema.optional(),
   }),
 });
+
 export const apiSchema = z.looseObject({
   code: z.number().int(),
   data: z.looseObject({ message_id: platformIdSchema.optional() }).optional(),

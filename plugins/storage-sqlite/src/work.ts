@@ -18,6 +18,7 @@ export function createWorkOperations(
 ): Pick<Storage, "requeue" | "takeDue" | "settleAttempt"> {
   const { db, transaction, readInbound, readOutbound, saveInbound, saveOutbound, isEndpointHead } =
     context;
+
   return {
     async requeue(input) {
       return transaction(() => {
@@ -40,12 +41,14 @@ export function createWorkOperations(
           ) {
             return { status: "conflict" };
           }
+
           const next = {
             ...record,
             status: "pending" as const,
             version: record.version + 1,
             dispatch: { status: "due" as const, attempts: 0, dueAt: input.now },
           };
+
           delete next.claim;
           delete next.errorCode;
           saveInbound(next);
@@ -62,6 +65,7 @@ export function createWorkOperations(
         ) {
           return { status: "conflict" };
         }
+
         const next = {
           ...record,
           status: "pending" as const,
@@ -69,6 +73,7 @@ export function createWorkOperations(
           attempts: 0,
           dueAt: input.now,
         };
+
         delete next.lease;
         delete next.errorCode;
         saveOutbound(next);
@@ -102,6 +107,7 @@ export function createWorkOperations(
               status: "unknown" as const,
               errorCode: "lease_expired",
             };
+
             delete dispatch.lease;
             next = { ...record, version: record.version + 1, dispatch };
             saveInbound(next);
@@ -117,11 +123,13 @@ export function createWorkOperations(
           ) {
             continue;
           }
+
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: next.version + 1,
             expiresAt: input.now + input.leaseMs,
           };
+
           next = {
             ...next,
             version: lease.version,
@@ -167,11 +175,13 @@ export function createWorkOperations(
           ) {
             continue;
           }
+
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: next.version + 1,
             expiresAt: input.now + input.leaseMs,
           };
+
           next = { ...next, version: lease.version, lease };
           saveOutbound(next);
           work.push({ kind: "send", record: next, lease });
@@ -194,12 +204,14 @@ export function createWorkOperations(
             return { status: "conflict" };
           }
           const outcome = input.outcome;
+
           const dispatch = {
             status: outcome.status === "retryable" ? ("due" as const) : outcome.status,
             attempts: record.dispatch.attempts + 1,
             dueAt: input.nextDueAt,
             ...("errorCode" in outcome ? { errorCode: outcome.errorCode } : {}),
           };
+
           saveInbound({ ...record, version: record.version + 1, dispatch });
           return { status: "updated", version: record.version + 1 };
         }
@@ -215,12 +227,14 @@ export function createWorkOperations(
           return { status: "conflict" };
         }
         const outcome = input.outcome;
+
         const next = {
           ...record,
           version: record.version + 1,
           attempts: record.attempts + 1,
           dueAt: input.nextDueAt,
         };
+
         delete next.lease;
         delete next.errorCode;
         if (outcome.status === "sent") {

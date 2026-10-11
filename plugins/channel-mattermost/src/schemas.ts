@@ -7,6 +7,7 @@ export const frameSchema = z.object({
   seq_reply: z.number().int().optional(),
   status: z.string().optional(),
 });
+
 export const postSchema = z.object({
   id: platformIdSchema,
   user_id: platformIdSchema,

@@ -25,4 +25,6 @@ External protocol peers may record real HTTP/socket traffic, but must not implem
 
 Use Oxfmt and type-aware Oxlint through the root scripts. Follow `docs/en/development.md`. Run `pnpm format`, `pnpm lint`, `pnpm typecheck`, and relevant Vitest checks before committing. Documentation changes also require `pnpm docs:build`. The tracked pre-commit hook must pass; never use `--no-verify` or disable rules just to integrate work. Keep complexity <=20 and nesting <=4; split meaningful operations instead of dense nested expressions. New test folders must have a discoverable tsconfig so type-aware linting uses real types. No new Biome/ESLint/Prettier formatter layer.
 
+Keep declarations and class methods separated by the blank lines enforced by Oxlint. Use `pnpm lint:fix` followed by `pnpm format` to repair spacing; Oxfmt alone does not insert declaration separators. Preserve comments and JSDoc with their declarations.
+
 Before every git commit, inspect recent messages (`git log --oneline -20`) and match the dominant recent convention. Commit coherent tasks, never secrets/reference clones/worktrees/build output. Never force-push. Subagents commit their assigned work; root alone integrates and pushes master.

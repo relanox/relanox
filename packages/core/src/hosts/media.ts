@@ -24,6 +24,7 @@ export function authorizedRequest(
     (request.status === "claimed" || request.status === "completed")
   );
 }
+
 export function createAgentMedia(
   storage: Storage,
   agent: AgentId,
@@ -68,6 +69,7 @@ export function createAgentMedia(
     },
   };
 }
+
 export async function completionMedia(
   storage: Storage,
   requestId: string,

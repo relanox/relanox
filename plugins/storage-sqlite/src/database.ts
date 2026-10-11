@@ -10,26 +10,33 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   const transaction = <T>(fn: () => T): T => db.transaction(fn).immediate();
+
   const readInbound = (id: string): InboundRecord | undefined => {
     const row = db.prepare("SELECT record FROM inbound WHERE id=?").get(id) as
       | { record: string }
       | undefined;
+
     return row ? decodeDurableRecord(row.record) : undefined;
   };
+
   const readOutbound = (id: string): OutboundRecord | undefined => {
     const row = db.prepare("SELECT record FROM outbound WHERE id=?").get(id) as
       | { record: string }
       | undefined;
+
     return row ? decodeDurableRecord(row.record) : undefined;
   };
+
   const saveInbound = (record: InboundRecord) =>
     db
       .prepare("UPDATE inbound SET status=?, version=?, record=? WHERE id=?")
       .run(record.status, record.version, encodeDurableRecord(record), record.snapshot.requestId);
+
   const saveOutbound = (record: OutboundRecord) =>
     db
       .prepare("UPDATE outbound SET status=?, version=?, record=? WHERE id=?")
       .run(record.status, record.version, encodeDurableRecord(record), record.deliveryId);
+
   const isEndpointHead = (record: InboundRecord): boolean =>
     (
       db
@@ -50,6 +57,7 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
         )
         .get(record.snapshot.endpoint.id) as { id: string } | undefined
     )?.id === record.snapshot.requestId;
+
   return { db, transaction, readInbound, readOutbound, saveInbound, saveOutbound, isEndpointHead };
 }
 

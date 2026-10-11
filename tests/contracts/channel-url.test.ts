@@ -46,6 +46,7 @@ const cases = [
   config: entry.config,
   field: "apiBase",
 }));
+
 const boundaries = [...cases, ...otherCases].flatMap((entry) =>
   ["?route=bot", "?", "#", "#fragment"].map((suffix) => ({
     name: entry.name,
@@ -75,6 +76,7 @@ describe("channel API base URL contract", () => {
       botToken: { env: "TOKEN" },
       gatewayUrl: "wss://gateway.example/?v=10&encoding=json",
     });
+
     expect(config.gatewayUrl).toBe("wss://gateway.example/?v=10&encoding=json");
   });
 
@@ -85,6 +87,7 @@ describe("channel API base URL contract", () => {
       tokenUrl: "https://auth.example/token?tenant=one",
       jwksUrl: "https://auth.example/keys?tenant=one",
     });
+
     expect(config.tokenUrl).toBe("https://auth.example/token?tenant=one");
     expect(config.jwksUrl).toBe("https://auth.example/keys?tenant=one");
   });

@@ -11,10 +11,12 @@ test("WeCom decrypts pure-media input into SQLite and uploads original bytes aft
   const key = Buffer.alloc(32, 7);
   const cipher = createCipheriv("aes-256-cbc", key, key.subarray(0, 16));
   cipher.setAutoPadding(false);
+
   const encrypted = Buffer.concat([
     cipher.update(Buffer.concat([bytes, Buffer.alloc(21, 21)])),
     cipher.final(),
   ]);
+
   const remote = await peer(
     () => ({ body: encrypted, headers: { "content-type": "application/octet-stream" } }),
     (socket) => {
@@ -22,6 +24,7 @@ test("WeCom decrypts pure-media input into SQLite and uploads original bytes aft
         const frame = z
           .object({ cmd: z.string(), headers: z.object({ req_id: z.string() }) })
           .parse(JSON.parse(wireText(raw)));
+
         let body;
         if (frame.cmd === "aibot_upload_media_init") {
           body = { upload_id: "upload-1" };
@@ -35,6 +38,7 @@ test("WeCom decrypts pure-media input into SQLite and uploads original bytes aft
       });
     },
   );
+
   const config = {
     botId: "robot",
     secret: { env: "WECOM_MEDIA_SECRET" },
@@ -42,6 +46,7 @@ test("WeCom decrypts pure-media input into SQLite and uploads original bytes aft
     mediaOrigins: [remote.http],
     allowInsecureLoopback: true,
   };
+
   const filename = await temporaryDatabase();
   const first = createWeComChannel();
   const local = await assemble(first, config, [{ chatId: "user", senderId: "user" }], filename);
@@ -71,12 +76,14 @@ test("WeCom decrypts pure-media input into SQLite and uploads original bytes aft
   await first.stop?.();
   await local.storage.close();
   const plugin = createWeComChannel();
+
   const restarted = await assemble(
     plugin,
     config,
     [{ chatId: "user", senderId: "user" }],
     filename,
   );
+
   await restarted.start();
   const scoped = restarted.principal();
   const task = (await scoped.listPending(10))[0];
@@ -97,9 +104,11 @@ test("WeCom decrypts pure-media input into SQLite and uploads original bytes aft
     }),
   ).toMatchObject({ status: "completed" });
   await restarted.runtime.processDue();
+
   const chunk = remote.frames.find(
     (raw) => z.object({ cmd: z.string().optional() }).parse(raw).cmd === "aibot_upload_media_chunk",
   );
+
   expect(chunk).toMatchObject({ body: { chunk_index: 0, base64_data: bytes.toString("base64") } });
   expect(remote.frames).toContainEqual(
     expect.objectContaining({

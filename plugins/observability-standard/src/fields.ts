@@ -18,7 +18,9 @@ const channels = [
   "signal",
   "irc",
 ];
+
 const agents = ["dot", "grok"];
+
 export const operations = [
   "ingest",
   "dispatch",
@@ -35,6 +37,7 @@ export const operations = [
   "startup",
   "shutdown",
 ] as const;
+
 export const events = [
   "inbound.accepted",
   "inbound.duplicate",
@@ -55,6 +58,7 @@ export const events = [
   "shutdown.completed",
   "operation.failed",
 ] as const;
+
 const outcomes = [
   "ok",
   "error",
@@ -77,6 +81,7 @@ const outcomes = [
   "completed",
   "updated",
 ];
+
 const errorCodes = [
   "timeout",
   "network",
@@ -91,6 +96,7 @@ const errorCodes = [
   "unknown",
   "internal",
 ];
+
 const plugins = [
   ...channels.map((id) => `channel-${id}`),
   ...agents.map((id) => `agent-${id}`),
@@ -100,6 +106,7 @@ const plugins = [
   "core",
   "cli",
 ];
+
 const vocabulary: Record<string, readonly string[]> = {
   channel: channels,
   agent: agents,
@@ -108,7 +115,9 @@ const vocabulary: Record<string, readonly string[]> = {
   outcome: outcomes,
   error_class: errorCodes,
 };
+
 export const labelNames = Object.keys(vocabulary);
+
 export const metricDefinitions = {
   relanox_inbound_total: "counter",
   relanox_dispatch_total: "counter",
@@ -129,12 +138,14 @@ export const metricDefinitions = {
   relanox_connection_status: "gauge",
   relanox_storage_stats_stale: "gauge",
 } as const;
+
 export function allowedVocabularyValue(
   value: unknown,
   values: readonly string[],
 ): string | undefined {
   return typeof value === "string" && values.includes(value) ? value : undefined;
 }
+
 export function safeFields(fields: LogFields = {}): Record<string, string> {
   const safe: Record<string, string> = {};
   for (const [key, values] of Object.entries({
@@ -158,6 +169,7 @@ export function safeFields(fields: LogFields = {}): Record<string, string> {
       normalizeNativeDiagnosticField(key, fields[key as keyof LogFields]),
       values,
     );
+
     if (value) {
       safe[key] = value;
     }
@@ -177,6 +189,7 @@ export function safeFields(fields: LogFields = {}): Record<string, string> {
   }
   return safe;
 }
+
 export function safeLabels(labels: MetricLabels = {}): Record<string, string> | undefined {
   const safe: Record<string, string> = {};
   // Reject unknown keys/values entirely: mapping hostile identities into combinations still grows cardinality.

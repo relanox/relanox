@@ -8,6 +8,7 @@ export function resolveAgentSecret(ref: SecretRef): string {
   }
   return value;
 }
+
 export function equalSecret(a: string, b: string): boolean {
   const digest = (value: string) => createHash("sha256").update(value).digest();
   return timingSafeEqual(digest(a), digest(b));

@@ -12,6 +12,7 @@ it("preserves duration and request-owned image previews through upload, completi
       throw new Error("Expected claim");
     }
     const uploadId = crypto.randomUUID();
+
     const upload = {
       requestId: receipt.requestId,
       claimToken: claim.claimToken,
@@ -24,6 +25,7 @@ it("preserves duration and request-owned image previews through upload, completi
         previewMediaId: previewId,
       },
     };
+
     expect(await scoped.media.upload(upload)).toMatchObject({
       status: "stored",
       media: { durationMs: 1500, previewMediaId: previewId },

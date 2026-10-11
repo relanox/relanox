@@ -15,6 +15,7 @@ afterEach(async () => {
   }
   vi.unstubAllEnvs();
 });
+
 const config = (base: string): Json => ({
   botUserId: "bot",
   channelSecret: { env: "LINE_SECRET" },
@@ -22,6 +23,7 @@ const config = (base: string): Json => ({
   apiBase: base,
   allowLoopback: true,
 });
+
 function webhook(text = "hello", destination = "bot", sender = "user") {
   return JSON.stringify({
     destination,
@@ -37,6 +39,7 @@ function webhook(text = "hello", destination = "bot", sender = "user") {
     ],
   });
 }
+
 function incoming(body: string, signature?: string) {
   const expected = createHmac("sha256", "secret").update(body).digest("base64");
   return new Request("http://local/channels/business/webhook", {
@@ -45,6 +48,7 @@ function incoming(body: string, signature?: string) {
     body,
   });
 }
+
 async function setup(filename?: string) {
   vi.stubEnv("LINE_SECRET", "secret");
   vi.stubEnv("LINE_TOKEN", "token");
@@ -69,6 +73,7 @@ describe("native LINE", () => {
         throw new Error("Missing stored outbound");
       }
       const changedPlugin = createLineChannel();
+
       const changed = await harness(
         changedPlugin,
         {
@@ -81,6 +86,7 @@ describe("native LINE", () => {
         "group",
         "user",
       );
+
       cleanup.push(changed.close);
       expect(
         await changedPlugin.send({
@@ -109,12 +115,14 @@ describe("native LINE", () => {
     }
     vi.stubEnv("LINE_TOKEN", "rotated-token");
     const restartedPlugin = createLineChannel();
+
     const restarted = await harness(
       restartedPlugin,
       config(`${local.remote.base}/`),
       "group",
       "user",
     );
+
     cleanup.push(restarted.close);
     expect(
       (
@@ -180,6 +188,7 @@ describe("native LINE", () => {
     if (!outbound?.chunks[0]) {
       throw new Error("No outbound chunk");
     }
+
     const send: SendInput = {
       deliveryId: outbound.deliveryId,
       requestId: outbound.requestId,
@@ -188,10 +197,12 @@ describe("native LINE", () => {
       chunkIndex: 0,
       signal: new AbortController().signal,
     };
+
     const retryKey = local.remote.traffic[0]?.headers["x-line-retry-key"];
     await local.close();
     cleanup.pop();
     const restartedPlugin = createLineChannel();
+
     const restarted = await harness(
       restartedPlugin,
       config(local.remote.base),
@@ -200,6 +211,7 @@ describe("native LINE", () => {
       undefined,
       join(directory, "state.db"),
     );
+
     cleanup.push(restarted.close);
     local.remote.respond(409, {}, { "x-line-accepted-request-id": "accepted-1" });
     expect(await restartedPlugin.send(send)).toEqual({

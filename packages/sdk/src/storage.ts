@@ -25,10 +25,12 @@ export interface StorageStats {
   readonly unknown: number;
   readonly oldestPendingAt?: EpochMs;
 }
+
 export interface Health {
   readonly ok: boolean;
   readonly errorCode?: string;
 }
+
 export interface ClaimInput {
   readonly requestId: string;
   readonly endpointIds: readonly string[];
@@ -37,6 +39,7 @@ export interface ClaimInput {
   readonly claimToken: string;
   readonly now: EpochMs;
 }
+
 export interface CompleteInput {
   readonly requestId: string;
   readonly endpointIds: readonly string[];
@@ -45,6 +48,7 @@ export interface CompleteInput {
   readonly result: FinalResult;
   readonly outbound: OutboundRecord;
 }
+
 export interface FailInput {
   readonly requestId: string;
   readonly endpointIds: readonly string[];
@@ -53,6 +57,7 @@ export interface FailInput {
   readonly errorCode: string;
   readonly now: EpochMs;
 }
+
 export type DueWork =
   | {
       readonly kind: "dispatch";
@@ -64,6 +69,7 @@ export type DueWork =
       readonly record: OutboundRecord;
       readonly lease: Lease;
     };
+
 /** Storage atomically acquires leases; expired in-flight work becomes unknown unless its channel has durable idempotency. */
 export interface TakeDueInput {
   readonly now: EpochMs;
@@ -72,6 +78,7 @@ export interface TakeDueInput {
   readonly leaseOwner: string;
   readonly safeRetryAccountIds: readonly string[];
 }
+
 export type Settlement =
   | {
       readonly kind: "dispatch";
@@ -89,6 +96,7 @@ export type Settlement =
       readonly nextDueAt: EpochMs;
       readonly now: EpochMs;
     };
+
 export interface StatusFilter {
   readonly requestStatus?: RequestStatus;
   readonly deliveryStatus?: DeliveryStatus;
@@ -96,6 +104,7 @@ export interface StatusFilter {
   readonly limit: number;
   readonly afterId?: string;
 }
+
 export interface Storage {
   readonly media?: MediaStorage;
   /** Snapshot and all incoming bytes are committed atomically; duplicate input adds no assets. */

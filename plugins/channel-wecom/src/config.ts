@@ -49,4 +49,5 @@ export const configSchema = z
       context.addIssue({ code: "custom", message: "Invalid secure WebSocket URL" });
     }
   });
+
 export type WeComConfig = z.infer<typeof configSchema>;

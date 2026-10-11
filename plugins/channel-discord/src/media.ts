@@ -31,6 +31,7 @@ export async function sendMessage(
       ? { message_reference: { message_id: input.target.replyToId, fail_if_not_exists: false } }
       : {}),
   };
+
   const url = `${config.apiBaseUrl.replace(/\/$/u, "")}/channels/${input.target.threadId ?? input.target.chatId}/messages`;
   const headers = { authorization: `Bot ${token}` };
   if (!input.chunk.media) {

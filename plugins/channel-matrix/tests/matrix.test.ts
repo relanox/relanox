@@ -6,6 +6,7 @@ import { body, harness, httpPeer, json, observations, waitFor } from "./harness.
 const user = "@alice:local.test";
 const room = "!room:local.test";
 const thread = "$thread-root";
+
 function config(base: string) {
   return {
     homeserver: base,
@@ -16,6 +17,7 @@ function config(base: string) {
     reconnectMs: 100,
   };
 }
+
 function event(eventId: string, text: string, sender = user) {
   return {
     event_id: eventId,
@@ -33,6 +35,7 @@ function event(eventId: string, text: string, sender = user) {
     },
   };
 }
+
 function input(target: SendInput["target"], text = "delayed answer"): SendInput {
   return {
     deliveryId: "delivery",
@@ -46,15 +49,18 @@ function input(target: SendInput["target"], text = "delayed answer"): SendInput 
 
 it("persists threaded sync before cursor, filters identities and sends the frozen delayed target", async () => {
   const syncs: { since: string | null; authorization: string | undefined }[] = [];
+
   const sent: {
     path: string;
     method: string | undefined;
     authorization: string | undefined;
     data: unknown;
   }[] = [];
+
   const dispatches: unknown[] = [];
   const observation = observations();
   let encrypted = false;
+
   const peer = await httpPeer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://peer");
     if (url.pathname.endsWith("/sync")) {
@@ -62,6 +68,7 @@ it("persists threaded sync before cursor, filters identities and sends the froze
         since: url.searchParams.get("since"),
         authorization: request.headers.authorization,
       });
+
       const events =
         syncs.length === 1
           ? [
@@ -76,6 +83,7 @@ it("persists threaded sync before cursor, filters identities and sends the froze
               },
             ]
           : [];
+
       json(response, {
         next_batch: "batch-committed",
         rooms: { join: { [room]: { timeline: { events } } } },
@@ -103,7 +111,9 @@ it("persists threaded sync before cursor, filters identities and sends the froze
     dispatches.push(await body(request));
     json(response, {});
   });
+
   const plugin = createMatrixChannel({ MATRIX_TOKEN: "matrix-access-secret" });
+
   const fixture = await harness(
     plugin,
     config(peer.base),
@@ -112,6 +122,7 @@ it("persists threaded sync before cursor, filters identities and sends the froze
     `${peer.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(
     async () =>
@@ -177,6 +188,7 @@ it("replays from the last committed cursor after a real storage failure and rest
   let release: (() => void) | undefined;
   let failNext = false;
   const observation = observations();
+
   const peer = await httpPeer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://peer");
     if (!url.pathname.endsWith("/sync")) {
@@ -200,7 +212,9 @@ it("replays from the last committed cursor after a real storage failure and rest
       },
     });
   });
+
   const firstPlugin = createMatrixChannel({ MATRIX_TOKEN: "token" });
+
   const first = await harness(
     firstPlugin,
     config(peer.base),
@@ -209,6 +223,7 @@ it("replays from the last committed cursor after a real storage failure and rest
     `${peer.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await firstPlugin.start?.(new AbortController().signal);
   await waitFor(
     async () =>
@@ -224,6 +239,7 @@ it("replays from the last committed cursor after a real storage failure and rest
   await waitFor(() => observation.logs.some((entry) => entry.fields?.errorCode === "sync_failed"));
   await firstPlugin.stop?.();
   const nextPlugin = createMatrixChannel({ MATRIX_TOKEN: "token" });
+
   const next = await harness(
     nextPlugin,
     config(peer.base),
@@ -232,6 +248,7 @@ it("replays from the last committed cursor after a real storage failure and rest
     `${peer.base}/dispatch`,
     { filename: first.filename },
   );
+
   await nextPlugin.start?.(new AbortController().signal);
   await waitFor(async () => (await next.storage.listInbound({ limit: 10 })).length === 1);
   await nextPlugin.stop?.();
@@ -251,8 +268,10 @@ it("refuses to advance a limited timeline from an existing checkpoint", async ()
       },
     });
   });
+
   const plugin = createMatrixChannel({ MATRIX_TOKEN: "token" });
   const observation = observations();
+
   const fixture = await harness(
     plugin,
     config(peer.base),
@@ -261,6 +280,7 @@ it("refuses to advance a limited timeline from an existing checkpoint", async ()
     `${peer.base}/dispatch`,
     { observe: observation.observe },
   );
+
   await fixture.storage.compareAndSetState(
     { pluginId: "channel-matrix", ownerId: "bot" },
     { key: "sync", expectedVersion: null, value: "older" },
@@ -289,8 +309,10 @@ it.each([
       json(response, {}, status);
     }
   });
+
   const plugin = createMatrixChannel({ MATRIX_TOKEN: "token" });
   await harness(plugin, config(peer.base), [{ chatId: room }], [user], `${peer.base}/dispatch`);
+
   const result = await plugin.send(
     input({
       channel: "matrix",
@@ -299,6 +321,7 @@ it.each([
       data: { homeserver: peer.base, userId: "@bot:local.test" },
     }),
   );
+
   expect(result.status).toBe(outcome);
   if (result.status === "retryable") {
     expect(result.retryAfterMs).toBe(7000);
@@ -310,6 +333,7 @@ it.each(["unavailable", "connection-loss"] as const)(
   async (mode) => {
     let healthy = false;
     let sends = 0;
+
     const peer = await httpPeer((request, response) => {
       if (request.url?.includes("/state/")) {
         if (healthy) {
@@ -324,14 +348,17 @@ it.each(["unavailable", "connection-loss"] as const)(
       sends += 1;
       json(response, { event_id: "$sent" });
     });
+
     const plugin = createMatrixChannel({ MATRIX_TOKEN: "token" });
     await harness(plugin, config(peer.base), [{ chatId: room }], [user], `${peer.base}/dispatch`);
+
     const outgoing = input({
       channel: "matrix",
       accountId: "bot",
       chatId: room,
       data: { homeserver: peer.base, userId: "@bot:local.test" },
     });
+
     expect((await plugin.send(outgoing)).status).toBe("retryable");
     expect(sends).toBe(0);
     healthy = true;
@@ -358,12 +385,14 @@ it("rejects inline secrets and untrusted plaintext or credential-bearing homeser
 it("returns from start and aborts an outstanding sync connection on stop", async () => {
   let opened = false;
   let closed = false;
+
   const peer = await httpPeer((_request, response) => {
     opened = true;
     response.once("close", () => {
       closed = true;
     });
   });
+
   const plugin = createMatrixChannel({ MATRIX_TOKEN: "token" });
   await harness(plugin, config(peer.base), [{ chatId: room }], [user], `${peer.base}/dispatch`);
   await plugin.start?.(new AbortController().signal);

@@ -17,16 +17,19 @@ export function createRequestOperations(
           .get(snapshot.source.channel, snapshot.source.accountId, snapshot.source.eventId) as
           | { id: string }
           | undefined;
+
         if (row) {
           return { requestId: row.id, duplicate: true };
         }
         validateIncoming(snapshot, media);
+
         const record: InboundRecord = {
           snapshot: decodeDurableRecord(encodeDurableRecord(snapshot)),
           status: "pending",
           version: 1,
           dispatch: { status: "due", attempts: 0, dueAt: snapshot.acceptedAt },
         };
+
         db.prepare(
           `
             INSERT INTO inbound(id,channel,account,event,endpoint,accepted_at,status,version,record)
@@ -124,9 +127,11 @@ export function createRequestOperations(
           const row = db
             .prepare("SELECT final_digest FROM inbound WHERE id=?")
             .get(input.requestId) as { final_digest: string };
+
           const delivery = db
             .prepare("SELECT id FROM outbound WHERE request_id=?")
             .get(input.requestId) as { id: string };
+
           return record.result?.resultId === input.result.resultId &&
             row.final_digest === resultDigest(input.result)
             ? { status: "completed", deliveryId: delivery.id, replay: true }

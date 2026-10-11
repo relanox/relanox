@@ -35,10 +35,12 @@ const channelFactories: Record<ChannelId, () => ChannelPlugin<unknown>> = {
   signal: createSignalChannel,
   irc: createIrcChannel,
 };
+
 const agentFactories: Record<AgentId, () => AgentPlugin<unknown>> = {
   dot: createDotAgentPlugin,
   grok: createGrokAgentPlugin,
 };
+
 export function loadPlugins(config: RelanoxConfig) {
   const channels = new Map<string, ChannelPlugin<unknown>>();
   for (const account of config.accounts) {

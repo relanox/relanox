@@ -20,6 +20,7 @@ function nativeRequest(request: Request): Request {
     signal: request.signal,
     ...(request.body === null ? {} : { body: request.body, duplex: "half" as const }),
   };
+
   return new Request(request.url, init);
 }
 
@@ -38,6 +39,7 @@ export function listen(server: Server, port: number, host: string): Promise<stri
     });
   });
 }
+
 export function closeServer(server: Server): Promise<void> {
   return new Promise((resolve) => {
     server.close(() => {
@@ -46,6 +48,7 @@ export function closeServer(server: Server): Promise<void> {
     server.closeIdleConnections();
   });
 }
+
 export function createListeners(
   core: CoreRuntime,
   observability: ObservabilityRuntime,
@@ -59,6 +62,7 @@ export function createListeners(
       errorHandler: () => new Response(null, { status: 500 }),
     }),
   );
+
   const management = nodeServer(
     { requestTimeout: 5000, headersTimeout: 5000, maxHeaderSize: 8192 },
     getRequestListener(
@@ -88,5 +92,6 @@ export function createListeners(
       { overrideGlobalObjects: false, errorHandler: () => new Response(null, { status: 500 }) },
     ),
   );
+
   return { business, management };
 }

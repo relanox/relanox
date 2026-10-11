@@ -13,6 +13,7 @@ export class BoundedLogWriter {
   private failed = false;
   private closed = false;
   private readonly waiters = new Set<() => void>();
+
   constructor(
     private readonly destination: Writable,
     private readonly maxBytes: number,
@@ -21,6 +22,7 @@ export class BoundedLogWriter {
     destination.on("drain", this.drain);
     destination.on("error", this.error);
   }
+
   private readonly error = (): void => {
     this.failed = true;
     this.queue = [];
@@ -41,14 +43,17 @@ export class BoundedLogWriter {
       this.wake();
     }
   };
+
   private idle(): boolean {
     return !this.blocked && this.queue.length === 0 && this.pending === 0;
   }
+
   private wake(): void {
     for (const done of this.waiters) {
       done();
     }
   }
+
   write(line: string): void {
     if (this.closed || this.failed) {
       this.dropped();
@@ -80,6 +85,7 @@ export class BoundedLogWriter {
       this.dropped();
     }
   }
+
   async flush(signal: AbortSignal): Promise<void> {
     if (this.failed || this.idle() || signal.aborted) {
       return;
@@ -90,10 +96,12 @@ export class BoundedLogWriter {
         signal.removeEventListener("abort", done);
         resolve();
       };
+
       this.waiters.add(done);
       signal.addEventListener("abort", done, { once: true });
     });
   }
+
   close(): void {
     this.closed = true;
     this.queue = [];
@@ -108,12 +116,14 @@ export interface LogRuntime {
   readonly writer: BoundedLogWriter;
   readonly log: Observability["log"];
 }
+
 export function createLogs(
   config: StandardConfig,
   destination: Writable,
   dropped: () => void,
 ): LogRuntime {
   const writer = new BoundedLogWriter(destination, config.logBufferBytes, dropped);
+
   const logger = pino(
     {
       level: config.level,
@@ -136,5 +146,6 @@ export function createLogs(
       ...safeFields(fields),
     });
   };
+
   return { writer, log };
 }

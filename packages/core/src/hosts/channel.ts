@@ -70,9 +70,11 @@ export function createChannelHost({
       ) {
         throw new CoreError("context_too_large");
       }
+
       const binding = bindings.get(
         bindingKey(account.id, input.target.chatId, input.target.threadId),
       );
+
       if (!binding) {
         throw new CoreError("unbound_conversation");
       }
@@ -86,6 +88,7 @@ export function createChannelHost({
       if (!endpoint) {
         throw new CoreError("unbound_endpoint");
       }
+
       const media = inboundMedia(
         attachments,
         worker.maxMediaBytes,
@@ -93,9 +96,11 @@ export function createChannelHost({
         Boolean(storage.media),
         worker.maxTotalMediaBytes,
       );
+
       if (media.some((item) => !mediaKinds?.includes(item.reference.kind))) {
         throw new CoreError("media_not_supported");
       }
+
       const receipt = await traced(
         "ingest",
         (trace) =>
@@ -112,6 +117,7 @@ export function createChannelHost({
           ),
         input.trace,
       );
+
       observe.count("relanox_inbound_total", {
         channel: account.channel,
         outcome: receipt.duplicate ? "duplicate" : "accepted",

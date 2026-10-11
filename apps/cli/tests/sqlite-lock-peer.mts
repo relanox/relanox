@@ -7,6 +7,7 @@ if (!filename) {
 const database = new DatabaseSync(filename);
 database.exec("BEGIN IMMEDIATE");
 let released = false;
+
 function release() {
   if (released) {
     return;
@@ -18,6 +19,7 @@ function release() {
     process.disconnect();
   }
 }
+
 process.on("disconnect", release);
 process.on("message", (message: unknown) => {
   if (message === "release") {

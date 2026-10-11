@@ -6,6 +6,7 @@ import { createEventsHandler } from "./events.js";
 import { createSubscriptions } from "./subscriptions.js";
 
 export type { DotConfig } from "./config.js";
+
 export function createDotAgentPlugin(): AgentPlugin<DotConfig> {
   let dispatch: AgentPlugin<DotConfig>["dispatch"] | undefined;
   const handlers: ReturnType<typeof createEventsHandler>[] = [];
@@ -22,6 +23,7 @@ export function createDotAgentPlugin(): AgentPlugin<DotConfig> {
       const configured = new Map(
         endpoints.map((endpoint) => [endpoint.id, configSchema.parse(endpoint.config)]),
       );
+
       const subscriptions = createSubscriptions(agentHost.state);
       dispatch = createDispatch(agentHost.state, configured, subscriptions);
       for (const endpoint of endpoints) {

@@ -6,4 +6,5 @@ export const configSchema = z
     busyTimeoutMs: z.number().int().positive().default(5000),
   })
   .strict();
+
 export type SqliteConfig = z.infer<typeof configSchema>;

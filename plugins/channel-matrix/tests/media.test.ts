@@ -19,9 +19,12 @@ it.each(kinds)(
   async (kind, mimeType, fileName, uploadStatus, expected) => {
     let syncs = 0;
     const downloads: { path: string; authorization: string | undefined }[] = [];
+
     const uploads: { bytes: Uint8Array; mimeType: string | undefined; filename: string | null }[] =
       [];
+
     const sent: unknown[] = [];
+
     const peer = await httpPeer(async (request, response) => {
       const url = new URL(request.url ?? "/", "http://peer");
       if (url.pathname.endsWith("/sync")) {
@@ -84,7 +87,9 @@ it.each(kinds)(
         json(response, { event_id: "$sent" });
       }
     });
+
     const plugin = createMatrixChannel({ MATRIX_TOKEN: "matrix-secret" });
+
     const fixture = await mediaRelay(
       plugin,
       {
@@ -98,6 +103,7 @@ it.each(kinds)(
       [{ chatId: "!room:example", threadId: "$thread" }],
       ["@alice:example"],
     );
+
     await plugin.start?.(new AbortController().signal);
     await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
     await plugin.stop?.();
@@ -106,6 +112,7 @@ it.each(kinds)(
       throw new Error("Missing request");
     }
     expect(record.snapshot.text).toBe("Caption ".repeat(50));
+
     const turn = await fixture.turn(record.snapshot.requestId, [
       {
         kind,
@@ -115,6 +122,7 @@ it.each(kinds)(
         ...(kind === "audio" || kind === "video" ? { durationMs: 1500 } : {}),
       },
     ]);
+
     expect(turn.inbound[0]?.reference).toMatchObject({ kind, mimeType, fileName });
     expect(turn.inbound[0]?.data).toEqual(new Uint8Array([1, 2, 3]));
     expect(downloads).toEqual([
@@ -155,6 +163,7 @@ it.each(kinds)(
 
 it("refuses oversized Matrix media without committing the sync cursor", async () => {
   let downloaded = false;
+
   const peer = await httpPeer((request, response) => {
     if (request.url?.includes("/media/download/")) {
       downloaded = true;
@@ -182,7 +191,9 @@ it("refuses oversized Matrix media without committing the sync cursor", async ()
       });
     }
   });
+
   const plugin = createMatrixChannel({ MATRIX_TOKEN: "secret" });
+
   const fixture = await mediaRelay(
     plugin,
     {
@@ -197,6 +208,7 @@ it("refuses oversized Matrix media without committing the sync cursor", async ()
     ["@alice:example"],
     16,
   );
+
   await plugin.start?.(new AbortController().signal);
   await waitFor(() => downloaded);
   await plugin.stop?.();

@@ -49,6 +49,7 @@ const configSchema = z.strictObject({
   reconnectDelayMs: z.number().int().min(100).max(30_000).default(5000),
   ...transportOptions,
 });
+
 export type DiscordConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(input: unknown): DiscordConfig {

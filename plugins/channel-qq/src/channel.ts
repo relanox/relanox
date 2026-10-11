@@ -53,6 +53,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   let dispatchQueue = Promise.resolve();
   let dispatchSocket: WebSocket | undefined;
   const api = (path: string) => `${config.apiBase.replace(/\/$/u, "")}${path}`;
+
   async function getAccessToken(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret);
     if (token && token.credential === credential && token.expiresAt > Date.now()) {
@@ -67,6 +68,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         jsonPostRequest({ appId: config.appId, clientSecret: credential }),
         signal,
       );
+
       const error = errorSchema.safeParse(raw);
       if (error.success && error.data.code !== 0) {
         throw new RemoteError({
@@ -88,6 +90,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       tokenFlight = undefined;
     }
   }
+
   const heartbeat = () => {
     if (awaitingHeartbeat) {
       connection.socket?.terminate();
@@ -96,6 +99,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     awaitingHeartbeat = true;
     connection.send({ op: 1, d: seq });
   };
+
   async function ingestMessage(eventType: string, raw: unknown): Promise<void> {
     const message = messageSchema.parse(raw);
     if (message.author.bot) {
@@ -117,17 +121,21 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     if (!senderId || !chatId) {
       throw new Error("missing_sender_address");
     }
+
     // Current docs distinguish indexed parts; never persist auth_token from message_scene.
     const index = message.message_scene?.ext
       .find((entry) => entry.startsWith("msg_idx="))
       ?.slice(8);
+
     const eventId = JSON.stringify([eventType, message.id, index ?? message.msg_seq ?? null]);
+
     const attachments = await downloadAttachments(
       message.attachments ?? [],
       host,
       config,
       connection.signal,
     );
+
     await ingestText(host, {
       source: { channel: "qq", accountId: account.id, eventId },
       senderId,
@@ -149,6 +157,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       context: null,
     });
   }
+
   async function dispatch(frame: z.infer<typeof frameSchema>): Promise<void> {
     if (frame.t === "READY") {
       const body = readyEventSchema.parse(frame.d);
@@ -169,6 +178,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       seq = frame.s;
     }
   }
+
   async function receive(raw: unknown): Promise<void> {
     const frame = frameSchema.parse(raw);
     switch (frame.op) {
@@ -228,6 +238,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       }
     }
   }
+
   async function allocateReplySequence(
     input: SendInput,
     target: z.infer<typeof targetSchema>,
@@ -238,15 +249,18 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     for (let attempt = 0; attempt < 32; attempt++) {
       input.signal.throwIfAborted();
       const entry = await host.state.get(key);
+
       const state = entry
         ? allocationSchema.parse(entry.value)
         : {
             next: 1,
             allocations: {} as Record<string, ReplyAllocation>,
           };
+
       const existing = Object.hasOwn(state.allocations, input.chunk.idempotencyKey)
         ? state.allocations[input.chunk.idempotencyKey]
         : undefined;
+
       if (existing) {
         if (existing.mode === "passive" && Date.now() >= target.messageAt + windowMs) {
           return { status: "rejected", errorCode: "passive_window_expired" };
@@ -264,10 +278,12 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       if (Object.keys(state.allocations).length >= 256) {
         return { status: "rejected", errorCode: "reply_chunk_limit" };
       }
+
       const allocation = {
         mode: passive ? ("passive" as const) : ("proactive" as const),
         seq: state.next,
       };
+
       const result = await host.state.compareAndSet({
         key,
         expectedVersion: entry?.version ?? null,
@@ -279,6 +295,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
           },
         },
       });
+
       if (result.status === "updated") {
         return allocation;
       }
@@ -289,6 +306,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       retryAfterMs: 1000,
     };
   }
+
   async function transmit(
     input: SendInput,
     target: z.infer<typeof targetSchema>,
@@ -302,6 +320,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         return media;
       }
       transmitting = true;
+
       const raw = await httpJson(
         api(
           `/v2/${target.type === "c2c" ? "users" : "groups"}/${encodeURIComponent(input.target.chatId)}/messages`,
@@ -319,6 +338,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         ),
         input.signal,
       );
+
       const failure = apiError(raw);
       if (failure) {
         return failure;
@@ -348,6 +368,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         : { status: "retryable", errorCode: "media_upload_unavailable", retryAfterMs: 1000 };
     }
   }
+
   return {
     id: "channel-qq",
     sdkMajor: 1,
@@ -374,11 +395,13 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         host,
         async (signal) => {
           const value = await getAccessToken(signal);
+
           const raw = await httpJson(
             api("/gateway"),
             { headers: { Authorization: `QQBot ${value}` } },
             signal,
           );
+
           const body = gatewayResponseSchema.parse(raw);
           return validateTransportUrl(body.url, true, config.allowInsecureLoopback);
         },

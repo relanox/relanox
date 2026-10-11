@@ -86,11 +86,13 @@ export function createInspectionOperations(
         claimed: number | null;
         oldest: number | null;
       };
+
       const outboundStats = db
         .prepare(
           "SELECT SUM(status!='sent') undelivered,SUM(status='unknown') unknown FROM outbound",
         )
         .get() as { undelivered: number | null; unknown: number | null };
+
       const unknownDispatches = db
         .prepare(
           `
@@ -101,6 +103,7 @@ export function createInspectionOperations(
           `,
         )
         .get() as { count: number };
+
       return {
         pending: inboundStats.pending ?? 0,
         claimed: inboundStats.claimed ?? 0,
@@ -112,6 +115,7 @@ export function createInspectionOperations(
     async cleanup(input) {
       return transaction(() => {
         let redacted = 0;
+
         const rows = db
           .prepare(
             `
@@ -131,11 +135,14 @@ export function createInspectionOperations(
           inbound_record: string;
           outbound_record: string | null;
         }[];
+
         for (const row of rows) {
           const record = decodeDurableRecord<InboundRecord>(row.inbound_record);
+
           const delivery = row.outbound_record
             ? decodeDurableRecord<OutboundRecord>(row.outbound_record)
             : undefined;
+
           saveInbound({
             ...record,
             snapshot: { ...record.snapshot, text: "", context: null, attachments: [] },

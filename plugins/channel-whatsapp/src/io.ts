@@ -9,6 +9,7 @@ export function secret(ref: SecretRef): string {
   }
   return value;
 }
+
 export function signed(
   body: Uint8Array,
   header: string | null,
@@ -25,6 +26,7 @@ export function signed(
   const right = Buffer.from(expected);
   return left.length === right.length && timingSafeEqual(left, right);
 }
+
 export async function rawBody(incoming: Request): Promise<Uint8Array> {
   const bytes = new Uint8Array(await incoming.arrayBuffer());
   if (bytes.length > 2_097_152) {
@@ -32,6 +34,7 @@ export async function rawBody(incoming: Request): Promise<Uint8Array> {
   }
   return bytes;
 }
+
 export function parseBody(bytes: Uint8Array): unknown {
   try {
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
@@ -39,6 +42,7 @@ export function parseBody(bytes: Uint8Array): unknown {
     return undefined;
   }
 }
+
 export async function ingest(host: ChannelHost, input: IngestInput): Promise<void> {
   try {
     await host.ingest(input);
@@ -50,6 +54,7 @@ export async function ingest(host: ChannelHost, input: IngestInput): Promise<voi
     host.observe.log("info", "channel_policy_rejection", { errorCode: code.data.code });
   }
 }
+
 export async function request(
   url: URL,
   init: RequestInit,
@@ -59,6 +64,7 @@ export async function request(
   const bounded = signal ? AbortSignal.any([signal, deadline]) : deadline;
   return fetch(url, { ...init, signal: bounded, redirect: "error" });
 }
+
 export function failure(response: Response): SendResult {
   if (response.status === 429) {
     const seconds = Number(response.headers.get("retry-after"));
@@ -68,6 +74,7 @@ export function failure(response: Response): SendResult {
   const status = response.status >= 400 && response.status < 500 ? "rejected" : "unknown";
   return { status, errorCode: `provider_http_${response.status}` };
 }
+
 export function unavailable(): SendResult {
   return { status: "unknown", errorCode: "transport_or_response_unknown" };
 }

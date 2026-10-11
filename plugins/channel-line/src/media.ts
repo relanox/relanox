@@ -11,7 +11,9 @@ const fallbackMime: Readonly<Record<string, string>> = {
   video: "video/mp4",
   file: "application/octet-stream",
 };
+
 type Message = NonNullable<z.infer<typeof eventSchema>["message"]>;
+
 export async function receiveMedia(
   message: Message,
   host: ChannelHost,
@@ -25,12 +27,15 @@ export async function receiveMedia(
     throw new Error("media_too_large");
   }
   const external = message.contentProvider?.type === "external";
+
   const url = external
     ? message.contentProvider?.originalContentUrl
     : `${config.contentApiBase}/v2/bot/message/${encodeURIComponent(message.id)}/content`;
+
   if (!url) {
     throw new Error("missing_content_url");
   }
+
   const downloaded = await downloadMedia(url, {
     maxBytes: maximum,
     signal: AbortSignal.timeout(10_000),
@@ -42,10 +47,12 @@ export async function receiveMedia(
         }
       : {}),
   });
+
   const mimeType =
     downloaded.mimeType === "application/octet-stream"
       ? (fallbackMime[message.type] ?? downloaded.mimeType)
       : downloaded.mimeType;
+
   return [
     {
       kind: mediaKind(mimeType),
@@ -58,6 +65,7 @@ export async function receiveMedia(
     },
   ];
 }
+
 function previewError(input: SendInput): string | undefined {
   const preview = input.preview;
   if (
@@ -69,6 +77,7 @@ function previewError(input: SendInput): string | undefined {
   }
   return undefined;
 }
+
 export function mediaError(input: SendInput, host: ChannelHost): string | undefined {
   if (!input.chunk.media) {
     return undefined;
@@ -115,6 +124,7 @@ export function mediaError(input: SendInput, host: ChannelHost): string | undefi
   }
   return undefined;
 }
+
 export async function messages(input: SendInput, host: ChannelHost): Promise<Json[]> {
   if (!input.chunk.media) {
     return [{ type: "text", text: input.chunk.text }];
@@ -123,10 +133,12 @@ export async function messages(input: SendInput, host: ChannelHost): Promise<Jso
     throw new Error("public_media_unavailable");
   }
   const media = input.media.reference;
+
   const originalContentUrl = await host.media.publish({
     requestId: input.requestId,
     mediaId: media.id,
   });
+
   const message: Record<string, Json> = { type: media.kind, originalContentUrl };
   if (media.kind === "audio") {
     message.duration = media.durationMs ?? 0;

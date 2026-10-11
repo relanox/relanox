@@ -10,6 +10,7 @@ const kinds = [
   ["video", "video/mp4", "video.mp4"],
   ["file", "application/pdf", "report.pdf"],
 ] as const;
+
 function envelope(type: string, fileName: string, sender = "customer") {
   return JSON.stringify({
     object: "whatsapp_business_account",
@@ -42,6 +43,7 @@ function envelope(type: string, fileName: string, sender = "customer") {
     ],
   });
 }
+
 async function webhook(businessUrl: string, encoded: string, correct = true) {
   return fetch(`${businessUrl}/channels/bot/webhook`, {
     method: "POST",
@@ -54,6 +56,7 @@ async function webhook(businessUrl: string, encoded: string, correct = true) {
     body: encoded,
   });
 }
+
 function config(base: string) {
   vi.stubEnv("WA_MEDIA_APP", "app-secret");
   vi.stubEnv("WA_MEDIA_VERIFY", "verify");
@@ -74,13 +77,16 @@ it.each(kinds)(
   "relays signed WhatsApp %s through Graph metadata, SQLite, real MCP and multipart native output",
   async (kind, mimeType, fileName) => {
     const downloads: { path: string; authorization: string | undefined }[] = [];
+
     const uploaded: {
       bytes: Uint8Array;
       contentType: string;
       authorization: string | undefined;
     }[] = [];
+
     const sent: unknown[] = [];
     const nativeType = kind === "file" ? "document" : kind;
+
     const peer = await httpPeer(async (request, response) => {
       const url = new URL(request.url ?? "/", "http://peer");
       if (url.pathname === "/v25.0/original") {
@@ -111,12 +117,14 @@ it.each(kinds)(
         json(response, { messaging_product: "whatsapp", messages: [{ id: "sent" }] });
       }
     });
+
     const fixture = await mediaRelay(
       createWhatsAppChannel(),
       config(peer.base),
       [{ chatId: "customer" }],
       ["customer"],
     );
+
     expect((await webhook(fixture.businessUrl, envelope(nativeType, fileName), false)).status).toBe(
       401,
     );
@@ -127,9 +135,11 @@ it.each(kinds)(
       throw new Error("Expected inbound");
     }
     expect(record.snapshot.text).toBe(kind === "file" ? "media caption" : "");
+
     const turn = await fixture.turn(record.snapshot.requestId, [
       { kind, mimeType, fileName, data: new Uint8Array([9, 8, 7]) },
     ]);
+
     expect(turn.inbound[0]?.reference).toMatchObject({ kind, mimeType, fileName });
     expect(turn.inbound[0]?.data).toEqual(new Uint8Array([1, 2, 3]));
     expect(downloads).toEqual([
@@ -142,9 +152,11 @@ it.each(kinds)(
     if (!upload) {
       throw new Error("Expected upload");
     }
+
     const form = await new Response(new Uint8Array(upload.bytes), {
       headers: { "Content-Type": upload.contentType },
     }).formData();
+
     const file = form.get("file");
     if (!(file instanceof File)) {
       throw new Error("Expected multipart file");
@@ -170,10 +182,12 @@ it.each(kinds)(
 
 it("rejects a Graph-provided foreign binary origin before leaking the access token or accepting input", async () => {
   let leaks = 0;
+
   const foreign = await httpPeer((_request, response) => {
     leaks++;
     response.end("foreign");
   });
+
   const graph = await httpPeer((_request, response) => {
     json(response, {
       id: "original",
@@ -182,12 +196,14 @@ it("rejects a Graph-provided foreign binary origin before leaking the access tok
       file_size: 3,
     });
   });
+
   const fixture = await mediaRelay(
     createWhatsAppChannel(),
     config(graph.base),
     [{ chatId: "customer" }],
     ["customer"],
   );
+
   expect((await webhook(fixture.businessUrl, envelope("image", "image.png"))).status).toBe(500);
   expect(leaks).toBe(0);
   expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([]);
@@ -202,6 +218,7 @@ it.each([
   "settles pre-message WhatsApp upload HTTP %s as %s without sending a customer message",
   async (uploadStatus, expected) => {
     let sends = 0;
+
     const graph = await httpPeer((_request, response) => {
       const url = _request.url ?? "";
       if (url.startsWith("/v25.0/original")) {
@@ -221,12 +238,14 @@ it.each([
         json(response, { messaging_product: "whatsapp", messages: [{ id: "must-not-send" }] });
       }
     });
+
     const fixture = await mediaRelay(
       createWhatsAppChannel(),
       config(graph.base),
       [{ chatId: "customer" }],
       ["customer"],
     );
+
     expect((await webhook(fixture.businessUrl, envelope("image", "image.png"))).status).toBe(200);
     const record = (await fixture.storage.listInbound({ limit: 10 }))[0];
     if (!record) {

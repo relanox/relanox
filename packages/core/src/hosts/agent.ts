@@ -44,9 +44,11 @@ export function createAgentHost({
     ...common,
     forPrincipal(principal: AgentPrincipal): ScopedAgentHost {
       textId.parse(principal.subject);
+
       const scope = [...new Set(principal.endpointIds)].filter((id) =>
         agentEndpoints.some((e) => e.id === id),
       );
+
       return {
         media: createAgentMedia(storage, agent, scope, worker),
         listPending: (count) =>
@@ -92,6 +94,7 @@ export function createAgentHost({
           }
           const deliveryId = crypto.randomUUID();
           const now = Date.now();
+
           const chunks = (
             input.text
               ? chunkText(
@@ -105,6 +108,7 @@ export function createAgentHost({
             idempotencyKey: `${deliveryId}:${index}`,
             state: null as Json,
           }));
+
           const deliveryChunks = [
             ...chunks,
             ...media.map((item, index) => ({
@@ -114,6 +118,7 @@ export function createAgentHost({
               state: null as Json,
             })),
           ];
+
           const result = await traced(
             "complete",
             () =>
@@ -146,6 +151,7 @@ export function createAgentHost({
               }),
             request.snapshot.trace,
           );
+
           if (result.status === "completed" && !result.replay) {
             observe.record(
               "relanox_result_duration_seconds",

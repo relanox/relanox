@@ -10,6 +10,7 @@ import { runWithLifecycleDeadline } from "./lifecycle.js";
 export { validateStandardConfig } from "./config.js";
 export type { StandardConfig } from "./config.js";
 export { events, operations, metricDefinitions } from "./fields.js";
+
 /** Destination is for a production-owned collector stream; the plugin never owns/ends stdout or that stream. */
 export function createStandardObservability(
   options: { readonly logDestination?: Writable } = {},
@@ -25,6 +26,7 @@ export function createStandardObservability(
       let closed = false;
       const telemetry = createMetrics(config);
       const { registry, dropped, metrics } = telemetry;
+
       const isolate = (operation: () => void, signal: string): void => {
         if (closed) {
           return;
@@ -35,9 +37,11 @@ export function createStandardObservability(
           dropped.inc({ signal });
         }
       };
+
       const { writer, log } = createLogs(config, options.logDestination ?? process.stdout, () => {
         dropped.inc({ signal: "logs" });
       });
+
       const { provider, span } = createTracing(
         config,
         () => closed,
@@ -46,6 +50,7 @@ export function createStandardObservability(
           dropped.inc({ signal: "traces" });
         },
       );
+
       const observe: Observability = {
         log(level, event, fields) {
           isolate(() => {
@@ -64,6 +69,7 @@ export function createStandardObservability(
         },
         span,
       };
+
       let shutdown: Promise<void> | undefined;
       return {
         observe,
@@ -86,10 +92,12 @@ export function createStandardObservability(
         shutdown(signal) {
           shutdown ??= (async () => {
             closed = true;
+
             // Start shutdown even for an already-aborted caller, so provider timers are always released.
             const stopped = provider?.shutdown().catch(() => {
               dropped.inc({ signal: "traces" });
             });
+
             await runWithLifecycleDeadline(
               signal,
               config.lifecycleTimeoutMs,

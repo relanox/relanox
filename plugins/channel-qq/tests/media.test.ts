@@ -6,12 +6,14 @@ import { wireText } from "../src/transport.js";
 import { assemble, peer, records, sendInput } from "../../channel-wecom/tests/test-support.js";
 
 const smallBytes = Buffer.from([10, 20, 30, 40, 50]);
+
 const formats = [
   { kind: "image", mimeType: "image/png", fileName: "picture.png", fileType: 1 },
   { kind: "audio", mimeType: "audio/silk", fileName: "voice.silk", fileType: 3 },
   { kind: "video", mimeType: "video/mp4", fileName: "clip.mp4", fileType: 2 },
   { kind: "file", mimeType: "application/pdf", fileName: "report.pdf", fileType: 4 },
 ] as const;
+
 type Fault =
   | "missing"
   | "duplicate"
@@ -26,11 +28,13 @@ function prepareResponse(origin: string, size: number, fault?: Fault) {
     return { body: { code: 850_027 } };
   }
   const blockSize = Math.ceil(size / 2);
+
   const parts = [0, 1].map((index) => ({
     index,
     presigned_url: `${origin}/signed/${index}?signature=opaque`,
     block_size: String(Math.min(blockSize, size - index * blockSize)),
   }));
+
   if (fault === "missing") {
     parts.pop();
   }
@@ -49,6 +53,7 @@ async function fixture(group = false, bytes = smallBytes, fault?: Fault) {
   let failing = fault !== undefined;
   const base = group ? "/v2/groups/group" : "/v2/users/user";
   const blockSize = Math.ceil(bytes.length / 2);
+
   const remote = await peer(
     (request) => {
       if (request.path === "/app/getAppAccessToken") {
@@ -90,8 +95,10 @@ async function fixture(group = false, bytes = smallBytes, fault?: Fault) {
       });
     },
   );
+
   websocket = remote.ws;
   const plugin = createQqChannel();
+
   const local = await assemble(
     plugin,
     {
@@ -103,6 +110,7 @@ async function fixture(group = false, bytes = smallBytes, fault?: Fault) {
     },
     [{ chatId: group ? "group" : "user", senderId: group ? "member" : "user" }],
   );
+
   return {
     remote,
     local,
@@ -198,11 +206,13 @@ test.each(
     if (claim.status !== "claimed") {
       throw new Error("claim_failed");
     }
+
     const stored = await scoped.media.read({
       requestId: item.requestId,
       claimToken: claim.claimToken,
       mediaId: item.attachments[0].id,
     });
+
     expect(stored?.data).toEqual(new Uint8Array(smallBytes));
     await scoped.complete({
       requestId: item.requestId,
@@ -273,6 +283,7 @@ function outbound(bytes: Buffer, apiBase: string): SendInput {
     size: bytes.length,
     sha256: "0".repeat(64),
   };
+
   return {
     ...sendInput("qq", "user", {
       type: "c2c",

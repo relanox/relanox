@@ -7,6 +7,7 @@ export function required<T>(value: T | undefined): T {
   }
   return value;
 }
+
 export const snapshot = (id = "r1", at = 100, endpoint = "ep"): InboundSnapshot => ({
   requestId: id,
   source: { channel: "telegram", accountId: "a", eventId: id },
@@ -28,6 +29,7 @@ export const snapshot = (id = "r1", at = 100, endpoint = "ep"): InboundSnapshot 
     config: { url: "https://agent.example", secret: { env: "TOKEN" } },
   },
 });
+
 export const completion = (id = "r1", token = "token", resultId = "final"): CompleteInput => ({
   requestId: id,
   agent: "grok",
@@ -52,6 +54,7 @@ export const completion = (id = "r1", token = "token", resultId = "final"): Comp
     createdAt: 110,
   },
 });
+
 export function storageContract(name: string, open: () => Promise<Storage>) {
   describe(name, () => {
     let s: Storage;
@@ -62,6 +65,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
     afterEach(async () => {
       await s.close();
     });
+
     const claim = (id = "r1", key = "try", token = "token") =>
       s.claimRequest({
         requestId: id,
@@ -71,6 +75,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         claimToken: token,
         now: 105,
       });
+
     const due = (now = 110, safeRetryAccountIds: string[] = []) =>
       s.takeDue({
         now,
@@ -232,6 +237,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
           (request) => request.requestId,
         ),
       ).toEqual(["new"]);
+
       const claimInput = {
         requestId: "old",
         endpointIds: ["ep"],
@@ -239,6 +245,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         claimToken: "old-token",
         now: 105,
       };
+
       expect(await s.claimRequest({ ...claimInput, agent: "grok" })).toEqual({
         status: "not_found",
       });
@@ -301,6 +308,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       await s.acceptInbound(snapshot());
       await claim();
       const bad = completion();
+
       const forged = {
         ...bad,
         outbound: {
@@ -308,6 +316,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
           target: { ...bad.outbound.target, chatId: "attacker" },
         },
       };
+
       expect(await s.completeAndEnqueue(forged)).toEqual({
         status: "conflict",
       });
@@ -477,11 +486,13 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
 
     it("fences stale state mutations across delete and recreate without hiding null values", async () => {
       const ns = { pluginId: "dot", ownerId: "ep" };
+
       const initial = await s.compareAndSetState(ns, {
         key: "subscription",
         expectedVersion: null,
         value: "old-secret",
       });
+
       expect(initial).toEqual({ status: "updated", version: 1 });
       expect(await s.deleteState(ns, "subscription", 1)).toEqual({ status: "updated", version: 2 });
       expect(await s.getState(ns, "subscription")).toBeUndefined();
@@ -701,6 +712,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
     it("scopes idempotent failure and preserves failed recovery fences", async () => {
       await s.acceptInbound(snapshot());
       await claim();
+
       const input = {
         requestId: "r1",
         agent: "grok" as const,
@@ -709,6 +721,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         errorCode: "remote_failed",
         now: 106,
       };
+
       expect(await s.fail({ ...input, agent: "grok", endpointIds: ["foreign"] })).toEqual({
         status: "unauthorized",
       });

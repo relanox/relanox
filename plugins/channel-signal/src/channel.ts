@@ -15,11 +15,13 @@ import { consumeEvents } from "./stream.js";
 async function saveEventCursor(host: ChannelHost, id: string | undefined): Promise<void> {
   if (id !== undefined) {
     const checkpoint = await host.state.get("events");
+
     const saved = await host.state.compareAndSet({
       key: "events",
       expectedVersion: checkpoint?.version ?? null,
       value: id,
     });
+
     if (saved.status !== "updated") {
       throw new Error("event_checkpoint_conflict");
     }
@@ -32,28 +34,34 @@ export function createSignalChannel(
   let runtime:
     | { host: ChannelHost; account: AccountConfig; config: SignalConfig; base: string }
     | undefined;
+
   let task: Promise<void> | undefined;
   let controller: AbortController | undefined;
+
   function configured() {
     if (!runtime) {
       throw new Error("not_setup");
     }
     return runtime;
   }
+
   function headers(): Record<string, string> {
     const { config } = configured();
     return config.authorization ? { Authorization: secret(config.authorization, environment) } : {};
   }
+
   async function receive(data: string, id: string | undefined, signal: AbortSignal): Promise<void> {
     const { host, config, account, base } = configured();
     const incoming = receiveSchema.parse(JSON.parse(data) as unknown);
     const envelope = incoming.envelope;
     const sender = envelope.sourceUuid ?? envelope.sourceNumber ?? envelope.source;
     const message = envelope.dataMessage;
+
     const self = [envelope.source, envelope.sourceNumber, envelope.sourceUuid].some(
       (value) =>
         value === config.account || (config.selfUuid !== undefined && value === config.selfUuid),
     );
+
     if ((!incoming.account || incoming.account === config.account) && sender && message && !self) {
       if (!account.allowedSenders.includes(sender)) {
         diagnose(host, "sender_not_allowed");
@@ -62,6 +70,7 @@ export function createSignalChannel(
       } else {
         const groupId = message.groupInfo?.groupId;
         const chatId = groupId ? `group:${groupId}` : `direct:${sender}`;
+
         const attachments = await receiveAttachments(
           message.attachments,
           host,
@@ -72,6 +81,7 @@ export function createSignalChannel(
           groupId,
           signal,
         );
+
         await ingest(host, {
           source: {
             channel: "signal",
@@ -103,6 +113,7 @@ export function createSignalChannel(
     const url = new URL(`${base}/api/v1/events`);
     url.searchParams.set("account", config.account);
     const lastId = checkpoint ? eventCursorSchema.parse(checkpoint.value) : undefined;
+
     // Periodically reconnect even silent/half-open streams; the daemon's bounded replay is explicit.
     const response = await fetch(url, {
       redirect: "error",
@@ -113,6 +124,7 @@ export function createSignalChannel(
       },
       signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
     });
+
     if (!response.ok || !response.headers.get("content-type")?.startsWith("text/event-stream")) {
       await response.body?.cancel();
       throw new Error("event_stream_failed");
@@ -120,6 +132,7 @@ export function createSignalChannel(
     host.connection("connected");
     await consumeEvents(response, (data, id) => receive(data, id, signal));
   }
+
   async function loop(signal: AbortSignal): Promise<void> {
     const { host, config } = configured();
     while (!signal.aborted) {
@@ -135,6 +148,7 @@ export function createSignalChannel(
     }
     host.connection("disconnected");
   }
+
   async function send(input: SendInput): Promise<SendResult> {
     const { account, config, base } = configured();
     const target = targetSchema.safeParse(input.target.data);
@@ -147,10 +161,12 @@ export function createSignalChannel(
     ) {
       return { status: "rejected", errorCode: "target_mismatch" };
     }
+
     const address =
       target.data.kind === "group"
         ? { groupId: target.data.groupId }
         : { recipient: [target.data.recipient] };
+
     try {
       const response = await fetch(`${base}/api/v1/rpc`, {
         method: "POST",
@@ -169,6 +185,7 @@ export function createSignalChannel(
           },
         }),
       });
+
       if (!response.ok) {
         await response.body?.cancel();
         return httpFailure(response);
@@ -193,6 +210,7 @@ export function createSignalChannel(
       return { status: "unknown", errorCode: "send_outcome_unknown" };
     }
   }
+
   return {
     id: "channel-signal",
     sdkMajor: 1,

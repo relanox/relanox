@@ -25,12 +25,14 @@ export function matchesInitialResult(
     )
   );
 }
+
 export const isRequestInScope = (
   record: InboundRecord,
   input: Pick<Parameters<Storage["claimRequest"]>[0], "endpointIds" | "agent">,
 ) =>
   input.endpointIds.includes(record.snapshot.endpoint.id) &&
   record.snapshot.endpoint.agent === input.agent;
+
 export const isActiveLease = (storedLease: Lease | undefined, attemptLease: Lease, now: number) =>
   storedLease !== undefined &&
   equalDurableValues(storedLease, attemptLease) &&

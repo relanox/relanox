@@ -9,12 +9,14 @@ const environment = {
   ENCRYPT: "encrypt-key",
   VERIFY: "verification-token",
 };
+
 const account = {
   id: "fs",
   channel: "feishu" as const,
   config: null,
   allowedSenders: ["ou_user"],
 };
+
 const target = {
   channel: "feishu" as const,
   accountId: "fs",
@@ -28,6 +30,7 @@ const target = {
     apiBaseUrl: "https://open.feishu.cn",
   },
 };
+
 const event = {
   schema: "2.0",
   header: {
@@ -54,12 +57,14 @@ const event = {
     },
   },
 };
+
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0)) {
     await close();
   }
 });
+
 async function setup(
   apiBaseUrl = "https://open.feishu.cn",
   onIngest?: Parameters<typeof recorder>[0],
@@ -91,6 +96,7 @@ async function setup(
     >,
   };
 }
+
 function request(
   value: unknown,
   encrypted = false,
@@ -100,18 +106,22 @@ function request(
   let body = JSON.stringify(value);
   if (encrypted) {
     const iv = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+
     const cipher = createCipheriv(
       "aes-256-cbc",
       createHash("sha256").update("encrypt-key").digest(),
       iv,
     );
+
     body = JSON.stringify({
       encrypt: Buffer.concat([iv, cipher.update(body, "utf8"), cipher.final()]).toString("base64"),
     });
   }
+
   const signature = createHash("sha256")
     .update(`${timestamp}nonce-1encrypt-key${body}`)
     .digest("hex");
+
   return new Request("https://relay.example/channels/fs/events", {
     method: "POST",
     body,
@@ -122,6 +132,7 @@ function request(
     },
   });
 }
+
 describe("feishu native HTTP protocol", () => {
   it.each(["sender_not_allowed", "unbound_conversation"])(
     "acknowledges terminal core policy rejection: %s",
@@ -129,6 +140,7 @@ describe("feishu native HTTP protocol", () => {
       const test = await setup(undefined, async () => {
         throw Object.assign(new Error(code), { code });
       });
+
       expect((await test.handler(request(event))).status).toBe(204);
       expect(test.received).toEqual([]);
     },
@@ -142,6 +154,7 @@ describe("feishu native HTTP protocol", () => {
           ? { code: 0, tenant_access_token: "tenant-token", expire: 7200 }
           : { code: 0, data: { message_id: "om_sent" } },
       }));
+
       cleanup.push(remote.close);
       const initial = await setup(remote.url);
       await initial.handler(request(event));
@@ -150,11 +163,13 @@ describe("feishu native HTTP protocol", () => {
         throw new Error("Missing accepted reply target");
       }
       const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+
       const restarted = await setup(
         nextBase,
         undefined,
         change === "identity" ? { appId: "cli_other" } : {},
       );
+
       expect(
         await restarted.plugin.send(
           sendInput(change === "legacy" ? { ...frozen, data: { tenantKey: "tenant-1" } } : frozen),
@@ -171,11 +186,13 @@ describe("feishu native HTTP protocol", () => {
     "accepts unsigned token-authenticated URL challenges (encrypted=%s)",
     async (encrypted) => {
       const test = await setup();
+
       const challenge = {
         type: "url_verification",
         token: "verification-token",
         challenge: "registration-42",
       };
+
       const signed = request(challenge, encrypted);
       const unsigned = new Request(signed.url, { method: "POST", body: await signed.text() });
       const response = await test.handler(unsigned);
@@ -204,6 +221,7 @@ describe("feishu native HTTP protocol", () => {
         ? { code: 0, tenant_access_token: "tenant-token", expire: 7200 }
         : { code: 0, data: { message_id: "om_sent" } },
     }));
+
     cleanup.push(remote.close);
     const initial = await setup(remote.url);
     const restarted = await setup(`${remote.url}/`, undefined, { appSecret: { env: "ROTATED" } });
@@ -215,8 +233,10 @@ describe("feishu native HTTP protocol", () => {
     const remote = await peer(() => ({
       body: { code: 0, tenant_access_token: "tenant-token", expire: 7200 },
     }));
+
     cleanup.push(remote.close);
     const test = await setup(remote.url);
+
     const oversized = new Request("https://relay.example/channels/fs/events", {
       method: "POST",
       headers: {
@@ -225,6 +245,7 @@ describe("feishu native HTTP protocol", () => {
       },
       body: "x".repeat(1_048_577),
     });
+
     expect((await test.handler(oversized)).status).toBe(413);
     expect(test.received).toEqual([]);
     const controller = new AbortController();
@@ -328,9 +349,11 @@ describe("feishu native HTTP protocol", () => {
       ).status,
     ).toBe(204);
     expect(test.received).toHaveLength(0);
+
     const failing = await setup(undefined, async () => {
       throw new Error("db unavailable");
     });
+
     expect((await failing.handler(request(event))).status).toBe(503);
   });
 
@@ -353,6 +376,7 @@ describe("feishu native HTTP protocol", () => {
 
   it("refreshes expiring tenant tokens and uses independent nested text reply wire", async () => {
     let tokens = 0;
+
     const remote = await peer((input) =>
       input.path.includes("tenant_access_token")
         ? {
@@ -364,6 +388,7 @@ describe("feishu native HTTP protocol", () => {
           }
         : { body: { code: 0, data: { message_id: "om_sent" } } },
     );
+
     cleanup.push(remote.close);
     const test = await setup(remote.url);
     expect(await test.plugin.send(sendInput(test.target))).toEqual({
@@ -393,6 +418,7 @@ describe("feishu native HTTP protocol", () => {
         ? { code: 0, tenant_access_token: "tenant-token", expire: 7200 }
         : { code: 0, data: { message_id: "om_sent" } },
     }));
+
     cleanup.push(remote.close);
     const test = await setup(remote.url);
     const { replyToId: _reply, threadId: _thread, ...chatTarget } = test.target;
@@ -439,6 +465,7 @@ describe("feishu native HTTP protocol", () => {
           }
         : { status, headers: { "retry-after": "2" }, body },
     );
+
     cleanup.push(remote.close);
     const test = await setup(remote.url);
     expect(await test.plugin.send(sendInput(test.target))).toEqual(expected);
@@ -447,6 +474,7 @@ describe("feishu native HTTP protocol", () => {
   it("rejects literal credentials, insecure remote URL and foreign tenant targets", async () => {
     const plugin = createFeishuChannel(environment);
     expect(() => plugin.validateConfig({ appId: "cli_app", appSecret: "raw" })).toThrow();
+
     const config = {
       appId: "cli_app",
       appSecret: { env: "APPSECRET" },
@@ -455,6 +483,7 @@ describe("feishu native HTTP protocol", () => {
       tenantKey: "tenant-1",
       botOpenId: "ou_bot",
     };
+
     expect(() =>
       plugin.validateConfig({ ...config, apiBaseUrl: "http://remote.example" }),
     ).toThrow();

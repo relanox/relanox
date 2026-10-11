@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import type { MediaRuntime } from "./media-runtime.js";
 
 export type PrimaryChannel = "telegram" | "discord" | "slack" | "feishu" | "line";
+
 export const nativeTargets = {
   telegram: { chat: "456", thread: "8" },
   discord: { chat: "456" },
@@ -11,6 +12,7 @@ export const nativeTargets = {
   feishu: { chat: "oc_456", thread: "omt_8" },
   line: { chat: "42" },
 };
+
 export function channelConfig(
   channel: PrimaryChannel,
   origin: string,
@@ -79,6 +81,7 @@ export function channelConfig(
   }
   throw new Error("unsupported_test_channel");
 }
+
 export function telegramMessage(kind: MediaKind, size: number, mimeType: string, caption = "") {
   const file = {
     file_id: "native-file",
@@ -87,6 +90,7 @@ export function telegramMessage(kind: MediaKind, size: number, mimeType: string,
     mime_type: mimeType,
     duration: 1,
   };
+
   return {
     update_id: 700,
     message: {
@@ -101,6 +105,7 @@ export function telegramMessage(kind: MediaKind, size: number, mimeType: string,
     },
   };
 }
+
 function feishuContent(kind: MediaKind, caption: string) {
   if (caption) {
     return {
@@ -119,6 +124,7 @@ function feishuContent(kind: MediaKind, caption: string) {
   }
   return { file_key: "file_700", file_name: "incoming.bin", duration: 1000 };
 }
+
 export async function httpIngress(
   runtime: MediaRuntime,
   channel: Exclude<PrimaryChannel, "discord">,
@@ -130,10 +136,12 @@ export async function httpIngress(
 ) {
   let value: unknown;
   let path = "/webhook";
+
   const headers: Record<string, string> = {
     "content-type": "application/json",
     connection: "close",
   };
+
   if (channel === "telegram") {
     value = telegramMessage(kind, size, mimeType, caption);
     headers["x-telegram-bot-api-secret-token"] = "native-secret";

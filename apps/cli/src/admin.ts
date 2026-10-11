@@ -14,6 +14,7 @@ export async function withStorage<T>(
     await deadline(storage.close(), config.server.shutdownTimeoutMs);
   }
 }
+
 function requestSummary(record: InboundRecord, content: boolean) {
   return {
     requestId: record.snapshot.requestId,
@@ -31,6 +32,7 @@ function requestSummary(record: InboundRecord, content: boolean) {
     ...(content ? { text: record.snapshot.text, resultText: record.result?.text } : {}),
   };
 }
+
 function deliverySummary(record: OutboundRecord, content: boolean) {
   return {
     deliveryId: record.deliveryId,
@@ -44,21 +46,26 @@ function deliverySummary(record: OutboundRecord, content: boolean) {
     ...(content ? { text: record.chunks.map((chunk) => chunk.text).join("") } : {}),
   };
 }
+
 export async function readStatus(storage: Storage, filter: StatusFilter, content: boolean) {
   await requireHealthy(storage);
+
   const [stats, requests, deliveries] = await Promise.all([
     storage.getStats(),
     storage.listInbound(filter),
     storage.listOutbound(filter),
   ]);
+
   return {
     stats,
     requests: requests.map((record) => requestSummary(record, content)),
     deliveries: deliveries.map((record) => deliverySummary(record, content)),
   };
 }
+
 export function missingSecrets(config: AppConfig): string[] {
   const missing = new Set<string>();
+
   const visit = (input: unknown): void => {
     if (Array.isArray(input)) {
       for (const item of input) {
@@ -81,9 +88,11 @@ export function missingSecrets(config: AppConfig): string[] {
       visit(value);
     }
   };
+
   visit(config.relay);
   return [...missing].toSorted();
 }
+
 export async function probeManagement(input: string, timeoutMs: number) {
   const url = new URL(input);
   if (
@@ -97,9 +106,11 @@ export async function probeManagement(input: string, timeoutMs: number) {
   ) {
     throw new Error("invalid_management_url");
   }
+
   const response = await fetch(new URL("/health/ready", url), {
     signal: AbortSignal.timeout(timeoutMs),
     redirect: "error",
   });
+
   return { ready: response.ok };
 }

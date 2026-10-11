@@ -29,6 +29,7 @@ it("initializes idempotently and persists fenced claims/leases across independen
     await a.initialize();
     expect((await a.getInbound("r1"))?.snapshot.text).toBe("question");
     b = open();
+
     const input = {
       now: 100,
       leaseMs: 10,
@@ -36,10 +37,12 @@ it("initializes idempotently and persists fenced claims/leases across independen
       leaseOwner: "a",
       safeRetryAccountIds: [],
     };
+
     const [one, two] = await Promise.all([
       a.takeDue(input),
       b.takeDue({ ...input, leaseOwner: "b" }),
     ]);
+
     expect(one).toHaveLength(1);
     expect(two).toHaveLength(0);
     await a.close();

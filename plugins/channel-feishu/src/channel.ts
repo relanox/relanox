@@ -31,21 +31,25 @@ export function createFeishuChannel(
   let account: AccountConfig;
   let config: FeishuConfig;
   let token: { value: string; until: number; secretDigest: string } | undefined;
+
   const base = () =>
     config.apiBaseUrl ??
     (config.domain === "lark" ? "https://open.larksuite.com" : "https://open.feishu.cn");
+
   const identity = () => ({
     tenantKey: config.tenantKey,
     appId: config.appId,
     botId: config.botOpenId,
     apiBaseUrl: new URL(base()).toString().replace(/\/$/u, ""),
   });
+
   async function accessToken(signal: AbortSignal): Promise<string | SendResult> {
     const appSecret = credential(config.appSecret, environment);
     const secretDigest = createHash("sha256").update(appSecret).digest("hex");
     if (token && token.until > Date.now() && token.secretDigest === secretDigest) {
       return token.value;
     }
+
     const response = await postJson(
       `${base().replace(/\/$/u, "")}/open-apis/auth/v3/tenant_access_token/internal`,
       {},
@@ -53,6 +57,7 @@ export function createFeishuChannel(
       signal,
       config.timeoutMs,
     );
+
     if (!response.ok) {
       return response.status >= 500
         ? { status: "retryable", errorCode: "tenant_token_unavailable" }
@@ -75,6 +80,7 @@ export function createFeishuChannel(
     };
     return token.value;
   }
+
   async function sendOutcome(response: Response): Promise<SendResult> {
     if (!response.ok) {
       return failure(response);
@@ -94,6 +100,7 @@ export function createFeishuChannel(
         }
       : { status: "unknown", errorCode: "invalid_platform_response" };
   }
+
   async function verifyRequest(request: Request): Promise<unknown> {
     if (request.method !== "POST") {
       return new Response(null, { status: 405 });
@@ -112,10 +119,12 @@ export function createFeishuChannel(
       if (!fresh(timestamp) || !nonce || nonce.length > 256) {
         return new Response(null, { status: 401 });
       }
+
       const signature = createHash("sha256")
         .update(`${timestamp}${nonce}${encryptKey}`)
         .update(raw)
         .digest("hex");
+
       if (!equal(signature, suppliedSignature)) {
         return new Response(null, { status: 401 });
       }
@@ -132,11 +141,13 @@ export function createFeishuChannel(
         if (payload.length < 32 || payload.length % 16) {
           throw new Error("invalid_encryption");
         }
+
         const decipher = createDecipheriv(
           "aes-256-cbc",
           createHash("sha256").update(encryptKey).digest(),
           payload.subarray(0, 16),
         );
+
         value = JSON.parse(
           Buffer.concat([decipher.update(payload.subarray(16)), decipher.final()]).toString("utf8"),
         );
@@ -200,10 +211,12 @@ export function createFeishuChannel(
     }
     try {
       const threadId = message.thread_id ?? message.root_id;
+
       const access =
         content.resources.length > 0
           ? await accessToken(AbortSignal.timeout(config.timeoutMs))
           : "";
+
       if (typeof access !== "string") {
         return new Response(null, { status: 503 });
       }
@@ -301,22 +314,27 @@ export function createFeishuChannel(
       if (errorCode) {
         return { status: "rejected", errorCode };
       }
+
       const access = await accessToken(input.signal).catch(() => ({
         status: "retryable" as const,
         errorCode: "tenant_token_transport_error",
       }));
+
       if (typeof access !== "string") {
         return access;
       }
+
       const content = await messageContent(input, host, config, base(), access).catch(() => ({
         status: "retryable" as const,
         errorCode: "media_upload_transport_error",
       }));
+
       if ("status" in content) {
         return content;
       }
       try {
         const reply = input.target.replyToId;
+
         const response = await postJson(
           `${base().replace(/\/$/u, "")}/open-apis/im/v1/messages${reply ? `/${encodeURIComponent(reply)}/reply` : "?receive_id_type=chat_id"}`,
           { authorization: `Bearer ${access}` },
@@ -329,6 +347,7 @@ export function createFeishuChannel(
           input.signal,
           config.timeoutMs,
         );
+
         return await sendOutcome(response);
       } catch {
         return { status: "unknown", errorCode: "feishu_transport_error" };

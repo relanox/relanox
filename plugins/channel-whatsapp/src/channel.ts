@@ -24,11 +24,13 @@ async function updateWindow(host: ChannelHost, key: string, until: number): Prom
     if (previousUntil >= until) {
       return;
     }
+
     const result = await host.state.compareAndSet({
       key,
       expectedVersion: previous?.version ?? null,
       value: until,
     });
+
     if (result.status === "updated") {
       return;
     }
@@ -108,6 +110,7 @@ async function receive(
 
 export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
   let runtime: { host: ChannelHost; account: AccountConfig; config: WhatsAppConfig } | undefined;
+
   async function send(input: SendInput): Promise<SendResult> {
     if (
       !runtime ||
@@ -141,9 +144,11 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       if (media && "status" in media) {
         return media;
       }
+
       const content = media
         ? { type: media.type, [media.type]: media.value }
         : { type: "text", text: { body: input.chunk.text, preview_url: false } };
+
       const response = await request(
         validateEndpointUrl(
           `${config.apiBase}/${config.apiVersion}/${encodeURIComponent(target.phoneNumberId)}/messages`,
@@ -164,6 +169,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
         },
         input.signal,
       );
+
       if (!response.ok) {
         return failure(response);
       }
@@ -177,6 +183,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       return unavailable();
     }
   }
+
   return {
     id: "channel-whatsapp",
     sdkMajor: 1,

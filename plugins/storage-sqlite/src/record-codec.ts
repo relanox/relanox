@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 
 export const encodeDurableRecord = (value: unknown): string => {
   const ancestors = new Set<object>();
+
   const validateJsonValue = (candidate: unknown): void => {
     if (candidate === null || typeof candidate === "string" || typeof candidate === "boolean") {
       return;
@@ -22,10 +23,13 @@ export const encodeDurableRecord = (value: unknown): string => {
     }
     ancestors.delete(candidate);
   };
+
   validateJsonValue(value);
   return JSON.stringify(value);
 };
+
 export const decodeDurableRecord = <T>(value: unknown): T => JSON.parse(String(value)) as T;
+
 export const resultDigest = (result: FinalResult): string =>
   createHash("sha256")
     .update(
@@ -44,6 +48,7 @@ export const resultDigest = (result: FinalResult): string =>
         : result.text,
     )
     .digest("hex");
+
 export const equalDurableValues = (a: unknown, b: unknown): boolean => {
   const canonical = (value: unknown): unknown => {
     if (Array.isArray(value)) {
@@ -58,5 +63,6 @@ export const equalDurableValues = (a: unknown, b: unknown): boolean => {
     }
     return value;
   };
+
   return encodeDurableRecord(canonical(a)) === encodeDurableRecord(canonical(b));
 };

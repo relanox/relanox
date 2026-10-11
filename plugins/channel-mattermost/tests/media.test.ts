@@ -19,12 +19,15 @@ it.each(kinds)(
   "relays native Mattermost %s (%s, %s) upload HTTP %s settles %s through SQLite and authenticated MCP",
   async (kind, mimeType, fileName, uploadStatus, expected) => {
     const received: { path: string; authorization: string | undefined }[] = [];
+
     const uploaded: {
       bytes: Uint8Array;
       contentType: string;
       authorization: string | undefined;
     }[] = [];
+
     const posts: unknown[] = [];
+
     const peer = await httpPeer(async (request, response) => {
       const path = request.url ?? "/";
       if (path === "/api/v4/files/asset/info") {
@@ -56,6 +59,7 @@ it.each(kinds)(
         json(response, {}, 404);
       }
     });
+
     const sockets = new WebSocketServer({ server: peer.server, path: "/api/v4/websocket" });
     cleanup(async () => {
       for (const socket of sockets.clients) {
@@ -96,6 +100,7 @@ it.each(kinds)(
       });
     });
     const plugin = createMattermostChannel({ MATTERMOST_TOKEN: "mattermost-secret" });
+
     const fixture = await mediaRelay(
       plugin,
       {
@@ -108,6 +113,7 @@ it.each(kinds)(
       [{ chatId: "channel", threadId: "root" }],
       ["alice"],
     );
+
     await plugin.start?.(new AbortController().signal);
     await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
     await plugin.stop?.();
@@ -115,9 +121,11 @@ it.each(kinds)(
     if (!record) {
       throw new Error("Expected inbound");
     }
+
     const turn = await fixture.turn(record.snapshot.requestId, [
       { kind, mimeType, fileName, data: new Uint8Array([9, 8, 7]) },
     ]);
+
     expect(turn.inbound[0]?.reference).toMatchObject({ kind, mimeType, fileName });
     expect(turn.inbound[0]?.data).toEqual(new Uint8Array([1, 2, 3]));
     expect(received).toEqual([
@@ -130,9 +138,11 @@ it.each(kinds)(
     if (!upload) {
       throw new Error("Expected upload");
     }
+
     const native = await new Response(new Uint8Array(upload.bytes), {
       headers: { "Content-Type": upload.contentType },
     }).formData();
+
     const file = native.get("files");
     if (!(file instanceof File)) {
       throw new Error("Expected multipart file");

@@ -34,24 +34,29 @@ export function createDiscordGateway(
   let socket: WebSocket | undefined;
   let session: Session | undefined;
   let fatal = false;
+
   const identity = () => ({
     botId: config.botUserId,
     apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, ""),
   });
+
   async function persist() {
     if (!session) {
       return;
     }
     const previous = await host.state.get("gateway-session");
+
     const result = await host.state.compareAndSet({
       key: "gateway-session",
       expectedVersion: previous?.version ?? null,
       value: session,
     });
+
     if (result.status !== "updated") {
       throw new Error("session_conflict");
     }
   }
+
   async function clearSession() {
     session = undefined;
     const previous = await host.state.get("gateway-session");
@@ -59,6 +64,7 @@ export function createDiscordGateway(
       await host.state.delete("gateway-session", previous.version);
     }
   }
+
   async function messageTarget(
     message: z.infer<typeof messageSchema>,
     signal: AbortSignal,
@@ -66,6 +72,7 @@ export function createDiscordGateway(
     if (!message.guild_id) {
       return { chatId: message.channel_id };
     }
+
     const response = await fetch(
       `${config.apiBaseUrl.replace(/\/$/u, "")}/channels/${encodeURIComponent(message.channel_id)}`,
       {
@@ -74,6 +81,7 @@ export function createDiscordGateway(
         redirect: "error",
       },
     );
+
     if (!response.ok) {
       throw new Error("channel_lookup_failed");
     }
@@ -89,8 +97,10 @@ export function createDiscordGateway(
     }
     return { chatId: channel.parent_id, threadId: message.channel_id };
   }
+
   async function connect(signal: AbortSignal) {
     const botToken = credential(config.botToken, environment);
+
     const url = new URL(
       validateTransportUrl(
         session?.resume_gateway_url ?? config.gatewayUrl,
@@ -98,12 +108,15 @@ export function createDiscordGateway(
         true,
       ),
     );
+
     url.searchParams.set("v", "10");
     url.searchParams.set("encoding", "json");
+
     const ws = new WebSocket(url, {
       maxPayload: 1_048_576,
       handshakeTimeout: config.timeoutMs,
     });
+
     socket = ws;
     let heartbeat: ReturnType<typeof setTimeout> | undefined;
     let interval = 0;
@@ -112,11 +125,13 @@ export function createDiscordGateway(
     let failed = false;
     let chain = Promise.resolve();
     let sequence = session?.seq ?? null;
+
     const send = (value: unknown) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(value));
       }
     };
+
     const beat = () => {
       if (!acknowledged) {
         ws.terminate();
@@ -126,9 +141,11 @@ export function createDiscordGateway(
       send({ op: 1, d: sequence });
       heartbeat = setTimeout(beat, interval);
     };
+
     const abort = () => {
       ws.terminate();
     };
+
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) {
       abort();
@@ -215,6 +232,7 @@ export function createDiscordGateway(
             }
             ws.terminate();
           };
+
           chain = chain.then(invalidate).catch(() => {
             ws.terminate();
           });
@@ -227,6 +245,7 @@ export function createDiscordGateway(
           ws.terminate();
           return;
         }
+
         const consume = async () => {
           if (failed || signal.aborted) {
             return;
@@ -272,12 +291,14 @@ export function createDiscordGateway(
                     if (attachment.size > (host.maxMediaBytes ?? 25 * 1024 * 1024)) {
                       throw new Error("media_too_large");
                     }
+
                     const downloaded = await downloadMedia(attachment.url, {
                       maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
                       signal,
                       trustedOrigins: [new URL(config.apiBaseUrl).origin],
                       allowInsecureLocalhost: config.allowInsecureLoopback,
                     });
+
                     const mimeType = attachment.content_type ?? downloaded.mimeType;
                     return {
                       kind: mediaKind(mimeType),
@@ -312,6 +333,7 @@ export function createDiscordGateway(
             await persist();
           }
         };
+
         chain = chain
           .then(consume)
           .catch(() => {
@@ -327,6 +349,7 @@ export function createDiscordGateway(
     // Do not reconnect using a cursor while its earlier dispatch is still committing.
     await chain;
   }
+
   async function run(signal: AbortSignal) {
     const saved = await host.state.get("gateway-session");
     const parsed = sessionSchema.safeParse(saved?.value);
@@ -356,6 +379,7 @@ export function createDiscordGateway(
       ).catch(() => {});
     }
   }
+
   return {
     async start(signal: AbortSignal) {
       if (task) {

@@ -13,11 +13,13 @@ import { createPostgresStorage, postgresStoragePlugin } from "../src/index.js";
 
 const enabled = Boolean(process.env.RELANOX_TEST_POSTGRES_URL);
 const schemaName = () => `relanox_test_${randomUUID().replaceAll("-", "")}`;
+
 const open = (schema: string): Storage =>
   createPostgresStorage({
     connectionString: { env: "RELANOX_TEST_POSTGRES_URL" },
     schema,
   });
+
 async function drop(schema: string) {
   const connectionString = process.env.RELANOX_TEST_POSTGRES_URL;
   if (!connectionString) {
@@ -78,6 +80,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       await a.acceptInbound({ ...snapshot(), attachments: [incoming.reference] }, [incoming]);
       await a.initialize();
       expect((await a.getInbound("r1"))?.snapshot.text).toBe("question");
+
       const input = {
         now: 100,
         leaseMs: 10,
@@ -85,10 +88,12 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
         leaseOwner: "a",
         safeRetryAccountIds: [],
       };
+
       const attempts = await Promise.all([
         a.takeDue(input),
         b.takeDue({ ...input, leaseOwner: "b" }),
       ]);
+
       expect(attempts.flat()).toHaveLength(1);
       const oldLease = required(attempts.flat()[0]).lease;
       await a.close();
@@ -161,14 +166,17 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
     const b = open(schema);
     try {
       await a.initialize();
+
       const receipts = await Promise.all([
         a.acceptInbound(snapshot()),
         b.acceptInbound({ ...snapshot("other"), source: snapshot().source }),
       ]);
+
       expect(receipts.filter((r) => !r.duplicate)).toHaveLength(1);
       expect(new Set(receipts.map((r) => r.requestId)).size).toBe(1);
       const firstId = required(receipts[0]).requestId;
       await a.acceptInbound(snapshot("r2", 101));
+
       const claim = (s: Storage, id: string, token: string) =>
         s.claimRequest({
           requestId: id,
@@ -178,6 +186,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
           claimToken: token,
           now: 105,
         });
+
       const claims = await Promise.all([claim(a, firstId, "first"), claim(b, "r2", "second")]);
       expect(claims[0]).toMatchObject({ status: "claimed" });
       expect(claims[1]).toEqual({ status: "busy" });
@@ -186,6 +195,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
         status: "claimed",
       });
       const sharedFinal = "only-final";
+
       const finals = await Promise.all([
         a.completeAndEnqueue({
           ...completion(firstId, "first", sharedFinal),
@@ -198,12 +208,14 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
           endpointIds: ["independent"],
         }),
       ]);
+
       expect(finals.filter((r) => r.status === "completed")).toHaveLength(1);
       expect(finals.filter((r) => r.status === "conflict")).toHaveLength(1);
       expect(await a.listOutbound({ limit: 10 })).toHaveLength(1);
       expect(await a.listInbound({ requestStatus: "completed", limit: 10 })).toHaveLength(1);
       expect(await a.listInbound({ requestStatus: "claimed", limit: 10 })).toHaveLength(1);
       const ns = { pluginId: "dot", ownerId: "a" };
+
       const creates = await Promise.all([
         a.compareAndSetState(ns, {
           key: "cursor",
@@ -216,8 +228,10 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
           value: "b",
         }),
       ]);
+
       expect(creates.filter((r) => r.status === "updated")).toHaveLength(1);
       expect(creates.filter((r) => r.status === "conflict")).toHaveLength(1);
+
       const updates = await Promise.all([
         a.compareAndSetState(ns, {
           key: "cursor",
@@ -230,6 +244,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
           value: "next-b",
         }),
       ]);
+
       expect(updates.filter((r) => r.status === "updated")).toEqual([
         { status: "updated", version: 2 },
       ]);
@@ -348,6 +363,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
             })
           ).find((candidate) => candidate.kind === "send"),
         );
+
         await s.settleAttempt({
           kind: "send",
           id: "d-c-due",
@@ -490,6 +506,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
         now: 105,
       });
       await a.completeAndEnqueue(completion());
+
       const due = (s: Storage, now: number) =>
         s.takeDue({
           now,
@@ -498,6 +515,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
           leaseOwner: "send",
           safeRetryAccountIds: [],
         });
+
       const first = required((await due(a, 110))[0]);
       expect(
         await b.settleAttempt({

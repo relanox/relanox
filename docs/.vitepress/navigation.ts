@@ -3,8 +3,10 @@ import type { DefaultTheme } from "vitepress";
 export function navigation(chinese: boolean): DefaultTheme.Config {
   const label = (english: string, simplifiedChinese: string) =>
     chinese ? simplifiedChinese : english;
+
   const base = label("/en/", "/zh-CN/");
   const page = (text: string, file: string) => ({ text, link: `${base}${file}` });
+
   const channels = [
     ["Telegram", "telegram"],
     ["Discord", "discord"],
@@ -22,6 +24,7 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
     ["Signal", "signal"],
     ["IRC", "irc"],
   ] as const;
+
   return {
     nav: [
       page(label("Guide", "开始使用"), "getting-started"),

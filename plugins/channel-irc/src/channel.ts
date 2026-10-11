@@ -33,6 +33,7 @@ function incomingText(message: IrcMessage, ownNick: string) {
   }
   return { sender, destination, text };
 }
+
 function receivedAt(message: IrcMessage): number {
   const timestamp = Date.parse(message.tags.time ?? "");
   return Number.isFinite(timestamp) && timestamp >= 0 ? timestamp : Date.now();
@@ -47,15 +48,18 @@ export function createIrcChannel(
   let socket: Socket | undefined;
   let ready = false;
   let nick = "";
+
   function configured() {
     if (!runtime) {
       throw new Error("not_setup");
     }
     return runtime;
   }
+
   function write(current: Socket, value: string): void {
     current.write(wireLine(value));
   }
+
   async function receive(message: IrcMessage): Promise<void> {
     const { host, account, config } = configured();
     const incoming = incomingText(message, nick);
@@ -72,8 +76,10 @@ export function createIrcChannel(
       return;
     }
     const stableAccount = message.tags.account;
+
     const authenticated =
       typeof stableAccount === "string" && stableAccount.length > 0 && stableAccount !== "*";
+
     if (!authenticated && !config.allowNickFallback) {
       diagnose(host, "account_identity_required");
       return;
@@ -104,6 +110,7 @@ export function createIrcChannel(
       context: null,
     });
   }
+
   function negotiate(current: Socket, message: IrcMessage, offered: Set<string>): void {
     const { config } = configured();
     const subcommand = message.params[1];
@@ -118,12 +125,14 @@ export function createIrcChannel(
       if (config.sasl && !offered.has("sasl")) {
         throw new Error("sasl_unavailable");
       }
+
       const requested = [
         "account-tag",
         "server-time",
         "message-tags",
         ...(config.sasl ? ["sasl"] : []),
       ].filter((capability) => offered.has(capability));
+
       write(current, requested.length > 0 ? `CAP REQ :${requested.join(" ")}` : "CAP END");
       return;
     }
@@ -137,6 +146,7 @@ export function createIrcChannel(
       write(current, "CAP END");
     }
   }
+
   function authenticate(current: Socket): void {
     const { config } = configured();
     if (!config.sasl) {
@@ -157,6 +167,7 @@ export function createIrcChannel(
       write(current, "AUTHENTICATE +");
     }
   }
+
   async function handle(current: Socket, message: IrcMessage, offered: Set<string>): Promise<void> {
     const { host, config } = configured();
     if (authenticationFailures.has(message.command)) {
@@ -207,10 +218,12 @@ export function createIrcChannel(
       }
     }
   }
+
   async function connect(signal: AbortSignal): Promise<void> {
     const { host, config } = configured();
     ready = false;
     nick = config.nick;
+
     const current: Socket = config.tls
       ? connectTls({
           host: config.server,
@@ -219,6 +232,7 @@ export function createIrcChannel(
           rejectUnauthorized: true,
         })
       : createConnection({ host: config.server, port: config.port });
+
     socket = current;
     current.setEncoding("utf8");
     current.setTimeout(120_000, () => current.destroy());
@@ -227,15 +241,18 @@ export function createIrcChannel(
     if (signal.aborted) {
       abort();
     }
+
     const registration = setTimeout(() => {
       if (!ready) {
         current.destroy();
       }
     }, config.timeoutMs);
+
     const offered = new Set<string>();
     let buffer = "";
     let queued = 0;
     let pending = Promise.resolve();
+
     const queueLine = (line: string) => {
       if (queued >= 100) {
         current.destroy();
@@ -252,6 +269,7 @@ export function createIrcChannel(
           queued -= 1;
         });
     };
+
     current.once(config.tls ? "secureConnect" : "connect", () => {
       try {
         if (config.password) {
@@ -290,6 +308,7 @@ export function createIrcChannel(
     ready = false;
     host.connection("disconnected");
   }
+
   async function loop(signal: AbortSignal): Promise<void> {
     const { host, config } = configured();
     while (!signal.aborted) {
@@ -302,6 +321,7 @@ export function createIrcChannel(
       await delay(config.reconnectMs, signal);
     }
   }
+
   async function send(input: SendInput): Promise<SendResult> {
     const { account, config } = configured();
     const target = targetSchema.safeParse(input.target.data);
@@ -330,6 +350,7 @@ export function createIrcChannel(
       const unknown = () => {
         resolve({ status: "unknown", errorCode: "send_outcome_unknown" });
       };
+
       input.signal.addEventListener("abort", unknown, { once: true });
       current.once("close", unknown);
       current.write(line, (error) => {
@@ -343,6 +364,7 @@ export function createIrcChannel(
       });
     });
   }
+
   return {
     id: "channel-irc",
     sdkMajor: 1,

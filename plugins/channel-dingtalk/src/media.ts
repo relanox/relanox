@@ -34,6 +34,7 @@ export async function downloadAttachment(
   if (!code) {
     throw new Error("missing_download_code");
   }
+
   const response = await httpJson(
     `${config.apiBase.replace(/\/$/u, "")}/v1.0/robot/messageFiles/download`,
     jsonPostRequest(
@@ -42,13 +43,16 @@ export async function downloadAttachment(
     ),
     signal,
   );
+
   const url = z.object({ downloadUrl: z.url() }).parse(response).downloadUrl;
+
   const downloaded = await downloadMedia(url, {
     maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
     signal,
     trustedOrigins: config.mediaOrigins,
     allowInsecureLocalhost: config.allowInsecureLoopback,
   });
+
   return {
     ...downloaded,
     kind: mediaKind(downloaded.mimeType),
@@ -64,11 +68,13 @@ async function upload(
   signal: AbortSignal,
 ): Promise<string> {
   const { kind, mimeType } = media.reference;
+
   const formats: Record<string, readonly string[]> = {
     image: ["image/png", "image/jpeg", "image/gif", "image/bmp"],
     audio: ["audio/amr"],
     video: ["video/mp4"],
   };
+
   if (
     (kind !== "file" && !formats[kind]?.includes(mimeType)) ||
     media.data.byteLength > (kind === "audio" ? 2 : 20) * 1024 * 1024
@@ -81,9 +87,11 @@ async function upload(
   const form = new FormData();
   form.set("media", mediaBlob(media), media.reference.fileName);
   const response = await httpJson(url.href, { method: "POST", body: form }, signal);
+
   const result = z
     .object({ errcode: z.number().optional(), media_id: z.string().optional() })
     .parse(response);
+
   if (result.errcode && result.errcode !== 0) {
     throw new Error("media_upload_failed");
   }
@@ -185,6 +193,7 @@ export function uploadFailure(error: unknown): SendResult {
     "missing_video_preview",
     "unsupported_file_format",
   ]);
+
   if (error instanceof Error && invalid.has(error.message)) {
     return { status: "rejected", errorCode: error.message };
   }

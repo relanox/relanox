@@ -39,6 +39,8 @@ CI 在 master push、PR 和手动触发中独立运行构建/质量、Linux/Wind
 
 Oxfmt 负责格式，类型感知 Oxlint 负责 lint，使用根脚本，不增加 formatter 层。CI 先构建 workspace 声明再检查；新测试目录需要可发现的 tsconfig。
 
+Oxlint 同时检查函数、类、接口、类型别名和枚举声明前后的空行，多行 export 与变量声明前后的空行、import 后的空行，以及类方法之间的空行。这些规则通过 Oxlint 的 JavaScript 插件支持运行。Oxfmt 保留声明间距，但不会补上要求的空行。运行 `pnpm lint:fix` 后再运行 `pnpm format`，分别修复间距和格式；`pnpm lint` 与 pre-commit hook 会拒绝缺少空行的代码，无需单独运行 ESLint 命令。
+
 - config schema 在导入图低于 runtime，校验不得解析密钥、打开资源或初始化状态。
 - 按职责组织模块；事务与连接状态机由单一所有者管理，文件长度不是拆分理由。
 - SDK 契约显式，内部导入具体兄弟模块，结算保持区分联合类型。

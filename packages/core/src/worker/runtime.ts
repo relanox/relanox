@@ -26,6 +26,7 @@ export function createWorker(
   let busy = false;
   let workerError = false;
   const owner = crypto.randomUUID();
+
   async function refreshStats(): Promise<void> {
     try {
       const stats = await storage.getStats();
@@ -44,9 +45,11 @@ export function createWorker(
       observe.record("relanox_storage_stats_stale", 1);
     }
   }
+
   const safeRetryAccountIds = config.accounts
     .filter((a) => options.channels.get(a.id)?.capabilities.idempotentSend)
     .map((a) => a.id);
+
   async function invoke<T extends DispatchResult | SendResult>(
     operationName: "dispatch" | "send",
     operation: (signal: AbortSignal) => Promise<T> | undefined,
@@ -65,6 +68,7 @@ export function createWorker(
           resolve({ status: "unknown", errorCode: "call_timeout" });
         }, worker.callTimeoutMs);
       });
+
       const pending = operation(controller.signal);
       if (!pending) {
         return { status: "rejected", errorCode: "plugin_missing" };
@@ -89,6 +93,7 @@ export function createWorker(
       );
     }
   }
+
   function applyRetryBudget<T extends DispatchResult | SendResult>(outcome: T, attempts: number) {
     return retryBudgetExhausted(outcome, attempts, worker.maxAttempts)
       ? { status: "rejected" as const, errorCode: "retry_budget_exhausted" }
@@ -99,6 +104,7 @@ export function createWorker(
     if (work.kind === "dispatch") {
       const request = work.record.snapshot;
       const attempts = work.record.dispatch.attempts;
+
       const outcome = applyRetryBudget(
         attempts >= worker.maxAttempts
           ? { status: "rejected" as const, errorCode: "retry_budget_exhausted" }
@@ -114,6 +120,7 @@ export function createWorker(
             ),
         attempts,
       );
+
       const now = Date.now();
       return {
         kind: "dispatch",
@@ -125,6 +132,7 @@ export function createWorker(
       };
     }
     const record = work.record;
+
     const outcome = applyRetryBudget(
       record.attempts >= worker.maxAttempts
         ? { status: "rejected" as const, errorCode: "retry_budget_exhausted" }
@@ -143,6 +151,7 @@ export function createWorker(
           ),
       record.attempts,
     );
+
     const now = Date.now();
     return {
       kind: "send",
@@ -153,6 +162,7 @@ export function createWorker(
       now,
     };
   }
+
   function canStartWork(start: number, processed: number): boolean {
     return (
       isAccepting() && processed < worker.batchSize && Date.now() - start < worker.batchDurationMs
@@ -181,6 +191,7 @@ export function createWorker(
               safeRetryAccountIds,
             })
           )[0];
+
           if (!work) {
             break;
           }

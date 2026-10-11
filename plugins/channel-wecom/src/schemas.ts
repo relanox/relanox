@@ -7,6 +7,7 @@ export const frameSchema = z.object({
   body: z.unknown().optional(),
   errcode: z.number().int().optional(),
 });
+
 export const messageSchema = z.object({
   msgid: z.string().min(1),
   aibotid: z.string().min(1),
@@ -33,6 +34,7 @@ export const messageSchema = z.object({
     .optional(),
   text: z.object({ content: z.string().min(1) }).optional(),
 });
+
 export const targetSchema = z
   .object({
     chattype: z.enum(["single", "group"]),

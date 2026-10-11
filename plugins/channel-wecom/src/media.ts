@@ -39,12 +39,14 @@ export async function receiveResource(
   signal: AbortSignal,
 ): Promise<MediaUpload> {
   const maximum = host.maxMediaBytes ?? 25 * 1024 * 1024;
+
   const downloaded = await downloadMedia(resource.url, {
     maxBytes: maximum + 32,
     signal,
     trustedOrigins: config.mediaOrigins,
     allowInsecureLocalhost: config.allowInsecureLoopback,
   });
+
   const key = Buffer.from(resource.aeskey, "base64");
   if (key.byteLength !== 32) {
     throw new Error("invalid_media_key");
@@ -78,11 +80,13 @@ export async function uploadResource(
 ): Promise<string> {
   const { kind, mimeType, fileName } = media.reference;
   const maximum = { audio: 2, file: 20, image: 10, video: 10 }[kind];
+
   const formats: Record<string, readonly string[]> = {
     image: ["image/png", "image/jpeg", "image/gif"],
     audio: ["audio/amr"],
     video: ["video/mp4"],
   };
+
   if (
     media.data.byteLength < 5 ||
     media.data.byteLength > maximum * 1024 * 1024 ||
@@ -95,6 +99,7 @@ export async function uploadResource(
   }
   const chunkSize = 512 * 1024;
   const type = kind === "audio" ? "voice" : kind;
+
   const init = await request(
     "aibot_upload_media_init",
     {
@@ -105,6 +110,7 @@ export async function uploadResource(
     },
     signal,
   );
+
   if (init.errcode !== 0) {
     throw new Error("media_upload_failed");
   }
@@ -121,6 +127,7 @@ export async function uploadResource(
       },
       signal,
     );
+
     if (response.errcode !== 0) {
       throw new Error("media_upload_failed");
     }
@@ -139,8 +146,10 @@ export async function receiveParts(
   signal: AbortSignal,
 ): Promise<{ text: string; attachments: MediaUpload[] }> {
   const attachments: MediaUpload[] = [];
+
   let text =
     message.msgtype === "text" ? (message.text?.content ?? "") : (message.voice?.content ?? "");
+
   const items = message.mixed?.msg_item ?? [message];
   for (const item of items) {
     if (message.msgtype === "mixed" && item.text) {

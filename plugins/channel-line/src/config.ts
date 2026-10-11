@@ -28,6 +28,7 @@ const configSchema = z.strictObject({
   contentApiBase: z.url().default("https://api-data.line.me"),
   allowLoopback: z.boolean().default(false),
 });
+
 export type LineConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): LineConfig {

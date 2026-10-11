@@ -27,7 +27,9 @@ const formats: Record<MediaKind, { limit: number; mimeTypes: readonly string[] }
     ],
   },
 };
+
 const mediaType = z.enum(["image", "audio", "video", "document"]);
+
 const metadataSchema = z.object({
   id: z.string(),
   url: z.url(),
@@ -42,6 +44,7 @@ const metadataSchema = z.object({
     ])
     .pipe(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)),
 });
+
 async function readMediaJson(response: Response): Promise<unknown> {
   const reader = response.body?.getReader();
   if (!reader) {
@@ -67,6 +70,7 @@ async function readMediaJson(response: Response): Promise<unknown> {
     reader.releaseLock();
   }
 }
+
 export async function receiveMedia(
   message: z.infer<typeof messageSchema>,
   host: ChannelHost,
@@ -82,16 +86,20 @@ export async function receiveMedia(
   if (!payload) {
     throw new Error("invalid_media_message");
   }
+
   const endpoint = new URL(
     `${config.apiBase}/${config.apiVersion}/${encodeURIComponent(payload.id)}`,
   );
+
   endpoint.searchParams.set("phone_number_id", config.phoneNumberId);
   const authorization = `Bearer ${secret(config.accessToken)}`;
+
   const response = await request(
     validateEndpointUrl(endpoint.href, config.allowLoopback),
     { headers: { authorization } },
     bound,
   );
+
   if (!response.ok) {
     await response.body?.cancel();
     throw new Error("media_metadata_failed");
@@ -111,6 +119,7 @@ export async function receiveMedia(
   if (metadata.file_size > maximum || !formats[kind].mimeTypes.includes(mimeType)) {
     throw new Error("unsupported_media");
   }
+
   const downloaded = await downloadMedia(metadata.url, {
     maxBytes: maximum,
     signal: bound,
@@ -118,6 +127,7 @@ export async function receiveMedia(
     trustedOrigins: [configuredOrigin, "https://lookaside.fbsbx.com"],
     allowInsecureLocalhost: config.allowLoopback,
   });
+
   return {
     text: payload.caption ?? "",
     attachments: [
@@ -130,6 +140,7 @@ export async function receiveMedia(
     ],
   };
 }
+
 export async function uploadMedia(
   input: SendInput,
   config: WhatsAppConfig,
@@ -180,6 +191,7 @@ export async function uploadMedia(
     const uploaded = z
       .object({ id: z.string().min(1).max(1024) })
       .parse(await readMediaJson(response));
+
     return {
       type: media.reference.kind === "file" ? "document" : media.reference.kind,
       value: {

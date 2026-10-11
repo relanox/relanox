@@ -19,6 +19,7 @@ afterEach(async () => {
   delete process.env.AGENT_TEST_TOKEN_0;
   delete process.env.AGENT_TEST_TOKEN_1;
 });
+
 async function setup(agent: AgentId) {
   const config =
     agent === "dot"
@@ -28,16 +29,20 @@ async function setup(agent: AgentId) {
           routineUrl: { env: "UNUSED_ROUTINE_URL" },
           routineAuthorization: { env: "UNUSED_ROUTINE_AUTH" },
         };
+
   const plugin = agent === "dot" ? createDotAgentPlugin() : createGrokAgentPlugin();
+
   const fx = await fixture(
     agent,
     plugin,
     [config, { ...config, mcp: mcp("AGENT_TEST_TOKEN_1") }],
     false,
   );
+
   cleanups.push(() => fx.close());
   return fx;
 }
+
 const claimSchema = z.looseObject({
   status: z.literal("claimed"),
   claimToken: z.string(),
@@ -47,17 +52,21 @@ const claimSchema = z.looseObject({
     ),
   }),
 });
+
 const transferSchema = z.looseObject({ url: z.url(), maxBytes: z.number() });
 
 describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
   it("projects inbound metadata, exposes image/audio bytes, transfers binary files and completes ordered media through SQLite", async () => {
     const fx = await setup(agent);
+
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
       "base64",
     );
+
     const audio = Buffer.from("RIFF-relanox-audio", "utf8");
     const file = Buffer.from("inbound file bytes", "utf8");
+
     const receipt = await fx.ingest(0, "inspect these assets", "media-event", [
       { kind: "image", mimeType: "image/png", fileName: "pixel.png", data: png },
       {
@@ -69,6 +78,7 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
       },
       { kind: "file", mimeType: "application/octet-stream", fileName: "input.bin", data: file },
     ]);
+
     const client = await fx.client();
     const pending = await client.callTool({ name: "relanox_list_pending", arguments: {} });
     expect(pending).toMatchObject({
@@ -84,6 +94,7 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
         ],
       },
     });
+
     const claimed = claimSchema.parse(
       (
         await client.callTool({
@@ -92,6 +103,7 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
         })
       ).structuredContent,
     );
+
     const common = { requestId: receipt.requestId, claimToken: claimed.claimToken };
     const [image, sound, document] = claimed.request.attachments;
     if (!image || !sound || !document) {
@@ -113,10 +125,12 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
     ).toMatchObject({
       content: [{ type: "audio", data: audio.toString("base64"), mimeType: "audio/wav" }],
     });
+
     const download = await client.callTool({
       name: "relanox_read_media",
       arguments: { ...common, mediaId: document.id },
     });
+
     const link = z
       .object({
         content: z.array(
@@ -124,6 +138,7 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
         ),
       })
       .parse(download).content[0];
+
     if (!link) {
       throw new Error("media_download_missing");
     }
@@ -133,6 +148,7 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
     expect(fetched.headers.get("x-content-type-options")).toBe("nosniff");
     expect(new Uint8Array(await fetched.arrayBuffer())).toEqual(new Uint8Array(file));
     const uploadId = randomUUID();
+
     const transfer = transferSchema.parse(
       (
         await client.callTool({
@@ -152,6 +168,7 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
         })
       ).structuredContent,
     );
+
     expect(new URL(transfer.url).origin).toBe("http://relanox.test");
     expect(transfer.url).not.toContain("secret-0");
     const generated = Buffer.alloc(3_000_000, 23);
@@ -162,20 +179,24 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
       media: { id: uploadId, size: generated.length, durationMs: 2500, previewMediaId: image.id },
     });
     expect(await (await put()).json()).toMatchObject({ status: "stored", replay: true });
+
     const conflicting = await fx.core.fetch(
       new Request(transfer.url, { method: "PUT", body: Buffer.from("different") }),
     );
+
     expect(await conflicting.json()).toEqual({ status: "conflict" });
     await fx.reopen(agent === "dot" ? createDotAgentPlugin() : createGrokAgentPlugin());
     const afterRestart = await fx.core.fetch(new Request(link.uri));
     expect(afterRestart.status).toBe(200);
     expect(new Uint8Array(await afterRestart.arrayBuffer())).toEqual(new Uint8Array(file));
+
     const completion = {
       ...common,
       resultId: "media-result",
       text: "done",
       attachments: [uploadId, document.id],
     };
+
     expect(
       await client.callTool({ name: "relanox_complete", arguments: completion }),
     ).toMatchObject({ structuredContent: { status: "completed", replay: false } });
@@ -191,9 +212,11 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
       },
       { media: { reference: { id: document.id } } },
     ]);
+
     const sentMedia = z
       .looseObject({ media: z.looseObject({ data: z.instanceof(Uint8Array) }) })
       .parse(fx.sent[1]);
+
     expect(Buffer.from(sentMedia.media.data).equals(generated)).toBe(true);
   });
 
@@ -201,14 +224,18 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
     const fx = await setup(agent);
     const receipt = await fx.ingest();
     const client = await fx.client();
+
     const result = await client.callTool({
       name: "relanox_claim",
       arguments: { requestId: receipt.requestId, claimKey: "capability-run" },
     });
+
     const claimToken = z
       .looseObject({ claimToken: z.string() })
       .parse(result.structuredContent).claimToken;
+
     const uploadId = randomUUID();
+
     const transfer = transferSchema.parse(
       (
         await client.callTool({
@@ -223,9 +250,11 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
         })
       ).structuredContent,
     );
+
     const tampered = new URL(transfer.url);
     tampered.searchParams.set("ticket", `${tampered.searchParams.get("ticket")}x`);
     let bodyReads = 0;
+
     const stalledBody = new ReadableStream<Uint8Array>(
       {
         pull() {
@@ -234,11 +263,13 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
       },
       { highWaterMark: 0 },
     );
+
     const init: RequestInit & { duplex: "half" } = {
       method: "PUT",
       body: stalledBody,
       duplex: "half",
     };
+
     expect((await fx.core.fetch(new Request(tampered, init))).status).toBe(401);
     expect(bodyReads).toBe(0);
     expect(

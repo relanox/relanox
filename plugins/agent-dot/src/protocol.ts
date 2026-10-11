@@ -3,6 +3,7 @@ import type { InboundSnapshot } from "@relanox/sdk";
 import { z } from "zod";
 
 export const name = "relanox.message_available";
+
 const signingSecret = z
   .string()
   .regex(/^whsec_[A-Za-z0-9+/]+={0,2}$/u)
@@ -11,13 +12,17 @@ const signingSecret = z
     const bytes = Buffer.from(encoded, "base64");
     return bytes.length >= 24 && bytes.length <= 64 && bytes.toString("base64") === encoded;
   }, "Expected canonical whsec base64 key of 24-64 bytes");
+
 // Route authentication already fixes the endpoint; no caller scope.
 export const args = z.strictObject({});
+
 const destination = z.strictObject({
   mode: z.literal("webhook"),
   url: z.url().max(4096),
 });
+
 export const requestMetadata = z.record(z.string(), z.json()).optional();
+
 export const subscribeParams = z.strictObject({
   _meta: requestMetadata,
   name: z.literal(name),
@@ -26,12 +31,14 @@ export const subscribeParams = z.strictObject({
   cursor: z.null().optional(),
   ttlMs: z.number().int().min(1000).nullable().optional(),
 });
+
 export const unsubscribeParams = z.strictObject({
   _meta: requestMetadata,
   name: z.literal(name),
   arguments: args,
   delivery: destination,
 });
+
 export const subscriptionSchema = z.strictObject({
   id: z.string(),
   owner: z.string(),
@@ -45,6 +52,7 @@ export const subscriptionSchema = z.strictObject({
   previousSecret: signingSecret.optional(),
   previousUntil: z.number().int().optional(),
 });
+
 export type Subscription = z.infer<typeof subscriptionSchema>;
 
 export type AgentRequestPayload = Pick<
@@ -53,6 +61,7 @@ export type AgentRequestPayload = Pick<
 > & {
   readonly source: Pick<InboundSnapshot["source"], "channel" | "eventId">;
 };
+
 export function projectAgentRequest(request: InboundSnapshot): AgentRequestPayload {
   return {
     requestId: request.requestId,

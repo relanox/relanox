@@ -51,6 +51,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
   let token: { value: string; expiresAt: number; credential: string } | undefined;
   let tokenFlight: Promise<string> | undefined;
   const api = (path: string) => `${config.apiBase.replace(/\/$/u, "")}${path}`;
+
   async function getAccessToken(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret);
     if (token && token.credential === credential && token.expiresAt > Date.now()) {
@@ -67,6 +68,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
           signal,
         ),
       );
+
       token = {
         value: body.accessToken,
         credential,
@@ -80,8 +82,10 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       tokenFlight = undefined;
     }
   }
+
   async function receive(raw: unknown): Promise<void> {
     const frame = streamSchema.parse(raw);
+
     const ack = (code: number, data: string) => {
       connection.send({
         code,
@@ -93,6 +97,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         data,
       });
     };
+
     if (frame.type === "SYSTEM") {
       if (frame.headers.topic === "ping") {
         ack(200, frame.data);
@@ -131,8 +136,10 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       });
       return;
     }
+
     const credential =
       message.msgtype === "text" ? undefined : await getAccessToken(connection.signal);
+
     const { text, attachments } = await receiveParts(
       message,
       config,
@@ -140,12 +147,14 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       credential,
       connection.signal,
     );
+
     const scope = {
       clientId: config.clientId,
       robotCode: config.robotCode,
       apiBase: new URL(config.apiBase).href,
       uploadBase: new URL(config.uploadBase).href,
     };
+
     const group = message.conversationType === "2";
     const chatId = group ? message.conversationId : message.senderStaffId;
     await ingestText(host, {
@@ -171,6 +180,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
     });
     ack(200, '{"response":null}');
   }
+
   return {
     id: "channel-dingtalk",
     sdkMajor: 1,
@@ -208,9 +218,11 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
               signal,
             ),
           );
+
           const url = new URL(
             validateTransportUrl(body.endpoint, true, config.allowInsecureLoopback),
           );
+
           url.searchParams.set("ticket", body.ticket);
           return url.toString();
         },
@@ -267,6 +279,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       try {
         const payload = await mediaMessage(input, config, credential);
         transmitting = true;
+
         const body = sendResponse.parse(
           await httpJson(
             api(
@@ -287,6 +300,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
             input.signal,
           ),
         );
+
         if (body.invalidStaffIdList?.length) {
           return { status: "rejected", errorCode: "invalid_staff_id" };
         }

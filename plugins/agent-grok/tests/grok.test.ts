@@ -27,10 +27,12 @@ afterEach(async () => {
     delete process.env[name];
   }
 });
+
 async function setup(status = 200, headers: Record<string, string> = {}, timeoutMs = 1000) {
   const receiver = await peer(() => ({ status, headers }));
   cleanups.push(receiver.close);
   process.env.GROK_TEST_URL = `${receiver.origin}/user-supplied-routine`;
+
   const config = {
     mcp: mcp(),
     routineUrl: { env: "GROK_TEST_URL" },
@@ -39,11 +41,13 @@ async function setup(status = 200, headers: Record<string, string> = {}, timeout
     timeoutMs,
     maxBodyBytes: 1_048_576,
   };
+
   const plugin = createGrokAgentPlugin();
   const fx = await fixture("grok", plugin, [config, { ...config, mcp: mcp("AGENT_TEST_TOKEN_1") }]);
   cleanups.push(() => fx.close());
   return { receiver, plugin, fx };
 }
+
 describe("grok configured Routine and scoped MCP", () => {
   it("includes stored media metadata in the hosted Routine without serializing binary bytes", async () => {
     const { fx, receiver } = await setup();
@@ -56,21 +60,26 @@ describe("grok configured Routine and scoped MCP", () => {
       },
     ]);
     await fx.core.processDue();
+
     const outer = z
       .looseObject({ content: z.string() })
       .parse(parseWire(receiver.traffic[0]?.body ?? ""));
+
     expect(parseWire(outer.content)).toMatchObject({
       attachments: [{ kind: "image", mimeType: "image/png", fileName: "routine.png", size: 4 }],
     });
+
     const payload = z
       .looseObject({ attachments: z.array(z.record(z.string(), z.unknown())) })
       .parse(parseWire(outer.content));
+
     expect(payload.attachments[0]).not.toHaveProperty("data");
   });
 
   it("rejects an already-aborted request without waiting for its stalled body", async () => {
     const controller = new AbortController();
     controller.abort();
+
     const init: RequestInit & { duplex: "half" } = {
       method: "POST",
       headers: { Authorization: "Bearer secret-0" },
@@ -78,10 +87,12 @@ describe("grok configured Routine and scoped MCP", () => {
       duplex: "half",
       signal: controller.signal,
     };
+
     const response = await guard(
       new Request("http://relanox.test/agents/grok/mcp/endpoint0", init),
       mcp(),
     );
+
     if (!(response instanceof Response)) {
       throw new Error("aborted_body_accepted");
     }
@@ -113,17 +124,21 @@ describe("grok configured Routine and scoped MCP", () => {
       });
       expect((await fx.storage.getInbound(receipt.requestId))?.status).toBe("pending");
       const client = await fx.client("secret-0", 0, modern);
+
       const claimed = await client.callTool({
         name: "relanox_claim",
         arguments: { requestId: receipt.requestId, claimKey: "remote-run-A" },
       });
+
       expect(claimed).toMatchObject({
         isError: false,
         structuredContent: { status: "claimed", replay: false },
       });
+
       const token = z
         .object({ claimToken: z.string() })
         .parse(claimed.structuredContent).claimToken;
+
       expect(
         await client.callTool({
           name: "relanox_claim",
@@ -187,10 +202,12 @@ describe("grok configured Routine and scoped MCP", () => {
         chunk: { text: "answer" },
       });
       const next = await fx.ingest(0, "later", "event-2");
+
       const later = await client.callTool({
         name: "relanox_claim",
         arguments: { requestId: next.requestId, claimKey: "run-later" },
       });
+
       expect(later).toMatchObject({ structuredContent: { status: "claimed" } });
       expect(
         await client.callTool({

@@ -40,6 +40,7 @@ const configSchema = z.strictObject({
   apiBaseUrl: z.string().default("https://api.telegram.org"),
   ...transportOptions,
 });
+
 export type TelegramConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(input: unknown): TelegramConfig {
