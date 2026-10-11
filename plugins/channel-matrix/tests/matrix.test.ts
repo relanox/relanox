@@ -1,5 +1,6 @@
 import type { SendInput } from '@relanox/sdk'
 import { expect, it } from 'vitest'
+import { z } from 'zod'
 import { createMatrixChannel } from '../src/index.js'
 import {
   body,
@@ -204,7 +205,12 @@ it('persists threaded sync before cursor, filters identities and sends the froze
   expect(dispatches).toEqual([
     { requestId: request.snapshot.requestId, text: 'question' }
   ])
-  const completed = await fixture.sendReply(request.snapshot.requestId)
+
+  const completed = await fixture.sendReply(
+    request.snapshot.requestId,
+    '**answer** [link](https://example.com) <script>alert(1)</script>'
+  )
+
   await fixture.runtime.processDue()
   expect(
     (await fixture.storage.getOutbound(completed.deliveryId))?.status
@@ -216,7 +222,10 @@ it('persists threaded sync before cursor, filters identities and sends the froze
   )
   expect(sent[0]?.data).toEqual({
     msgtype: 'm.text',
-    body: 'delayed answer',
+    body: '**answer** [link](https://example.com) <script>alert(1)</script>',
+    format: 'org.matrix.custom.html',
+    formatted_body:
+      '<p><strong>answer</strong> <a href="https://example.com/">link</a> &lt;script&gt;alert(1)&lt;/script&gt;</p>\n',
     'm.relates_to': {
       rel_type: 'm.thread',
       event_id: thread,
@@ -234,6 +243,68 @@ it('persists threaded sync before cursor, filters identities and sends the froze
   })
   expect(sent).toHaveLength(3)
   expect(plugin.capabilities.idempotentSend).toBe(false)
+})
+
+it('bounds the combined Markdown and HTML text sent to Matrix after escaping expands it', async () => {
+  const sent: { body: string; formatted_body: string; format: string }[] = []
+
+  const peer = await httpPeer(async (request, response) => {
+    if (request.url?.includes('/state/')) {
+      json(response, { errcode: 'M_NOT_FOUND' }, 404)
+      return
+    }
+    sent.push(
+      z
+        .object({
+          body: z.string(),
+          formatted_body: z.string(),
+          format: z.string()
+        })
+        .parse(await body(request))
+    )
+    json(response, { event_id: '$sent' })
+  })
+
+  const plugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
+  await harness(
+    plugin,
+    config(peer.base),
+    [{ chatId: room }],
+    [user],
+    `${peer.base}/dispatch`
+  )
+
+  const target: SendInput['target'] = {
+    channel: 'matrix',
+    accountId: 'bot',
+    chatId: room,
+    data: { homeserver: peer.base, userId: '@bot:local.test' }
+  }
+
+  const markdown = '&'.repeat(6000)
+  const chunks = plugin.splitText?.(markdown, target)
+  if (!chunks) {
+    throw new Error('Missing Matrix Markdown splitting')
+  }
+  for (const [index, text] of chunks.entries()) {
+    const outgoing = input(target)
+    expect(
+      await plugin.send({
+        ...outgoing,
+        chunk: { ...outgoing.chunk, text, idempotencyKey: `escaped:${index}` }
+      })
+    ).toEqual({ status: 'sent', receipt: { platformMessageId: '$sent' } })
+  }
+  expect(sent.length).toBeGreaterThan(1)
+  expect(sent.map((message) => message.body).join('')).toBe(markdown)
+  for (const message of sent) {
+    expect(message.format).toBe('org.matrix.custom.html')
+    expect(message.formatted_body).toContain('&amp;')
+    expect(
+      Buffer.byteLength(message.body) +
+        Buffer.byteLength(message.formatted_body)
+    ).toBeLessThanOrEqual(16_000)
+  }
 })
 
 it('replays from the last committed cursor after a real storage failure and restart', async () => {

@@ -11,6 +11,7 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import { mediaCaption, messageContent, receiveMedia } from './media.js'
+import { renderHtml, splitMarkdown, textLength } from '@relanox/markdown'
 import { z } from 'zod'
 import { validateConfig, platformIdSchema, validateBaseUrl } from './config.js'
 import type { MatrixConfig } from './config.js'
@@ -328,6 +329,14 @@ export function createMatrixChannel(
     runtime: 'node',
     kind: 'channel',
     channel: 'matrix',
+    splitText(markdown) {
+      return splitMarkdown(markdown, {
+        maxLength: 16_000,
+        unit: 'utf8',
+        measure: (text) =>
+          textLength(text, 'utf8') + textLength(renderHtml(text), 'utf8')
+      })
+    },
     capabilities: {
       receive: true,
       transport: 'connection',
