@@ -119,4 +119,20 @@ it("enforces format and type-aware lint on real commits without overwriting stag
   expect((await git(folder, ["show", "HEAD:sample.ts"])).output).toBe(
     "export const answer = 42;\n",
   );
+
+  expect((await git(folder, ["rm", "sample.ts"])).code).toBe(0);
+  await writeFile(path.join(folder, "remaining.ts"), "export const answer=7;\n");
+  const deletion = await git(folder, ["commit", "-m", "test: deletion with malformed checkout"]);
+  expect(deletion.code).not.toBe(0);
+  expect(deletion.output).toContain("remaining.ts");
+  expect((await git(folder, ["diff", "--cached", "--name-status"])).output.trim()).toBe(
+    "D\tsample.ts",
+  );
+  expect(await readFile(path.join(folder, "remaining.ts"), "utf8")).toBe(
+    "export const answer=7;\n",
+  );
+  await writeFile(path.join(folder, "remaining.ts"), "export const answer = 7;\n");
+  const cleanDeletion = await git(folder, ["commit", "-m", "test: valid deletion"]);
+  expect(cleanDeletion).toMatchObject({ code: 0 });
+  expect((await git(folder, ["ls-tree", "HEAD", "sample.ts"])).output).toBe("");
 }, 60_000);

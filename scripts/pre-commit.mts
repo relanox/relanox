@@ -16,7 +16,7 @@ function run(
   return result.stdout ?? "";
 }
 
-const staged = run("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"], {
+const staged = run("git", ["diff", "--cached", "--name-only", "-z"], {
   stdio: "pipe",
 })
   .split("\0")
