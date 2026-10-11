@@ -107,6 +107,7 @@ export type ChannelPlugin<C = Json> = {
     readonly idempotentSend: boolean
     /** Reject oversized replies before sending when a platform limits per-message calls. */
     readonly maxChunksPerMessage?: number
+    readonly maxAttachmentsPerMessage?: number
     readonly media?: {
       readonly receive: readonly MediaKind[]
       readonly send: readonly MediaKind[]
