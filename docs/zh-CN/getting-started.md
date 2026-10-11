@@ -102,7 +102,7 @@ Telegram 应返回 `ok: true`。共享截图和输出前去掉 token。
 - URL：`https://relay.example.com/agents/grok/mcp/grok-main`。
 - 认证：使用 `GROK_MCP_TOKEN` 的 Bearer 认证。token 输入框填原始 token；Authorization 头输入框填 `Bearer <token>`。
 
-设置 Routine 使用这个 bot，并复制[连接 Agent](agents.md#给-agent-固定回信指令)中的指令。检查 Routine URL 和 Authorization 与环境变量一致。更改配置或部署环境后重启 Relanox。
+设置 Routine 使用这个 bot。Relanox 通过 MCP 连接提供回信说明，无需单独配置回信 prompt。详细步骤见[连接 Agent](agents.md)。检查 Routine URL 和 Authorization 与环境变量一致。更改配置或部署环境后重启 Relanox。
 
 ## 6. 收到第一条回信
 
@@ -112,6 +112,6 @@ Telegram 应返回 `ok: true`。共享截图和输出前去掉 token。
 node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main
 ```
 
-来信记录的 `accepted` 表示 Routine 已接收通知；回信记录的 `sent` 表示 Telegram 已接收回信。如果只看到来信，检查 Grok MCP 连接和固定回信指令。如果没有来信记录，检查 webhook、用户 ID 和聊天绑定。[部署与备份](operations.md#查找并恢复卡住的消息)介绍其他状态和恢复方法。
+来信记录的 `accepted` 表示 Routine 已接收通知；回信记录的 `sent` 表示 Telegram 已接收回信。如果只看到来信，检查 Grok MCP 连接和 Routine 执行情况；更新 Relanox 后刷新 MCP 连接。如果没有来信记录，检查 webhook、用户 ID 和聊天绑定。[部署与备份](operations.md#查找并恢复卡住的消息)介绍其他状态和恢复方法。
 
 按[修改配置](configuration.md)添加聊天，在[渠道接入](channels/index.md)选择平台，按[收发图片和文件](media.md)配置附件。

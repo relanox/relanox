@@ -141,7 +141,7 @@ docker compose exec relanox node dist/main.js status --config /config/relanox.js
 | ------------------------- | ----------------------------------------------------------- |
 | 没有来信记录              | webhook/连接、发送者名单、准确聊天和话题绑定                |
 | 来信 `due`                | Agent 凭据、Routine 可用性或 dot 订阅；日志可查看安排的重试 |
-| 来信 `accepted`，没有回信 | Agent 指令、MCP 连接和远端执行                              |
+| 来信 `accepted`，没有回信 | MCP 连接元数据、连接状态和远端执行                          |
 | 来信或回信 `rejected`     | 重试前修正报告的权限或配置问题                              |
 | 回信 `pending`            | 平台连接、权限、重试等待时间，以及同一来信更早的未完成回信  |
 | 回信 `sent`               | 平台已接收，检查原聊天或话题                                |

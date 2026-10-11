@@ -6,19 +6,13 @@ Start with a small picture and ask, “Please describe this image.” Once the A
 
 ## Let the Agent read attachments
 
-Add this to your Agent's saved instructions:
-
-> When a message contains attachments, use relanox_read_media to read them as needed. Send your answer with relanox_send_message using the replyTo from that message.
-
-Connecting Relanox makes these tools available to the Agent. You can continue sending attachments normally in your chat. See [Connect an Agent](agents.md) for setup.
+The MCP connection provides attachment-reading instructions and the `relanox_read_media` and `relanox_send_message` tools. The Agent uses the incoming attachment `id` as `mediaId` and keeps the message’s `replyTo` when reading or replying. No separate attachment prompt is needed. You can continue sending attachments normally in your chat. See [Connect an Agent](agents.md) for setup.
 
 ## Receive files created by the Agent
 
 To send a generated image or file, the Agent supplies a public HTTPS address that downloads the file directly. Relanox retrieves it and sends it using your chat platform's delivery method.
 
-You can add this instruction:
-
-> To send a generated file, include its HTTPS download address, type and filename in the attachments for relanox_send_message. For audio or video, include the duration and cover image required by the destination channel.
+The MCP instructions explain how to supply the HTTPS download address, type and filename in `relanox_send_message` attachments, plus the duration and cover image required by the destination channel for audio or video.
 
 The address should return the file itself. Open it in a browser to check that it downloads. Before sending audio or video, check the [channel guide](channels/index.md) for formats, duration and cover images.
 

@@ -141,7 +141,7 @@ docker compose exec relanox node dist/main.js status --config /config/relanox.js
 | ------------------------------- | ---------------------------------------------------------------------------------------- |
 | No incoming record              | Webhook/connection, sender allowlist, exact chat and thread binding                      |
 | Incoming `due`                  | Agent credentials, Routine availability or dot subscription; logs show scheduled retries |
-| Incoming `accepted`, no reply   | Agent instructions, MCP connection and remote execution                                  |
+| Incoming `accepted`, no reply   | MCP connection metadata, connection status and remote execution                          |
 | Incoming or delivery `rejected` | Correct the reported permission/configuration problem before retrying                    |
 | Delivery `pending`              | Platform connection, permissions, retry delay and earlier held replies to the same input |
 | Delivery `sent`                 | The platform accepted the reply; check its original chat/topic                           |

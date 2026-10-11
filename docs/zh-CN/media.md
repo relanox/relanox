@@ -6,19 +6,13 @@
 
 ## 让 Agent 读取附件
 
-在 Agent 的固定指令中加入：
-
-> 收到带附件的消息时，根据需要用 relanox_read_media 读取附件，再回答用户。通过 relanox_send_message 把回复发送到这条消息的 replyTo。
-
-这两个工具在连接 Relanox 后提供给 Agent。你照常在聊天中发送附件即可。详细连接步骤见[连接 Agent](agents.md)。
+MCP 连接自带附件读取说明，并提供 `relanox_read_media` 和 `relanox_send_message` 工具。Agent 使用来信附件的 `id` 作为 `mediaId`，读取和回复时保留消息原有的 `replyTo`，无需另配附件 prompt。你照常在聊天中发送附件即可。详细连接步骤见[连接 Agent](agents.md)。
 
 ## 让 Agent 发回生成的文件
 
 Agent 生成图片或文件后，需要提供可直接下载的公网 HTTPS 链接。Relanox 读取文件，再按聊天平台的方式发送给你。
 
-可以在固定指令中补充：
-
-> 发送生成的文件时，在 relanox_send_message 的 attachments 中提供文件的 HTTPS 下载地址、类型和文件名。音频或视频按目标渠道要求提供时长和封面。
+MCP 说明已包含生成文件的发送方式：在 `relanox_send_message` 的 `attachments` 中提供文件的 HTTPS 下载地址、类型和文件名；音频或视频按目标渠道要求提供时长和封面。
 
 文件地址应直接返回文件内容。你可以先在浏览器中打开地址，确认能够下载。发送音视频前，按[对应渠道指南](channels/index.md)准备文件格式、时长和封面。
 
