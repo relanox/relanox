@@ -23,7 +23,7 @@ import {
 } from './media.js'
 import { createOperationTracer } from './tracing.js'
 
-interface AgentHostOptions {
+type AgentHostOptions = {
   readonly agent: AgentId
   readonly agentEndpoints: readonly EndpointConfig[]
   readonly common: CommonHost
@@ -55,14 +55,14 @@ export function createAgentHost({
 
       return {
         media: createAgentMedia(storage, agent, scope, worker),
-        listPending: (count) =>
+        listPending: async (count) =>
           storage.listPending({
             agent,
             endpointIds: scope,
             limit: limit(count)
           }),
-        claim: (requestId, claimKey) =>
-          traced('claim', () =>
+        claim: async (requestId, claimKey) =>
+          traced('claim', async () =>
             storage.claimRequest({
               requestId: textId.parse(requestId),
               endpointIds: scope,
@@ -146,7 +146,7 @@ export function createAgentHost({
 
           const result = await traced(
             'complete',
-            () =>
+            async () =>
               storage.completeAndEnqueue({
                 requestId: input.requestId,
                 endpointIds: scope,
@@ -195,8 +195,8 @@ export function createAgentHost({
           })
           return result
         },
-        fail: (input) =>
-          traced('fail', () =>
+        fail: async (input) =>
+          traced('fail', async () =>
             storage.fail({
               requestId: textId.parse(input.requestId),
               endpointIds: scope,

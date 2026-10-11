@@ -49,7 +49,7 @@ export function createDispatch(
     let outcome: DispatchResult = { status: 'accepted' }
     const priority = { accepted: 0, rejected: 1, retryable: 2, unknown: 3 }
 
-    const merge = (next: DispatchResult) => {
+    const merge = (next: DispatchResult): void => {
       if (priority[next.status] > priority[outcome.status]) {
         outcome = next
       }

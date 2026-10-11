@@ -1,3 +1,4 @@
+import type { RelanoxConfig } from '@relanox/sdk'
 import { createServer } from 'node:http'
 import { access, rm } from 'node:fs/promises'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -207,7 +208,21 @@ test('requeue passes exact version and explicit unknown-effect acknowledgement i
   }
 })
 
-async function setup() {
+async function setup(): Promise<{
+  directory: string
+  filename: string
+  configPath: string
+  config: {
+    relay: RelanoxConfig
+    server: {
+      port: number
+      managementPort: number
+      workerIntervalMs: number
+      workerStaleMs: number
+    }
+  }
+  save(this: void, input?: unknown): Promise<void>
+}> {
   const value = await fixture()
   directories.push(value.directory)
   return value

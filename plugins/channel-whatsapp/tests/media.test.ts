@@ -11,7 +11,7 @@ const kinds = [
   ['file', 'application/pdf', 'report.pdf']
 ] as const
 
-function envelope(type: string, fileName: string, sender = 'customer') {
+function envelope(type: string, fileName: string, sender = 'customer'): string {
   return JSON.stringify({
     object: 'whatsapp_business_account',
     entry: [
@@ -44,7 +44,11 @@ function envelope(type: string, fileName: string, sender = 'customer') {
   })
 }
 
-async function webhook(businessUrl: string, encoded: string, correct = true) {
+async function webhook(
+  businessUrl: string,
+  encoded: string,
+  correct = true
+): Promise<Response> {
   return fetch(`${businessUrl}/channels/bot/webhook`, {
     method: 'POST',
     headers: {
@@ -60,7 +64,16 @@ async function webhook(businessUrl: string, encoded: string, correct = true) {
   })
 }
 
-function config(base: string) {
+function config(base: string): {
+  phoneNumberId: string
+  businessAccountId: string
+  apiVersion: string
+  appSecret: { env: string }
+  verifyToken: { env: string }
+  accessToken: { env: string }
+  apiBase: string
+  allowLoopback: boolean
+} {
   vi.stubEnv('WA_MEDIA_APP', 'app-secret')
   vi.stubEnv('WA_MEDIA_VERIFY', 'verify')
   vi.stubEnv('WA_MEDIA_TOKEN', 'access-secret')

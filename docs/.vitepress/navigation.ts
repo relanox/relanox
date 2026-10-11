@@ -1,12 +1,15 @@
 import type { DefaultTheme } from 'vitepress'
 
 export function navigation(chinese: boolean): DefaultTheme.Config {
-  const label = (english: string, simplifiedChinese: string) =>
+  const label = (english: string, simplifiedChinese: string): string =>
     chinese ? simplifiedChinese : english
 
   const base = label('/en/', '/zh-CN/')
 
-  const page = (text: string, file: string) => ({
+  const page = (
+    text: string,
+    file: string
+  ): { text: string; link: string } => ({
     text,
     link: `${base}${file}`
   })

@@ -33,7 +33,7 @@ const postSchema = z.looseObject({
   content: z.array(z.array(postElementSchema)).max(1000)
 })
 
-export interface Resource {
+export type Resource = {
   readonly key: string
   readonly type: 'image' | 'file'
   readonly fallbackMime: string
@@ -41,12 +41,27 @@ export interface Resource {
   readonly durationMs?: number
 }
 
-export interface InboundContent {
+export type InboundContent = {
   readonly text: string
   readonly resources: readonly Resource[]
 }
 
-function postBody(value: unknown) {
+function postBody(value: unknown): {
+  [x: string]: unknown
+  content: {
+    [x: string]: unknown
+    tag: 'text' | 'a' | 'at' | 'img' | 'media' | 'code_block' | 'hr' | 'emotion'
+    text?: string | undefined
+    href?: string | undefined
+    user_id?: string | undefined
+    user_name?: string | undefined
+    image_key?: string | undefined
+    file_key?: string | undefined
+    file_name?: string | undefined
+    duration?: number | undefined
+  }[][]
+  title?: string | undefined
+} {
   const direct = postSchema.safeParse(value)
   if (direct.success) {
     return direct.data

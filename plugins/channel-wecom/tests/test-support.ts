@@ -10,7 +10,9 @@ import type {
   ChannelPlugin,
   Json,
   SendInput,
-  Storage
+  Storage,
+  ScopedAgentHost,
+  InboundRecord
 } from '@relanox/sdk'
 import { sqliteStoragePlugin } from '@relanox/storage-sqlite'
 import { afterEach, vi } from 'vitest'
@@ -26,14 +28,14 @@ afterEach(async () => {
   vi.unstubAllEnvs()
 })
 
-export interface HttpRequest {
+export type HttpRequest = {
   readonly method: string
   readonly path: string
   readonly headers: IncomingHttpHeaders
   readonly body: unknown
 }
 
-export interface HttpReply {
+export type HttpReply = {
   readonly status?: number
   readonly headers?: Record<string, string>
   readonly body?: unknown
@@ -43,13 +45,19 @@ export interface HttpReply {
 export async function peer(
   handle: (request: HttpRequest) => HttpReply | Promise<HttpReply>,
   connected: (socket: WebSocket) => void = () => {}
-) {
+): Promise<{
+  requests: HttpRequest[]
+  frames: unknown[]
+  sockets: WebSocket[]
+  http: string
+  ws: string
+}> {
   const requests: HttpRequest[] = []
   const frames: unknown[] = []
   const sockets: WebSocket[] = []
 
   const server = createServer((request, response) => {
-    void (async () => {
+    void (async (): Promise<void> => {
       const chunks: Buffer[] = []
       for await (const part of request as AsyncIterable<unknown>) {
         if (!Buffer.isBuffer(part)) {
@@ -139,7 +147,7 @@ export async function peer(
 
 export async function temporaryDatabase(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-china-'))
-  cleanup.push(() => rm(directory, { recursive: true, force: true }))
+  cleanup.push(async () => rm(directory, { recursive: true, force: true }))
   return join(directory, 'state.db')
 }
 
@@ -149,7 +157,13 @@ export async function assemble<C>(
   bindings: readonly { chatId: string; senderId: string }[],
   filename = ':memory:',
   publicBaseUrl?: string
-) {
+): Promise<{
+  storage: Storage
+  runtime: Awaited<ReturnType<typeof createCore>>
+  controller: AbortController
+  principal(this: void): ScopedAgentHost
+  start(this: void): Promise<void | undefined>
+}> {
   const storage = await sqliteStoragePlugin.setup(
     sqliteStoragePlugin.validateConfig({ filename }),
     {
@@ -157,7 +171,7 @@ export async function assemble<C>(
       count() {},
       record() {},
       span() {
-        return { end() {} }
+        return { end(): void {} }
       }
     }
   )
@@ -237,7 +251,9 @@ export async function assemble<C>(
   }
 }
 
-export async function records(storage: Storage) {
+export async function records(
+  storage: Storage
+): Promise<readonly InboundRecord[]> {
   return storage.listInbound({ limit: 100 })
 }
 

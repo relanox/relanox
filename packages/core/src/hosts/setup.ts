@@ -13,7 +13,7 @@ import { createCommonHostFactory } from './common.js'
 import { createChannelHost } from './channel.js'
 import { createAgentHost } from './agent.js'
 
-interface HostSetupOptions {
+type HostSetupOptions = {
   readonly options: Pick<
     CoreOptions,
     'storage' | 'channels' | 'agents' | 'media'

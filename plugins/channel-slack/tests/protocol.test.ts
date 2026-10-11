@@ -1,3 +1,4 @@
+import type { HttpHandler, ChannelHost, IngestInput } from '@relanox/sdk'
 import { createHmac } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -69,7 +70,22 @@ async function setup(
   socket = false,
   onIngest?: Parameters<typeof recorder>[0],
   overrides: Record<string, unknown> = {}
-) {
+): Promise<{
+  target: {
+    data: { apiBaseUrl: string; teamId: string; appId: string; botId: string }
+    channel: 'slack'
+    accountId: string
+    chatId: string
+    threadId: string
+    replyToId: string
+  }
+  handler: NonNullable<ReturnType<(key: string) => HttpHandler | undefined>>
+  host: ChannelHost
+  received: IngestInput[]
+  handlers: Map<string, HttpHandler>
+  connections: string[]
+  plugin: ReturnType<typeof createSlackChannel>
+}> {
   const plugin = createSlackChannel(environment)
   const recorded = recorder(onIngest)
   await plugin.setup(
@@ -103,7 +119,7 @@ function request(
   value: unknown,
   timestamp = String(Math.floor(Date.now() / 1000)),
   forged = false
-) {
+): Request {
   const body = ` ${JSON.stringify(value)}\n`
   return new Request('https://relay.example/channels/sl/events', {
     method: 'POST',

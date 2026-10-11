@@ -1,8 +1,15 @@
+import type { CoreRuntime } from '../../../packages/core/src/index.js'
 import { createHmac } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Json, SendInput } from '@relanox/sdk'
+import type {
+  Json,
+  SendInput,
+  Storage,
+  InboundSnapshot,
+  OutboundRecord
+} from '@relanox/sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWhatsAppChannel } from '../src/index.js'
 import { harness, peer } from './harness.js'
@@ -31,7 +38,7 @@ function webhook(
   phone = 'phone',
   eventId = 'wamid.1',
   type: 'text' | 'reaction' = 'text'
-) {
+): string {
   return JSON.stringify({
     object: 'whatsapp_business_account',
     entry: [
@@ -66,7 +73,7 @@ function webhook(
   })
 }
 
-function incoming(body: string, signature?: string) {
+function incoming(body: string, signature?: string): Request {
   const expected = `sha256=${createHmac('sha256', 'secret').update(body).digest('hex')}`
   return new Request('http://local/channels/business/webhook', {
     method: 'POST',
@@ -75,7 +82,21 @@ function incoming(body: string, signature?: string) {
   })
 }
 
-async function setup(filename = ':memory:') {
+async function setup(filename = ':memory:'): Promise<{
+  core: CoreRuntime
+  storage: Storage
+  dispatches: string[]
+  complete(
+    this: void,
+    text?: string
+  ): Promise<{
+    request: InboundSnapshot
+    delivery: OutboundRecord | undefined
+  }>
+  close(this: void): Promise<void>
+  remote: Awaited<ReturnType<typeof peer>>
+  plugin: ReturnType<typeof createWhatsAppChannel>
+}> {
   vi.stubEnv('WA_SECRET', 'secret')
   vi.stubEnv('WA_VERIFY', 'verify')
   vi.stubEnv('WA_TOKEN', 'token')

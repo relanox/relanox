@@ -22,7 +22,10 @@ export const asset = (id = 'asset', bytes = [0, 255, 10]): StoredMedia => {
   }
 }
 
-export function mediaContract(name: string, open: () => Promise<Storage>) {
+export function mediaContract(
+  name: string,
+  open: () => Promise<Storage>
+): void {
   describe(name, () => {
     it('commits input bytes with snapshots, deduplicates without orphan assets and rejects invalid metadata atomically', async () => {
       const s = await open()

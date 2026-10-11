@@ -1,3 +1,4 @@
+import type { HttpHandler, ChannelHost, IngestInput } from '@relanox/sdk'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createTelegramChannel } from '../src/index.js'
 import { peer, recorder, sendInput } from './peer.js'
@@ -36,7 +37,22 @@ async function setup(
   apiBaseUrl = 'https://api.telegram.org',
   onIngest?: Parameters<typeof recorder>[0],
   overrides: Record<string, unknown> = {}
-) {
+): Promise<{
+  target: {
+    data: { apiBaseUrl: string; botId: string }
+    channel: 'telegram'
+    accountId: string
+    chatId: string
+    threadId: string
+    replyToId: string
+  }
+  handler: NonNullable<ReturnType<(key: string) => HttpHandler | undefined>>
+  host: ChannelHost
+  received: IngestInput[]
+  handlers: Map<string, HttpHandler>
+  connections: string[]
+  plugin: ReturnType<typeof createTelegramChannel>
+}> {
   const plugin = createTelegramChannel(environment)
   const recorded = recorder(onIngest)
   await plugin.setup(
@@ -63,7 +79,7 @@ async function setup(
 function webhook(
   secret = 'webhook-secret',
   extra: Record<string, unknown> = {}
-) {
+): Request {
   return new Request('https://relay.example/channels/tg/webhook', {
     method: 'POST',
     headers: { 'x-telegram-bot-api-secret-token': secret },

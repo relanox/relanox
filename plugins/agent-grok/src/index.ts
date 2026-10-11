@@ -62,13 +62,13 @@ export function createGrokAgentPlugin(): AgentPlugin<GrokConfig> {
           const checked = await guard(request, config.mcp)
           return checked instanceof Response
             ? checked
-            : media.run(checked, () => handler.fetch(checked))
+            : media.run(checked, async () => handler.fetch(checked))
         })
       }
     },
     dispatch: dispatchRoutine,
     async stop() {
-      await Promise.all(handlers.map((handler) => handler.close()))
+      await Promise.all(handlers.map(async (handler) => handler.close()))
     }
   }
 }

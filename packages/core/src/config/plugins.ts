@@ -1,4 +1,4 @@
-import type { RelanoxConfig } from '@relanox/sdk'
+import type { RelanoxConfig, EndpointConfig, Binding } from '@relanox/sdk'
 import type { CoreOptions } from '../types.js'
 import { CoreError } from '../errors.js'
 import { jsonSnapshot } from '../json.js'
@@ -9,7 +9,11 @@ import { bindingKey } from './relations.js'
 export function validatePluginConfigurations(
   options: Pick<CoreOptions, 'channels' | 'agents'>,
   config: RelanoxConfig
-) {
+): {
+  accountValidated: Map<string, unknown>
+  endpoints: Map<string, EndpointConfig>
+  bindings: Map<string, Binding>
+} {
   const accountValidated = new Map<string, unknown>()
   // Validate every endpoint before setup can register a live route. Keep ORIGINAL JSON in snapshots.
   for (const account of config.accounts) {

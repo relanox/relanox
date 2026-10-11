@@ -43,7 +43,27 @@ type Fault =
   | 'prepare_timeout'
   | 'message_timeout'
 
-function prepareResponse(origin: string, size: number, fault?: Fault) {
+function prepareResponse(
+  origin: string,
+  size: number,
+  fault?: Fault
+):
+  | {
+      body: {
+        code: number
+        upload_id?: never
+        block_size?: never
+        parts?: never
+      }
+    }
+  | {
+      body: {
+        upload_id: string
+        block_size: string
+        parts: { index: number; presigned_url: string; block_size: string }[]
+        code?: never
+      }
+    } {
   if (fault === 'prepare_timeout') {
     return { body: { code: 850_027 } }
   }
@@ -69,7 +89,18 @@ function prepareResponse(origin: string, size: number, fault?: Fault) {
   }
 }
 
-async function fixture(group = false, bytes = smallBytes, fault?: Fault) {
+async function fixture(
+  group = false,
+  bytes = smallBytes,
+  fault?: Fault
+): Promise<{
+  remote: Awaited<ReturnType<typeof peer>>
+  local: Awaited<ReturnType<typeof assemble>>
+  plugin: ReturnType<typeof createQqChannel>
+  base: string
+  blockSize: number
+  recover(this: void): void
+}> {
   vi.stubEnv('QQ_MEDIA_SECRET', 'secret')
   let websocket = ''
   let failing = fault !== undefined
@@ -174,7 +205,7 @@ function assertUpload(
   base: string,
   bytes: Buffer,
   blockSize: number
-) {
+): void {
   const parts = remote.requests.filter((request) =>
     request.path.startsWith('/signed/')
   )

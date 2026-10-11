@@ -1,3 +1,4 @@
+import type { CoreRuntime } from '../../../packages/core/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type {
@@ -19,11 +20,13 @@ import type {
   ChannelPlugin,
   EndpointConfig,
   Json,
-  MediaUpload
+  MediaUpload,
+  Storage,
+  IngestReceipt
 } from '@relanox/sdk'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
 
-export interface Traffic {
+export type Traffic = {
   body: string
   headers: IncomingHttpHeaders
   url: string
@@ -41,10 +44,17 @@ export async function peer(
         body?: string
         headers?: Record<string, string>
       }>
-) {
+): Promise<{
+  traffic: Traffic[]
+  origin: string
+  close(this: void): Promise<void>
+}> {
   const traffic: Traffic[] = []
 
-  async function receive(req: IncomingMessage, res: ServerResponse) {
+  async function receive(
+    req: IncomingMessage,
+    res: ServerResponse
+  ): Promise<void> {
     const chunks: Buffer[] = []
     for await (const streamChunk of req) {
       const chunk: unknown = streamChunk
@@ -73,7 +83,10 @@ export async function peer(
     void handle(req, res)
   })
 
-  async function handle(req: IncomingMessage, res: ServerResponse) {
+  async function handle(
+    req: IncomingMessage,
+    res: ServerResponse
+  ): Promise<void> {
     try {
       await receive(req, res)
     } catch (error) {
@@ -91,7 +104,7 @@ export async function peer(
   return {
     traffic,
     origin: `http://127.0.0.1:${address.port}`,
-    close: () =>
+    close: async () =>
       new Promise<void>((resolve, reject) => {
         server.closeAllConnections()
         server.close((error) => {
@@ -110,7 +123,30 @@ export async function fixture(
   plugin: AgentPlugin<unknown>,
   configs: readonly Json[],
   push = true
-) {
+): Promise<{
+  endpoints: EndpointConfig[]
+  filename: ReturnType<typeof join>
+  sent: unknown[]
+  wire: unknown[]
+  readonly storage: Storage
+  readonly core: CoreRuntime
+  readonly agent: AgentPlugin<unknown>
+  ingest(
+    this: void,
+    endpoint?: number,
+    text?: string,
+    event?: string,
+    attachments?: readonly MediaUpload[]
+  ): Promise<IngestReceipt>
+  client(
+    this: void,
+    token?: string,
+    endpoint?: number,
+    modern?: boolean
+  ): Promise<Client>
+  reopen(this: void, next: AgentPlugin<unknown>): Promise<void>
+  close(this: void): Promise<void>
+}> {
   let currentPlugin = plugin
   const directory = await mkdtemp(join(tmpdir(), 'relanox-agent-'))
   const filename = join(directory, 'state.sqlite')
@@ -167,7 +203,9 @@ export async function fixture(
     observability: { plugin: 'none', config: {} }
   }
 
-  const build = (agentPlugin: AgentPlugin<unknown>) =>
+  const build = async (
+    agentPlugin: AgentPlugin<unknown>
+  ): Promise<CoreRuntime> =>
     createCore({
       config,
       storage,
@@ -197,7 +235,7 @@ export async function fixture(
       text = '中文\nsecond line',
       event = 'event-1',
       attachments?: readonly MediaUpload[]
-    ) {
+    ): Promise<IngestReceipt> {
       if (!channelHost) {
         throw new Error('channel_not_setup')
       }
@@ -217,7 +255,11 @@ export async function fixture(
         ...(attachments ? { attachments } : {})
       })
     },
-    async client(token = 'secret-0', endpoint = 0, modern = agent === 'dot') {
+    async client(
+      token = 'secret-0',
+      endpoint = 0,
+      modern = agent === 'dot'
+    ): Promise<Client> {
       const client = new Client(
         { name: 'protocol-test', version: '1.0.0' },
         modern ? { versionNegotiation: { mode: { pin: '2026-07-28' } } } : {}
@@ -231,7 +273,7 @@ export async function fixture(
           ),
           {
             requestInit: { headers: { Authorization: `Bearer ${token}` } },
-            fetch: async (input, init) => {
+            fetch: async (input, init): Promise<Response> => {
               const response = await core.fetch(new Request(input, init))
               if (
                 response.headers
@@ -247,14 +289,14 @@ export async function fixture(
       )
       return client
     },
-    async reopen(next: AgentPlugin<unknown>) {
+    async reopen(next: AgentPlugin<unknown>): Promise<void> {
       await currentPlugin.stop?.()
       await storage.close()
       storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
       core = await build(next)
       currentPlugin = next
     },
-    async close() {
+    async close(): Promise<void> {
       await Promise.all(
         clients.map(async (client) => {
           try {
@@ -271,7 +313,13 @@ export async function fixture(
   }
 }
 
-export function mcp(token = 'AGENT_TEST_TOKEN_0') {
+export function mcp(token = 'AGENT_TEST_TOKEN_0'): {
+  token: { env: string }
+  allowedHosts: string[]
+  allowedOrigins: never[]
+  maxBodyBytes: number
+  timeoutMs: number
+} {
   return {
     token: { env: token },
     allowedHosts: ['relanox.test'],

@@ -39,7 +39,7 @@ export function createAdministration(
         deliveries
       }
     },
-    cleanup: (input) =>
+    cleanup: async (input) =>
       storage.cleanup({
         before: z
           .number()
@@ -49,7 +49,7 @@ export function createAdministration(
           .parse(input.before),
         limit: limit(input.limit)
       }),
-    requeue: (input) =>
+    requeue: async (input) =>
       storage.requeue({
         ...input,
         id: textId.parse(input.id),

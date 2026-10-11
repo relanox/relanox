@@ -72,7 +72,7 @@ async function boundedRequest(
   const chunks: Uint8Array[] = []
   let size = 0
 
-  const read = async () => {
+  const read = async (): Promise<Request> => {
     while (true) {
       const { value, done } = await reader.read()
       if (done) {
@@ -97,7 +97,7 @@ async function boundedRequest(
     return await Promise.race([
       read(),
       new Promise<never>((_resolve, reject) => {
-        onAbort = () => {
+        onAbort = (): void => {
           reject(new CoreError('request_timeout'))
         }
         request.signal.addEventListener('abort', onAbort, { once: true })

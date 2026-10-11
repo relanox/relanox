@@ -42,7 +42,12 @@ async function setupObservability(
 }
 
 /** Validation precedes side effects; register resources immediately after acquisition. */
-export async function startRuntime(input: unknown) {
+export async function startRuntime(input: unknown): Promise<{
+  businessUrl: Awaited<ReturnType<typeof listen>>
+  managementUrl: Awaited<ReturnType<typeof listen>>
+  core: Awaited<ReturnType<typeof createCore>>
+  stop(this: void): Promise<void>
+}> {
   const config = validateApp(input)
   const { channels, agents } = loadPlugins(config.relay)
 
@@ -76,7 +81,7 @@ export async function startRuntime(input: unknown) {
       () => {
         core.setAccepting(false)
       },
-      () => worker.stop()
+      async () => worker.stop()
     )
 
     const listeners = createListeners(core, observability, lifecycle.live, () =>
@@ -114,7 +119,12 @@ export async function startRuntime(input: unknown) {
       operation: 'startup',
       outcome: 'ok'
     })
-    return { businessUrl, managementUrl, core, stop: () => lifecycle.stop() }
+    return {
+      businessUrl,
+      managementUrl,
+      core,
+      stop: async () => lifecycle.stop()
+    }
   } catch (error) {
     await lifecycle.stop().catch(() => {})
     throw error

@@ -31,7 +31,12 @@ export function createSlackChannel(
   let account: AccountConfig
   let config: SlackConfig
 
-  const identity = () => ({
+  const identity = (): {
+    teamId: string
+    appId: string
+    botId: string
+    apiBaseUrl: string
+  } => ({
     teamId: config.teamId,
     appId: config.appId,
     botId: config.botUserId,
@@ -42,7 +47,7 @@ export function createSlackChannel(
   let task: Promise<void> | undefined
   let socket: WebSocket | undefined
 
-  async function ingestEnvelope(value: unknown) {
+  async function ingestEnvelope(value: unknown): Promise<void> {
     const envelope = envelopeSchema.parse(value)
     if (envelope.type !== 'event_callback') {
       host.observe.count('relanox_inbound_total', {
@@ -106,7 +111,7 @@ export function createSlackChannel(
     })
   }
 
-  async function connect(signal: AbortSignal) {
+  async function connect(signal: AbortSignal): Promise<void> {
     if (config.receiveMode !== 'socket') {
       return
     }
@@ -149,7 +154,7 @@ export function createSlackChannel(
       }
     }, 30_000)
 
-    const abort = () => {
+    const abort = (): void => {
       ws.terminate()
     }
 
@@ -203,7 +208,7 @@ export function createSlackChannel(
           return
         }
 
-        const consume = async () => {
+        const consume = async (): Promise<void> => {
           if (signal.aborted || failed) {
             return
           }
@@ -237,7 +242,7 @@ export function createSlackChannel(
     await chain
   }
 
-  async function run(signal: AbortSignal) {
+  async function run(signal: AbortSignal): Promise<void> {
     let failures = 0
     while (!signal.aborted) {
       try {

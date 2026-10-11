@@ -11,17 +11,30 @@ import type {
   AgentPlugin,
   ChannelPlugin,
   Json,
-  ScopedAgentHost
+  ScopedAgentHost,
+  InboundSnapshot,
+  OutboundRecord
 } from '@relanox/sdk'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
 
-export interface Traffic {
+export type Traffic = {
   path: string
   body: string
   headers: IncomingHttpHeaders
 }
 
-export async function peer() {
+export async function peer(): Promise<{
+  base: string
+  traffic: Traffic[]
+  respond(
+    this: void,
+    code: number,
+    body: Json,
+    responseHeaders?: Record<string, string>
+  ): void
+  keys(this: void, value: Json): void
+  close(this: void): Promise<void>
+}> {
   const traffic: Traffic[] = []
   let status = 200
   let output: Json = {}
@@ -74,15 +87,15 @@ export async function peer() {
       code: number,
       body: Json,
       responseHeaders: Record<string, string> = {}
-    ) {
+    ): void {
       status = code
       output = body
       headers = responseHeaders
     },
-    keys(value: Json) {
+    keys(value: Json): void {
       jwks = value
     },
-    async close() {
+    async close(): Promise<void> {
       server.closeAllConnections()
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -104,7 +117,19 @@ export async function harness(
   sender: string,
   thread?: string,
   filename = ':memory:'
-) {
+): Promise<{
+  core: Awaited<ReturnType<typeof createCore>>
+  storage: ReturnType<typeof createSqliteStorage>
+  dispatches: string[]
+  complete(
+    this: void,
+    text?: string
+  ): Promise<{
+    request: InboundSnapshot
+    delivery: OutboundRecord | undefined
+  }>
+  close(this: void): Promise<void>
+}> {
   const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
   await storage.initialize()
   let host: AgentHost | undefined
@@ -164,7 +189,10 @@ export async function harness(
     return host.forPrincipal({ subject: 'local-agent', endpointIds: ['agent'] })
   }
 
-  async function complete(text = 'answer') {
+  async function complete(text = 'answer'): Promise<{
+    request: InboundSnapshot
+    delivery: OutboundRecord | undefined
+  }> {
     await core.processDue()
     const scoped = principal()
     const pending = await scoped.listPending(10)
@@ -199,7 +227,7 @@ export async function harness(
     storage,
     dispatches,
     complete,
-    async close() {
+    async close(): Promise<void> {
       await storage.close()
     }
   }

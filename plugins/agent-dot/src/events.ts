@@ -19,7 +19,10 @@ export function createEventsHandler(
   endpoint: EndpointConfig,
   config: DotConfig,
   subscriptions: SubscriptionStore
-) {
+): {
+  fetch(this: void, request: Request): Promise<Response>
+  close(this: void): Promise<void>
+} {
   const scopedHost = agentHost.forPrincipal({
     subject: endpoint.id,
     endpointIds: [endpoint.id]
@@ -102,7 +105,11 @@ export function createEventsHandler(
     if (checked instanceof Response) {
       return checked
     }
-    const response = await media.run(checked, () => handler.fetch(checked))
+
+    const response = await media.run(checked, async () =>
+      handler.fetch(checked)
+    )
+
     // SDK 2.3.1's MCP 2026 schema predates Events and strips this draft capability.
     // Preserve its negotiation/validation, augment only the successful discovery wire result.
     if (
@@ -129,5 +136,5 @@ export function createEventsHandler(
     return response
   }
 
-  return { fetch, close: () => handler.close() }
+  return { fetch, close: async () => handler.close() }
 }

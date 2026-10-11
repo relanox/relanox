@@ -1,7 +1,12 @@
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 
-export async function discordPeer() {
+export async function discordPeer(): Promise<{
+  url: string
+  message(this: void, data: unknown): void
+  connected(this: void): boolean
+  close(this: void): Promise<void>
+}> {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await new Promise<void>((resolve) => {
     server.once('listening', resolve)
@@ -51,14 +56,14 @@ export async function discordPeer() {
   })
   return {
     url,
-    message(data: unknown) {
+    message(data: unknown): void {
       if (!active) {
         throw new Error('gateway_not_connected')
       }
       active.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', s: 2, d: data }))
     },
     connected: () => active !== undefined,
-    close: () =>
+    close: async () =>
       new Promise<void>((resolve, reject) => {
         for (const client of server.clients) {
           client.terminate()

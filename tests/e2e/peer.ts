@@ -5,14 +5,14 @@ import type {
   ServerResponse
 } from 'node:http'
 
-export interface Traffic {
+export type Traffic = {
   readonly method: string
   readonly url: string
   readonly headers: IncomingHttpHeaders
   readonly body: string
 }
 
-export interface PeerReply {
+export type PeerReply = {
   readonly status?: number
   readonly body?: unknown
   readonly dropConnection?: boolean
@@ -21,10 +21,17 @@ export interface PeerReply {
 /** Simulates only the external HTTP service. Relanox owns all durable business behavior. */
 export async function peer(
   reply: (traffic: Traffic, index: number) => PeerReply
-) {
+): Promise<{
+  traffic: Traffic[]
+  origin: string
+  close(this: void): Promise<void>
+}> {
   const traffic: Traffic[] = []
 
-  async function receive(request: IncomingMessage, response: ServerResponse) {
+  async function receive(
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> {
     const chunks: Uint8Array[] = []
     for await (const received of request) {
       const chunk: unknown = received
@@ -72,7 +79,7 @@ export async function peer(
   return {
     traffic,
     origin: `http://127.0.0.1:${address.port}`,
-    close: () =>
+    close: async () =>
       new Promise<void>((resolve, reject) => {
         server.closeAllConnections()
         server.close((error) => {

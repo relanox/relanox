@@ -3,7 +3,7 @@ import type { AgentId } from './config.js'
 export type MediaKind = 'image' | 'audio' | 'video' | 'file'
 
 /** Binary data crosses a plugin boundary only in memory, never in JSON snapshots. */
-export interface MediaUpload {
+export type MediaUpload = {
   readonly kind: MediaKind
   readonly mimeType: string
   readonly fileName: string
@@ -15,7 +15,7 @@ export interface MediaUpload {
 }
 
 /** Stable metadata for bytes owned by this relay. Platform download URLs are not assets. */
-export interface MediaReference {
+export type MediaReference = {
   readonly id: string
   readonly kind: MediaKind
   readonly mimeType: string
@@ -28,7 +28,7 @@ export interface MediaReference {
   readonly sha256: string
 }
 
-export interface StoredMedia {
+export type StoredMedia = {
   readonly reference: MediaReference
   readonly data: Uint8Array
 }
@@ -42,7 +42,7 @@ export type MediaWriteResult =
   | { readonly status: 'not_found' | 'unauthorized' | 'conflict' }
 
 /** Media belongs to a request; writes use the same durable claim fence as completion. */
-export interface MediaStorage {
+export type MediaStorage = {
   get(requestId: string, mediaId: string): Promise<StoredMedia | undefined>
   put(input: {
     readonly requestId: string
@@ -56,7 +56,7 @@ export interface MediaStorage {
   }): Promise<MediaWriteResult>
 }
 
-export interface AgentMediaHost {
+export type AgentMediaHost = {
   readonly maxBytes: number
   read(input: {
     readonly requestId: string
@@ -73,7 +73,7 @@ export interface AgentMediaHost {
 }
 
 /** Short-lived download URLs for native platforms that fetch outbound bytes themselves. */
-export interface ChannelMediaHost {
+export type ChannelMediaHost = {
   publish(input: {
     readonly requestId: string
     readonly mediaId: string

@@ -17,7 +17,16 @@ export function hasMedia(message: Message): boolean {
   return selectedFile(message) !== undefined
 }
 
-function selectedFile(message: Message) {
+function selectedFile(message: Message):
+  | {
+      [x: string]: unknown
+      file_id: string
+      file_size?: number | undefined
+      file_name?: string | undefined
+      mime_type?: string | undefined
+      duration?: number | undefined
+    }
+  | undefined {
   return (
     message.photo?.at(-1) ??
     message.audio ??

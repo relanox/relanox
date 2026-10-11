@@ -36,7 +36,7 @@ export function matchesInitialResult(
 export const isRequestInScope = (
   record: InboundRecord,
   input: Pick<Parameters<Storage['claimRequest']>[0], 'endpointIds' | 'agent'>
-) =>
+): boolean =>
   input.endpointIds.includes(record.snapshot.endpoint.id) &&
   record.snapshot.endpoint.agent === input.agent
 
@@ -44,7 +44,7 @@ export const isActiveLease = (
   storedLease: Lease | undefined,
   attemptLease: Lease,
   now: number
-) =>
+): boolean =>
   storedLease !== undefined &&
   equalDurableValues(storedLease, attemptLease) &&
   storedLease.expiresAt > now

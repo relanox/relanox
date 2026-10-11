@@ -53,7 +53,10 @@ async function readBounded(
   }
 }
 
-export function bytes(request: Request, max = 1_048_576): Promise<Buffer> {
+export async function bytes(
+  request: Request,
+  max = 1_048_576
+): Promise<Buffer> {
   return readBounded(request.body, max)
 }
 

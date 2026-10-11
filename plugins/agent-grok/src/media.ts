@@ -53,10 +53,16 @@ export function createMediaTransport(
   config: McpConfig,
   endpointId: string,
   agent: 'dot' | 'grok'
-) {
+): {
+  authorize(this: void, request: Request): Promise<Response | undefined>
+  fetch(this: void, request: Request): Promise<Response>
+  register(this: void, server: McpServer): void
+  maxBytes: number
+  run<T>(this: void, request: Request, operation: () => T): T
+} {
   const context = new AsyncLocalStorage<string>()
 
-  const sign = (payload: string) =>
+  const sign = (payload: string): string =>
     createHmac('sha256', resolveAgentSecret(config.token))
       .update(`relanox-media-v1:${payload}`)
       .digest('base64url')
@@ -89,8 +95,7 @@ export function createMediaTransport(
     }
     const parts = url.searchParams.get('ticket')?.split('.')
     if (
-      !parts ||
-      parts.length !== 2 ||
+      parts?.length !== 2 ||
       !parts[0] ||
       !parts[1] ||
       !equalSecret(sign(parts[0]), parts[1])
@@ -174,7 +179,7 @@ export function createMediaTransport(
     })
   }
 
-  function register(server: McpServer) {
+  function register(server: McpServer): void {
     if (!host.media) {
       return
     }

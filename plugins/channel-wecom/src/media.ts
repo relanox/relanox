@@ -204,7 +204,13 @@ export function outgoingBody(
   media: StoredMedia | undefined,
   mediaId: string | undefined,
   content: string
-) {
+):
+  | { msgtype: string; markdown: { content: string } }
+  | {
+      [x: string]: string | { description?: string; media_id: string }
+      msgtype: string
+      markdown?: never
+    } {
   if (!media || !mediaId) {
     return { msgtype: 'markdown', markdown: { content } }
   }

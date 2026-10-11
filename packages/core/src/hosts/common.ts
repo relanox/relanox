@@ -3,7 +3,8 @@ import type {
   StateNamespace,
   Storage,
   Observability,
-  HttpRouteOptions
+  HttpRouteOptions,
+  ChannelMediaHost
 } from '@relanox/sdk'
 import { createMediaPublisher } from '../media-publisher.js'
 import type { MediaPublisherOptions } from '../types.js'
@@ -23,7 +24,10 @@ export function createCommonHostFactory(
   httpRoutes: Map<string, HttpRouteOptions>,
   media: MediaPublisherOptions | undefined,
   maximum: number
-) {
+): {
+  common(this: void, namespace: StateNamespace, prefix: string): CommonHost
+  mediaPublisher: ((accountId: string) => ChannelMediaHost) | undefined
+} {
   const routes = new Set<string>()
   const componentPlugins = new Map<string, string>()
 
@@ -32,16 +36,16 @@ export function createCommonHostFactory(
     return {
       observe,
       state: {
-        get: (key) => storage.getState(namespace, textId.parse(key)),
-        list: (input) =>
+        get: async (key) => storage.getState(namespace, textId.parse(key)),
+        list: async (input) =>
           storage.listState(namespace, { ...input, limit: limit(input.limit) }),
-        compareAndSet: (input) =>
+        compareAndSet: async (input) =>
           storage.compareAndSetState(namespace, {
             ...input,
             key: textId.parse(input.key),
             value: validateJson(input.value)
           }),
-        delete: (key, version) =>
+        delete: async (key, version) =>
           storage.deleteState(
             namespace,
             textId.parse(key),

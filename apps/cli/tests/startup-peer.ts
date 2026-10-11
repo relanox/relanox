@@ -8,7 +8,9 @@ import { z } from 'zod'
 import { closeServer, listen } from '../src/listeners.js'
 import { deadline } from '../src/deadline.js'
 
-export async function sqliteWriteLock(filename: string) {
+export async function sqliteWriteLock(
+  filename: string
+): Promise<{ close(this: void): Promise<void> }> {
   const child = spawn(
     process.execPath,
     [fileURLToPath(new URL('sqlite-lock-peer.mts', import.meta.url)), filename],
@@ -48,7 +50,7 @@ export async function sqliteWriteLock(filename: string) {
 
   void finished.catch(() => {})
 
-  async function close() {
+  async function close(): Promise<void> {
     if (child.connected) {
       child.send('release', (error) => {
         if (error) {
@@ -77,8 +79,8 @@ export async function sqliteWriteLock(filename: string) {
   return { close }
 }
 
-export function gate() {
-  let release = () => {}
+export function gate(): { waiting: Promise<void>; release(this: void): void } {
+  let release = (): void => {}
 
   const waiting = new Promise<void>((resolve) => {
     release = resolve
@@ -104,7 +106,15 @@ function wireText(data: RawData): string {
   return Buffer.from(data).toString('utf8')
 }
 
-export async function nativePeers() {
+export async function nativePeers(): Promise<{
+  origin: string
+  discovered: Promise<void>
+  authenticated: Promise<void>
+  releaseDiscovery(this: void): void
+  readonly fastClosed: boolean
+  publish(this: void): void
+  close(this: void): Promise<void>
+}> {
   const discovery = gate()
   const discovered = gate()
   const authenticated = gate()
@@ -154,7 +164,7 @@ export async function nativePeers() {
     get fastClosed() {
       return closed
     },
-    publish() {
+    publish(): void {
       if (!fastSocket) {
         throw new Error('wecom_not_connected')
       }
@@ -173,7 +183,7 @@ export async function nativePeers() {
         })
       )
     },
-    async close() {
+    async close(): Promise<void> {
       discovery.release()
       for (const socket of sockets.clients) {
         socket.terminate()
@@ -189,7 +199,13 @@ export async function nativePeers() {
   }
 }
 
-export async function routinePeer() {
+export async function routinePeer(): Promise<{
+  origin: Awaited<ReturnType<typeof listen>>
+  requests: { path: string; body: string }[]
+  received: Promise<void>
+  release(this: void): void
+  close(this: void): Promise<void>
+}> {
   const receipt = gate()
   const received = gate()
   const requests: { path: string; body: string }[] = []
@@ -224,7 +240,7 @@ export async function routinePeer() {
     requests,
     received: received.waiting,
     release: receipt.release,
-    async close() {
+    async close(): Promise<void> {
       receipt.release()
       server.closeAllConnections()
       await closeServer(server)

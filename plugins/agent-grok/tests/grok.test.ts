@@ -16,7 +16,7 @@ afterEach(async () => {
     cleanups
       .splice(0)
       .toReversed()
-      .map((cleanup) => cleanup())
+      .map(async (cleanup) => cleanup())
   )
   for (const name of [
     'AGENT_TEST_TOKEN_0',
@@ -32,7 +32,11 @@ async function setup(
   status = 200,
   headers: Record<string, string> = {},
   timeoutMs = 1000
-) {
+): Promise<{
+  receiver: Awaited<ReturnType<typeof peer>>
+  plugin: ReturnType<typeof createGrokAgentPlugin>
+  fx: Awaited<ReturnType<typeof fixture>>
+}> {
   const receiver = await peer(() => ({ status, headers }))
   cleanups.push(receiver.close)
   process.env.GROK_TEST_URL = `${receiver.origin}/user-supplied-routine`
@@ -53,7 +57,7 @@ async function setup(
     { ...config, mcp: mcp('AGENT_TEST_TOKEN_1') }
   ])
 
-  cleanups.push(() => fx.close())
+  cleanups.push(async () => fx.close())
   return { receiver, plugin, fx }
 }
 
@@ -286,11 +290,17 @@ describe('grok configured Routine and scoped MCP', () => {
     )
     process.env.AGENT_TEST_TOKEN_0 = 'rotated-token'
     await expect(
-      client.callTool({ name: 'relanox_list_pending', arguments: {} })
+      client.callTool({
+        name: 'relanox_list_pending',
+        arguments: {}
+      })
     ).rejects.toThrow()
     const rotated = await fx.client('rotated-token')
     expect(
-      await rotated.callTool({ name: 'relanox_list_pending', arguments: {} })
+      await rotated.callTool({
+        name: 'relanox_list_pending',
+        arguments: {}
+      })
     ).toMatchObject({
       structuredContent: { requests: [{ requestId: first.requestId }] }
     })

@@ -3,7 +3,7 @@ import type { ChannelId, EndpointConfig } from './config.js'
 import type { MediaUpload, MediaReference, StoredMedia } from './media.js'
 
 /** Platform-specific durable address, never a reply closure or ephemeral reply token. */
-export interface ReplyTarget {
+export type ReplyTarget = {
   readonly channel: ChannelId
   readonly accountId: string
   readonly chatId: string
@@ -12,18 +12,18 @@ export interface ReplyTarget {
   readonly data: Json
 }
 
-export interface SourceKey {
+export type SourceKey = {
   readonly channel: ChannelId
   readonly accountId: string
   readonly eventId: string
 }
 
-export interface TraceContext {
+export type TraceContext = {
   readonly traceparent: string
   readonly tracestate?: string
 }
 
-export interface IngestInput {
+export type IngestInput = {
   readonly source: SourceKey
   readonly senderId: string
   readonly text: string
@@ -34,30 +34,30 @@ export interface IngestInput {
   readonly trace?: TraceContext
 }
 
-export interface InboundSnapshot extends Omit<IngestInput, 'attachments'> {
+export type InboundSnapshot = {
   readonly attachments?: readonly MediaReference[]
   readonly requestId: string
   readonly endpoint: EndpointConfig
   readonly acceptedAt: EpochMs
-}
+} & Omit<IngestInput, 'attachments'>
 
 export type RequestStatus = 'pending' | 'claimed' | 'completed' | 'failed'
 export type AttemptStatus = 'due' | 'accepted' | 'rejected' | 'unknown'
 
-export interface FinalResult {
+export type FinalResult = {
   readonly resultId: string
   readonly text: string
   readonly attachments?: readonly MediaReference[]
   readonly completedAt: EpochMs
 }
 
-export interface ProcessingClaim {
+export type ProcessingClaim = {
   readonly key: string
   readonly token: string
   readonly claimedAt: EpochMs
 }
 
-export interface AttemptState {
+export type AttemptState = {
   readonly status: AttemptStatus
   readonly attempts: number
   readonly dueAt: EpochMs
@@ -65,13 +65,13 @@ export interface AttemptState {
   readonly lease?: Lease
 }
 
-export interface Lease {
+export type Lease = {
   readonly token: string
   readonly version: number
   readonly expiresAt: EpochMs
 }
 
-export interface InboundRecord {
+export type InboundRecord = {
   readonly snapshot: InboundSnapshot
   readonly status: RequestStatus
   readonly version: number
@@ -82,7 +82,7 @@ export interface InboundRecord {
   readonly redactedAt?: EpochMs
 }
 
-export interface DeliveryChunk {
+export type DeliveryChunk = {
   readonly text: string
   /** A media chunk has empty text; preceding text chunks preserve the caption. */
   readonly media?: MediaReference
@@ -90,14 +90,14 @@ export interface DeliveryChunk {
   readonly state: Json
 }
 
-export interface SendReceipt {
+export type SendReceipt = {
   readonly platformMessageId?: string
   readonly data?: Json
 }
 
 export type DeliveryStatus = 'pending' | 'sent' | 'rejected' | 'unknown'
 
-export interface OutboundRecord {
+export type OutboundRecord = {
   readonly deliveryId: string
   readonly requestId: string
   readonly resultId: string
@@ -115,7 +115,7 @@ export interface OutboundRecord {
   readonly trace?: TraceContext
 }
 
-export interface IngestReceipt {
+export type IngestReceipt = {
   readonly requestId: string
   readonly duplicate: boolean
 }
@@ -159,7 +159,7 @@ export type SendResult =
     }
   | { readonly status: 'rejected' | 'unknown'; readonly errorCode: string }
 
-export interface SendInput {
+export type SendInput = {
   readonly deliveryId: string
   readonly requestId: string
   readonly target: ReplyTarget
@@ -172,7 +172,7 @@ export interface SendInput {
   readonly signal: AbortSignal
 }
 
-export interface DispatchInput {
+export type DispatchInput = {
   readonly request: InboundSnapshot
   readonly signal: AbortSignal
 }

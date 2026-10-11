@@ -19,7 +19,7 @@ export function createDiscordChannel(
   let account: AccountConfig
   let gateway: DiscordGateway
 
-  const identity = () => ({
+  const identity = (): { botId: string; apiBaseUrl: string } => ({
     botId: config.botUserId,
     apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, '')
   })

@@ -1,5 +1,12 @@
 import { rm } from 'node:fs/promises'
-import type { EndpointConfig } from '@relanox/sdk'
+import type {
+  EndpointConfig,
+  Storage,
+  RelanoxConfig,
+  AccountConfig,
+  Binding,
+  Json
+} from '@relanox/sdk'
 import { afterEach, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { startRuntime } from '../src/runtime.js'
@@ -38,7 +45,22 @@ function endpoint(mode: 'pull' | 'push' = 'pull'): EndpointConfig {
   }
 }
 
-async function databaseFixture() {
+async function databaseFixture(): Promise<{
+  database: Awaited<ReturnType<typeof storage>>
+  directory: string
+  filename: string
+  configPath: string
+  config: {
+    relay: RelanoxConfig
+    server: {
+      port: number
+      managementPort: number
+      workerIntervalMs: number
+      workerStaleMs: number
+    }
+  }
+  save(this: void, input?: unknown): Promise<void>
+}> {
   const value = await fixture()
   cleanups.push(async () => {
     await rm(value.directory, { recursive: true, force: true })
@@ -139,7 +161,37 @@ test("accepts native text during another channel's initialization while manageme
   }
 })
 
-async function recoveredNotification() {
+async function recoveredNotification(): Promise<{
+  remote: Awaited<ReturnType<typeof routinePeer>>
+  config: {
+    relay: {
+      endpoints: EndpointConfig[]
+      accounts: readonly AccountConfig[]
+      bindings: readonly Binding[]
+      storage: {
+        readonly plugin: 'sqlite' | 'postgres'
+        readonly config: Json
+      }
+      observability: {
+        readonly plugin: 'standard' | 'none'
+        readonly config: Json
+      }
+    }
+    server: {
+      startupTimeoutMs: number
+      shutdownTimeoutMs: number
+      port: number
+      managementPort: number
+      workerIntervalMs: number
+      workerStaleMs: number
+    }
+  }
+  database: Storage
+  directory: string
+  filename: string
+  configPath: string
+  save(this: void, input?: unknown): Promise<void>
+}> {
   const value = await databaseFixture()
   const remote = await routinePeer()
   cleanups.push(remote.close)

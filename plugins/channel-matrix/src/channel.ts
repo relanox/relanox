@@ -26,7 +26,20 @@ import {
 } from './schemas.js'
 import type { eventSchema } from './schemas.js'
 
-function outboundRelation(target: SendInput['target']) {
+function outboundRelation(target: SendInput['target']):
+  | {
+      rel_type: string
+      event_id: string
+      is_falling_back: boolean
+      'm.in_reply_to': { event_id: string }
+    }
+  | {
+      'm.in_reply_to': { event_id: string }
+      rel_type?: never
+      event_id?: never
+      is_falling_back?: never
+    }
+  | null {
   if (target.threadId) {
     return {
       rel_type: 'm.thread',
@@ -56,14 +69,19 @@ export function createMatrixChannel(
   let controller: AbortController | undefined
   let task: Promise<void> | undefined
 
-  function configured() {
+  function configured(): {
+    host: ChannelHost
+    account: AccountConfig
+    config: MatrixConfig
+    base: string
+  } {
     if (!runtime) {
       throw new Error('not_setup')
     }
     return runtime
   }
 
-  function headers() {
+  function headers(): { Authorization: string } {
     return {
       Authorization: `Bearer ${secret(configured().config.accessToken, environment)}`
     }

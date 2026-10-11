@@ -15,12 +15,12 @@ import {
 
 const runtimes: ObservabilityRuntime[] = []
 const servers: Server[] = []
-const signal = () => AbortSignal.timeout(3000)
+const signal = (): AbortSignal => AbortSignal.timeout(3000)
 
 async function runtime(
   config: Record<string, unknown> = {},
   destination?: Writable
-) {
+): Promise<ObservabilityRuntime> {
   const plugin = createStandardObservability(
     destination ? { logDestination: destination } : {}
   )
@@ -43,10 +43,12 @@ async function metrics(value: ObservabilityRuntime): Promise<string> {
 }
 
 afterEach(async () => {
-  await Promise.all(runtimes.splice(0).map((value) => value.shutdown(signal())))
+  await Promise.all(
+    runtimes.splice(0).map(async (value) => value.shutdown(signal()))
+  )
   await Promise.all(
     servers.splice(0).map(
-      (server) =>
+      async (server) =>
         new Promise<void>((resolve, reject) => {
           server.closeAllConnections()
           server.close((error) => {
@@ -160,7 +162,7 @@ describe('jSON log boundary', () => {
       let release: (() => void) | undefined
 
       const output = new Writable({
-        write(_chunk, _encoding, callback) {
+        write(_chunk, _encoding, callback): void {
           release = callback
         }
       })
@@ -247,9 +249,9 @@ describe('jSON log boundary', () => {
 
     const output = new Writable({
       highWaterMark: 1,
-      write(_chunk, _encoding, callback) {
+      write(_chunk, _encoding, callback): void {
         writes++
-        release = () => {
+        release = (): void => {
           callback()
         }
       }
@@ -420,7 +422,13 @@ describe('prometheus public facade', () => {
   })
 })
 
-async function collector(status = 200) {
+async function collector(status = 200): Promise<{
+  endpoint: string
+  requests: {
+    headers: Record<string, string | string[] | undefined>
+    body: string
+  }[]
+}> {
   const requests: {
     headers: Record<string, string | string[] | undefined>
     body: string

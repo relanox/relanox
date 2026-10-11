@@ -1,3 +1,4 @@
+import type { Storage } from '@relanox/sdk'
 import { asset, mediaContract } from '../../../tests/storage/media-contract.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -17,7 +18,10 @@ storageContract('SQLite shared storage contract', async () =>
 it('initializes idempotently and persists fenced claims/leases across independent connections and restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'relanox-sqlite-'))
   const filename = join(dir, 'relay.db')
-  const open = () => createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+
+  const open = (): Storage =>
+    createSqliteStorage({ filename, busyTimeoutMs: 5000 })
+
   let a = open()
   let b: ReturnType<typeof open> | undefined
   try {

@@ -74,7 +74,10 @@ export async function httpPeer(
     request: IncomingMessage,
     response: ServerResponse
   ) => Promise<void> | void
-) {
+): Promise<{
+  server: ReturnType<typeof createServer>
+  base: string
+}> {
   const errors: unknown[] = []
 
   const server = createServer((request, response) => {
@@ -109,7 +112,10 @@ export async function httpPeer(
   return { server, base: `http://127.0.0.1:${address.port}` }
 }
 
-export function observations() {
+export function observations(): {
+  observe: Observability
+  logs: { event: string; fields?: LogFields }[]
+} {
   const logs: { event: string; fields?: LogFields }[] = []
 
   const observe: Observability = {
@@ -210,7 +216,19 @@ export async function harness(
   senders: readonly string[],
   dispatchUrl: string,
   options: { filename?: string; observe?: Observability } = {}
-) {
+): Promise<{
+  runtime: Awaited<ReturnType<typeof createCore>>
+  storage: ReturnType<typeof createSqliteStorage>
+  filename: string
+  complete(
+    this: void,
+    requestId: string,
+    text?: string
+  ): Promise<{
+    status: 'completed'
+    deliveryId: string
+  }>
+}> {
   const filename = options.filename ?? (await databaseFile())
 
   const storage: Storage = createSqliteStorage({
@@ -249,8 +267,11 @@ export async function harness(
     await storage.close()
   })
 
-  async function complete(requestId: string, text = 'delayed answer') {
-    const call = (input: unknown) =>
+  async function complete(
+    requestId: string,
+    text = 'delayed answer'
+  ): Promise<{ status: 'completed'; deliveryId: string }> {
+    const call = async (input: unknown): Promise<Response> =>
       runtime.fetch(
         new Request('http://relanox.test/agents/grok/tools', {
           method: 'POST',

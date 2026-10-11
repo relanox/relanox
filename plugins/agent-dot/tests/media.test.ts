@@ -1,7 +1,16 @@
+import type { Client } from '@modelcontextprotocol/client'
+import type { CoreRuntime } from '../../../packages/core/src/index.js'
 import { randomUUID } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { AgentId } from '@relanox/sdk'
+import type {
+  AgentId,
+  EndpointConfig,
+  Storage,
+  AgentPlugin,
+  MediaUpload,
+  IngestReceipt
+} from '@relanox/sdk'
 import { createGrokAgentPlugin } from '../../agent-grok/src/index.js'
 import { createDotAgentPlugin } from '../src/index.js'
 import { fixture, mcp } from './fixture.js'
@@ -20,7 +29,30 @@ afterEach(async () => {
   delete process.env.AGENT_TEST_TOKEN_1
 })
 
-async function setup(agent: AgentId) {
+async function setup(agent: AgentId): Promise<{
+  endpoints: EndpointConfig[]
+  filename: string
+  sent: unknown[]
+  wire: unknown[]
+  readonly storage: Storage
+  readonly core: CoreRuntime
+  readonly agent: AgentPlugin<unknown>
+  ingest(
+    this: void,
+    endpoint?: number,
+    text?: string,
+    event?: string,
+    attachments?: readonly MediaUpload[]
+  ): Promise<IngestReceipt>
+  client(
+    this: void,
+    token?: string,
+    endpoint?: number,
+    modern?: boolean
+  ): Promise<Client>
+  reopen(this: void, next: AgentPlugin<unknown>): Promise<void>
+  close(this: void): Promise<void>
+}> {
   const config =
     agent === 'dot'
       ? { mcp: mcp(), callback: { allowedOrigins: ['https://callback.test'] } }
@@ -40,7 +72,7 @@ async function setup(agent: AgentId) {
     false
   )
 
-  cleanups.push(() => fx.close())
+  cleanups.push(async () => fx.close())
   return fx
 }
 
@@ -208,7 +240,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
     expect(transfer.url).not.toContain('secret-0')
     const generated = Buffer.alloc(3_000_000, 23)
 
-    const put = () =>
+    const put = async (): Promise<Response> =>
       fx.core.fetch(
         new Request(transfer.url, { method: 'PUT', body: generated })
       )
@@ -329,7 +361,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
 
     const stalledBody = new ReadableStream<Uint8Array>(
       {
-        pull() {
+        pull(): void {
           bodyReads += 1
         }
       },

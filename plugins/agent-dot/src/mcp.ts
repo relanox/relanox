@@ -64,7 +64,7 @@ export async function guard(
     AbortSignal.timeout(config.timeoutMs)
   ])
 
-  const abort = () => {
+  const abort = (): void => {
     void cancelReader(reader)
   }
 
@@ -133,7 +133,14 @@ function envelope(
 }
 
 export function registerTools(server: McpServer, host: ScopedAgentHost): void {
-  const annotations = (readOnly: boolean) => ({
+  const annotations = (
+    readOnly: boolean
+  ): {
+    readOnlyHint: boolean
+    destructiveHint: boolean
+    idempotentHint: boolean
+    openWorldHint: boolean
+  } => ({
     readOnlyHint: readOnly,
     destructiveHint: !readOnly,
     idempotentHint: true,

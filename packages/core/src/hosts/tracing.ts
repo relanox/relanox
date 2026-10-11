@@ -1,7 +1,13 @@
 import type { Observability, TraceContext, IngestInput } from '@relanox/sdk'
 
 /** Trace storage-facing host operations without logging message content. */
-export function createOperationTracer(observe: Observability) {
+export function createOperationTracer(
+  observe: Observability
+): <T>(
+  operation: 'ingest' | 'claim' | 'complete' | 'fail' | 'storage',
+  action: (context?: TraceContext) => Promise<T>,
+  parent?: IngestInput['trace']
+) => Promise<T> {
   async function traced<T>(
     operation: 'ingest' | 'claim' | 'complete' | 'fail' | 'storage',
     action: (context?: TraceContext) => Promise<T>,

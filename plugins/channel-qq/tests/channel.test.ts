@@ -15,7 +15,16 @@ const createEvent = (
   id: string,
   group = false,
   extra: Record<string, unknown> = {}
-) => ({
+): {
+  group_openid?: string
+  id: string
+  content: string
+  timestamp: string
+  message_type: number
+  author:
+    | { member_openid: string; user_openid?: never }
+    | { user_openid: string; member_openid?: never }
+} => ({
   id,
   content: 'question',
   timestamp: new Date().toISOString(),
@@ -25,7 +34,7 @@ const createEvent = (
   ...extra
 })
 
-const frame = (s: number, t: string, d: unknown) =>
+const frame = (s: number, t: string, d: unknown): string =>
   JSON.stringify({ op: 0, s, t, d })
 
 test('QQ authenticates latest token protocol, receives C2C/group text and resumes committed cursor before RESUMED', async () => {

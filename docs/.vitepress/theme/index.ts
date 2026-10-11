@@ -6,9 +6,9 @@ import './style.css'
 
 export default {
   extends: DefaultTheme,
-  enhanceApp({ router, siteData }) {
+  enhanceApp({ router, siteData }): void {
     if (inBrowser) {
-      router.onAfterRouteChange = () => {
+      router.onAfterRouteChange = (): void => {
         applyLanguagePreference(siteData.value.base)
       }
     }

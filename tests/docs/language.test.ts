@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest'
 import { afterEach, expect, it, vi } from 'vitest'
 import { applyLanguagePreference } from '../../docs/.vitepress/language.js'
 
@@ -9,7 +10,7 @@ function browser(
   pathname: string,
   languages: readonly string[],
   saved: string | null = null
-) {
+): { replace: Mock; getItem: Mock<() => string | null>; setItem: Mock } {
   const replace = vi.fn()
   const getItem = vi.fn(() => saved)
   const setItem = vi.fn()

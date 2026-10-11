@@ -37,7 +37,7 @@ CI 在 master push、PR 和手动触发中独立运行构建/质量、Linux/Wind
 
 ## 代码质量与组织
 
-Prettier 直接使用 `prettier-config-standard` 共享配置，遵循 JavaScript Standard Style 的格式约定：2 空格缩进、80 列、单引号、不加可省略的分号、无尾逗号。这不代表启用完整的 Standard ESLint 规则集。类型感知 Oxlint 负责 lint，使用根脚本，不增加 formatter 层。CI 先构建 workspace 声明再检查；新测试目录需要可发现的 tsconfig。
+Prettier 直接使用 `prettier-config-standard` 共享配置，遵循 JavaScript Standard Style 的格式约定：2 空格缩进、80 列、单引号、不加可省略的分号、无尾逗号。这不代表启用完整的 Standard ESLint 规则集。类型感知 Oxlint 在 `oxlint.config.ts` 中加载 `@metamask/oxlint-config-typescript`，统一类型别名、类型导出、函数显式返回类型、类型断言、数组和 Promise 用法。现有项目规则继续叠加，包括参数属性和严格布尔表达式的既有政策。使用根脚本，不增加 formatter 层。CI 先构建 workspace 声明再检查；新测试目录需要可发现的 tsconfig。
 
 Oxlint 同时检查函数、类、接口、类型别名和枚举声明前后的空行，多行 export 与变量声明前后的空行、import 后的空行，以及类方法之间的空行。这些规则通过 Oxlint 的 JavaScript 插件支持运行。Prettier 保留声明间距，但不会补上要求的空行。运行 `pnpm lint:fix` 后再运行 `pnpm format`，分别修复间距和格式；`pnpm lint` 与 pre-commit hook 会拒绝缺少空行的代码，无需单独运行 ESLint 命令。
 
@@ -47,7 +47,7 @@ Oxlint 同时检查函数、类、接口、类型别名和枚举声明前后的�
 - 名称清晰，SQL 参数、谓词和版本约束能一起审查。
 - 复杂度最多 20，嵌套最多 4。unsafe types、未处理 Promise、无用 suppressions 会失败；重构使用已有 API/协议测试。
 
-apps/cli/src/plugins.ts 静态目录有 18 个 import 的窄例外，包含十五渠道、两个 Agent 和 SDK；其余默认十个。其他窄例外由 .oxlintrc.json 定义。不能只为通过检查关闭规则，任何政策改变在 PR 说明。
+apps/cli/src/plugins.ts 静态目录有 18 个 import 的窄例外，包含十五渠道、两个 Agent 和 SDK；其余默认十个。其他窄例外由 oxlint.config.ts 定义。不能只为通过检查关闭规则，任何政策改变在 PR 说明。
 
 文档记录当前行为、配置和维护要求。任务状态、审查报告、测试运行结果、注册表快照留在 PR/CI。依赖版本和解析结果属于 manifests 与 lockfile。
 

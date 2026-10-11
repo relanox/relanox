@@ -59,7 +59,12 @@ export function createSignalChannel(
   let task: Promise<void> | undefined
   let controller: AbortController | undefined
 
-  function configured() {
+  function configured(): {
+    host: ChannelHost
+    account: AccountConfig
+    config: SignalConfig
+    base: string
+  } {
     if (!runtime) {
       throw new Error('not_setup')
     }
@@ -189,7 +194,7 @@ export function createSignalChannel(
       throw new Error('event_stream_failed')
     }
     host.connection('connected')
-    await consumeEvents(response, (data, id) => receive(data, id, signal))
+    await consumeEvents(response, async (data, id) => receive(data, id, signal))
   }
 
   async function loop(signal: AbortSignal): Promise<void> {

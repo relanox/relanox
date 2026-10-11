@@ -18,7 +18,7 @@ import type {
 import type { StateNamespace, StateEntry } from './state.js'
 import type { MediaStorage, StoredMedia } from './media.js'
 
-export interface StorageStats {
+export type StorageStats = {
   readonly pending: number
   readonly claimed: number
   readonly undelivered: number
@@ -26,12 +26,12 @@ export interface StorageStats {
   readonly oldestPendingAt?: EpochMs
 }
 
-export interface Health {
+export type Health = {
   readonly ok: boolean
   readonly errorCode?: string
 }
 
-export interface ClaimInput {
+export type ClaimInput = {
   readonly requestId: string
   readonly endpointIds: readonly string[]
   readonly agent: AgentId
@@ -40,7 +40,7 @@ export interface ClaimInput {
   readonly now: EpochMs
 }
 
-export interface CompleteInput {
+export type CompleteInput = {
   readonly requestId: string
   readonly endpointIds: readonly string[]
   readonly agent: AgentId
@@ -49,7 +49,7 @@ export interface CompleteInput {
   readonly outbound: OutboundRecord
 }
 
-export interface FailInput {
+export type FailInput = {
   readonly requestId: string
   readonly endpointIds: readonly string[]
   readonly agent: AgentId
@@ -71,7 +71,7 @@ export type DueWork =
     }
 
 /** Storage atomically acquires leases; expired in-flight work becomes unknown unless its channel has durable idempotency. */
-export interface TakeDueInput {
+export type TakeDueInput = {
   readonly now: EpochMs
   readonly leaseMs: number
   readonly limit: number
@@ -97,7 +97,7 @@ export type Settlement =
       readonly now: EpochMs
     }
 
-export interface StatusFilter {
+export type StatusFilter = {
   readonly requestStatus?: RequestStatus
   readonly deliveryStatus?: DeliveryStatus
   readonly endpointId?: string
@@ -105,7 +105,7 @@ export interface StatusFilter {
   readonly afterId?: string
 }
 
-export interface Storage {
+export type Storage = {
   readonly media?: MediaStorage
   /** Snapshot and all incoming bytes are committed atomically; duplicate input adds no assets. */
   acceptInbound(

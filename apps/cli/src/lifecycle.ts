@@ -6,17 +6,29 @@ import { closeServer } from './listeners.js'
 export function createLifecycle(
   timeoutMs: number,
   plugins: readonly Lifecycle[]
-) {
+): {
+  signal: AbortSignal
+  servers: Server[]
+  live(this: void): boolean
+  registerStorage(this: void, resource: Storage): void
+  registerObservability(this: void, resource: ObservabilityRuntime): void
+  registerCore(
+    this: void,
+    setAccepting: () => void,
+    worker: () => Promise<void>
+  ): void
+  stop(this: void): Promise<void>
+} {
   const abort = new AbortController()
   const servers: Server[] = []
   let storage: Storage | undefined
   let observability: ObservabilityRuntime | undefined
-  let stopWorker = async () => {}
-  let stopAccepting = () => {}
+  let stopWorker = async (): Promise<void> => {}
+  let stopAccepting = (): void => {}
   let stopping = false
   let stopPromise: Promise<void> | undefined
   let deadlineAt = 0
-  const remaining = () => Math.max(0, deadlineAt - Date.now())
+  const remaining = (): number => Math.max(0, deadlineAt - Date.now())
 
   const attempt = async (action: () => Promise<void>): Promise<boolean> => {
     try {
@@ -31,18 +43,18 @@ export function createLifecycle(
     signal: abort.signal,
     servers,
     live: () => !stopping,
-    registerStorage(resource: Storage) {
+    registerStorage(resource: Storage): void {
       storage = resource
     },
-    registerObservability(resource: ObservabilityRuntime) {
+    registerObservability(resource: ObservabilityRuntime): void {
       observability = resource
     },
-    registerCore(setAccepting: () => void, worker: () => Promise<void>) {
+    registerCore(setAccepting: () => void, worker: () => Promise<void>): void {
       stopAccepting = setAccepting
       stopWorker = worker
     },
-    stop(): Promise<void> {
-      stopPromise ??= (async () => {
+    async stop(): Promise<void> {
+      stopPromise ??= (async (): Promise<undefined> => {
         deadlineAt = Date.now() + timeoutMs
         stopping = true
         stopAccepting()
@@ -50,8 +62,10 @@ export function createLifecycle(
 
         const draining = await Promise.all([
           attempt(stopWorker),
-          ...servers.map((server) => attempt(() => closeServer(server))),
-          ...plugins.map((plugin) => attempt(async () => plugin.stop?.()))
+          ...servers.map(async (server) =>
+            attempt(async () => closeServer(server))
+          ),
+          ...plugins.map(async (plugin) => attempt(async () => plugin.stop?.()))
         ])
 
         for (const server of servers) {

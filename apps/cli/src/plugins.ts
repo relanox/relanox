@@ -47,7 +47,10 @@ const agentFactories: Record<AgentId, () => AgentPlugin<unknown>> = {
   grok: createGrokAgentPlugin
 }
 
-export function loadPlugins(config: RelanoxConfig) {
+export function loadPlugins(config: RelanoxConfig): {
+  channels: Map<string, ChannelPlugin<unknown>>
+  agents: Map<AgentId, AgentPlugin<unknown>>
+} {
   const channels = new Map<string, ChannelPlugin<unknown>>()
   for (const account of config.accounts) {
     const factory = channelFactories[account.channel]

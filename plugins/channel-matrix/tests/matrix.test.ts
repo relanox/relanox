@@ -14,7 +14,14 @@ const user = '@alice:local.test'
 const room = '!room:local.test'
 const thread = '$thread-root'
 
-function config(base: string) {
+function config(base: string): {
+  homeserver: string
+  userId: string
+  accessToken: { env: string }
+  allowInsecureLocalhost: boolean
+  syncTimeoutMs: number
+  reconnectMs: number
+} {
   return {
     homeserver: base,
     userId: '@bot:local.test',
@@ -25,7 +32,25 @@ function config(base: string) {
   }
 }
 
-function event(eventId: string, text: string, sender = user) {
+function event(
+  eventId: string,
+  text: string,
+  sender = user
+): {
+  event_id: string
+  sender: string
+  type: string
+  origin_server_ts: number
+  content: {
+    msgtype: string
+    body: string
+    'm.relates_to': {
+      rel_type: string
+      event_id: string
+      'm.in_reply_to': { event_id: string }
+    }
+  }
+} {
   return {
     event_id: eventId,
     sender,

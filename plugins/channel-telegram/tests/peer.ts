@@ -14,7 +14,12 @@ import type {
   SendInput
 } from '@relanox/sdk'
 
-export function recorder(ingest?: (input: IngestInput) => Promise<void>) {
+export function recorder(ingest?: (input: IngestInput) => Promise<void>): {
+  host: ChannelHost
+  received: IngestInput[]
+  handlers: Map<string, HttpHandler>
+  connections: string[]
+} {
   const received: IngestInput[] = []
   const handlers = new Map<string, HttpHandler>()
   const connections: string[] = []
@@ -47,22 +52,32 @@ export function recorder(ingest?: (input: IngestInput) => Promise<void>) {
   return { host, received, handlers, connections }
 }
 
-export interface Captured {
+export type Captured = {
   path: string
   headers: IncomingHttpHeaders
   body: unknown
 }
 
-interface PeerResponse {
+type PeerResponse = {
   status?: number
   headers?: Record<string, string>
   body: unknown
 }
 
-export async function peer(respond: (input: Captured) => PeerResponse) {
+export async function peer(
+  respond: (input: Captured) => PeerResponse
+): Promise<{
+  url: string
+  requests: Captured[]
+  server: ReturnType<typeof createServer>
+  close(this: void): Promise<void>
+}> {
   const requests: Captured[] = []
 
-  async function handle(request: IncomingMessage, response: ServerResponse) {
+  async function handle(
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> {
     const chunks: Buffer[] = []
     for await (const chunk of request) {
       const value: unknown = chunk
@@ -103,10 +118,10 @@ export async function peer(respond: (input: Captured) => PeerResponse) {
     server.listen(0, '127.0.0.1', resolve)
   })
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-  return { url, requests, server, close: () => close(server) }
+  return { url, requests, server, close: async () => close(server) }
 }
 
-export async function close(server: Server) {
+export async function close(server: Server): Promise<void> {
   server.closeAllConnections()
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {

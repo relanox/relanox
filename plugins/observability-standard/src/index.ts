@@ -100,8 +100,8 @@ export function createStandardObservability(
             }
           )
         },
-        shutdown(signal) {
-          shutdown ??= (async () => {
+        async shutdown(signal) {
+          shutdown ??= (async (): Promise<undefined> => {
             closed = true
 
             // Start shutdown even for an already-aborted caller, so provider timers are always released.
