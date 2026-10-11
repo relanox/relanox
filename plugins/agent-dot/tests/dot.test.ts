@@ -1,4 +1,11 @@
 import { createHmac } from 'node:crypto'
+import type { RequestOptions, IncomingMessage } from 'node:http'
+import type {
+  LookupAddress,
+  LookupOptions,
+  LookupOneOptions,
+  LookupAllOptions
+} from 'node:dns'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { callbackUrl, isPublicAddress } from '../src/callback.js'
@@ -7,11 +14,80 @@ import { guard } from '@relanox/agent-mcp'
 import { fixture, mcp, parseWire, peer } from './fixture.js'
 import type { Traffic } from './fixture.js'
 
+const callbackNetwork = vi.hoisted(() => ({
+  origin: '',
+  addresses: [{ address: '8.8.8.8', family: 4 }],
+  calls: [] as { url: URL; options: RequestOptions }[]
+}))
+
+vi.mock(import('node:dns/promises'), async (importOriginal) => {
+  const original = await importOriginal()
+  function resolve(hostname: string, family: number): Promise<LookupAddress>
+  function resolve(
+    hostname: string,
+    options: LookupOneOptions
+  ): Promise<LookupAddress>
+  function resolve(
+    hostname: string,
+    options: LookupAllOptions
+  ): Promise<LookupAddress[]>
+  function resolve(
+    hostname: string,
+    options: LookupOptions
+  ): Promise<LookupAddress | LookupAddress[]>
+  function resolve(hostname: string): Promise<LookupAddress>
+  async function resolve(
+    _hostname: string,
+    options?: number | LookupOptions
+  ): Promise<LookupAddress | LookupAddress[]> {
+    if (typeof options === 'object' && options.all === true) {
+      return callbackNetwork.addresses
+    }
+    const address = callbackNetwork.addresses[0]
+    if (!address) {
+      throw new Error('missing_dns_address')
+    }
+    return address
+  }
+
+  return { ...original, lookup: resolve }
+})
+vi.mock(import('node:https'), async () => {
+  const http = await import('node:http')
+  function redirect(
+    options: string | RequestOptions | URL,
+    callback?: (response: IncomingMessage) => void
+  ): ReturnType<typeof http.request>
+  function redirect(
+    url: string | URL,
+    options: RequestOptions,
+    callback?: (response: IncomingMessage) => void
+  ): ReturnType<typeof http.request>
+  function redirect(
+    url: string | RequestOptions | URL,
+    options?: RequestOptions | ((response: IncomingMessage) => void),
+    listener?: (response: IncomingMessage) => void
+  ): ReturnType<typeof http.request> {
+    if (!(url instanceof URL) || typeof options !== 'object') {
+      throw new Error('unexpected_https_request')
+    }
+    callbackNetwork.calls.push({ url, options })
+    return http.request(
+      new URL(url.pathname + url.search, callbackNetwork.origin),
+      { ...options, lookup: undefined },
+      listener
+    )
+  }
+
+  return { request: redirect }
+})
 const signingKey = `whsec_${Buffer.alloc(32, 17).toString('base64')}`
 const newKey = `whsec_${Buffer.alloc(32, 25).toString('base64')}`
 const cleanups: (() => Promise<void>)[] = []
 const stringValue: unknown = expect.any(String)
 beforeEach(() => {
+  callbackNetwork.addresses = [{ address: '8.8.8.8', family: 4 }]
+  callbackNetwork.calls = []
   process.env.AGENT_TEST_TOKEN_0 = 'secret-0'
   process.env.AGENT_TEST_TOKEN_1 = 'secret-1'
 })
@@ -100,13 +176,8 @@ async function setup(
   const receiver = await peer(reply)
   cleanups.push(receiver.close)
 
-  const config = {
-    mcp: mcp(),
-    callback: {
-      allowedOrigins: [receiver.origin],
-      transport: 'loopback-http'
-    }
-  }
+  callbackNetwork.origin = receiver.origin
+  const config = { mcp: mcp() }
 
   const plugin = createDotAgentPlugin()
 
@@ -117,51 +188,33 @@ async function setup(
   )
 
   cleanups.push(async () => fx.close())
-  return { receiver, plugin, fx, url: `${receiver.origin}/callback` }
+  return {
+    receiver,
+    plugin,
+    fx,
+    url: 'https://connectors.api.openai.com/callback'
+  }
 }
 
 describe('dot MCP Events and tools', () => {
-  it.each([undefined, {}])(
-    'uses the hosted dot callback origin when omitted from %j',
-    (callback) => {
-      const config = createDotAgentPlugin().validateConfig({
-        mcp: mcp(),
-        ...(callback === undefined ? {} : { callback })
-      })
-
-      expect(
-        callbackUrl(
-          'https://connectors.api.openai.com/events/callback',
-          config.callback
-        ).href
-      ).toBe('https://connectors.api.openai.com/events/callback')
-      expect(() =>
-        callbackUrl('https://receiver.test/callback', config.callback)
-      ).toThrow('forbidden_destination')
-      expect(() =>
-        callbackUrl(
-          'http://connectors.api.openai.com/events/callback',
-          config.callback
-        )
-      ).toThrow('forbidden_destination')
-    }
-  )
-
-  it('replaces the default callback origin with an explicit override', () => {
-    const config = createDotAgentPlugin().validateConfig({
-      mcp: mcp(),
-      callback: { allowedOrigins: ['https://receiver.test'] }
-    })
-
+  it('accepts only the native hosted callback origin and rejects callback configuration', () => {
     expect(
-      callbackUrl('https://receiver.test/callback', config.callback).href
-    ).toBe('https://receiver.test/callback')
+      callbackUrl('https://connectors.api.openai.com/events/callback').href
+    ).toBe('https://connectors.api.openai.com/events/callback')
     expect(() =>
-      callbackUrl(
-        'https://connectors.api.openai.com/events/callback',
-        config.callback
-      )
-    ).toThrow('forbidden_destination')
+      createDotAgentPlugin().validateConfig({ mcp: mcp(), callback: {} })
+    ).toThrow()
+  })
+
+  it.each([
+    'https://receiver.test/callback',
+    'http://connectors.api.openai.com/callback',
+    'https://connectors.api.openai.com.evil.test/callback',
+    'https://user:secret@connectors.api.openai.com/callback',
+    'https://connectors.api.openai.com/callback#fragment',
+    'http://127.0.0.1/callback'
+  ])('rejects unauthorized callback URL %s', (url) => {
+    expect(() => callbackUrl(url)).toThrow('forbidden_destination')
   })
 
   it('accepts request metadata on Events methods without changing subscription identity', async () => {
@@ -807,20 +860,68 @@ describe('dot MCP Events and tools', () => {
     expect(isPublicAddress(address)).toBe(false)
   })
 
-  it('accepts public addresses while enforcing HTTPS and exact callback origins', () => {
-    expect(isPublicAddress('8.8.8.8')).toBe(true)
-    expect(isPublicAddress('2606:4700:4700::1111')).toBe(true)
-    expect(() =>
-      callbackUrl('http://receiver.test/callback', {
-        allowedOrigins: ['http://receiver.test'],
-        transport: 'public-https'
-      })
-    ).toThrow()
-    expect(() =>
-      callbackUrl('https://receiver.test.evil.test/callback', {
-        allowedOrigins: ['https://receiver.test'],
-        transport: 'public-https'
-      })
-    ).toThrow()
+  it('pins the verified DNS address for the native hostname while preserving the callback path', async () => {
+    const { fx, url, receiver } = await setup()
+    const client = await fx.client()
+    await client.request(subscribe(url), subResult)
+    const call = callbackNetwork.calls[0]
+    if (!call?.options.lookup) {
+      throw new Error('missing_pinned_lookup')
+    }
+    callbackNetwork.addresses = [{ address: '127.0.0.1', family: 4 }]
+
+    const pinned = await new Promise<string | LookupAddress[]>(
+      (resolve, reject) => {
+        call.options.lookup?.(
+          call.url.hostname,
+          { all: true },
+          (error, addresses) => {
+            if (error) {
+              reject(error)
+            } else {
+              resolve(addresses)
+            }
+          }
+        )
+      }
+    )
+
+    expect(pinned).toEqual([{ address: '8.8.8.8', family: 4 }])
+    expect(call.url.origin).toBe('https://connectors.api.openai.com')
+    expect(receiver.traffic[0]?.url).toBe('/callback')
+    verify(receiver.traffic[0])
   })
+
+  it.each([
+    { addresses: [] },
+    { addresses: [{ address: '127.0.0.1', family: 4 }] },
+    {
+      addresses: [
+        { address: '8.8.8.8', family: 4 },
+        { address: '10.0.0.1', family: 4 }
+      ]
+    }
+  ])(
+    'rejects unsafe DNS results %j before callback traffic',
+    async ({ addresses }) => {
+      expect(isPublicAddress('8.8.8.8')).toBe(true)
+      const { fx, url, receiver } = await setup()
+      callbackNetwork.addresses = addresses
+      const client = await fx.client()
+      await expect(
+        client.request(subscribe(url), subResult)
+      ).rejects.toMatchObject({
+        code: -32_015,
+        data: { reason: 'forbidden_destination' }
+      })
+      expect(receiver.traffic).toHaveLength(0)
+      expect(callbackNetwork.calls).toHaveLength(0)
+      expect(
+        await fx.storage.listState(
+          { pluginId: 'agent-dot', ownerId: 'dot' },
+          { prefix: 'subscriptions/', limit: 100 }
+        )
+      ).toHaveLength(0)
+    }
+  )
 })

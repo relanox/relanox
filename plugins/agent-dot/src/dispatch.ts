@@ -1,7 +1,6 @@
 import { projectAgentRequest } from '@relanox/agent-mcp'
 import type { AgentHost, AgentPlugin, DispatchResult } from '@relanox/sdk'
 import { CallbackError, callbackUrl, postCallback } from './callback.js'
-import { configSchema } from './config.js'
 import type { DotConfig } from './config.js'
 import { name, subscriptionSchema } from './protocol.js'
 import { signedHeaders } from './subscriptions.js'
@@ -13,9 +12,7 @@ export function createDispatch(
   subscriptionStore: SubscriptionStore
 ): AgentPlugin<DotConfig>['dispatch'] {
   return async ({ request, signal }): Promise<DispatchResult> => {
-    const config = configSchema.parse(request.endpoint.config)
-    const currentConfig = configured.get(request.endpoint.id)
-    if (!currentConfig) {
+    if (!configured.has(request.endpoint.id)) {
       return { status: 'rejected', errorCode: 'dot_endpoint_revoked' }
     }
     const now = Date.now()
@@ -58,12 +55,11 @@ export function createDispatch(
 
     for (const { sub, entry } of subscriptions) {
       try {
-        // Recheck current deployment authorization after restart/config change.
-        callbackUrl(sub.url, currentConfig.callback)
+        // Recheck the native callback destination for persisted subscriptions.
+        callbackUrl(sub.url)
 
         const response = await postCallback(
           sub.url,
-          config.callback,
           body,
           signedHeaders(sub, body, eventId),
           signal,

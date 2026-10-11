@@ -2,10 +2,8 @@ import { isPublicAddress } from '@relanox/transport'
 
 import type { LookupAddress } from 'node:dns'
 import { lookup } from 'node:dns/promises'
-import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { isIP } from 'node:net'
-import type { CallbackConfig } from './config.js'
 
 export { isPublicAddress } from '@relanox/transport'
 
@@ -22,22 +20,14 @@ export class CallbackError extends Error {
   }
 }
 
-export function callbackUrl(value: string, config: CallbackConfig): URL {
+export function callbackUrl(value: string): URL {
   const url = new URL(value)
   if (
     url.username ||
     url.password ||
     url.hash ||
-    !config.allowedOrigins.includes(url.origin)
+    url.origin !== 'https://connectors.api.openai.com'
   ) {
-    throw new CallbackError('forbidden_destination')
-  }
-  const loopback = ['127.0.0.1', '[::1]'].includes(url.hostname)
-  if (config.transport === 'loopback-http') {
-    if (!loopback || url.protocol !== 'http:') {
-      throw new CallbackError('forbidden_destination')
-    }
-  } else if (url.protocol !== 'https:') {
     throw new CallbackError('forbidden_destination')
   }
   return url
@@ -46,7 +36,6 @@ export function callbackUrl(value: string, config: CallbackConfig): URL {
 /** Resolve immediately before connecting and pin that address; TLS still verifies the original hostname. */
 export async function postCallback(
   urlValue: string,
-  config: CallbackConfig,
   body: string,
   headers: Record<string, string>,
   signal: AbortSignal,
@@ -56,7 +45,7 @@ export async function postCallback(
   body: string
   headers: Record<string, string | string[] | undefined>
 }> {
-  const url = callbackUrl(urlValue, config)
+  const url = callbackUrl(urlValue)
   const hostname = url.hostname.replaceAll(/^\[|\]$/gu, '')
   const bound = AbortSignal.any([signal, AbortSignal.timeout(10_000)])
 
@@ -97,9 +86,8 @@ export async function postCallback(
       : [{ address: hostname, family: isIP(hostname) }]
 
   if (
-    config.transport === 'public-https' &&
-    (addresses.length === 0 ||
-      addresses.some((resolved) => !isPublicAddress(resolved.address)))
+    addresses.length === 0 ||
+    addresses.some((resolved) => !isPublicAddress(resolved.address))
   ) {
     throw new CallbackError('forbidden_destination')
   }
@@ -108,7 +96,7 @@ export async function postCallback(
     throw new CallbackError('forbidden_destination')
   }
   return new Promise((resolve, reject) => {
-    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
+    const req = httpsRequest(
       url,
       {
         method: 'POST',
