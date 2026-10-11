@@ -3,7 +3,12 @@ import { setTimeout as delay } from 'node:timers/promises'
 import type { AccountConfig, ChannelHost, ChannelPlugin } from '@relanox/sdk'
 import { WebSocket } from 'ws'
 import type { z } from 'zod'
-import { validateConfig, validateTransportUrl } from './config.js'
+import {
+  validateConfig,
+  validateTransportUrl,
+  REQUEST_TIMEOUT_MS,
+  RECONNECT_DELAY_MS
+} from './config.js'
 import type { SlackConfig } from './config.js'
 import {
   socketFrameSchema,
@@ -121,7 +126,7 @@ export function createSlackChannel(
       { authorization: `Bearer ${credential(config.appToken, environment)}` },
       {},
       signal,
-      config.timeoutMs
+      REQUEST_TIMEOUT_MS
     )
 
     const result = socketOpenResponseSchema.parse(await jsonResponse(response))
@@ -133,7 +138,7 @@ export function createSlackChannel(
       validateTransportUrl(result.url, config.allowInsecureLoopback, true),
       {
         maxPayload: 1_048_576,
-        handshakeTimeout: config.timeoutMs
+        handshakeTimeout: REQUEST_TIMEOUT_MS
       }
     )
 
@@ -254,10 +259,7 @@ export function createSlackChannel(
         break
       }
       await delay(
-        Math.min(
-          30_000,
-          config.reconnectDelayMs * 2 ** Math.min(failures++, 5)
-        ),
+        Math.min(30_000, RECONNECT_DELAY_MS * 2 ** Math.min(failures++, 5)),
         undefined,
         { signal }
       ).catch(() => {})
@@ -359,7 +361,7 @@ export function createSlackChannel(
     async stop() {
       controller?.abort()
       socket?.terminate()
-      await waitForStop(task, config.timeoutMs)
+      await waitForStop(task, REQUEST_TIMEOUT_MS)
       task = undefined
     },
     async send(input) {
@@ -408,7 +410,7 @@ export function createSlackChannel(
               : {})
           },
           input.signal,
-          config.timeoutMs
+          REQUEST_TIMEOUT_MS
         )
 
         return await sendOutcome(response)

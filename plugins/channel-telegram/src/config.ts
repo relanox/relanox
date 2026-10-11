@@ -5,8 +5,7 @@ const secretRefSchema = z.strictObject({
 })
 
 const transportOptions = {
-  allowInsecureLoopback: z.boolean().default(false),
-  timeoutMs: z.number().int().min(100).max(60_000).default(10_000)
+  allowInsecureLoopback: z.boolean().default(false)
 }
 
 export function validateTransportUrl(
@@ -52,3 +51,5 @@ export function validateConfig(input: unknown): TelegramConfig {
   validateTransportUrl(parsed.apiBaseUrl, parsed.allowInsecureLoopback)
   return parsed
 }
+
+export const REQUEST_TIMEOUT_MS = 10_000

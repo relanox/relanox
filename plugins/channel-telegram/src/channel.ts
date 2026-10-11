@@ -1,7 +1,7 @@
 import type { AccountConfig, ChannelHost, ChannelPlugin } from '@relanox/sdk'
 import type { z } from 'zod'
 import { sendOutcome } from './client.js'
-import { validateConfig } from './config.js'
+import { validateConfig, REQUEST_TIMEOUT_MS } from './config.js'
 import type { TelegramConfig } from './config.js'
 import { targetSchema, updateSchema } from './schemas.js'
 import { bytes, credential, equal, ingest, postJson } from './transport.js'
@@ -172,7 +172,7 @@ export function createTelegramChannel(
             link_preview_options: { is_disabled: true }
           },
           input.signal,
-          config.timeoutMs
+          REQUEST_TIMEOUT_MS
         )
 
         return await sendOutcome(response)

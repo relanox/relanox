@@ -4,7 +4,12 @@ import type { AccountConfig, ChannelHost } from '@relanox/sdk'
 import { WebSocket } from 'ws'
 import type { z } from 'zod'
 import type { DiscordConfig } from './config.js'
-import { validateTransportUrl } from './config.js'
+import {
+  validateTransportUrl,
+  REQUEST_TIMEOUT_MS,
+  RECONNECT_DELAY_MS,
+  GATEWAY_INTENTS
+} from './config.js'
 import {
   channelInfoSchema,
   helloEventSchema,
@@ -81,7 +86,7 @@ export function createDiscordGateway(
         },
         signal: AbortSignal.any([
           signal,
-          AbortSignal.timeout(config.timeoutMs)
+          AbortSignal.timeout(REQUEST_TIMEOUT_MS)
         ]),
         redirect: 'error'
       }
@@ -119,7 +124,7 @@ export function createDiscordGateway(
 
     const ws = new WebSocket(url, {
       maxPayload: 1_048_576,
-      handshakeTimeout: config.timeoutMs
+      handshakeTimeout: REQUEST_TIMEOUT_MS
     })
 
     socket = ws
@@ -206,7 +211,7 @@ export function createDiscordGateway(
                   op: 2,
                   d: {
                     token: botToken,
-                    intents: config.intents,
+                    intents: GATEWAY_INTENTS,
                     properties: {
                       os: process.platform,
                       browser: 'relanox',
@@ -386,10 +391,7 @@ export function createDiscordGateway(
         break
       }
       await delay(
-        Math.min(
-          30_000,
-          config.reconnectDelayMs * 2 ** Math.min(failures++, 5)
-        ),
+        Math.min(30_000, RECONNECT_DELAY_MS * 2 ** Math.min(failures++, 5)),
         undefined,
         { signal }
       ).catch(() => {})
@@ -410,7 +412,7 @@ export function createDiscordGateway(
     async stop() {
       controller?.abort()
       socket?.terminate()
-      await waitForStop(task, config.timeoutMs)
+      await waitForStop(task, REQUEST_TIMEOUT_MS)
       task = undefined
     }
   }

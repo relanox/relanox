@@ -6,7 +6,7 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import type { z } from 'zod'
-import { validateConfig } from './config.js'
+import { validateConfig, REQUEST_TIMEOUT_MS } from './config.js'
 import type { FeishuConfig } from './config.js'
 import {
   receiveMedia,
@@ -78,7 +78,7 @@ export function createFeishuChannel(
       {},
       { app_id: config.appId, app_secret: appSecret },
       signal,
-      config.timeoutMs
+      REQUEST_TIMEOUT_MS
     )
 
     if (!response.ok) {
@@ -251,7 +251,7 @@ export function createFeishuChannel(
 
       const access =
         content.resources.length > 0
-          ? await accessToken(AbortSignal.timeout(config.timeoutMs))
+          ? await accessToken(AbortSignal.timeout(REQUEST_TIMEOUT_MS))
           : ''
 
       if (typeof access !== 'string') {
@@ -401,7 +401,7 @@ export function createFeishuChannel(
               : { receive_id: input.target.chatId })
           },
           input.signal,
-          config.timeoutMs
+          REQUEST_TIMEOUT_MS
         )
 
         return await sendOutcome(response)

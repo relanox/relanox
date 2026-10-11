@@ -7,8 +7,7 @@ const secretRefSchema = z.strictObject({
 export const platformIdSchema = z.string().min(1).max(256)
 
 const transportOptions = {
-  allowInsecureLoopback: z.boolean().default(false),
-  timeoutMs: z.number().int().min(100).max(60_000).default(10_000)
+  allowInsecureLoopback: z.boolean().default(false)
 }
 
 export function validateTransportUrl(
@@ -45,12 +44,6 @@ const configSchema = z.strictObject({
   botUserId: platformIdSchema,
   apiBaseUrl: z.string().default('https://discord.com/api/v10'),
   gatewayUrl: z.string().default('wss://gateway.discord.gg'),
-  intents: z
-    .number()
-    .int()
-    .nonnegative()
-    .default(1 | 512 | 4096 | 32_768),
-  reconnectDelayMs: z.number().int().min(100).max(30_000).default(5000),
   ...transportOptions
 })
 
@@ -60,8 +53,11 @@ export function validateConfig(input: unknown): DiscordConfig {
   const parsed = configSchema.parse(input)
   validateTransportUrl(parsed.apiBaseUrl, parsed.allowInsecureLoopback)
   validateTransportUrl(parsed.gatewayUrl, parsed.allowInsecureLoopback, true)
-  if ((parsed.intents & (512 | 4096 | 32_768)) !== (512 | 4096 | 32_768)) {
-    throw new Error('required_message_intents_missing')
-  }
   return parsed
 }
+
+export const REQUEST_TIMEOUT_MS = 10_000
+
+export const RECONNECT_DELAY_MS = 5000
+
+export const GATEWAY_INTENTS = 37_377

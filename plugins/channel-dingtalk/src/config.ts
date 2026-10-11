@@ -36,8 +36,7 @@ export const configSchema = z
     apiBase: z.url().default('https://api.dingtalk.com'),
     uploadBase: z.url().default('https://oapi.dingtalk.com'),
     mediaOrigins: z.array(z.url()).default([]),
-    allowInsecureLoopback: z.boolean().default(false),
-    maxReconnectAttempts: z.number().int().min(0).max(1000).default(20)
+    allowInsecureLoopback: z.boolean().default(false)
   })
   .strict()
   .superRefine((config, context) => {
@@ -68,3 +67,5 @@ export const configSchema = z
   })
 
 export type DingTalkConfig = z.infer<typeof configSchema>
+
+export const MAX_RECONNECT_ATTEMPTS = 20

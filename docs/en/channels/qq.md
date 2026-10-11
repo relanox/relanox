@@ -22,10 +22,8 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
         "clientSecret": {
           "env": "QQ_CLIENT_SECRET"
         },
-        "transport": "websocket",
         "apiBase": "https://api.bot.qq.com",
-        "allowProactive": false,
-        "maxReconnectAttempts": 20
+        "allowProactive": false
       }
     }
   ],

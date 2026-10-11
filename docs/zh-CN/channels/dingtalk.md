@@ -23,8 +23,7 @@
           "env": "DINGTALK_APP_SECRET"
         },
         "robotCode": "application-robot-code",
-        "apiBase": "https://api.dingtalk.com",
-        "maxReconnectAttempts": 20
+        "apiBase": "https://api.dingtalk.com"
       }
     }
   ],

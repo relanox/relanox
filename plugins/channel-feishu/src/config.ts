@@ -7,8 +7,7 @@ const secretRefSchema = z.strictObject({
 export const platformIdSchema = z.string().min(1).max(256)
 
 const transportOptions = {
-  allowInsecureLoopback: z.boolean().default(false),
-  timeoutMs: z.number().int().min(100).max(60_000).default(10_000)
+  allowInsecureLoopback: z.boolean().default(false)
 }
 
 export function validateTransportUrl(
@@ -61,3 +60,5 @@ export function validateConfig(input: unknown): FeishuConfig {
   }
   return parsed
 }
+
+export const REQUEST_TIMEOUT_MS = 10_000

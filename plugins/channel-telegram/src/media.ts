@@ -1,3 +1,4 @@
+import { REQUEST_TIMEOUT_MS } from './config.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -77,7 +78,7 @@ export async function receiveMedia(
   if ((file.file_size ?? 0) > maximum) {
     throw new Error('media_too_large')
   }
-  const signal = AbortSignal.timeout(config.timeoutMs)
+  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   const base = config.apiBaseUrl.replace(/\/$/u, '')
 
   const response = await postJson(
@@ -85,7 +86,7 @@ export async function receiveMedia(
     {},
     { file_id: file.file_id },
     signal,
-    config.timeoutMs
+    REQUEST_TIMEOUT_MS
   )
 
   const result = z
@@ -209,7 +210,7 @@ export async function sendMedia(
       body,
       signal: AbortSignal.any([
         input.signal,
-        AbortSignal.timeout(config.timeoutMs)
+        AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       ]),
       redirect: 'error'
     }

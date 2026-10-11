@@ -98,7 +98,6 @@ async function setup(
       appId: 'A1',
       apiBaseUrl,
       allowInsecureLoopback: true,
-      reconnectDelayMs: 100,
       ...overrides,
       ...(socket
         ? { receiveMode: 'socket', appToken: { env: 'APP' } }
@@ -401,7 +400,7 @@ describe('slack native protocol', () => {
         JSON.stringify({ type: 'disconnect', reason: 'refresh_requested' })
       )
     }
-    await expect.poll(() => connected).toBe(2)
+    await expect.poll(() => connected, { timeout: 3000 }).toBe(2)
     await test.plugin.stop?.()
     const stopped = connected
     await new Promise((resolve) => {

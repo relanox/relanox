@@ -1,3 +1,4 @@
+import { REQUEST_TIMEOUT_MS } from './config.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -35,7 +36,7 @@ async function fileMetadata(
     `${config.apiBaseUrl.replace(/\/$/u, '')}/files.info?file=${encodeURIComponent(file.id)}`,
     {
       headers: { authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(config.timeoutMs),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       redirect: 'error'
     }
   )
@@ -69,7 +70,7 @@ export async function receiveMedia(
 
       const downloaded = await downloadMedia(url, {
         maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
-        signal: AbortSignal.timeout(config.timeoutMs),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         trustedOrigins: [
           'https://files.slack.com',
           new URL(config.apiBaseUrl).origin
@@ -131,7 +132,7 @@ async function prepareUpload(
       }),
       signal: AbortSignal.any([
         input.signal,
-        AbortSignal.timeout(config.timeoutMs)
+        AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       ]),
       redirect: 'error'
     })
@@ -161,7 +162,7 @@ async function prepareUpload(
       body: mediaBlob(input.media),
       signal: AbortSignal.any([
         input.signal,
-        AbortSignal.timeout(config.timeoutMs)
+        AbortSignal.timeout(REQUEST_TIMEOUT_MS)
       ]),
       redirect: 'error'
     })
@@ -212,7 +213,7 @@ export async function sendMedia(
         : {})
     },
     input.signal,
-    config.timeoutMs
+    REQUEST_TIMEOUT_MS
   )
 
   if (!response.ok) {
