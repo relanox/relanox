@@ -1,10 +1,10 @@
 import type { Storage, StateEntry } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
 import { boundedLimit } from "./database.js";
-import { encode } from "./record-codec.js";
+import { encodeDurableRecord } from "./record-codec.js";
 
 export function createStateOperations(
-  context: DatabaseContext,
+  context: Pick<DatabaseContext, "pool" | "query" | "transaction">,
 ): Pick<Storage, "getState" | "listState" | "compareAndSetState" | "deleteState"> {
   const { pool, query, transaction } = context;
   return {
@@ -48,7 +48,7 @@ export function createStateOperations(
           `,
           params,
         )
-      ).map((r) => r.record);
+      ).map((row) => row.record);
     },
     async compareAndSetState(ns, input) {
       return transaction(async (client) => {
@@ -85,7 +85,7 @@ export function createStateOperations(
           input.key,
           version,
           input.expiresAt ?? null,
-          encode(entry),
+          encodeDurableRecord(entry),
         ];
         const changed = !old
           ? await query(

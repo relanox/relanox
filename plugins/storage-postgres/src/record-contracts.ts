@@ -1,5 +1,5 @@
 import type { InboundRecord, OutboundRecord, Lease, Storage } from "@relanox/sdk";
-import { equal } from "./record-codec.js";
+import { equalDurableValues } from "./record-codec.js";
 
 export function matchesInitialResult(
   outbound: OutboundRecord,
@@ -9,7 +9,7 @@ export function matchesInitialResult(
   return (
     outbound.requestId === input.requestId &&
     outbound.resultId === input.result.resultId &&
-    equal(outbound.target, request.snapshot.target) &&
+    equalDurableValues(outbound.target, request.snapshot.target) &&
     outbound.currentChunk === 0 &&
     outbound.receipts.length === 0 &&
     outbound.status === "pending" &&
@@ -27,4 +27,6 @@ export const isRequestInScope = (
   input.endpointIds.includes(record.snapshot.endpoint.id) &&
   record.snapshot.endpoint.agent === input.agent;
 export const isActiveLease = (storedLease: Lease | undefined, attemptLease: Lease, now: number) =>
-  storedLease !== undefined && equal(storedLease, attemptLease) && storedLease.expiresAt > now;
+  storedLease !== undefined &&
+  equalDurableValues(storedLease, attemptLease) &&
+  storedLease.expiresAt > now;

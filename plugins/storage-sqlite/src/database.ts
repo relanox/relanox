@@ -1,7 +1,7 @@
 import type { InboundRecord, OutboundRecord } from "@relanox/sdk";
 import Database from "better-sqlite3";
 import type { SqliteConfig } from "./config.js";
-import { encode, decode } from "./record-codec.js";
+import { encodeDurableRecord, decodeDurableRecord } from "./record-codec.js";
 
 /** Owns the connection and atomic transaction boundary for every storage operation. */
 export function openDatabase(config: SqliteConfig): DatabaseContext {
@@ -14,22 +14,22 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
     const row = db.prepare("SELECT record FROM inbound WHERE id=?").get(id) as
       | { record: string }
       | undefined;
-    return row ? decode(row.record) : undefined;
+    return row ? decodeDurableRecord(row.record) : undefined;
   };
   const readOutbound = (id: string): OutboundRecord | undefined => {
     const row = db.prepare("SELECT record FROM outbound WHERE id=?").get(id) as
       | { record: string }
       | undefined;
-    return row ? decode(row.record) : undefined;
+    return row ? decodeDurableRecord(row.record) : undefined;
   };
   const saveInbound = (record: InboundRecord) =>
     db
       .prepare("UPDATE inbound SET status=?, version=?, record=? WHERE id=?")
-      .run(record.status, record.version, encode(record), record.snapshot.requestId);
+      .run(record.status, record.version, encodeDurableRecord(record), record.snapshot.requestId);
   const saveOutbound = (record: OutboundRecord) =>
     db
       .prepare("UPDATE outbound SET status=?, version=?, record=? WHERE id=?")
-      .run(record.status, record.version, encode(record), record.deliveryId);
+      .run(record.status, record.version, encodeDurableRecord(record), record.deliveryId);
   const isEndpointHead = (record: InboundRecord): boolean =>
     (
       db
