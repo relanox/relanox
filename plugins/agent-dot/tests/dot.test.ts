@@ -124,6 +124,52 @@ async function setup(
 }
 
 describe('dot MCP Events and tools', () => {
+  it.each([undefined, {}, { timeoutMs: 500 }])(
+    'uses the hosted dot callback origin when omitted from %j',
+    (callback) => {
+      const config = createDotAgentPlugin().validateConfig({
+        mcp: mcp(),
+        ...(callback === undefined ? {} : { callback })
+      })
+
+      expect(
+        callbackUrl(
+          'https://connectors.api.openai.com/events/callback',
+          config.callback
+        ).href
+      ).toBe('https://connectors.api.openai.com/events/callback')
+      expect(config.callback.timeoutMs).toBe(
+        callback?.timeoutMs === 500 ? 500 : 10_000
+      )
+      expect(() =>
+        callbackUrl('https://receiver.test/callback', config.callback)
+      ).toThrow('forbidden_destination')
+      expect(() =>
+        callbackUrl(
+          'http://connectors.api.openai.com/events/callback',
+          config.callback
+        )
+      ).toThrow('forbidden_destination')
+    }
+  )
+
+  it('replaces the default callback origin with an explicit override', () => {
+    const config = createDotAgentPlugin().validateConfig({
+      mcp: mcp(),
+      callback: { allowedOrigins: ['https://receiver.test'] }
+    })
+
+    expect(
+      callbackUrl('https://receiver.test/callback', config.callback).href
+    ).toBe('https://receiver.test/callback')
+    expect(() =>
+      callbackUrl(
+        'https://connectors.api.openai.com/events/callback',
+        config.callback
+      )
+    ).toThrow('forbidden_destination')
+  })
+
   it('accepts request metadata on Events methods without changing subscription identity', async () => {
     const { fx, url } = await setup()
     const client = await fx.client()

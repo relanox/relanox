@@ -238,28 +238,6 @@ async function showDetails(): Promise<void> {
                   )
                 }}
               </p>
-              <template v-for="agent in state.agents" :key="agent.id">
-                <template v-if="agent.type === 'dot'">
-                  <label :for="`${agent.id}-callback`"
-                    >{{ agent.name }} ·
-                    {{ text('dot callback origin', 'dot 回调来源') }}</label
-                  >
-                  <input
-                    :id="`${agent.id}-callback`"
-                    v-model="agent.callbackOrigin"
-                    type="url"
-                    placeholder="https://your-dot-callback.example.com"
-                  />
-                  <p class="field-hint">
-                    {{
-                      text(
-                        'Copy the origin (protocol and hostname) from your dot Events callback address.',
-                        '使用 dot Events 回调地址的来源部分，即协议和主机名。'
-                      )
-                    }}
-                  </p>
-                </template>
-              </template>
               <template v-if="activeChannel">
                 <label for="details-channel">{{
                   text('Channel to configure', '配置渠道')

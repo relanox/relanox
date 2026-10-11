@@ -17,10 +17,6 @@ const messages: Record<string, Localized> = {
   },
   agentRequired: { en: 'Add an Agent.', zh: '添加一个 Agent。' },
   agentName: { en: 'Enter a name.', zh: '填写名称。' },
-  callbackOrigin: {
-    en: 'Enter the HTTPS origin of the dot Events callback.',
-    zh: '填写 dot Events 回调的 HTTPS 来源。'
-  },
   chatId: { en: 'Enter the chat ID.', zh: '填写聊天 ID。' },
   senderIds: {
     en: 'Enter the IDs of the users who may use this connection.',
