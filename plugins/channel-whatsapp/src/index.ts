@@ -53,6 +53,8 @@ const webhookSchema = z.object({
 });
 const targetSchema = z.strictObject({
   phoneNumberId: identifier,
+  businessAccountId: identifier,
+  apiBase: z.url(),
   customer: identifier,
   windowUntil: z.number().int().nonnegative(),
 });
@@ -61,8 +63,11 @@ const responseSchema = z.object({
   messages: z.array(z.object({ id: identifier })).min(1),
 });
 
-async function updateWindow(host: ChannelHost, customer: string, until: number): Promise<void> {
-  const key = `window:${customer}`;
+function windowKey(config: WhatsAppConfig, customer: string): string {
+  return `window:${JSON.stringify([config.apiBase, config.businessAccountId, config.phoneNumberId, customer])}`;
+}
+
+async function updateWindow(host: ChannelHost, key: string, until: number): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const previous = await host.state.get(key);
     const previousUntil = previous ? z.number().int().parse(previous.value) : 0;
@@ -92,7 +97,7 @@ async function receiveMessage(
     throw new Error("invalid_timestamp");
   }
   const windowUntil = timestamp + 86_400_000;
-  await updateWindow(host, message.from, windowUntil);
+  await updateWindow(host, windowKey(config, message.from), windowUntil);
   if (message.type !== "text" || !message.text?.body) {
     host.observe.log("debug", "channel_event_ignored", { errorCode: "unsupported_or_empty_text" });
     return;
@@ -108,7 +113,13 @@ async function receiveMessage(
       accountId: account.id,
       chatId: message.from,
       replyToId: message.id,
-      data: { phoneNumberId: config.phoneNumberId, customer: message.from, windowUntil },
+      data: {
+        phoneNumberId: config.phoneNumberId,
+        businessAccountId: config.businessAccountId,
+        apiBase: config.apiBase,
+        customer: message.from,
+        windowUntil,
+      },
     },
   });
 }
@@ -148,11 +159,21 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       return { status: "rejected", errorCode: "invalid_target" };
     }
     const { host, config } = runtime;
-    const target = targetSchema.parse(input.target.data);
+    const parsed = targetSchema.safeParse(input.target.data);
+    if (!parsed.success) {
+      return { status: "rejected", errorCode: "invalid_target" };
+    }
+    const target = parsed.data;
     if (target.customer !== input.target.chatId || target.phoneNumberId !== config.phoneNumberId) {
       return { status: "rejected", errorCode: "invalid_target" };
     }
-    const latest = await host.state.get(`window:${target.customer}`);
+    if (
+      target.businessAccountId !== config.businessAccountId ||
+      target.apiBase !== config.apiBase
+    ) {
+      return { status: "rejected", errorCode: "target_identity_changed" };
+    }
+    const latest = await host.state.get(windowKey(config, target.customer));
     const until = Math.max(target.windowUntil, latest ? z.number().int().parse(latest.value) : 0);
     if (Date.now() >= until) {
       return { status: "rejected", errorCode: "customer_window_expired" };
@@ -207,7 +228,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
     },
     validateConfig(value) {
       const config = configSchema.parse(value);
-      endpoint(config.apiBase, config.allowLoopback);
+      config.apiBase = endpoint(config.apiBase, config.allowLoopback).href.replace(/\/+$/u, "");
       return config;
     },
     async setup(host, account, config) {

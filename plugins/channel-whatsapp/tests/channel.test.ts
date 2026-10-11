@@ -1,4 +1,7 @@
 import { createHmac } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Json, SendInput } from "@relanox/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWhatsAppChannel } from "../src/index.js";
@@ -56,7 +59,7 @@ function incoming(body: string, signature?: string) {
     body,
   });
 }
-async function setup() {
+async function setup(filename = ":memory:") {
   vi.stubEnv("WA_SECRET", "secret");
   vi.stubEnv("WA_VERIFY", "verify");
   vi.stubEnv("WA_TOKEN", "token");
@@ -64,12 +67,112 @@ async function setup() {
   cleanup.push(remote.close);
   remote.respond(200, { messaging_product: "whatsapp", messages: [{ id: "wamid.sent" }] });
   const plugin = createWhatsAppChannel();
-  const local = await harness(plugin, config(remote.base), "customer", "customer");
+  const local = await harness(
+    plugin,
+    config(remote.base),
+    "customer",
+    "customer",
+    undefined,
+    filename,
+  );
   cleanup.push(local.close);
   return { remote, plugin, ...local };
 }
 
 describe("native WhatsApp Cloud", () => {
+  it.each(["business", "server", "rotation"] as const)(
+    "preserves pending reply identity across restart: %s",
+    async (change) => {
+      const directory = await mkdtemp(join(tmpdir(), "relanox-whatsapp-"));
+      cleanup.push(async () => {
+        await rm(directory, { recursive: true });
+      });
+      const filename = join(directory, "state.db");
+      const local = await setup(filename);
+      expect((await local.core.fetch(incoming(webhook()))).status).toBe(200);
+      await local.close();
+      cleanup.pop();
+      const replacement = await peer();
+      cleanup.push(replacement.close);
+      replacement.respond(200, {
+        messaging_product: "whatsapp",
+        messages: [{ id: "wamid.other" }],
+      });
+      const plugin = createWhatsAppChannel();
+      const next = plugin.validateConfig(
+        config(change === "server" ? replacement.base : `${local.remote.base}/`),
+      );
+      if (change === "business") {
+        next.businessAccountId = "business-2";
+      }
+      vi.stubEnv("WA_TOKEN", "rotated-token");
+      const restarted = await harness(plugin, next, "customer", "customer", undefined, filename);
+      cleanup.push(restarted.close);
+      const completed = await restarted.complete();
+      expect(completed.delivery?.status).toBe(change === "rotation" ? "sent" : "rejected");
+      expect(replacement.traffic).toHaveLength(0);
+      expect(local.remote.traffic).toHaveLength(change === "rotation" ? 1 : 0);
+      if (change === "rotation") {
+        expect(local.remote.traffic[0]?.path).toBe("/v25.0/phone/messages");
+        expect(local.remote.traffic[0]?.headers.authorization).toBe("Bearer rotated-token");
+      }
+    },
+  );
+
+  it("does not share customer windows across replacement phone identities", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "relanox-whatsapp-window-"));
+    cleanup.push(async () => {
+      await rm(directory, { recursive: true });
+    });
+    const filename = join(directory, "state.db");
+    const local = await setup(filename);
+    expect(
+      (await local.core.fetch(incoming(webhook().replace('"type":"text"', '"type":"image"'))))
+        .status,
+    ).toBe(200);
+    await local.close();
+    cleanup.pop();
+    const plugin = createWhatsAppChannel();
+    const next = plugin.validateConfig(config(local.remote.base));
+    next.phoneNumberId = "replacement-phone";
+    const restarted = await harness(plugin, next, "customer", "customer", undefined, filename);
+    cleanup.push(restarted.close);
+    expect(
+      (
+        await restarted.core.fetch(
+          incoming(
+            webhook(Math.floor(Date.now() / 1000) - 86_401, "replacement-phone", "wamid.old"),
+          ),
+        )
+      ).status,
+    ).toBe(200);
+    const completed = await restarted.complete();
+    expect(completed.delivery?.status).toBe("rejected");
+    expect(completed.delivery?.errorCode).toBe("customer_window_expired");
+    expect(local.remote.traffic).toHaveLength(0);
+    const delivery = completed.delivery;
+    if (!delivery?.chunks[0]) {
+      throw new Error("No outbound");
+    }
+    expect(
+      await plugin.send({
+        deliveryId: delivery.deliveryId,
+        requestId: delivery.requestId,
+        target: {
+          ...delivery.target,
+          data: {
+            phoneNumberId: "replacement-phone",
+            customer: "customer",
+            windowUntil: Date.now() + 10_000,
+          },
+        },
+        chunk: delivery.chunks[0],
+        chunkIndex: 0,
+        signal: new AbortController().signal,
+      }),
+    ).toEqual({ status: "rejected", errorCode: "invalid_target" });
+  });
+
   it("verifies challenge and exact HMAC, deduplicates and independently sends Graph text", async () => {
     const local = await setup();
     const challenge = await local.core.fetch(
