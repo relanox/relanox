@@ -8,6 +8,8 @@ import { equalSecret, resolveAgentSecret } from "./secrets.js";
 
 const id = z.string().min(1).max(1024);
 const metadata = z.strictObject({
+  durationMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  previewMediaId: z.uuid().optional(),
   kind: z.enum(["image", "audio", "video", "file"]),
   mimeType: z
     .string()
@@ -129,7 +131,18 @@ export function createMediaTransport(
       requestId: ticket.requestId,
       claimToken: ticket.claimToken,
       uploadId: ticket.mediaId,
-      media: { ...ticket.metadata, data: bytes },
+      media: {
+        kind: ticket.metadata.kind,
+        mimeType: ticket.metadata.mimeType,
+        fileName: ticket.metadata.fileName,
+        ...(ticket.metadata.durationMs === undefined
+          ? {}
+          : { durationMs: ticket.metadata.durationMs }),
+        ...(ticket.metadata.previewMediaId === undefined
+          ? {}
+          : { previewMediaId: ticket.metadata.previewMediaId }),
+        data: bytes,
+      },
     });
     return Response.json(result, {
       status: result.status === "stored" ? 200 : 403,
