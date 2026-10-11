@@ -34,6 +34,6 @@
 
 输出要求顶层 `media.publicBaseUrl`。保持机器人身份，图片以原生 `cardsV2` 图片组件和具名下载按钮发送；音频、视频、普通文件以具名下载按钮发送。后者是**链接降级**，不是上传的原生附件。保留冻结机器人/空间/线程身份与 `REPLY_MESSAGE_OR_FAIL`，说明文字独立发送。发送能力声明表示接受这些媒体并按上述卡片/链接方式交付。
 
-Google 原生附件上传要求用户 OAuth（`chat.messages.create`/`chat.messages`），不接受 `chat.bot`。Relanox 不隐式模拟用户或启用域级委派。协议依据：[下载](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download)、[上传认证限制](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload)。本地 JWT、HTTP、SQLite 测试不代表实账号兼容性已验证。
+Google 原生附件上传要求用户 OAuth（`chat.messages.create`/`chat.messages`），不接受当前配置的服务账号 `chat.bot` 身份。官方流程先通过 `media.upload` 上传文件字节，再将返回的 `attachmentDataRef` 放入消息的 `attachment` 列表。改用这一流程需要单独授权的用户凭据，并改变发送者身份，不能直接替换当前机器人投递。Relanox 不隐式模拟用户或启用域级委派。卡片 `imageUrl` 要求 HTTPS 托管图片，官方没有提供内联 base64/data URL 替代方案；因此当前应用身份的媒体回复仍需要 `media.publicBaseUrl`。协议依据：[下载](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download)、[上传认证限制](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload)、[上传与附件消息流程](https://developers.google.com/workspace/chat/upload-media-attachments)、[卡片图片 URL](https://developers.google.com/workspace/chat/api/reference/rest/v1/cards#image)。本地 JWT、HTTP、SQLite 测试不代表实账号兼容性已验证。
 
 [媒体传输](../media.md)
