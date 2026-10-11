@@ -1,14 +1,21 @@
-import type { AccountConfig, ChannelPlugin, SendInput, SendResult } from "@relanox/sdk";
+import type {
+  AccountConfig,
+  ChannelHost,
+  ChannelPlugin,
+  SendInput,
+  SendResult,
+} from "@relanox/sdk";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { accessToken } from "./client.js";
 import { validateConfig, validateEndpointUrl } from "./config.js";
 import type { GoogleChatConfig } from "./config.js";
+import { mediaCards } from "./media.js";
 import { receive } from "./inbound.js";
 import { failure, parseBody, rawBody, request, secret, unavailable } from "./io.js";
 import { serviceSchema, eventSchema, targetSchema, receiptSchema } from "./schemas.js";
 
 export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
-  let runtime: { account: AccountConfig; config: GoogleChatConfig } | undefined;
+  let runtime: { host: ChannelHost; account: AccountConfig; config: GoogleChatConfig } | undefined;
   async function send(input: SendInput): Promise<SendResult> {
     if (
       !runtime ||
@@ -50,6 +57,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       return token;
     }
     try {
+      const cardsV2 = await mediaCards(input, runtime.host);
       const url = validateEndpointUrl(
         `${config.apiBase}/v1/${target.space}/messages`,
         config.allowLoopback,
@@ -63,7 +71,8 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
           method: "POST",
           headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
           body: JSON.stringify({
-            text: input.chunk.text,
+            ...(input.chunk.text ? { text: input.chunk.text } : {}),
+            ...(cardsV2 ? { cardsV2 } : {}),
             ...(target.thread ? { thread: { name: target.thread } } : {}),
           }),
         },
@@ -76,7 +85,10 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         status: "sent",
         receipt: { platformMessageId: receiptSchema.parse(await response.json()).name },
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === "media_publication_unavailable") {
+        return { status: "rejected", errorCode: "media_publication_unavailable" };
+      }
       return unavailable();
     }
   }
@@ -92,10 +104,14 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       maxTextLength: 30_000,
       lengthUnit: "utf8",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(host, account, config) {
-      runtime = { account, config };
+      runtime = { host, account, config };
       const keys = createRemoteJWKSet(validateEndpointUrl(config.jwksUrl, config.allowLoopback), {
         timeoutDuration: 5000,
         cacheMaxAge: 3_600_000,

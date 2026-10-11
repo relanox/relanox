@@ -13,6 +13,16 @@ const messageSchema = z.object({
   text: z.string().optional(),
   argumentText: z.string().optional(),
   sender: z.object({ name: platformIdSchema, type: z.string().optional() }),
+  attachment: z
+    .array(
+      z.object({
+        contentName: z.string().optional(),
+        contentType: z.string().optional(),
+        attachmentDataRef: z.object({ resourceName: z.string().min(1) }).optional(),
+        driveDataRef: z.unknown().optional(),
+      }),
+    )
+    .optional(),
   thread: z.object({ name: threadId }).optional(),
 });
 export const eventSchema = z.object({

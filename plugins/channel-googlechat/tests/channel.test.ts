@@ -60,6 +60,7 @@ async function setup(filename = ":memory:", baseSuffix = "") {
     "users/alice",
     "spaces/space/threads/thread",
     filename,
+    remote.base,
   );
   cleanup.push(local.close);
   async function token(
@@ -315,4 +316,87 @@ describe("native Google Chat", () => {
       }),
     ).toThrow("unsafe_endpoint");
   });
+});
+
+it("downloads pure Google Chat media with bot auth and returns a native image card to the frozen thread", async () => {
+  const local = await setup();
+  const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 8, 9]);
+  local.remote.route("/v1/media/spaces/space/messages/media/attachments/file?alt=media", bytes, {
+    "content-type": "image/png",
+  });
+  const mediaEvent = {
+    type: "MESSAGE",
+    space: { name: "spaces/space" },
+    message: {
+      name: "spaces/space/messages/media",
+      sender: { name: "users/alice", type: "HUMAN" },
+      thread: { name: "spaces/space/threads/thread" },
+      attachment: [
+        {
+          contentName: "picture.png",
+          contentType: "image/png",
+          attachmentDataRef: { resourceName: "spaces/space/messages/media/attachments/file" },
+        },
+      ],
+    },
+  };
+  expect(
+    (await local.core.fetch(await local.incoming(undefined, JSON.stringify(mediaEvent)))).status,
+  ).toBe(200);
+  const scoped = local.principal();
+  const item = (await scoped.listPending(10))[0];
+  if (!item?.attachments?.[0]) {
+    throw new Error("missing_media");
+  }
+  expect(item.text).toBe("");
+  const claim = await scoped.claim(item.requestId, "media-claim");
+  if (claim.status !== "claimed") {
+    throw new Error("claim_failed");
+  }
+  await scoped.complete({
+    requestId: item.requestId,
+    claimToken: claim.claimToken,
+    resultId: "media-result",
+    text: "caption",
+    attachments: [item.attachments[0].id],
+  });
+  await local.core.processDue();
+  const download = local.remote.traffic.find((request) => request.path.startsWith("/v1/media/"));
+  expect(download?.headers.authorization).toBe("Bearer oauth-token");
+  const sent = local.remote.traffic.filter((request) =>
+    request.path.startsWith("/v1/spaces/space/messages"),
+  );
+  expect(sent).toHaveLength(2);
+  expect(JSON.parse(sent[0]?.body ?? "null") as unknown).toEqual({
+    text: "caption",
+    thread: { name: "spaces/space/threads/thread" },
+  });
+  const card = z
+    .object({
+      cardsV2: z.array(
+        z.object({
+          card: z.object({
+            sections: z.array(
+              z.object({
+                widgets: z.array(
+                  z.object({
+                    image: z.object({ imageUrl: z.string(), altText: z.string() }).optional(),
+                  }),
+                ),
+              }),
+            ),
+          }),
+        }),
+      ),
+      thread: z.object({ name: z.string() }),
+    })
+    .parse(JSON.parse(sent[1]?.body ?? "null"));
+  expect(card.thread.name).toBe("spaces/space/threads/thread");
+  const image = card.cardsV2[0]?.card.sections[0]?.widgets[0]?.image;
+  expect(image?.altText).toBe("picture.png");
+  if (!image) {
+    throw new Error("missing_image_card");
+  }
+  const published = await local.core.fetch(new Request(image.imageUrl));
+  expect(new Uint8Array(await published.arrayBuffer())).toEqual(bytes);
 });

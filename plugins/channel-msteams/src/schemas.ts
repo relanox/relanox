@@ -8,9 +8,25 @@ export const activitySchema = z.object({
   channelId: z.string(),
   serviceUrl: z.url(),
   text: z.string().optional(),
+  name: z.string().optional(),
+  value: z.unknown().optional(),
+  attachments: z
+    .array(
+      z.object({
+        contentType: z.string(),
+        contentUrl: z.url().optional(),
+        name: z.string().optional(),
+        content: z.object({ downloadUrl: z.url().optional() }).optional(),
+      }),
+    )
+    .optional(),
   from: identitySchema,
   recipient: identitySchema,
-  conversation: z.object({ id: platformIdSchema, tenantId: platformIdSchema.optional() }),
+  conversation: z.object({
+    id: platformIdSchema,
+    tenantId: platformIdSchema.optional(),
+    conversationType: z.string().optional(),
+  }),
   channelData: z.object({ tenant: z.object({ id: platformIdSchema }) }),
   replyToId: platformIdSchema.optional(),
 });
@@ -22,6 +38,7 @@ export const targetSchema = z.strictObject({
   botId: platformIdSchema,
   userId: platformIdSchema,
   replyToId: platformIdSchema.optional(),
+  personal: z.boolean().optional(),
 });
 export const keysSchema = z.object({
   keys: z.array(

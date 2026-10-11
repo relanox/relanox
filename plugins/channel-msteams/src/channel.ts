@@ -1,14 +1,21 @@
-import type { AccountConfig, ChannelPlugin, SendInput, SendResult } from "@relanox/sdk";
+import type {
+  AccountConfig,
+  ChannelHost,
+  ChannelPlugin,
+  SendInput,
+  SendResult,
+} from "@relanox/sdk";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { accessToken, serviceUrl } from "./client.js";
 import { validateConfig, validateEndpointUrl } from "./config.js";
 import type { TeamsConfig } from "./config.js";
+import { prepareAttachment, consentPosted } from "./media.js";
 import { receive } from "./inbound.js";
 import { failure, parseBody, rawBody, request, unavailable } from "./io.js";
 import { activitySchema, targetSchema, keysSchema, receiptSchema } from "./schemas.js";
 
 export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
-  let runtime: { account: AccountConfig; config: TeamsConfig } | undefined;
+  let runtime: { host: ChannelHost; account: AccountConfig; config: TeamsConfig } | undefined;
   async function send(input: SendInput): Promise<SendResult> {
     if (
       !runtime ||
@@ -47,6 +54,16 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       return token;
     }
     try {
+      const prepared = await prepareAttachment(
+        runtime.host,
+        config,
+        input,
+        { conversationId: target.conversationId, userId: target.userId, botId: target.botId },
+        target.personal === true,
+      );
+      if (prepared.outcome) {
+        return prepared.outcome;
+      }
       const suffix = target.replyToId ? `/${encodeURIComponent(target.replyToId)}` : "";
       const url = new URL(
         `${base.href.replace(/\/$/u, "")}/v3/conversations/${encodeURIComponent(target.conversationId)}/activities${suffix}`,
@@ -59,6 +76,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
           body: JSON.stringify({
             type: "message",
             text: input.chunk.text,
+            ...(prepared.attachment !== undefined ? { attachments: [prepared.attachment] } : {}),
             channelId: "msteams",
             from: { id: target.botId },
             recipient: { id: target.userId },
@@ -71,6 +89,10 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       );
       if (!response.ok) {
         return failure(response);
+      }
+      if (prepared.consentKey) {
+        await consentPosted(runtime.host, prepared.consentKey);
+        return { status: "retryable", errorCode: "file_consent_pending", retryAfterMs: 30_000 };
       }
       return {
         status: "sent",
@@ -92,10 +114,14 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       maxTextLength: 12_000,
       lengthUnit: "utf16",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(host, account, config) {
-      runtime = { account, config };
+      runtime = { host, account, config };
       const keys = createRemoteJWKSet(validateEndpointUrl(config.jwksUrl, config.allowLoopback), {
         timeoutDuration: 5000,
         cacheMaxAge: 3_600_000,

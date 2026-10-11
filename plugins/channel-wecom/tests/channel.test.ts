@@ -115,7 +115,7 @@ test("WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
       markdown: { content: "hello\\_\\*世界" },
     },
   });
-  expect(JSON.stringify(remote.frames.at(-1))).not.toContain("chat_type");
+  expect(remote.frames.at(-1)).toMatchObject({ body: { chat_type: 2 } });
 });
 
 test("WeCom correlates heartbeats and preserves uncertain sends when the socket closes before ACK", async () => {

@@ -1,3 +1,4 @@
+import { downloadAttachments } from "./media.js";
 import type { AccountConfig, ChannelHost } from "@relanox/sdk";
 import type { z } from "zod";
 import type { GoogleChatConfig } from "./config.js";
@@ -16,8 +17,8 @@ export async function receive(
     host.observe.log("debug", "channel_event_ignored", { errorCode: "unsupported_or_self_text" });
     return;
   }
-  const text = message.argumentText ?? message.text;
-  if (!text) {
+  const text = message.argumentText ?? message.text ?? "";
+  if (!text && !message.attachment?.length) {
     host.observe.log("debug", "channel_event_ignored", { errorCode: "unsupported_or_self_text" });
     return;
   }
@@ -27,6 +28,7 @@ export async function receive(
   ) {
     throw new Error("inconsistent_space");
   }
+  const attachments = await downloadAttachments(message, space.name, config, host);
   const target = {
     channel: "googlechat" as const,
     accountId: account.id,
@@ -47,6 +49,7 @@ export async function receive(
     source: { channel: "googlechat", accountId: account.id, eventId: message.name },
     senderId: message.sender.name,
     text,
+    attachments,
     target,
     receivedAt: Date.now(),
     context: null,

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { receiveParts, uploadResource, outgoingBody, uploadFailure } from "./media.js";
 import type {
   AccountConfig,
   ChannelHost,
@@ -6,6 +6,7 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
+import { randomUUID } from "node:crypto";
 import type { z } from "zod";
 import { configSchema, validateTransportUrl } from "./config.js";
 import type { WeComConfig } from "./config.js";
@@ -78,7 +79,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
     if (message.aibotid !== config.botId || message.from.userid === config.botId) {
       return;
     }
-    if (message.msgtype !== "text" || !message.text) {
+    if (!["text", "image", "file", "video", "mixed", "voice"].includes(message.msgtype)) {
       host.observe.log("info", "channel_unsupported_input", {
         errorCode: "unsupported_message_type",
       });
@@ -88,6 +89,10 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
     if (!chatId) {
       throw new Error("missing_group_address");
     }
+    const { text, attachments } = await receiveParts(message, host, config, connection.signal);
+    if (!text && attachments.length === 0) {
+      return;
+    }
     await ingestText(host, {
       source: {
         channel: "wecom",
@@ -95,7 +100,8 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
         eventId: message.msgid,
       },
       senderId: message.from.userid,
-      text: message.text.content,
+      text,
+      attachments,
       target: {
         channel: "wecom",
         accountId: account.id,
@@ -123,6 +129,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       maxTextLength: 2048,
       lengthUnit: "utf8",
       idempotentSend: false,
+      media: { receive: ["image", "video", "file"], send: ["image", "audio", "video", "file"] },
     },
     validateConfig: (value) => configSchema.parse(value),
     async setup(nextHost, nextAccount, nextConfig) {
@@ -203,13 +210,21 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       if (Buffer.byteLength(content) > 4096) {
         return { status: "rejected", errorCode: "text_too_long" };
       }
+      let transmitting = false;
       try {
+        if (input.chunk.media && !input.media) {
+          return { status: "rejected", errorCode: "missing_media" };
+        }
+        const mediaId = input.media
+          ? await uploadResource(input.media, request, input.signal)
+          : undefined;
+        transmitting = true;
         const response = await request(
           "aibot_send_msg",
           {
             chatid: input.target.chatId,
-            msgtype: "markdown",
-            markdown: { content },
+            chat_type: target.data.chattype === "single" ? 1 : 2,
+            ...outgoingBody(input.media, mediaId, content),
           },
           input.signal,
         );
@@ -224,8 +239,10 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
           };
         }
         return { status: "rejected", errorCode: `wecom_${response.errcode}` };
-      } catch {
-        return { status: "unknown", errorCode: "transport_uncertain" };
+      } catch (error) {
+        return transmitting
+          ? { status: "unknown", errorCode: "transport_uncertain" }
+          : uploadFailure(error);
       }
     },
   };

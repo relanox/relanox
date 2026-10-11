@@ -1,3 +1,5 @@
+import { downloadAttachments } from "./media.js";
+import { z as schema } from "zod";
 import type {
   AccountConfig,
   ChannelHost,
@@ -100,6 +102,51 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       tokenFlight = undefined;
     }
   }
+  async function uploadMedia(
+    input: SendInput,
+    type: "group" | "c2c",
+    credential: string,
+  ): Promise<string | SendResult | undefined> {
+    if (!input.chunk.media) {
+      return undefined;
+    }
+    if (!input.media || !host.media) {
+      return { status: "rejected", errorCode: "media_publication_unavailable" };
+    }
+    const { kind, mimeType, fileName, id } = input.media.reference;
+    const formats: Record<string, readonly string[]> = {
+      image: ["image/png", "image/jpeg"],
+      audio: ["audio/silk", "audio/x-silk"],
+      video: ["video/mp4"],
+    };
+    if (kind !== "file" && !formats[kind]?.includes(mimeType)) {
+      return { status: "rejected", errorCode: "unsupported_media_format" };
+    }
+    const published = await host.media.publish({ requestId: input.requestId, mediaId: id });
+    const response = await httpJson(
+      api(
+        `/v2/${type === "c2c" ? "users" : "groups"}/${encodeURIComponent(input.target.chatId)}/files`,
+      ),
+      jsonPostRequest(
+        {
+          file_type: { image: 1, video: 2, audio: 3, file: 4 }[kind],
+          url: published,
+          file_name: fileName,
+          srv_send_msg: false,
+        },
+        { Authorization: `QQBot ${credential}` },
+      ),
+      input.signal,
+    );
+    const failure = apiError(response);
+    if (failure) {
+      return failure;
+    }
+    // Fresh upload on every attempt avoids stale file_info and C2C/group token confusion.
+    return schema
+      .object({ file_info: schema.string().min(1), ttl: schema.number().int().nonnegative() })
+      .parse(response).file_info;
+  }
   const heartbeat = () => {
     if (awaitingHeartbeat) {
       connection.socket?.terminate();
@@ -114,9 +161,9 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       return;
     }
     if (
-      (message.message_type !== undefined && message.message_type !== 0) ||
-      message.attachments?.length ||
-      !message.content.trim()
+      (message.message_type !== undefined && ![0, 7].includes(message.message_type)) ||
+      (!message.attachments?.length && !message.content.trim()) ||
+      message.attachments?.some((attachment) => !attachment.url)
     ) {
       host.observe.log("info", "channel_unsupported_input", {
         errorCode: "unsupported_message_type",
@@ -134,10 +181,17 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       .find((entry) => entry.startsWith("msg_idx="))
       ?.slice(8);
     const eventId = JSON.stringify([eventType, message.id, index ?? message.msg_seq ?? null]);
+    const attachments = await downloadAttachments(
+      message.attachments ?? [],
+      host,
+      config,
+      connection.signal,
+    );
     await ingestText(host, {
       source: { channel: "qq", accountId: account.id, eventId },
       senderId,
       text: message.content,
+      attachments,
       target: {
         channel: "qq",
         accountId: account.id,
@@ -294,6 +348,62 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       retryAfterMs: 1000,
     };
   }
+  async function transmit(
+    input: SendInput,
+    target: z.infer<typeof targetSchema>,
+    allocation: ReplyAllocation,
+    credential: string,
+  ): Promise<SendResult> {
+    let transmitting = false;
+    try {
+      const media = await uploadMedia(input, target.type, credential);
+      if (typeof media !== "string" && media !== undefined) {
+        return media;
+      }
+      transmitting = true;
+      const raw = await httpJson(
+        api(
+          `/v2/${target.type === "c2c" ? "users" : "groups"}/${encodeURIComponent(input.target.chatId)}/messages`,
+        ),
+        jsonPostRequest(
+          {
+            content: input.chunk.text,
+            msg_type: media ? 7 : 0,
+            ...(media ? { media: { file_info: media } } : {}),
+            ...(allocation.mode === "passive"
+              ? { msg_id: target.msgId, msg_seq: allocation.seq }
+              : {}),
+          },
+          { Authorization: `QQBot ${credential}` },
+        ),
+        input.signal,
+      );
+      const failure = apiError(raw);
+      if (failure) {
+        return failure;
+      }
+      const response = sendResponseSchema.parse(raw);
+      return { status: "sent", receipt: { platformMessageId: response.id } };
+    } catch (error) {
+      if (error instanceof RemoteError && error.result.errorCode === "http_401") {
+        token = undefined;
+        return {
+          status: "retryable",
+          errorCode: "token_expired",
+          retryAfterMs: 1000,
+        };
+      }
+      if (error instanceof RemoteError) {
+        const failure = apiError(error.body);
+        if (failure) {
+          return failure;
+        }
+      }
+      return transmitting
+        ? sendFailure(error)
+        : { status: "retryable", errorCode: "media_upload_unavailable", retryAfterMs: 1000 };
+    }
+  }
   return {
     id: "channel-qq",
     sdkMajor: 1,
@@ -306,6 +416,10 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       maxTextLength: 2000,
       lengthUnit: "utf8",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig: (value) => configSchema.parse(value),
     async setup(nextHost, nextAccount, nextConfig) {
@@ -385,46 +499,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         }
         return { status: "retryable", errorCode: "token_unavailable" };
       }
-      try {
-        const raw = await httpJson(
-          api(
-            `/v2/${target.data.type === "c2c" ? "users" : "groups"}/${encodeURIComponent(input.target.chatId)}/messages`,
-          ),
-          jsonPostRequest(
-            {
-              content: input.chunk.text,
-              msg_type: 0,
-              ...(allocation.mode === "passive"
-                ? { msg_id: target.data.msgId, msg_seq: allocation.seq }
-                : {}),
-            },
-            { Authorization: `QQBot ${credential}` },
-          ),
-          input.signal,
-        );
-        const failure = apiError(raw);
-        if (failure) {
-          return failure;
-        }
-        const response = sendResponseSchema.parse(raw);
-        return { status: "sent", receipt: { platformMessageId: response.id } };
-      } catch (error) {
-        if (error instanceof RemoteError && error.result.errorCode === "http_401") {
-          token = undefined;
-          return {
-            status: "retryable",
-            errorCode: "token_expired",
-            retryAfterMs: 1000,
-          };
-        }
-        if (error instanceof RemoteError) {
-          const failure = apiError(error.body);
-          if (failure) {
-            return failure;
-          }
-        }
-        return sendFailure(error);
-      }
+      return transmit(input, target.data, allocation, credential);
     },
   };
 }

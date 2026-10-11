@@ -1,6 +1,16 @@
-# QQ C2C and group text
+# QQ C2C and groups
 
-Enable an official QQ robot with GROUP_AND_C2C_EVENT permission. Only websocket transport, C2C text and group @robot text are supported; there is no Webhook or guild/channel reception.
+## Media
+
+C2C/group attachments become durable bytes before the gateway cursor advances, including pure-media messages. Downloads enforce DNS/byte limits and refuse redirects. `mediaOrigins` optionally contains exact private download origins; loopback HTTP also requires `allowInsecureLoopback:true`.
+
+Configure top-level relay `media.publicBaseUrl` so QQ can fetch output bytes. The adapter calls `/v2/users/<id>/files` or `/v2/groups/<id>/files` with `srv_send_msg:false`, then sends `msg_type:7` and `media.file_info`, retaining durable passive reply allocation. Every attempt obtains fresh file_info to avoid TTL expiry; C2C/group tokens never mix. Captions precede media as separate text chunks. Publication URLs are short lived and account/request scoped.
+
+The current protocol supports PNG/JPEG images, MP4 video, SILK audio and ordinary files (`file_type:4`). It does not transcode. Platform soft limits are 20 MiB image/audio, 30 MiB video and 200 MiB files; the default 25 MiB relay limit also applies. Uploading never implicitly sends proactive messages.
+
+Protocols: [rich media](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/rich-media.html), [group upload](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_files.post.html). Local HTTP/socket and SQLite tests do not establish live-account compatibility.
+
+Enable an official QQ robot with GROUP_AND_C2C_EVENT permission. Websocket transport supports C2C and group @robot text/media; there is no Webhook or guild/channel reception.
 
 Account `config` ([configuration](../configuration.md)):
 
@@ -23,7 +33,7 @@ Authentication POSTs `/app/getAppAccessToken` on `api.bot.qq.com`, then uses `Au
 
 The plugin discovers `/gateway`, handles Hello, identifies with `intents=1<<25` and shard `[0,1]`, retains the session and last committed dispatch cursor for reconnect Resume, and implements heartbeat ACKs. Incoming dispatches are serialized, while heartbeat/control processing continues during durable ingestion. Resume can deliver messages before RESUMED; these are accepted. The cursor advances after durable ingestion succeeds. This cursor is process-local: process restart establishes a new session; storage event deduplication and frozen targets survive restart. No replay guarantee is claimed across a full process restart. Invalid session/cursor/internal gateway errors reset to Identify; explicit forbidden intent, invalid shard and banned/offline bot close codes stop recovery and report degradation. Reconnect backoff caps at 30 seconds with a configured consecutive attempt budget; stop/AbortSignal cancel timers and the owned socket.
 
-C2C bindings and allowlists use `author.user_openid`. Group bindings use `group_openid`, and group allowlists use `author.member_openid`. `GROUP_AT_MESSAGE_CREATE` content already excludes the platform @robot prefix and is retained verbatim. Bots, attachments and nonzero message_type are diagnosed/ignored without creating text tasks. Stable source identity includes event type, body message ID and the published `message_scene.ext` msg_idx (or msg_seq when present); gateway `s` is never the source ID. The msg_idx distinguishes documented indexed parts. Other scene fields, especially short-lived auth_token, are not persisted.
+C2C bindings and allowlists use `author.user_openid`. Group bindings use `group_openid`, and group allowlists use `author.member_openid`. `GROUP_AT_MESSAGE_CREATE` content already excludes the platform @robot prefix and is retained verbatim. Bot-authored events and unsupported message types are diagnosed and ignored. Text and rich-media message types (0 and 7) preserve attachments as durable request bytes, including pure-media events. Stable source identity includes event type, body message ID and the published `message_scene.ext` msg_idx (or msg_seq when present); gateway `s` is never the source ID. The msg_idx distinguishes documented indexed parts. Other scene fields, especially short-lived auth_token, are not persisted.
 
 Durable target data is `{type:"c2c"|"group",msgId,messageAt,scope:{appId,apiBase}}` beside the frozen user/group OpenID. Sends use `/v2/users/{openid}/messages` or `/v2/groups/{openid}/messages`, `msg_type:0` and `content`. Chunks use a conservative 2000 UTF-8 byte limit. Before sending, each chunk receives a durable msg_seq allocation; retries and restart reuse it. Protocol state stores no credentials and is bounded to 256 chunk allocations per source message.
 
@@ -36,3 +46,5 @@ When a fresh chunk has exhausted/expired passive permission, the default preserv
 Accepted targets also freeze the app ID and normalized API base URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported.
 
 `maxReconnectAttempts` accepts 0–1,000 and defaults to 20.
+
+[Media transfer](../media.md)

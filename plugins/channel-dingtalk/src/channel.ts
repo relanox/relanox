@@ -1,3 +1,4 @@
+import { receiveParts, mediaMessage, uploadFailure } from "./media.js";
 import type {
   AccountConfig,
   ChannelHost,
@@ -29,11 +30,16 @@ import {
 
 const topic = "/v1.0/im/bot/messages/get";
 
-function matchesScope(scope: z.infer<typeof scopeSchema>, config: DingTalkConfig): boolean {
+function matchesScope(
+  scope: z.infer<typeof scopeSchema>,
+  config: DingTalkConfig,
+  media = false,
+): boolean {
   return (
     scope.clientId === config.clientId &&
     scope.robotCode === config.robotCode &&
-    scope.apiBase === new URL(config.apiBase).href
+    scope.apiBase === new URL(config.apiBase).href &&
+    (!media || scope.uploadBase === new URL(config.uploadBase).href)
   );
 }
 
@@ -108,7 +114,10 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       ack(200, '{"response":null}');
       return;
     }
-    if (message.msgtype !== "text" || !message.text) {
+    if (
+      !["text", "picture", "audio", "video", "file", "richText"].includes(message.msgtype) ||
+      (message.msgtype !== "text" && !message.content)
+    ) {
       host.observe.log("info", "channel_unsupported_input", {
         errorCode: "unsupported_message_type",
       });
@@ -122,10 +131,20 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       });
       return;
     }
+    const credential =
+      message.msgtype === "text" ? undefined : await getAccessToken(connection.signal);
+    const { text, attachments } = await receiveParts(
+      message,
+      config,
+      host,
+      credential,
+      connection.signal,
+    );
     const scope = {
       clientId: config.clientId,
       robotCode: config.robotCode,
       apiBase: new URL(config.apiBase).href,
+      uploadBase: new URL(config.uploadBase).href,
     };
     const group = message.conversationType === "2";
     const chatId = group ? message.conversationId : message.senderStaffId;
@@ -136,7 +155,8 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         eventId: message.msgId,
       },
       senderId: message.senderId,
-      text: message.text.content,
+      text,
+      attachments,
       target: {
         channel: "dingtalk",
         accountId: account.id,
@@ -163,6 +183,10 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       maxTextLength: 4000,
       lengthUnit: "utf8",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig: (value) => configSchema.parse(value),
     async setup(nextHost, nextAccount, nextConfig) {
@@ -222,7 +246,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         return { status: "rejected", errorCode: "invalid_target" };
       }
       const data = target.data;
-      if (!matchesScope(data.scope, config)) {
+      if (!matchesScope(data.scope, config, input.chunk.media !== undefined)) {
         return { status: "rejected", errorCode: "target_identity_changed" };
       }
       if (
@@ -239,7 +263,10 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         }
         return { status: "retryable", errorCode: "token_unavailable" };
       }
+      let transmitting = false;
       try {
+        const payload = await mediaMessage(input, config, credential);
+        transmitting = true;
         const body = sendResponse.parse(
           await httpJson(
             api(
@@ -253,8 +280,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
                 ...(data.type === "group"
                   ? { openConversationId: data.openConversationId }
                   : { userIds: [data.staffId] }),
-                msgKey: "sampleText",
-                msgParam: JSON.stringify({ content: input.chunk.text }),
+                ...payload,
               },
               { "x-acs-dingtalk-access-token": credential },
             ),
@@ -284,7 +310,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
             retryAfterMs: 1000,
           };
         }
-        return sendFailure(error);
+        return transmitting ? sendFailure(error) : uploadFailure(error);
       }
     },
   };

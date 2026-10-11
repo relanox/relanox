@@ -12,6 +12,10 @@ export interface Traffic {
 }
 export async function peer() {
   const traffic: Traffic[] = [];
+  const routes = new Map<
+    string,
+    { status: number; body: Json | Uint8Array; headers: Record<string, string> }
+  >();
   let status = 200;
   let output: Json = {};
   let headers: Record<string, string> = {};
@@ -35,6 +39,12 @@ export async function peer() {
       response.end(JSON.stringify(tokenBody));
       return;
     }
+    const route = routes.get(path);
+    if (route) {
+      response.writeHead(route.status, route.headers);
+      response.end(route.body instanceof Uint8Array ? route.body : JSON.stringify(route.body));
+      return;
+    }
     response.writeHead(status, headers);
     response.end(JSON.stringify(output));
   }
@@ -50,6 +60,14 @@ export async function peer() {
   return {
     base: `http://127.0.0.1:${address.port}`,
     traffic,
+    route(
+      path: string,
+      body: Json | Uint8Array,
+      routeHeaders: Record<string, string> = {},
+      code = 200,
+    ) {
+      routes.set(path, { status: code, body, headers: routeHeaders });
+    },
     respond(code: number, body: Json, responseHeaders: Record<string, string> = {}) {
       status = code;
       output = body;
@@ -83,6 +101,7 @@ export async function harness(
   sender: string,
   thread?: string,
   filename = ":memory:",
+  publicBaseUrl?: string,
 ) {
   const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
   await storage.initialize();
@@ -106,6 +125,7 @@ export async function harness(
     },
   };
   const core = await createCore({
+    ...(publicBaseUrl ? { media: { publicBaseUrl, allowInsecureLocalhost: true } } : {}),
     storage,
     channels: new Map([["business", plugin]]),
     agents: new Map([["dot", agent]]),
@@ -158,6 +178,7 @@ export async function harness(
     core,
     storage,
     dispatches,
+    principal,
     complete,
     async close() {
       await storage.close();

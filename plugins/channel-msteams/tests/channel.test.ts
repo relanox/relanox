@@ -31,6 +31,7 @@ async function setup(endorsements = ["msteams"], filename = ":memory:") {
     tenantId: "tenant-id",
     appSecret: { env: "TEAMS_SECRET" },
     trustedServiceOrigins: [remote.base],
+    trustedUploadOrigins: [remote.base],
     jwksUrl: `${remote.base}/keys`,
     tokenUrl: `${remote.base}/token`,
     allowLoopback: true,
@@ -306,5 +307,166 @@ describe("native Microsoft Teams", () => {
         trustedServiceOrigins: ["https://smba.trafficmanager.net/teams"],
       }),
     ).toThrow("service_origins_must_be_origins");
+  });
+});
+
+it("Teams persists pure image attachments and sends the actual inline bytes with app identity", async () => {
+  const local = await setup();
+  const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 8, 9]);
+  local.remote.route("/inline", bytes, { "content-type": "image/png" });
+  const incoming = {
+    ...local.activity,
+    text: "",
+    attachments: [
+      { contentType: "image/png", contentUrl: `${local.remote.base}/inline`, name: "image.png" },
+    ],
+  };
+  expect((await local.core.fetch(await local.incoming({}, incoming))).status).toBe(200);
+  const scoped = local.principal();
+  const item = (await scoped.listPending(10))[0];
+  if (!item?.attachments?.[0]) {
+    throw new Error("missing_media");
+  }
+  const claim = await scoped.claim(item.requestId, "image-claim");
+  if (claim.status !== "claimed") {
+    throw new Error("claim_failed");
+  }
+  await scoped.complete({
+    requestId: item.requestId,
+    claimToken: claim.claimToken,
+    resultId: "image-result",
+    text: "",
+    attachments: [item.attachments[0].id],
+  });
+  await local.core.processDue();
+  const sent = local.remote.traffic.find((request) => request.path.includes("/activities/"));
+  expect(JSON.parse(sent?.body ?? "null") as unknown).toMatchObject({
+    from: { id: "bot-id" },
+    recipient: { id: "user-id" },
+    replyToId: "root-1",
+    attachments: [
+      {
+        contentType: "image/png",
+        name: "image.png",
+        contentUrl: `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`,
+      },
+    ],
+  });
+  expect(
+    local.remote.traffic.find((request) => request.path === "/inline")?.headers.authorization,
+  ).toBe("Bearer oauth-token");
+});
+
+it("Teams sends a native consent card, preserves it across restart and PUTs actual file bytes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "relanox-teams-media-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const filename = join(directory, "state.db");
+  const local = await setup(["msteams"], filename);
+  const bytes = new Uint8Array([10, 20, 30, 40]);
+  local.remote.route("/file", bytes, { "content-type": "application/pdf" });
+  local.remote.route("/upload", {});
+  const incoming = {
+    ...local.activity,
+    text: "",
+    conversation: { ...local.activity.conversation, conversationType: "personal" },
+    attachments: [
+      {
+        contentType: "application/vnd.microsoft.teams.file.download.info",
+        name: "report.pdf",
+        content: { downloadUrl: `${local.remote.base}/file` },
+      },
+    ],
+  };
+  expect((await local.core.fetch(await local.incoming({}, incoming))).status).toBe(200);
+  const scoped = local.principal();
+  const item = (await scoped.listPending(10))[0];
+  if (!item?.attachments?.[0]) {
+    throw new Error("missing_media");
+  }
+  const claim = await scoped.claim(item.requestId, "file-claim");
+  if (claim.status !== "claimed") {
+    throw new Error("claim_failed");
+  }
+  const media = await scoped.media?.read({
+    requestId: item.requestId,
+    claimToken: claim.claimToken,
+    mediaId: item.attachments[0].id,
+  });
+  if (!media) {
+    throw new Error("missing_media_bytes");
+  }
+  const input: SendInput = {
+    deliveryId: "file-delivery",
+    requestId: item.requestId,
+    target: item.target,
+    chunkIndex: 0,
+    chunk: { text: "", state: null, idempotencyKey: "file:0", media: media.reference },
+    media,
+    signal: new AbortController().signal,
+  };
+  expect(await local.plugin.send(input)).toMatchObject({
+    status: "retryable",
+    errorCode: "file_consent_pending",
+  });
+  expect(await local.plugin.send(input)).toMatchObject({
+    status: "retryable",
+    errorCode: "file_consent_pending",
+  });
+  expect(
+    local.remote.traffic.filter((request) => request.path.includes("/activities/")),
+  ).toHaveLength(1);
+  await local.close();
+  const plugin = createTeamsChannel();
+  const restarted = await harness(
+    plugin,
+    local.config,
+    "conversation-1",
+    "user-id",
+    "root-1",
+    filename,
+  );
+  cleanup.push(restarted.close);
+  const resumed = await restarted.principal().media?.read({
+    requestId: item.requestId,
+    claimToken: claim.claimToken,
+    mediaId: media.reference.id,
+  });
+  if (!resumed) {
+    throw new Error("missing_restored_media");
+  }
+  const resumedInput = { ...input, media: resumed };
+  expect(await plugin.send(resumedInput)).toMatchObject({
+    status: "retryable",
+    errorCode: "file_consent_pending",
+  });
+  const invoke = {
+    ...local.activity,
+    type: "invoke",
+    name: "fileConsent/invoke",
+    value: {
+      action: "accept",
+      context: { consentId: "file:0" },
+      uploadInfo: {
+        uploadUrl: `${local.remote.base}/upload`,
+        contentUrl: "https://tenant.sharepoint.com/report.pdf",
+        uniqueId: "file-id",
+        fileType: "pdf",
+      },
+    },
+  };
+  expect((await restarted.core.fetch(await local.incoming({}, invoke))).status).toBe(200);
+  expect(await plugin.send(resumedInput)).toMatchObject({ status: "sent" });
+  const uploaded = local.remote.traffic.find((request) => request.path === "/upload");
+  expect(Buffer.from(uploaded?.body ?? "", "utf8")).toEqual(Buffer.from(bytes));
+  expect(uploaded?.headers["content-range"]).toBe("bytes 0-3/4");
+  expect(uploaded?.headers.authorization).toBeUndefined();
+  const sent = local.remote.traffic.filter((request) => request.path.includes("/activities/"));
+  expect(JSON.parse(sent[1]?.body ?? "null") as unknown).toMatchObject({
+    attachments: [
+      {
+        contentType: "application/vnd.microsoft.teams.card.file.info",
+        content: { uniqueId: "file-id", fileType: "pdf" },
+      },
+    ],
   });
 });

@@ -4,7 +4,7 @@ import type { IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCore } from "@relanox/core";
-import type { AgentPlugin, ChannelPlugin, Json, SendInput, Storage } from "@relanox/sdk";
+import type { AgentHost, AgentPlugin, ChannelPlugin, Json, SendInput, Storage } from "@relanox/sdk";
 import { sqliteStoragePlugin } from "@relanox/storage-sqlite";
 import { afterEach, vi } from "vitest";
 import { WebSocketServer } from "ws";
@@ -45,11 +45,18 @@ export async function peer(
         }
         chunks.push(Buffer.from(part.buffer, part.byteOffset, part.byteLength));
       }
-      const bytes = Buffer.concat(chunks).toString();
+      const raw = Buffer.concat(chunks);
+      const bytes = raw.toString();
+      let body: unknown = null;
+      if (bytes) {
+        body = request.headers["content-type"]?.includes("application/json")
+          ? (JSON.parse(bytes) as unknown)
+          : raw;
+      }
       const input = {
         path: request.url ?? "/",
         headers: request.headers,
-        body: bytes ? (JSON.parse(bytes) as unknown) : null,
+        body,
       };
       requests.push(input);
       const reply = await handle(input);
@@ -61,7 +68,7 @@ export async function peer(
         "content-type": "application/json",
         ...reply.headers,
       });
-      response.end(JSON.stringify(reply.body ?? {}));
+      response.end(Buffer.isBuffer(reply.body) ? reply.body : JSON.stringify(reply.body ?? {}));
     })().catch(() => {
       response.writeHead(500);
       response.end();
@@ -119,6 +126,7 @@ export async function assemble<C>(
   config: Json,
   bindings: readonly { chatId: string; senderId: string }[],
   filename = ":memory:",
+  publicBaseUrl?: string,
 ) {
   const storage = await sqliteStoragePlugin.setup(
     sqliteStoragePlugin.validateConfig({ filename }),
@@ -136,6 +144,7 @@ export async function assemble<C>(
     await plugin.stop?.();
     await storage.close();
   });
+  let agentHost: AgentHost | undefined;
   const agent: AgentPlugin<unknown> = {
     id: "grok",
     agent: "grok",
@@ -143,12 +152,15 @@ export async function assemble<C>(
     kind: "agent",
     runtime: "node",
     validateConfig: (value) => value,
-    async setup() {},
+    async setup(value) {
+      agentHost = value;
+    },
     async dispatch() {
       throw new Error("Pull endpoint must not dispatch");
     },
   };
   const runtime = await createCore({
+    ...(publicBaseUrl ? { media: { publicBaseUrl, allowInsecureLocalhost: true } } : {}),
     config: {
       accounts: [
         {
@@ -180,6 +192,12 @@ export async function assemble<C>(
     storage,
     runtime,
     controller,
+    principal: () => {
+      if (!agentHost) {
+        throw new Error("missing_agent_host");
+      }
+      return agentHost.forPrincipal({ subject: "verified-agent", endpointIds: ["agent"] });
+    },
     start: async () => plugin.start?.(controller.signal),
   };
 }
