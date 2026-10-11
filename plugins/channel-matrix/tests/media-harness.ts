@@ -13,6 +13,7 @@ import { createSqliteStorage } from '@relanox/storage-sqlite'
 import { vi } from 'vitest'
 import { z } from 'zod'
 import { createGrokAgentPlugin } from '../../agent-grok/src/index.js'
+import { redirectRoutine } from '../../agent-grok/tests/routine-peer.js'
 import { cleanup, databaseFile, httpPeer } from './harness.js'
 import { readMedia } from '../../channel-telegram/tests/media-tools.js'
 
@@ -54,8 +55,7 @@ export async function mediaRelay(
   }>
 }> {
   const storage = createSqliteStorage({
-    filename: await databaseFile(),
-    busyTimeoutMs: 5000
+    filename: await databaseFile()
   })
 
   await storage.initialize()
@@ -88,7 +88,8 @@ export async function mediaRelay(
   })
 
   vi.stubEnv('OPEN_MEDIA_MCP_TOKEN', 'media-agent-secret')
-  vi.stubEnv('OPEN_MEDIA_ROUTINE', `${business.base}/routine`)
+  redirectRoutine(business.base)
+  vi.stubEnv('OPEN_MEDIA_ROUTINE', 'https://routine.test/routine')
   vi.stubEnv('OPEN_MEDIA_ROUTINE_AUTH', 'Bearer routine-secret')
   const agent = createGrokAgentPlugin()
   let principal: ScopedAgentHost | undefined
@@ -125,8 +126,7 @@ export async function mediaRelay(
               token: { env: 'OPEN_MEDIA_MCP_TOKEN' }
             },
             routineUrl: { env: 'OPEN_MEDIA_ROUTINE' },
-            routineAuthorization: { env: 'OPEN_MEDIA_ROUTINE_AUTH' },
-            routineTransport: 'loopback-http'
+            routineAuthorization: { env: 'OPEN_MEDIA_ROUTINE_AUTH' }
           }
         }
       ],

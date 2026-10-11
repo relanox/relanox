@@ -40,14 +40,14 @@ export function createTracing(
             new OTLPTraceExporter({
               url: config.tracing.endpoint,
               headers: {},
-              timeoutMillis: config.tracing.exportTimeoutMs,
+              timeoutMillis: 2000,
               concurrencyLimit: 1
             }),
             {
-              maxQueueSize: config.tracing.maxQueueSize,
-              maxExportBatchSize: config.tracing.maxExportBatchSize,
-              scheduledDelayMillis: config.tracing.scheduledDelayMs,
-              exportTimeoutMillis: config.tracing.exportTimeoutMs
+              maxQueueSize: 512,
+              maxExportBatchSize: 128,
+              scheduledDelayMillis: 1000,
+              exportTimeoutMillis: 2000
             }
           )
         ]

@@ -5,6 +5,8 @@ import type {
   ServerResponse
 } from 'node:http'
 
+export { redirectRoutine } from '../../plugins/agent-grok/tests/routine-peer.js'
+
 export type Traffic = {
   readonly method: string
   readonly url: string

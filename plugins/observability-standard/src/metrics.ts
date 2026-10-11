@@ -52,7 +52,7 @@ export function createMetrics(config: StandardConfig): MetricsRuntime {
       )
     }
   }
-  if (config.metrics && config.processMetrics) {
+  if (config.metrics) {
     collectDefaultMetrics({ register: registry, prefix: 'relanox_' })
   }
   const series = new Map<string, Set<string>>()

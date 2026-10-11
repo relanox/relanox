@@ -10,6 +10,7 @@ import { vi } from 'vitest'
 import { startRuntime, validateApp } from '../../../apps/cli/src/runtime.js'
 import { availablePort } from '../../../tests/e2e/peer.js'
 import { mediaPeer } from './media-peer.js'
+import { redirectRoutine } from '../../agent-grok/tests/routine-peer.js'
 
 export type MediaRuntime = Awaited<ReturnType<typeof startRuntime>>
 export type Cleanup = () => Promise<void>
@@ -30,9 +31,10 @@ export async function mediaRuntime(
   cleanups.push(async () => rm(directory, { recursive: true, force: true }))
   const routine = await mediaPeer(() => ({ json: {} }))
   cleanups.push(routine.close)
+  redirectRoutine(routine.origin)
   const port = await availablePort()
   vi.stubEnv('MEDIA_AGENT_TOKEN', 'media-agent-token')
-  vi.stubEnv('MEDIA_ROUTINE_URL', `${routine.origin}/routine`)
+  vi.stubEnv('MEDIA_ROUTINE_URL', 'https://routine.test/routine')
   vi.stubEnv('MEDIA_ROUTINE_AUTH', 'Bearer media-routine-token')
 
   const app = validateApp({
@@ -48,8 +50,7 @@ export async function mediaRuntime(
               token: { env: 'MEDIA_AGENT_TOKEN' }
             },
             routineUrl: { env: 'MEDIA_ROUTINE_URL' },
-            routineAuthorization: { env: 'MEDIA_ROUTINE_AUTH' },
-            routineTransport: 'loopback-http'
+            routineAuthorization: { env: 'MEDIA_ROUTINE_AUTH' }
           }
         }
       ],
@@ -70,8 +71,6 @@ export async function mediaRuntime(
     server: {
       port,
       managementPort: 0,
-      workerIntervalMs: 20,
-      workerStaleMs: 2000,
       shutdownTimeoutMs: 5000
     }
   })

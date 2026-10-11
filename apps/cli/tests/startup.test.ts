@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { startRuntime } from '../src/runtime.js'
 import { deadline } from '../src/deadline.js'
 import { fixture, storage } from './fixture.js'
+import { redirectRoutine } from '../../../plugins/agent-grok/tests/routine-peer.js'
 import {
   freeManagementPort,
   nativePeers,
@@ -36,8 +37,7 @@ function endpoint(): EndpointConfig {
         token: { env: 'START_AGENT_TOKEN' }
       },
       routineUrl: { env: 'START_ROUTINE_URL' },
-      routineAuthorization: { env: 'START_ROUTINE_AUTH' },
-      routineTransport: 'loopback-http'
+      routineAuthorization: { env: 'START_ROUTINE_AUTH' }
     }
   }
 }
@@ -52,8 +52,6 @@ async function databaseFixture(): Promise<{
     server: {
       port: number
       managementPort: number
-      workerIntervalMs: number
-      workerStaleMs: number
     }
   }
   save(this: void, input?: unknown): Promise<void>
@@ -84,7 +82,7 @@ test("accepts native text during another channel's initialization while manageme
       ...value.config.relay,
       observability: {
         plugin: 'standard',
-        config: { logs: false, processMetrics: false }
+        config: { logs: false }
       },
       accounts: [
         {
@@ -123,8 +121,10 @@ test("accepts native text during another channel's initialization while manageme
   try {
     await deadline(peers.discovered, 3000)
     await expect
-      .poll(async () =>
-        (await fetch(`http://127.0.0.1:${managementPort}/metrics`)).text()
+      .poll(
+        async () =>
+          (await fetch(`http://127.0.0.1:${managementPort}/metrics`)).text(),
+        { timeout: 5000 }
       )
       .toMatch(
         /^relanox_connection_status\{[^}]*plugin="channel-wecom"[^}]*\} 1$/mu
@@ -154,7 +154,8 @@ test("accepts native text during another channel's initialization while manageme
     await expect
       .poll(
         async () =>
-          (await fetch(`${runtime?.managementUrl}/health/ready`)).status
+          (await fetch(`${runtime?.managementUrl}/health/ready`)).status,
+        { timeout: 5000 }
       )
       .toBe(200)
   } finally {
@@ -186,8 +187,6 @@ async function recoveredNotification(): Promise<{
       shutdownTimeoutMs: number
       port: number
       managementPort: number
-      workerIntervalMs: number
-      workerStaleMs: number
     }
   }
   database: Storage
@@ -199,7 +198,8 @@ async function recoveredNotification(): Promise<{
   const value = await databaseFixture()
   const remote = await routinePeer()
   cleanups.push(remote.close)
-  vi.stubEnv('START_ROUTINE_URL', `${remote.origin}/routine`)
+  redirectRoutine(remote.origin)
+  vi.stubEnv('START_ROUTINE_URL', 'https://routine.test/routine')
   vi.stubEnv('START_ROUTINE_AUTH', 'Bearer secret')
   const agent = endpoint()
   await value.database.acceptInbound({
@@ -257,7 +257,8 @@ test('returns from startup before a valid initial backlog receipt and gates read
     await expect
       .poll(
         async () =>
-          (await fetch(`${runtime?.managementUrl}/health/ready`)).status
+          (await fetch(`${runtime?.managementUrl}/health/ready`)).status,
+        { timeout: 5000 }
       )
       .toBe(200)
     expect(
@@ -337,7 +338,8 @@ test('shutdown waits for the asynchronously launched first batch to settle in re
       .poll(
         async () =>
           (await value.database.getInbound('next-process-request'))?.dispatch
-            .status
+            .status,
+        { timeout: 5000 }
       )
       .toBe('accepted')
     expect(value.remote.requests).toHaveLength(2)
@@ -361,7 +363,7 @@ test('contains a real first-scan SQLite lock failure and recovers readiness afte
       ...value.config.relay,
       storage: {
         plugin: 'sqlite',
-        config: { filename: value.filename, busyTimeoutMs: 1 }
+        config: { filename: value.filename }
       },
       accounts: [
         {
@@ -393,7 +395,8 @@ test('contains a real first-scan SQLite lock failure and recovers readiness afte
   await locker.close()
   await expect
     .poll(
-      async () => (await fetch(`${runtime.managementUrl}/health/ready`)).status
+      async () => (await fetch(`${runtime.managementUrl}/health/ready`)).status,
+      { timeout: 5000 }
     )
     .toBe(200)
 })

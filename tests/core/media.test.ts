@@ -259,7 +259,7 @@ it('authenticates media routes before reading and preserves ordinary body limits
 
     expect((await f.runtime.fetch(request('media/asset', 16))).status).toBe(200)
     expect((await f.runtime.fetch(request('media/asset', 17))).status).toBe(413)
-    expect((await f.runtime.fetch(request('json', 9))).status).toBe(413)
+    expect((await f.runtime.fetch(request('json', 2_097_153))).status).toBe(413)
   } finally {
     await f.close()
   }

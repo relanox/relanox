@@ -79,7 +79,7 @@ export async function startRuntime(input: unknown): Promise<{
     })
 
     core.setAccepting(false)
-    const worker = createWorker(core, config.server.workerIntervalMs, observe)
+    const worker = createWorker(core, observe)
     lifecycle.registerCore(
       () => {
         core.setAccepting(false)
@@ -88,7 +88,7 @@ export async function startRuntime(input: unknown): Promise<{
     )
 
     const listeners = createListeners(core, observability, lifecycle.live, () =>
-      worker.healthy(config.server.workerStaleMs)
+      worker.healthy()
     )
 
     lifecycle.servers.push(listeners.business, listeners.management)

@@ -25,7 +25,7 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
   const runtime = await fx.start()
   expect((await ingest(runtime)).status).toBe(204)
   expect((await ingest(runtime)).status).toBe(204)
-  await expect.poll(() => fx.routine.traffic.length).toBe(1)
+  await expect.poll(() => fx.routine.traffic.length, { timeout: 5000 }).toBe(1)
   const wire = firstTraffic(fx.routine.traffic)
   const request = dispatched(wire)
   expect(wire).toMatchObject({
@@ -43,7 +43,9 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
     source: { channel: 'telegram', eventId: '1' }
   })
   await expect
-    .poll(async () => (await runtime.core.status()).stats.pending)
+    .poll(async () => (await runtime.core.status()).stats.pending, {
+      timeout: 5000
+    })
     .toBe(0)
 
   const wrongCredential = await fetch(
@@ -81,7 +83,9 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
     replay: true
   })
   await expect
-    .poll(async () => (await runtime.core.status()).deliveries[0]?.status)
+    .poll(async () => (await runtime.core.status()).deliveries[0]?.status, {
+      timeout: 5000
+    })
     .toBe('sent')
   expect(fx.telegram.traffic).toHaveLength(1)
   const sent = firstTraffic(fx.telegram.traffic)
@@ -119,7 +123,7 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
   )
 
   expect(second.deliveryId).not.toBe(result.deliveryId)
-  await expect.poll(() => fx.telegram.traffic.length).toBe(2)
+  await expect.poll(() => fx.telegram.traffic.length, { timeout: 5000 }).toBe(2)
   expect(JSON.parse(fx.telegram.traffic[1]?.body ?? '')).toMatchObject({
     text: 'second response',
     chat_id: '101',
@@ -132,7 +136,7 @@ test('runtime restart preserves incoming messages and frozen routing while new e
   const fx = await fixture(cleanups)
   const before = await fx.start()
   expect((await ingest(before)).status).toBe(204)
-  await expect.poll(() => fx.routine.traffic.length).toBe(1)
+  await expect.poll(() => fx.routine.traffic.length, { timeout: 5000 }).toBe(1)
   const request = dispatched(firstTraffic(fx.routine.traffic))
   const alphaBefore = await fx.client(before, 'alpha')
   await alphaBefore.close()
@@ -173,7 +177,9 @@ test('runtime restart preserves incoming messages and frozen routing while new e
   ).toMatchObject({ isError: true, structuredContent: { status: 'not_found' } })
   expect((await sendMessage(alphaAfter, request.replyTo)).replay).toBe(false)
   await expect
-    .poll(async () => (await after.core.status()).deliveries[0]?.status)
+    .poll(async () => (await after.core.status()).deliveries[0]?.status, {
+      timeout: 5000
+    })
     .toBe('sent')
   expect(JSON.parse(firstTraffic(fx.telegram.traffic).body)).toMatchObject({
     chat_id: '101',
@@ -182,7 +188,7 @@ test('runtime restart preserves incoming messages and frozen routing while new e
     text: '最终 answer 🌍'
   })
   expect((await ingest(after, 2, 101, 'new binding message')).status).toBe(204)
-  await expect.poll(() => fx.routine.traffic.length).toBe(2)
+  await expect.poll(() => fx.routine.traffic.length, { timeout: 5000 }).toBe(2)
   const newWire = fx.routine.traffic[1]
   if (!newWire) {
     throw new Error('Expected new binding Routine dispatch')
@@ -196,7 +202,7 @@ test('runtime restart preserves incoming messages and frozen routing while new e
   expect(
     (await sendMessage(beta, later.replyTo, 'new binding answer')).replay
   ).toBe(false)
-  await expect.poll(() => fx.telegram.traffic.length).toBe(2)
+  await expect.poll(() => fx.telegram.traffic.length, { timeout: 5000 }).toBe(2)
   expect(JSON.parse(fx.telegram.traffic[1]?.body ?? '')).toMatchObject({
     text: 'new binding answer',
     chat_id: '101',
@@ -213,13 +219,15 @@ test('an uncertain native send stays held across restart and explicit delivery r
 
   const before = await fx.start()
   expect((await ingest(before)).status).toBe(204)
-  await expect.poll(() => fx.routine.traffic.length).toBe(1)
+  await expect.poll(() => fx.routine.traffic.length, { timeout: 5000 }).toBe(1)
   const request = dispatched(firstTraffic(fx.routine.traffic))
   const alpha = await fx.client(before, 'alpha')
   const final = await sendMessage(alpha, request.replyTo, 'saved final')
 
   await expect
-    .poll(async () => (await before.core.status()).deliveries[0]?.status)
+    .poll(async () => (await before.core.status()).deliveries[0]?.status, {
+      timeout: 5000
+    })
     .toBe('unknown')
   expect(fx.telegram.traffic).toHaveLength(1)
   await alpha.close()
@@ -261,7 +269,9 @@ test('an uncertain native send stays held across restart and explicit delivery r
     version: held.version + 1
   })
   await expect
-    .poll(async () => (await after.core.status()).deliveries[0]?.status)
+    .poll(async () => (await after.core.status()).deliveries[0]?.status, {
+      timeout: 5000
+    })
     .toBe('sent')
   expect(fx.telegram.traffic).toHaveLength(2)
   expect(

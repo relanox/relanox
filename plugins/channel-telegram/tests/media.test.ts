@@ -277,7 +277,7 @@ it.each(cases)(
       kind === 'image' && channel !== 'line' ? 'native caption' : ''
 
     if (gateway) {
-      await expect.poll(gateway.connected).toBe(true)
+      await expect.poll(gateway.connected, { timeout: 5000 }).toBe(true)
       gateway.message({
         id: '789',
         channel_id: '456',
@@ -309,7 +309,9 @@ it.each(cases)(
         ).status
       ).toBe(channel === 'line' ? 200 : 204)
     }
-    await expect.poll(() => fixture.routine.traffic.length).toBe(1)
+    await expect
+      .poll(() => fixture.routine.traffic.length, { timeout: 5000 })
+      .toBe(1)
     if (channel === 'telegram' && kind === 'image') {
       await runtime.stop()
       runtime = await fixture.start()

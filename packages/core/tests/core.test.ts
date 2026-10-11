@@ -28,8 +28,7 @@ it.each(['before', 'during'])(
         config: { ...config, accounts: [], endpoints: [], bindings: [] },
         storage: recordingStorage({}),
         channels: new Map(),
-        agents: new Map(),
-        worker: { callTimeoutMs: 1000, leaseMs: 2000 }
+        agents: new Map()
       })
 
       const controller = new AbortController()
@@ -235,6 +234,62 @@ function plugins(
 }
 
 describe('configuration boundary', () => {
+  it('defaults omitted observability while preserving explicit choices', () => {
+    const input = {
+      accounts: config.accounts,
+      endpoints: config.endpoints,
+      bindings: config.bindings,
+      storage: config.storage
+    }
+
+    expect(validateConfig(input).observability).toEqual({
+      plugin: 'standard',
+      config: {}
+    })
+    expect(
+      validateConfig({
+        ...input,
+        observability: { plugin: 'none', config: {} }
+      }).observability
+    ).toEqual({ plugin: 'none', config: {} })
+    expect(
+      validateConfig({
+        ...input,
+        observability: {
+          plugin: 'standard',
+          config: { logs: false, level: 'warn' }
+        }
+      }).observability
+    ).toEqual({ plugin: 'standard', config: { logs: false, level: 'warn' } })
+  })
+
+  it.each([
+    ['batchSize', 32],
+    ['batchDurationMs', 30_000],
+    ['callTimeoutMs', 10_000],
+    ['leaseMs', 30_000],
+    ['maxAttempts', 8],
+    ['retryBaseMs', 1000],
+    ['retryMaxMs', 300_000],
+    ['maxTextBytes', 1_048_576],
+    ['maxContextBytes', 65_536],
+    ['maxHttpBodyBytes', 2_097_152]
+  ] as const)(
+    'rejects internal worker override %s at the public boundary',
+    async (field, value) => {
+      const worker = { maxMediaBytes: 16, [field]: value }
+      await expect(
+        createCore({
+          config: { ...config, accounts: [], endpoints: [], bindings: [] },
+          storage: recordingStorage({}),
+          channels: new Map(),
+          agents: new Map(),
+          worker
+        })
+      ).rejects.toThrow()
+    }
+  )
+
   it('rejects ambiguous/missing references and empty sender authorization; resolves explicit secrets only', () => {
     expect(() =>
       validateConfig({
@@ -325,7 +380,6 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
     config,
     channels: p.channels,
     agents: p.agents,
-    worker: { maxHttpBodyBytes: 8 },
     observe: {
       log() {},
       count() {},
@@ -442,7 +496,7 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
         new Request('https://relay.test/channels/bot/bytes', {
           method: 'POST',
           headers: { 'content-length': '1' },
-          body: '123456789'
+          body: 'x'.repeat(2_097_153)
         })
       )
     ).status
@@ -622,7 +676,6 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
         unknown: 0
       })
     }),
-    worker: { retryMaxMs: 5000 },
     observe: {
       log() {
         throw new Error('collector unavailable')
@@ -642,7 +695,7 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
   expect(await runtime.processDue()).toEqual({ processed: 1, conflicts: 0 })
   expect(settlements[0]?.lease).toEqual(lease)
   expect((settlements[0]?.nextDueAt ?? 0) - (settlements[0]?.now ?? 0)).toBe(
-    5000
+    300_000
   )
   expect(takeDue.mock.calls[0]?.[0].limit).toBe(1)
   takeDue.mockResolvedValueOnce([
@@ -722,12 +775,11 @@ it('aborts bounded transport calls and preserves unknown effects', async () => {
           undelivered: 0,
           unknown: 1
         })
-      }),
-      worker: { callTimeoutMs: 20 }
+      })
     })
 
     const processing = runtime.processDue()
-    await vi.advanceTimersByTimeAsync(21)
+    await vi.advanceTimersByTimeAsync(10_001)
     await processing
     expect(dispatch.mock.calls[0]?.[0].signal.aborted).toBe(true)
     expect(settleAttempt.mock.calls[0]?.[0].outcome).toEqual({

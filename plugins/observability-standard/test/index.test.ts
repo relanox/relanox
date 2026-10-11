@@ -26,7 +26,7 @@ async function runtime(
   )
 
   const result = await plugin.setup(
-    plugin.validateConfig({ logs: false, processMetrics: false, ...config })
+    plugin.validateConfig({ logs: false, ...config })
   )
 
   runtimes.push(result)
@@ -258,14 +258,19 @@ describe('jSON log boundary', () => {
     })
 
     output.on('error', () => {})
-    const value = await runtime({ logs: true, logBufferBytes: 1024 }, output)
+    const value = await runtime({ logs: true }, output)
     for (let index = 0; index < 1000; index++) {
       value.observe.log('info', 'inbound.accepted', { plugin: 'core' })
     }
     expect(writes).toBe(1)
-    expect(await metrics(value)).toMatch(
-      /relanox_telemetry_dropped_total\{signal="logs"\} 9\d\d/u
-    )
+
+    const dropped =
+      /relanox_telemetry_dropped_total\{signal="logs"\} (?<count>\d+)/u.exec(
+        await metrics(value)
+      )
+
+    expect(Number(dropped?.groups?.count)).toBeGreaterThan(0)
+    expect(Number(dropped?.groups?.count)).toBeLessThan(1000)
     output.destroy(new Error('collector failed'))
     await new Promise<void>((resolve) => {
       setImmediate(resolve)
@@ -375,7 +380,8 @@ describe('prometheus public facade', () => {
     }
     expect(accepted).toBe(75)
     const body = await metrics(value)
-    expect(body).not.toMatch(/secret_metric|secret-user|requestId|private| 99/u)
+    expect(body).not.toMatch(/secret_metric|secret-user|requestId|private/u)
+    expect(body).not.toMatch(/^relanox_inbound_total(?:\{[^\n]*\})? 99$/mu)
     expect(
       body
         .split('\n')
@@ -427,7 +433,17 @@ describe('prometheus public facade', () => {
     },
     { arbitrary: true },
     { logs: 'yes' },
-    { logBufferBytes: 0 }
+    { processMetrics: true },
+    { logBufferBytes: 65_536 },
+    { lifecycleTimeoutMs: 3000 },
+    { tracing: { endpoint: 'http://localhost/traces', maxQueueSize: 512 } },
+    {
+      tracing: { endpoint: 'http://localhost/traces', maxExportBatchSize: 128 }
+    },
+    {
+      tracing: { endpoint: 'http://localhost/traces', scheduledDelayMs: 1000 }
+    },
+    { tracing: { endpoint: 'http://localhost/traces', exportTimeoutMs: 2000 } }
   ])('rejects unsafe configuration %j', (config) => {
     expect(() => validateStandardConfig(config)).toThrow()
   })
@@ -541,10 +557,8 @@ describe('real OTLP HTTP transport', () => {
     const value = await runtime({
       tracing: {
         endpoint: peer.endpoint,
-        sampleRatio: 1,
-        exportTimeoutMs: 100
-      },
-      lifecycleTimeoutMs: 100
+        sampleRatio: 1
+      }
     })
 
     expect(() => {
@@ -562,10 +576,8 @@ describe('real OTLP HTTP transport', () => {
     const value = await runtime({
       tracing: {
         endpoint: peer.endpoint,
-        sampleRatio: 1,
-        exportTimeoutMs: 1000
-      },
-      lifecycleTimeoutMs: 100
+        sampleRatio: 1
+      }
     })
 
     value.observe.span('send').end()
@@ -575,7 +587,7 @@ describe('real OTLP HTTP transport', () => {
       new Promise<string>((resolve) => {
         setTimeout(() => {
           resolve('hung')
-        }, 1000)
+        }, 4000)
       })
     ])
 

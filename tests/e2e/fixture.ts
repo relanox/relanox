@@ -10,7 +10,7 @@ import { z } from 'zod'
 import type { AppConfig } from '../../apps/cli/src/config.js'
 import { startRuntime, validateApp } from '../../apps/cli/src/runtime.js'
 import { openStorage } from '../../apps/cli/src/storage.js'
-import { availablePort, peer } from './peer.js'
+import { availablePort, peer, redirectRoutine } from './peer.js'
 import type { PeerReply, Traffic } from './peer.js'
 
 export type Runtime = Awaited<ReturnType<typeof startRuntime>>
@@ -61,6 +61,7 @@ export async function fixture(
   cleanups.push(async () => rm(directory, { recursive: true, force: true }))
   const routine = await peer(() => ({ status: 200 }))
   cleanups.push(routine.close)
+  redirectRoutine(routine.origin)
 
   const telegram = await peer(
     sendReply ??
@@ -75,8 +76,8 @@ export async function fixture(
   vi.stubEnv('E2E_TELEGRAM_WEBHOOK', 'webhook-secret')
   vi.stubEnv('E2E_GROK_ALPHA_TOKEN', 'alpha-secret')
   vi.stubEnv('E2E_GROK_BETA_TOKEN', 'beta-secret')
-  vi.stubEnv('E2E_ROUTINE_ALPHA_URL', `${routine.origin}/alpha`)
-  vi.stubEnv('E2E_ROUTINE_BETA_URL', `${routine.origin}/beta`)
+  vi.stubEnv('E2E_ROUTINE_ALPHA_URL', 'https://routine.test/alpha')
+  vi.stubEnv('E2E_ROUTINE_BETA_URL', 'https://routine.test/beta')
   vi.stubEnv('E2E_ROUTINE_AUTH', 'Bearer routine-secret')
 
   const endpoint = (
@@ -88,7 +89,6 @@ export async function fixture(
       mcp: { token: { env: string } }
       routineUrl: { env: string }
       routineAuthorization: { env: string }
-      routineTransport: string
     }
   } => ({
     id,
@@ -98,8 +98,7 @@ export async function fixture(
         token: { env: `E2E_GROK_${id.toUpperCase()}_TOKEN` }
       },
       routineUrl: { env: `E2E_ROUTINE_${id.toUpperCase()}_URL` },
-      routineAuthorization: { env: 'E2E_ROUTINE_AUTH' },
-      routineTransport: 'loopback-http'
+      routineAuthorization: { env: 'E2E_ROUTINE_AUTH' }
     }
   })
 
@@ -130,14 +129,12 @@ export async function fixture(
       },
       observability: {
         plugin: 'standard',
-        config: { logs: false, metrics: true, processMetrics: false }
+        config: { logs: false, metrics: true }
       }
     },
     server: {
       port,
       managementPort: 0,
-      workerIntervalMs: 20,
-      workerStaleMs: 1000,
       startupTimeoutMs: 5000,
       shutdownTimeoutMs: 5000
     }

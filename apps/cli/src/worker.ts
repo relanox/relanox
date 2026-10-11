@@ -4,11 +4,10 @@ import type { Observability } from '@relanox/sdk'
 /** Schedule the next batch only after settlement, so slow batches never accumulate. */
 export function createWorker(
   core: CoreRuntime,
-  intervalMs: number,
   observe: Observability
 ): {
   start(this: void): void
-  healthy(this: void, staleMs: number): boolean
+  healthy(this: void): boolean
   stop(this: void): Promise<void>
 } {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -38,7 +37,7 @@ export function createWorker(
       if (!stopping) {
         timer = setTimeout(() => {
           working = tick()
-        }, intervalMs)
+        }, 1000)
       }
     }
   }
@@ -51,12 +50,12 @@ export function createWorker(
       started = true
       working = tick()
     },
-    healthy(staleMs: number): boolean {
+    healthy(): boolean {
       return (
         !stopping &&
         !failed &&
         lastSuccess > 0 &&
-        Date.now() - lastSuccess <= staleMs
+        Date.now() - lastSuccess <= 60_000
       )
     },
     async stop(): Promise<void> {
