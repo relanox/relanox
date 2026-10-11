@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import type { HttpHandler, Observability } from "@relanox/sdk";
+import type { HttpHandler, Observability, HttpRouteOptions } from "@relanox/sdk";
 import type { WorkerConfig } from "./worker/options.js";
 import { CoreError } from "./errors.js";
 
@@ -8,12 +8,26 @@ export function createHttpHandler(
   app: Hono,
   worker: WorkerConfig,
   observe: Observability,
+  routes: ReadonlyMap<string, HttpRouteOptions> = new Map(),
 ): HttpHandler {
   return async (request: Request): Promise<Response> => {
     const start = Date.now();
     try {
+      const path = new URL(request.url).pathname;
+      const route = [...routes].find(([pattern]) =>
+        pattern.endsWith("*") ? path.startsWith(pattern.slice(0, -1)) : path === pattern,
+      )?.[1];
+      const denied = await route?.authorize(request);
+      if (denied) {
+        void request.body?.cancel().catch(() => {});
+        return denied;
+      }
       return await app.fetch(
-        await boundedRequest(request, worker.maxHttpBodyBytes, worker.callTimeoutMs),
+        await boundedRequest(
+          request,
+          route?.maxBodyBytes ?? worker.maxHttpBodyBytes,
+          worker.callTimeoutMs,
+        ),
       );
     } catch (error) {
       const code = error instanceof CoreError ? error.code : "invalid_request";
@@ -92,4 +106,8 @@ async function boundedRequest(
       clearTimeout(timer);
     }
   }
+}
+
+export function createHttpRoutes(): Map<string, HttpRouteOptions> {
+  return new Map();
 }

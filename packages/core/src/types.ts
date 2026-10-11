@@ -20,6 +20,8 @@ export interface WorkerOptions {
   readonly retryMaxMs?: number;
   readonly notificationIntervalMs?: number;
   readonly maxTextBytes?: number;
+  readonly maxMediaBytes?: number;
+  readonly maxAttachments?: number;
   readonly maxContextBytes?: number;
   readonly maxHttpBodyBytes?: number;
 }

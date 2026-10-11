@@ -16,6 +16,7 @@ import { CoreError } from "../errors.js";
 import { jsonSnapshot } from "../json.js";
 import { textId, limit, boundedText } from "../validation.js";
 import type { WorkerConfig } from "../worker/options.js";
+import { createAgentMedia, completionMedia, authorizedRequest } from "./media.js";
 import { createOperationTracer } from "./tracing.js";
 
 interface AgentHostOptions {
@@ -47,6 +48,7 @@ export function createAgentHost({
         agentEndpoints.some((e) => e.id === id),
       );
       return {
+        media: createAgentMedia(storage, agent, scope, worker),
         listPending: (count) =>
           storage.listPending({ agent, endpointIds: scope, limit: limit(count) }),
         claim: (requestId, claimKey) =>
@@ -64,7 +66,7 @@ export function createAgentHost({
           textId.parse(input.requestId);
           textId.parse(input.claimToken);
           textId.parse(input.resultId);
-          boundedText(input.text, worker.maxTextBytes);
+          boundedText(input.text, worker.maxTextBytes, !input.attachments?.length);
           const request = await storage.getInbound(input.requestId);
           if (
             !request ||
@@ -73,21 +75,45 @@ export function createAgentHost({
           ) {
             return { status: "not_found" };
           }
+          if (input.attachments && !authorizedRequest(request, agent, scope, input.claimToken)) {
+            return { status: "unauthorized" };
+          }
+          const media = await completionMedia(storage, input.requestId, input.attachments, worker);
           const channelPlugin = channels.get(request.snapshot.target.accountId);
           if (!channelPlugin) {
             throw new CoreError("channel_plugin_missing");
           }
+          if (
+            media.some(
+              (item) => !channelPlugin.capabilities.media?.send.includes(item.reference.kind),
+            )
+          ) {
+            throw new CoreError("media_not_supported");
+          }
           const deliveryId = crypto.randomUUID();
           const now = Date.now();
-          const chunks = chunkText(
-            input.text,
-            channelPlugin.capabilities.maxTextLength,
-            channelPlugin.capabilities.lengthUnit,
+          const chunks = (
+            input.text
+              ? chunkText(
+                  input.text,
+                  channelPlugin.capabilities.maxTextLength,
+                  channelPlugin.capabilities.lengthUnit,
+                )
+              : []
           ).map((text, index) => ({
             text,
             idempotencyKey: `${deliveryId}:${index}`,
             state: null as Json,
           }));
+          const deliveryChunks = [
+            ...chunks,
+            ...media.map((item, index) => ({
+              text: "",
+              media: item.reference,
+              idempotencyKey: `${deliveryId}:${chunks.length + index}`,
+              state: null as Json,
+            })),
+          ];
           const result = await traced(
             "complete",
             () =>
@@ -99,6 +125,7 @@ export function createAgentHost({
                 result: {
                   resultId: input.resultId,
                   text: input.text,
+                  ...(media.length > 0 ? { attachments: media.map((item) => item.reference) } : {}),
                   completedAt: now,
                 },
                 outbound: {
@@ -106,7 +133,7 @@ export function createAgentHost({
                   requestId: input.requestId,
                   resultId: input.resultId,
                   target: jsonSnapshot(request.snapshot.target),
-                  chunks,
+                  chunks: deliveryChunks,
                   currentChunk: 0,
                   receipts: [],
                   status: "pending",

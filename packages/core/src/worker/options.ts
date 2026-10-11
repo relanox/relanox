@@ -11,6 +11,8 @@ export const workerSchema = z
     retryMaxMs: z.number().int().min(1).max(3_600_000).default(300_000),
     notificationIntervalMs: z.number().int().min(1).max(3_600_000).default(60_000),
     maxTextBytes: z.number().int().min(1).max(16_777_216).default(1_048_576),
+    maxMediaBytes: z.number().int().min(1).max(209_715_200).default(26_214_400),
+    maxAttachments: z.number().int().min(1).max(10).default(10),
     maxContextBytes: z.number().int().min(1).max(1_048_576).default(65_536),
     maxHttpBodyBytes: z.number().int().min(1).max(16_777_216).default(2_097_152),
   })
