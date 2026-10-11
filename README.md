@@ -12,13 +12,13 @@ Supports Telegram, Discord, Slack, Feishu, WeCom, DingTalk, QQ, Microsoft Teams,
 
 Use Node.js 26 and pnpm 12.11.2, or deploy with Docker Compose. SQLite is the default storage; PostgreSQL is also supported.
 
-- [Installation and quick start](https://relanox.github.io/relanox/en/getting-started.html)
-- [Configuration and commands](https://relanox.github.io/relanox/en/configuration.html)
-- [Media transfer and platform limits](https://relanox.github.io/relanox/en/media.html)
-- [Deployment, backups and recovery](https://relanox.github.io/relanox/en/operations.html)
-- [Development](https://relanox.github.io/relanox/en/development.html)
+- [Installation and quick start](https://relanox.github.io/en/getting-started.html)
+- [Configuration and commands](https://relanox.github.io/en/configuration.html)
+- [Media transfer and platform limits](https://relanox.github.io/en/media.html)
+- [Deployment, backups and recovery](https://relanox.github.io/en/operations.html)
+- [Development](https://relanox.github.io/en/development.html)
 
-The [documentation site](https://relanox.github.io/relanox/) is available in English and Simplified Chinese. Its source is in [docs](docs/en/index.md).
+The [documentation site](https://relanox.github.io/) is available in English and Simplified Chinese. Its source is in [docs](docs/en/index.md).
 
 ## License
 

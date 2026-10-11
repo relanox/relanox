@@ -53,6 +53,8 @@ Document the current behavior, configuration and maintenance requirements. Keep 
 
 ## Documentation site
 
-Use `pnpm docs:dev`, `pnpm docs:build` and `pnpm docs:preview` to maintain the VitePress site. Keep matching pages under `docs/en/` and `docs/zh-CN/`, and keep internal links within the selected language. GitHub Pages serves static files at `/relanox/`; it cannot inspect HTTP Accept-Language. The root entry uses browser navigator.languages, selecting Chinese for exact zh-CN, and stores a manual language preference. Explicit language URLs stay on their selected language.
+Use `pnpm docs:dev`, `pnpm docs:build` and `pnpm docs:preview` to maintain the VitePress site. Keep matching pages under `docs/en/` and `docs/zh-CN/`, and keep internal links within the selected language. GitHub Pages serves static files at `https://relanox.github.io/`; it cannot inspect HTTP Accept-Language. The root entry uses browser navigator.languages, selecting Chinese for exact zh-CN, and stores a manual language preference. Explicit language URLs stay on their selected language.
 
 The CSS side-effect import is narrowly allowed only in the theme entrypoint. VitePress's internal Vite uses esbuild 0.21.5; it and the workspace esbuild 0.28.2 have exact allowed build-script entries. Preserve narrow policies when updating the site dependencies.
+
+The `relanox/relanox.github.io` repository builds and deploys the root site with its own GitHub Actions token. It checks this repository every 30 minutes and skips builds when the published source commit is unchanged; maintainers can trigger its Documentation workflow manually for immediate publication. No cross-repository write credential is stored. This repository builds documentation on changes and publishes per-page redirects at the old project URLs, preserving query strings and fragments.
