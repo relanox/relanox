@@ -32,34 +32,19 @@ export const configSchema = z
   .object({
     appId: z.string().min(1),
     clientSecret: secretRefSchema,
-    apiBase: z.url().default('https://api.bot.qq.com'),
-    mediaOrigins: z.array(z.url()).default([]),
-    allowProactive: z.boolean().default(false),
-    allowInsecureLoopback: z.boolean().default(false)
+    environment: z.enum(['production', 'sandbox']).default('production'),
+    allowProactive: z.boolean().default(false)
   })
   .strict()
-  .superRefine((config, context) => {
-    for (const origin of config.mediaOrigins) {
-      if (new URL(origin).origin !== origin) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Media origins must be exact origins'
-        })
-      }
-    }
-    try {
-      validateTransportUrl(config.apiBase, false, config.allowInsecureLoopback)
-      if (/[?#]/u.test(new URL(config.apiBase).href)) {
-        context.addIssue({
-          code: 'custom',
-          message: 'API base URL cannot contain a query or fragment'
-        })
-      }
-    } catch {
-      context.addIssue({ code: 'custom', message: 'Invalid secure API URL' })
-    }
-  })
 
 export type QqConfig = z.infer<typeof configSchema>
 
 export const MAX_RECONNECT_ATTEMPTS = 20
+
+export const TOKEN_URL = 'https://bots.qq.com/app/getAppAccessToken'
+
+export function apiBase(config: QqConfig): string {
+  return config.environment === 'sandbox'
+    ? 'https://sandbox.api.sgroup.qq.com'
+    : 'https://api.sgroup.qq.com'
+}

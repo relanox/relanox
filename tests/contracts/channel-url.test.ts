@@ -1,47 +1,10 @@
+import { hostedCases } from './hosted-channel-cases.js'
 import { otherCases } from './channel-url-cases.js'
-import { createDiscordChannel } from '../../plugins/channel-discord/src/index.js'
 import { describe, expect, it } from 'vitest'
 import { createLineChannel } from '../../plugins/channel-line/src/index.js'
-import { createWhatsAppChannel } from '../../plugins/channel-whatsapp/src/index.js'
 import { createGoogleChatChannel } from '../../plugins/channel-googlechat/src/index.js'
-import { createQqChannel } from '../../plugins/channel-qq/src/index.js'
-import { createDingTalkChannel } from '../../plugins/channel-dingtalk/src/index.js'
 
-const cases = [
-  {
-    name: 'WhatsApp',
-    plugin: createWhatsAppChannel(),
-    config: {
-      phoneNumberId: 'phone',
-      businessAccountId: 'business',
-      appSecret: { env: 'SECRET' },
-      verifyToken: { env: 'VERIFY' },
-      accessToken: { env: 'TOKEN' },
-      apiVersion: 'v25.0'
-    }
-  },
-  {
-    name: 'QQ',
-    plugin: createQqChannel(),
-    config: { appId: 'app', clientSecret: { env: 'SECRET' } }
-  },
-  {
-    name: 'DingTalk',
-    plugin: createDingTalkChannel(),
-    config: {
-      clientId: 'app',
-      robotCode: 'robot',
-      clientSecret: { env: 'SECRET' }
-    }
-  }
-].map((entry) => ({
-  name: entry.name,
-  plugin: entry.plugin,
-  config: entry.config,
-  field: 'apiBase'
-}))
-
-const boundaries = [...cases, ...otherCases].flatMap((entry) =>
+const boundaries = otherCases.flatMap((entry) =>
   ['?route=bot', '?', '#', '#fragment'].map((suffix) => ({
     name: entry.name,
     plugin: entry.plugin,
@@ -70,15 +33,22 @@ describe('channel API base URL contract', () => {
     }
   )
 
-  it('preserves query parameters on the complete Discord Gateway URL', () => {
-    const config = createDiscordChannel().validateConfig({
-      botUserId: 'bot',
-      botToken: { env: 'TOKEN' },
-      gatewayUrl: 'wss://gateway.example/?v=10&encoding=json'
-    })
-
-    expect(config.gatewayUrl).toBe('wss://gateway.example/?v=10&encoding=json')
-  })
+  it.each(
+    hostedCases.flatMap((entry) =>
+      entry.fields.map((field) => ({ ...entry, field }))
+    )
+  )(
+    '$name rejects removed hosted setting $field while accepting minimal credentials offline',
+    ({ plugin, config, field }) => {
+      expect(() => plugin.validateConfig(config)).not.toThrow()
+      expect(() =>
+        plugin.validateConfig({
+          ...config,
+          [field]: 'https://operator.example'
+        })
+      ).toThrow()
+    }
+  )
 
   it.each(['apiBase', 'tokenUrl', 'jwksUrl', 'allowLoopback'])(
     'rejects removed Google Chat endpoint setting %s',

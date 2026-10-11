@@ -1,9 +1,9 @@
+import { apiBase, validateTransportUrl } from './config.js'
 import { createHash } from 'node:crypto'
 import { setTimeout as pause } from 'node:timers/promises'
 import type { SendInput, SendResult } from '@relanox/sdk'
 import { z } from 'zod'
 import { apiError } from './api-error.js'
-import { validateTransportUrl } from './config.js'
 import type { QqConfig } from './config.js'
 import { httpJson, jsonPostRequest, RemoteError } from './transport.js'
 
@@ -58,8 +58,7 @@ async function apiRequest(
 
 function validateParts(
   prepared: z.infer<typeof preparedSchema>,
-  size: number,
-  config: QqConfig
+  size: number
 ): { index: number; block_size: number; offset: number; url: string }[] {
   const parts = prepared.parts.toSorted(
     (left, right) => left.index - right.index
@@ -78,15 +77,11 @@ function validateParts(
     }
     const url = new URL(part.presigned_url)
 
-    const allowLoopback =
-      config.allowInsecureLoopback &&
-      url.origin === new URL(config.apiBase).origin
-
     return {
       index,
       block_size: part.block_size,
       offset,
-      url: validateTransportUrl(url.href, false, allowLoopback)
+      url: validateTransportUrl(url.href, false, false)
     }
   })
 }
@@ -134,7 +129,7 @@ export async function uploadMedia(
   if (bytes.byteLength > 200_000_000) {
     return { status: 'rejected', errorCode: 'unsupported_media_size' }
   }
-  const base = `${config.apiBase.replace(/\/$/u, '')}/v2/${type === 'c2c' ? 'users' : 'groups'}/${encodeURIComponent(input.target.chatId)}`
+  const base = `${apiBase(config).replace(/\/$/u, '')}/v2/${type === 'c2c' ? 'users' : 'groups'}/${encodeURIComponent(input.target.chatId)}`
   const fileType = { image: 1, video: 2, audio: 3, file: 4 }[kind]
   const md5 = digest('md5', bytes)
 
@@ -157,7 +152,7 @@ export async function uploadMedia(
     )
   )
 
-  const parts = validateParts(prepared, bytes.byteLength, config)
+  const parts = validateParts(prepared, bytes.byteLength)
   for (const part of parts) {
     if (part.index > 0) {
       // The native part confirmation endpoint is limited to ten requests per second.

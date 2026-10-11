@@ -1,15 +1,17 @@
+import {
+  API_BASE_URL,
+  validateTransportUrl,
+  REQUEST_TIMEOUT_MS,
+  RECONNECT_DELAY_MS,
+  GATEWAY_INTENTS
+} from './config.js'
+import type { DiscordIdentity } from './identity.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { downloadMedia, mediaKind } from '@relanox/channel-media'
 import type { AccountConfig, ChannelHost } from '@relanox/sdk'
 import { WebSocket } from 'ws'
 import type { z } from 'zod'
 import type { DiscordConfig } from './config.js'
-import {
-  validateTransportUrl,
-  REQUEST_TIMEOUT_MS,
-  RECONNECT_DELAY_MS,
-  GATEWAY_INTENTS
-} from './config.js'
 import {
   channelInfoSchema,
   helloEventSchema,
@@ -30,6 +32,7 @@ type Session = z.infer<typeof sessionSchema>
 
 export function createDiscordGateway(
   config: DiscordConfig,
+  discovered: DiscordIdentity,
   host: ChannelHost,
   account: AccountConfig,
   environment: NodeJS.ProcessEnv
@@ -41,8 +44,8 @@ export function createDiscordGateway(
   let fatal = false
 
   const identity = (): { botId: string; apiBaseUrl: string } => ({
-    botId: config.botUserId,
-    apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, '')
+    botId: discovered.botId,
+    apiBaseUrl: new URL(API_BASE_URL).toString().replace(/\/$/u, '')
   })
 
   async function persist(): Promise<void> {
@@ -79,7 +82,7 @@ export function createDiscordGateway(
     }
 
     const response = await fetch(
-      `${config.apiBaseUrl.replace(/\/$/u, '')}/channels/${encodeURIComponent(message.channel_id)}`,
+      `${API_BASE_URL.replace(/\/$/u, '')}/channels/${encodeURIComponent(message.channel_id)}`,
       {
         headers: {
           authorization: `Bot ${credential(config.botToken, environment)}`
@@ -113,8 +116,8 @@ export function createDiscordGateway(
 
     const url = new URL(
       validateTransportUrl(
-        session?.resume_gateway_url ?? config.gatewayUrl,
-        config.allowInsecureLoopback,
+        session?.resume_gateway_url ?? discovered.gatewayUrl,
+        false,
         true
       )
     )
@@ -262,22 +265,18 @@ export function createDiscordGateway(
           }
           if (packet.t === 'READY') {
             const ready = readySchema.parse(packet.d)
-            if (ready.user.id !== config.botUserId) {
+            if (ready.user.id !== discovered.botId) {
               fatal = true
               throw new Error('bot_identity_mismatch')
             }
-            validateTransportUrl(
-              ready.resume_gateway_url,
-              config.allowInsecureLoopback,
-              true
-            )
+            validateTransportUrl(ready.resume_gateway_url, false, true)
             session = {
               session_id: ready.session_id,
               resume_gateway_url: ready.resume_gateway_url,
               seq: packet.s as number,
               botId: ready.user.id,
               apiBaseUrl: identity().apiBaseUrl,
-              gatewayUrl: new URL(config.gatewayUrl).toString()
+              gatewayUrl: new URL(discovered.gatewayUrl).toString()
             }
             host.connection('connected')
           } else if (packet.t === 'RESUMED') {
@@ -287,7 +286,7 @@ export function createDiscordGateway(
             if (
               !message.author.bot &&
               !message.webhook_id &&
-              message.author.id !== config.botUserId &&
+              message.author.id !== discovered.botId &&
               [0, 19].includes(message.type) &&
               (message.content || message.attachments.length > 0)
             ) {
@@ -311,8 +310,8 @@ export function createDiscordGateway(
                     const downloaded = await downloadMedia(attachment.url, {
                       maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
                       signal,
-                      trustedOrigins: [new URL(config.apiBaseUrl).origin],
-                      allowInsecureLocalhost: config.allowInsecureLoopback
+                      trustedOrigins: [new URL(API_BASE_URL).origin],
+                      allowInsecureLocalhost: false
                     })
 
                     const mimeType =
@@ -374,9 +373,9 @@ export function createDiscordGateway(
     session = undefined
     if (
       parsed.success &&
-      parsed.data.botId === config.botUserId &&
+      parsed.data.botId === discovered.botId &&
       parsed.data.apiBaseUrl === identity().apiBaseUrl &&
-      parsed.data.gatewayUrl === new URL(config.gatewayUrl).toString()
+      parsed.data.gatewayUrl === new URL(discovered.gatewayUrl).toString()
     ) {
       session = parsed.data
     }

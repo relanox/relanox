@@ -6,10 +6,6 @@ const secretRefSchema = z.strictObject({
 
 export const platformIdSchema = z.string().min(1).max(256)
 
-const transportOptions = {
-  allowInsecureLoopback: z.boolean().default(false)
-}
-
 export function validateTransportUrl(
   value: string,
   insecure: boolean,
@@ -40,19 +36,13 @@ export function validateTransportUrl(
 }
 
 const configSchema = z.strictObject({
-  botToken: secretRefSchema,
-  botUserId: platformIdSchema,
-  apiBaseUrl: z.string().default('https://discord.com/api/v10'),
-  gatewayUrl: z.string().default('wss://gateway.discord.gg'),
-  ...transportOptions
+  botToken: secretRefSchema
 })
 
 export type DiscordConfig = z.infer<typeof configSchema>
 
 export function validateConfig(input: unknown): DiscordConfig {
   const parsed = configSchema.parse(input)
-  validateTransportUrl(parsed.apiBaseUrl, parsed.allowInsecureLoopback)
-  validateTransportUrl(parsed.gatewayUrl, parsed.allowInsecureLoopback, true)
   return parsed
 }
 
@@ -61,3 +51,5 @@ export const REQUEST_TIMEOUT_MS = 10_000
 export const RECONNECT_DELAY_MS = 5000
 
 export const GATEWAY_INTENTS = 37_377
+
+export const API_BASE_URL = 'https://discord.com/api/v10'

@@ -1,3 +1,8 @@
+import { DatabaseSync } from 'node:sqlite'
+import {
+  registerPeer,
+  routePlatform
+} from '../../channel-wecom/tests/network.js'
 import { createServer } from 'node:http'
 import type {
   IncomingHttpHeaders,
@@ -80,8 +85,10 @@ export async function peer(): Promise<{
     server.listen(0, '127.0.0.1', resolve)
   })
   const address = server.address() as AddressInfo
+  const publicOrigin = registerPeer(`http://127.0.0.1:${address.port}`)
+  routePlatform('https://graph.facebook.com', publicOrigin)
   return {
-    base: `http://127.0.0.1:${address.port}`,
+    base: publicOrigin,
     traffic,
     respond(
       code: number,
@@ -229,4 +236,14 @@ export async function harness(
       await storage.close()
     }
   }
+}
+
+export function legacyTargetOrigin(filename: string): void {
+  const legacy = new DatabaseSync(filename)
+  legacy
+    .prepare(
+      "UPDATE inbound SET record = json_set(record, '$.snapshot.target.data.apiBase', ?)"
+    )
+    .run('https://foreign.example')
+  legacy.close()
 }

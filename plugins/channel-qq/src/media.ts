@@ -23,8 +23,8 @@ export async function downloadAttachments(
     const downloaded = await downloadMedia(url, {
       maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
       signal,
-      trustedOrigins: config.mediaOrigins,
-      allowInsecureLocalhost: config.allowInsecureLoopback
+      trustedOrigins: [],
+      allowInsecureLocalhost: false
     })
 
     const mimeType = attachment.content_type ?? downloaded.mimeType

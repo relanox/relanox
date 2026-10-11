@@ -1,3 +1,7 @@
+import {
+  registerPeer,
+  routePlatform
+} from '../../channel-wecom/tests/network.js'
 import { createServer } from 'node:http'
 import type {
   IncomingHttpHeaders,
@@ -69,10 +73,15 @@ export async function peer(
 ): Promise<{
   url: string
   requests: Captured[]
+  discoveryRequests: Captured[]
+  identity(this: void, value: Record<string, unknown>, status?: number): void
   server: ReturnType<typeof createServer>
   close(this: void): Promise<void>
 }> {
   const requests: Captured[] = []
+  const discoveryRequests: Captured[] = []
+  let identityStatus = 200
+  let identityOverride: Record<string, unknown> = {}
 
   async function handle(
     request: IncomingMessage,
@@ -93,14 +102,29 @@ export async function peer(
         : null
 
     const input: Captured = {
-      path: request.url ?? '',
+      path: (request.url ?? '').replace(/^\/api(?:\/v10)?(?=\/)/u, ''),
       headers: request.headers,
       body
     }
 
-    requests.push(input)
-    const output = respond(input)
-    response.writeHead(output.status ?? 200, {
+    const identity: PeerResponse | undefined =
+      input.path === '/open-apis/bot/v3/info'
+        ? { body: { code: 0, bot: { open_id: 'ou_bot' }, ...identityOverride } }
+        : undefined
+
+    if (identity) {
+      discoveryRequests.push(input)
+    } else {
+      requests.push(input)
+    }
+    if (identity && requests.at(-1)?.path.includes('tenant_access_token')) {
+      const tokenRequest = requests.pop()
+      if (tokenRequest) {
+        discoveryRequests.push(tokenRequest)
+      }
+    }
+    const output: PeerResponse = identity ?? respond(input)
+    response.writeHead(identity ? identityStatus : (output.status ?? 200), {
       'content-type': 'application/json',
       ...output.headers
     })
@@ -117,8 +141,23 @@ export async function peer(
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve)
   })
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-  return { url, requests, server, close: async () => close(server) }
+
+  const url = registerPeer(
+    `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  )
+
+  routePlatform('https://open.feishu.cn', url)
+  return {
+    url,
+    requests,
+    discoveryRequests,
+    identity: (value, status = 200) => {
+      identityOverride = value
+      identityStatus = status
+    },
+    server,
+    close: async () => close(server)
+  }
 }
 
 export async function close(server: Server): Promise<void> {

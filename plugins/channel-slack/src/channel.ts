@@ -1,14 +1,15 @@
-import { createHmac } from 'node:crypto'
-import { setTimeout as delay } from 'node:timers/promises'
-import type { AccountConfig, ChannelHost, ChannelPlugin } from '@relanox/sdk'
-import { WebSocket } from 'ws'
-import type { z } from 'zod'
 import {
+  API_BASE_URL,
   validateConfig,
   validateTransportUrl,
   REQUEST_TIMEOUT_MS,
   RECONNECT_DELAY_MS
 } from './config.js'
+import { createHmac } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
+import type { AccountConfig, ChannelHost, ChannelPlugin } from '@relanox/sdk'
+import { WebSocket } from 'ws'
+import type { z } from 'zod'
 import type { SlackConfig } from './config.js'
 import {
   socketFrameSchema,
@@ -18,7 +19,12 @@ import {
   messageSchema
 } from './schemas.js'
 import { frameText, waitForStop } from './socket.js'
-import { receiveMedia, sendMedia, sendOutcome } from './media.js'
+import {
+  receiveMedia,
+  sendMedia,
+  sendOutcome,
+  discoverIdentity
+} from './media.js'
 import {
   bytes,
   credential,
@@ -35,6 +41,8 @@ export function createSlackChannel(
   let host: ChannelHost
   let account: AccountConfig
   let config: SlackConfig
+  let botUserId: string
+  let teamId: string
 
   const identity = (): {
     teamId: string
@@ -42,10 +50,10 @@ export function createSlackChannel(
     botId: string
     apiBaseUrl: string
   } => ({
-    teamId: config.teamId,
+    teamId,
     appId: config.appId,
-    botId: config.botUserId,
-    apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, '')
+    botId: botUserId,
+    apiBaseUrl: new URL(API_BASE_URL).toString().replace(/\/$/u, '')
   })
 
   let controller: AbortController | undefined
@@ -64,7 +72,7 @@ export function createSlackChannel(
       return
     }
     if (
-      envelope.team_id !== config.teamId ||
+      envelope.team_id !== teamId ||
       envelope.api_app_id !== config.appId ||
       !envelope.event_id
     ) {
@@ -75,7 +83,7 @@ export function createSlackChannel(
       !['message', 'app_mention'].includes(event.type) ||
       (event.subtype && event.subtype !== 'file_share') ||
       event.bot_id ||
-      event.user === config.botUserId ||
+      event.user === botUserId ||
       (!event.text && event.files.length === 0) ||
       !event.user ||
       !event.channel ||
@@ -100,7 +108,6 @@ export function createSlackChannel(
       attachments: await receiveMedia(
         event.files,
         host,
-        config,
         credential(config.botToken, environment)
       ),
       target: {
@@ -111,18 +118,18 @@ export function createSlackChannel(
         replyToId: event.ts,
         data: identity()
       },
-      context: { teamId: config.teamId },
+      context: { teamId },
       receivedAt: Date.now()
     })
   }
 
   async function connect(signal: AbortSignal): Promise<void> {
-    if (config.receiveMode !== 'socket') {
+    if (!('appToken' in config)) {
       return
     }
 
     const response = await postJson(
-      `${config.apiBaseUrl.replace(/\/$/u, '')}/apps.connections.open`,
+      `${API_BASE_URL.replace(/\/$/u, '')}/apps.connections.open`,
       { authorization: `Bearer ${credential(config.appToken, environment)}` },
       {},
       signal,
@@ -134,13 +141,10 @@ export function createSlackChannel(
       throw new Error('socket_open_failed')
     }
 
-    const ws = new WebSocket(
-      validateTransportUrl(result.url, config.allowInsecureLoopback, true),
-      {
-        maxPayload: 1_048_576,
-        handshakeTimeout: REQUEST_TIMEOUT_MS
-      }
-    )
+    const ws = new WebSocket(validateTransportUrl(result.url, false, true), {
+      maxPayload: 1_048_576,
+      handshakeTimeout: REQUEST_TIMEOUT_MS
+    })
 
     socket = ws
     let chain = Promise.resolve()
@@ -288,8 +292,14 @@ export function createSlackChannel(
       host = nextHost
       account = nextAccount
       config = nextConfig
-      credential(config.botToken, environment)
-      if (config.receiveMode === 'socket') {
+
+      const discovered = await discoverIdentity(
+        credential(config.botToken, environment)
+      )
+
+      botUserId = discovered.botUserId
+      teamId = discovered.teamId
+      if ('appToken' in config) {
         credential(config.appToken, environment)
         return
       }
@@ -308,7 +318,7 @@ export function createSlackChannel(
         } catch {
           return new Response(null, { status: 413 })
         }
-        if (config.receiveMode !== 'http') {
+        if (!('signingSecret' in config)) {
           return new Response(null, { status: 404 })
         }
 
@@ -336,8 +346,7 @@ export function createSlackChannel(
         }
         if (
           envelope.type === 'event_callback' &&
-          (envelope.team_id !== config.teamId ||
-            envelope.api_app_id !== config.appId)
+          (envelope.team_id !== teamId || envelope.api_app_id !== config.appId)
         ) {
           return new Response(null, { status: 401 })
         }
@@ -350,7 +359,7 @@ export function createSlackChannel(
       })
     },
     async start(signal) {
-      if (task || config.receiveMode === 'http') {
+      if (task || 'signingSecret' in config) {
         return
       }
       controller = new AbortController()
@@ -385,13 +394,12 @@ export function createSlackChannel(
           return await sendMedia(
             input,
             host,
-            config,
             credential(config.botToken, environment)
           )
         }
 
         const response = await postJson(
-          `${config.apiBaseUrl.replace(/\/$/u, '')}/chat.postMessage`,
+          `${API_BASE_URL.replace(/\/$/u, '')}/chat.postMessage`,
           {
             authorization: `Bearer ${credential(config.botToken, environment)}`
           },

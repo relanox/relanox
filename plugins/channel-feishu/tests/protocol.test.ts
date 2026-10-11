@@ -1,8 +1,14 @@
+import {
+  routePlatform,
+  installPeerNetwork
+} from '../../channel-wecom/tests/network.js'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { HttpHandler, ChannelHost, IngestInput } from '@relanox/sdk'
 import { createCipheriv, createHash } from 'node:crypto'
-import { afterEach, describe, expect, it } from 'vitest'
 import { createFeishuChannel } from '../src/index.js'
 import { peer, recorder, sendInput } from './peer.js'
+
+installPeerNetwork()
 
 const environment = {
   APPSECRET: 'app-secret',
@@ -91,6 +97,15 @@ async function setup(
   connections: string[]
   plugin: ReturnType<typeof createFeishuChannel>
 }> {
+  if (apiBaseUrl === 'https://open.feishu.cn') {
+    const discovery = await peer(() => ({
+      body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+    }))
+
+    cleanup.push(discovery.close)
+  } else {
+    routePlatform('https://open.feishu.cn', apiBaseUrl)
+  }
   const plugin = createFeishuChannel(environment)
   const recorded = recorder(onIngest)
   await plugin.setup(
@@ -102,16 +117,13 @@ async function setup(
       encryptKey: { env: 'ENCRYPT' },
       verificationToken: { env: 'VERIFY' },
       tenantKey: 'tenant-1',
-      botOpenId: 'ou_bot',
-      apiBaseUrl,
-      allowInsecureLoopback: true,
       ...overrides
     })
   )
   return {
     plugin,
     ...recorded,
-    target: { ...target, data: { ...target.data, apiBaseUrl } },
+    target: { ...target, data: { ...target.data } },
     handler: recorded.handlers.get('/events') as NonNullable<
       ReturnType<typeof recorded.handlers.get>
     >
@@ -159,6 +171,59 @@ function request(
 }
 
 describe('feishu native HTTP protocol', () => {
+  it.each(['failed', 'incomplete'])(
+    'does not mount or receive after %s authenticated identity discovery',
+    async (failure) => {
+      const remote = await peer(() => ({
+        body: { code: 0, tenant_access_token: 'startup-token', expire: 7200 }
+      }))
+
+      cleanup.push(remote.close)
+      remote.identity({ code: 0, bot: {} }, failure === 'failed' ? 503 : 200)
+      const plugin = createFeishuChannel(environment)
+      const recorded = recorder()
+      await expect(
+        plugin.setup(
+          recorded.host,
+          account,
+          plugin.validateConfig({
+            appId: 'cli_app',
+            appSecret: { env: 'APPSECRET' },
+            encryptKey: { env: 'ENCRYPT' },
+            verificationToken: { env: 'VERIFY' },
+            tenantKey: 'tenant-1'
+          })
+        )
+      ).rejects.toThrow()
+      expect(recorded.handlers.size).toBe(0)
+      expect(recorded.received).toEqual([])
+      expect(recorded.connections).not.toContain('connected')
+      expect(remote.discoveryRequests.length).toBeGreaterThan(0)
+    }
+  )
+
+  it('validates minimal credentials offline without identity traffic', async () => {
+    const remote = await peer(() => ({ body: {} }))
+    cleanup.push(remote.close)
+    expect(
+      createFeishuChannel(environment).validateConfig({
+        appId: 'cli_app',
+        appSecret: { env: 'APPSECRET' },
+        encryptKey: { env: 'ENCRYPT' },
+        verificationToken: { env: 'VERIFY' },
+        tenantKey: 'tenant-1'
+      })
+    ).toMatchObject({
+      appId: 'cli_app',
+      appSecret: { env: 'APPSECRET' },
+      encryptKey: { env: 'ENCRYPT' },
+      verificationToken: { env: 'VERIFY' },
+      tenantKey: 'tenant-1'
+    })
+    expect(remote.discoveryRequests).toEqual([])
+    expect(remote.requests).toEqual([])
+  })
+
   it.each(['sender_not_allowed', 'unbound_conversation'])(
     'acknowledges terminal core policy rejection: %s',
     async (code) => {
@@ -197,15 +262,18 @@ describe('feishu native HTTP protocol', () => {
         change === 'identity' ? { appId: 'cli_other' } : {}
       )
 
-      expect(
-        await restarted.plugin.send(
-          sendInput(
-            change === 'legacy'
-              ? { ...frozen, data: { tenantKey: 'tenant-1' } }
-              : frozen
-          )
-        )
-      ).toEqual({
+      let replyTarget = frozen
+      if (change === 'legacy') {
+        replyTarget = { ...frozen, data: { tenantKey: 'tenant-1' } }
+      }
+      if (change === 'server') {
+        replyTarget = {
+          ...frozen,
+          data: { ...target.data, apiBaseUrl: 'https://foreign.example' }
+        }
+      }
+
+      expect(await restarted.plugin.send(sendInput(replyTarget))).toEqual({
         status: 'rejected',
         errorCode: 'invalid_target'
       })
@@ -274,12 +342,12 @@ describe('feishu native HTTP protocol', () => {
     expect(
       (await restarted.plugin.send(sendInput(initial.target))).status
     ).toBe('sent')
-    expect(remote.requests).toHaveLength(2)
+    expect(remote.requests).toHaveLength(1)
   })
 
-  it('bounds event bodies and keeps canceled token acquisition retryable', async () => {
+  it('bounds event bodies and keeps canceled token refresh retryable', async () => {
     const remote = await peer(() => ({
-      body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+      body: { code: 0, tenant_access_token: 'tenant-token', expire: 1 }
     }))
 
     cleanup.push(remote.close)
@@ -421,7 +489,16 @@ describe('feishu native HTTP protocol', () => {
   ])(
     'does not freeze unsent text after token endpoint HTTP $status',
     async ({ status, body, expected }) => {
-      const remote = await peer(() => ({ status, body }))
+      let tokenCalls = 0
+
+      const remote = await peer(() =>
+        ++tokenCalls === 1
+          ? {
+              body: { code: 0, tenant_access_token: 'startup-token', expire: 1 }
+            }
+          : { status, body }
+      )
+
       cleanup.push(remote.close)
       const test = await setup(remote.url)
       expect((await test.plugin.send(sendInput(test.target))).status).toBe(
@@ -460,7 +537,7 @@ describe('feishu native HTTP protocol', () => {
     })
     expect(remote.requests[1]).toMatchObject({
       path: '/open-apis/im/v1/messages/om_message/reply',
-      headers: { authorization: 'Bearer tenant-token-1' },
+      headers: { authorization: 'Bearer tenant-token-2' },
       body: {
         msg_type: 'text',
         content: '{"text":"hello @everyone <@U123>"}',
@@ -468,7 +545,7 @@ describe('feishu native HTTP protocol', () => {
       }
     })
     await test.plugin.send(sendInput(test.target))
-    expect(tokens).toBe(2)
+    expect(tokens).toBe(3)
   })
 
   it('uses chat-id create path when there is no referenced source message', async () => {
@@ -482,7 +559,7 @@ describe('feishu native HTTP protocol', () => {
     const test = await setup(remote.url)
     const { replyToId: _reply, threadId: _thread, ...chatTarget } = test.target
     expect((await test.plugin.send(sendInput(chatTarget))).status).toBe('sent')
-    expect(remote.requests[1]).toMatchObject({
+    expect(remote.requests[0]).toMatchObject({
       path: '/open-apis/im/v1/messages?receive_id_type=chat_id',
       body: {
         receive_id: 'oc_chat',
@@ -544,8 +621,7 @@ describe('feishu native HTTP protocol', () => {
       appSecret: { env: 'APPSECRET' },
       encryptKey: { env: 'ENCRYPT' },
       verificationToken: { env: 'VERIFY' },
-      tenantKey: 'tenant-1',
-      botOpenId: 'ou_bot'
+      tenantKey: 'tenant-1'
     }
 
     expect(() =>

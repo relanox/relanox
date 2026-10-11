@@ -1,3 +1,4 @@
+import { API_VERSION, API_BASE, validateEndpointUrl } from './config.js'
 import { downloadMedia, mediaBlob } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -8,7 +9,6 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { WhatsAppConfig } from './config.js'
-import { validateEndpointUrl } from './config.js'
 import { failure, request, secret } from './io.js'
 import type { messageSchema } from './schemas.js'
 
@@ -106,14 +106,14 @@ export async function receiveMedia(
   }
 
   const endpoint = new URL(
-    `${config.apiBase}/${config.apiVersion}/${encodeURIComponent(payload.id)}`
+    `${API_BASE}/${API_VERSION}/${encodeURIComponent(payload.id)}`
   )
 
   endpoint.searchParams.set('phone_number_id', config.phoneNumberId)
   const authorization = `Bearer ${secret(config.accessToken)}`
 
   const response = await request(
-    validateEndpointUrl(endpoint.href, config.allowLoopback),
+    validateEndpointUrl(endpoint.href, false),
     { headers: { authorization } },
     bound
   )
@@ -124,7 +124,7 @@ export async function receiveMedia(
   }
   const metadata = metadataSchema.parse(await readMediaJson(response))
   const url = new URL(metadata.url)
-  const configuredOrigin = new URL(config.apiBase).origin
+  const configuredOrigin = new URL(API_BASE).origin
   if (
     metadata.id !== payload.id ||
     (url.origin !== configuredOrigin &&
@@ -152,7 +152,7 @@ export async function receiveMedia(
     signal: bound,
     headers: { authorization },
     trustedOrigins: [configuredOrigin, 'https://lookaside.fbsbx.com'],
-    allowInsecureLocalhost: config.allowLoopback
+    allowInsecureLocalhost: false
   })
 
   return {
@@ -198,8 +198,8 @@ export async function uploadMedia(
   try {
     response = await request(
       validateEndpointUrl(
-        `${config.apiBase}/${config.apiVersion}/${encodeURIComponent(config.phoneNumberId)}/media`,
-        config.allowLoopback
+        `${API_BASE}/${API_VERSION}/${encodeURIComponent(config.phoneNumberId)}/media`,
+        false
       ),
       {
         method: 'POST',

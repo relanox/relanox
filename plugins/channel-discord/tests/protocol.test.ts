@@ -1,19 +1,32 @@
+import {
+  routePlatform,
+  registerPeer,
+  installPeerNetwork
+} from '../../channel-wecom/tests/network.js'
+import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
   ChannelHost,
+  SendInput,
   Storage,
   IngestInput,
   HttpHandler
 } from '@relanox/sdk'
-import { createSqliteStorage } from '@relanox/storage-sqlite'
-import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
 import type { RawData, Server } from 'ws'
 import { createDiscordChannel } from '../src/index.js'
-import { peer, recorder, sendInput } from './peer.js'
+import {
+  peer,
+  recorder,
+  sendInput,
+  createSqliteStorage,
+  sessionSchema
+} from './peer.js'
+
+installPeerNetwork()
 
 const environment = { BOT: 'discord-token', ROTATED: 'rotated-token' }
 
@@ -72,6 +85,18 @@ async function setup(
   plugin: ReturnType<typeof createDiscordChannel>
   db: Storage
 }> {
+  if (apiBaseUrl === 'https://discord.com/api/v10') {
+    const discovery = await peer(() => ({
+      body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+    }))
+
+    cleanup.push(discovery.close)
+  } else {
+    routePlatform('https://discord.com/api/v10', apiBaseUrl)
+  }
+  if (gatewayUrl !== 'wss://gateway.discord.gg') {
+    routePlatform('wss://gateway.discord.gg', gatewayUrl)
+  }
   const plugin = createDiscordChannel(environment)
   const recorded = recorder(onIngest)
 
@@ -98,10 +123,6 @@ async function setup(
     account,
     plugin.validateConfig({
       botToken: { env: 'BOT' },
-      botUserId: '999',
-      apiBaseUrl,
-      gatewayUrl,
-      allowInsecureLoopback: true,
       ...overrides
     })
   )
@@ -109,7 +130,7 @@ async function setup(
     plugin,
     db,
     ...recorded,
-    target: { ...target, data: { ...target.data, apiBaseUrl } }
+    target: { ...target, data: { ...target.data } }
   }
 }
 
@@ -121,7 +142,11 @@ async function gateway(): Promise<{
   await new Promise<void>((resolve) => {
     wss.once('listening', resolve)
   })
-  const url = `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`
+
+  const url = registerPeer(
+    `http://127.0.0.1:${(wss.address() as AddressInfo).port}`
+  ).replace('https:', 'wss:')
+
   cleanup.push(async () => {
     for (const ws of wss.clients) {
       ws.terminate()
@@ -136,6 +161,46 @@ async function gateway(): Promise<{
 }
 
 describe('discord native Gateway and REST', () => {
+  it.each(['failed', 'incomplete'])(
+    'does not mount or receive after %s authenticated identity discovery',
+    async (failure) => {
+      const remote = await peer(() => ({
+        body: { code: 0, tenant_access_token: 'startup-token', expire: 7200 }
+      }))
+
+      cleanup.push(remote.close)
+      remote.identity(
+        { id: '999', bot: false },
+        failure === 'failed' ? 503 : 200
+      )
+      const plugin = createDiscordChannel(environment)
+      const recorded = recorder()
+      await expect(
+        plugin.setup(
+          recorded.host,
+          account,
+          plugin.validateConfig({ botToken: { env: 'BOT' } })
+        )
+      ).rejects.toThrow()
+      expect(recorded.handlers.size).toBe(0)
+      expect(recorded.received).toEqual([])
+      expect(recorded.connections).not.toContain('connected')
+      expect(remote.discoveryRequests.length).toBeGreaterThan(0)
+    }
+  )
+
+  it('validates minimal credentials offline without identity traffic', async () => {
+    const remote = await peer(() => ({ body: {} }))
+    cleanup.push(remote.close)
+    expect(
+      createDiscordChannel(environment).validateConfig({
+        botToken: { env: 'BOT' }
+      })
+    ).toEqual({ botToken: { env: 'BOT' } })
+    expect(remote.discoveryRequests).toEqual([])
+    expect(remote.requests).toEqual([])
+  })
+
   it.each(['sender_not_allowed', 'unbound_conversation'])(
     'continues the Gateway after terminal core policy rejection: %s',
     async (code) => {
@@ -220,6 +285,10 @@ describe('discord native Gateway and REST', () => {
       const initial = await setup(remote.url)
       const frozen = initial.target
 
+      if (change === 'identity') {
+        remote.identity({ id: '998' })
+      }
+
       const nextBase =
         change === 'server' ? `${remote.url}/different` : remote.url
 
@@ -228,14 +297,21 @@ describe('discord native Gateway and REST', () => {
         undefined,
         undefined,
         undefined,
-        change === 'identity' ? { botUserId: '998' } : {}
+        {}
       )
 
-      expect(
-        await restarted.plugin.send(
-          sendInput(change === 'legacy' ? { ...frozen, data: null } : frozen)
-        )
-      ).toEqual({
+      let replyTarget: SendInput['target'] = frozen
+      if (change === 'legacy') {
+        replyTarget = { ...frozen, data: null }
+      }
+      if (change === 'server') {
+        replyTarget = {
+          ...frozen,
+          data: { ...target.data, apiBaseUrl: 'https://foreign.example' }
+        }
+      }
+
+      expect(await restarted.plugin.send(sendInput(replyTarget))).toEqual({
         status: 'rejected',
         errorCode: 'invalid_target'
       })
@@ -243,7 +319,7 @@ describe('discord native Gateway and REST', () => {
     }
   )
 
-  it('does not resume a saved Gateway session after its configured API origin changes', async () => {
+  it('does not resume a saved Gateway session belonging to another API origin', async () => {
     const remote = await gateway()
     const frames: Record<string, unknown>[] = []
     remote.wss.on('connection', (ws) => {
@@ -289,12 +365,32 @@ describe('discord native Gateway and REST', () => {
     await initial.plugin.stop?.()
     frames.length = 0
 
-    const restarted = await setup(
-      'https://new-proxy.example/api/v10',
-      remote.url,
-      undefined,
-      initial.db
+    const saved = await initial.db.getState(
+      { pluginId: 'channel-discord', ownerId: 'dc' },
+      'gateway-session'
     )
+
+    if (
+      !saved ||
+      typeof saved.value !== 'object' ||
+      saved.value === null ||
+      Array.isArray(saved.value)
+    ) {
+      throw new Error('missing_saved_session')
+    }
+    await initial.db.compareAndSetState(
+      { pluginId: 'channel-discord', ownerId: 'dc' },
+      {
+        key: 'gateway-session',
+        expectedVersion: saved.version,
+        value: {
+          ...sessionSchema.parse(saved.value),
+          apiBaseUrl: 'https://foreign.example/api/v10'
+        }
+      }
+    )
+
+    const restarted = await setup(undefined, remote.url, undefined, initial.db)
 
     cleanup.unshift(async () => {
       await restarted.plugin.stop?.()

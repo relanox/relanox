@@ -1,3 +1,4 @@
+import { registerPeer } from '../../../plugins/channel-wecom/tests/network.js'
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -126,7 +127,7 @@ export async function nativePeers(): Promise<{
       response.setHeader('content-type', 'application/json')
       return response.end(
         JSON.stringify({
-          endpoint: `${origin.replace('http:', 'ws:')}/ding`,
+          endpoint: `${registerPeer(origin).replace('https:', 'wss:')}/ding`,
           ticket: 'ticket'
         })
       )

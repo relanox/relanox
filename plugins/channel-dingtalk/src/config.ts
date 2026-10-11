@@ -32,40 +32,14 @@ export const configSchema = z
   .object({
     clientId: z.string().min(1),
     clientSecret: secretRefSchema,
-    robotCode: z.string().min(1),
-    apiBase: z.url().default('https://api.dingtalk.com'),
-    uploadBase: z.url().default('https://oapi.dingtalk.com'),
-    mediaOrigins: z.array(z.url()).default([]),
-    allowInsecureLoopback: z.boolean().default(false)
+    robotCode: z.string().min(1)
   })
   .strict()
-  .superRefine((config, context) => {
-    for (const origin of config.mediaOrigins) {
-      if (new URL(origin).origin !== origin) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Media origins must be exact origins'
-        })
-      }
-    }
-    try {
-      validateTransportUrl(config.apiBase, false, config.allowInsecureLoopback)
-      validateTransportUrl(
-        config.uploadBase,
-        false,
-        config.allowInsecureLoopback
-      )
-      if (/[?#]/u.test(new URL(config.apiBase).href)) {
-        context.addIssue({
-          code: 'custom',
-          message: 'API base URL cannot contain a query or fragment'
-        })
-      }
-    } catch {
-      context.addIssue({ code: 'custom', message: 'Invalid secure API URL' })
-    }
-  })
 
 export type DingTalkConfig = z.infer<typeof configSchema>
 
 export const MAX_RECONNECT_ATTEMPTS = 20
+
+export const API_BASE = 'https://api.dingtalk.com'
+
+export const UPLOAD_BASE = 'https://oapi.dingtalk.com'

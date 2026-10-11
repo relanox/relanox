@@ -1,8 +1,15 @@
-import { createHmac } from 'node:crypto'
+import {
+  registerPeer,
+  routePlatform,
+  installPeerNetwork
+} from '../../channel-wecom/tests/network.js'
 import { expect, it, vi } from 'vitest'
+import { createHmac } from 'node:crypto'
 import { body, httpPeer, json } from '../../channel-matrix/tests/harness.js'
 import { mediaRelay } from '../../channel-matrix/tests/media-harness.js'
 import { createWhatsAppChannel } from '../src/index.js'
+
+installPeerNetwork()
 
 const kinds = [
   ['image', 'image/png', 'image.png'],
@@ -67,25 +74,22 @@ async function webhook(
 function config(base: string): {
   phoneNumberId: string
   businessAccountId: string
-  apiVersion: string
+
   appSecret: { env: string }
   verifyToken: { env: string }
   accessToken: { env: string }
-  apiBase: string
-  allowLoopback: boolean
 } {
+  routePlatform('https://graph.facebook.com', registerPeer(base))
   vi.stubEnv('WA_MEDIA_APP', 'app-secret')
   vi.stubEnv('WA_MEDIA_VERIFY', 'verify')
   vi.stubEnv('WA_MEDIA_TOKEN', 'access-secret')
   return {
     phoneNumberId: 'phone',
     businessAccountId: 'business',
-    apiVersion: 'v25.0',
+
     appSecret: { env: 'WA_MEDIA_APP' },
     verifyToken: { env: 'WA_MEDIA_VERIFY' },
-    accessToken: { env: 'WA_MEDIA_TOKEN' },
-    apiBase: base,
-    allowLoopback: true
+    accessToken: { env: 'WA_MEDIA_TOKEN' }
   }
 }
 
@@ -112,7 +116,7 @@ it.each(kinds)(
         })
         json(response, {
           id: 'original',
-          url: `${peer.base}/binary`,
+          url: 'https://graph.facebook.com/binary',
           mime_type: kind === 'audio' ? `${mimeType}; codecs=opus` : mimeType,
           file_size: '3'
         })
@@ -274,7 +278,7 @@ it.each([
       if (url.startsWith('/v25.0/original')) {
         json(response, {
           id: 'original',
-          url: `${graph.base}/binary`,
+          url: 'https://graph.facebook.com/binary',
           mime_type: 'image/png',
           file_size: 3
         })

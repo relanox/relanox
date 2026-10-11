@@ -1,4 +1,11 @@
 import {
+  WEBSOCKET_URL,
+  configSchema,
+  validateTransportUrl,
+  HEARTBEAT_MS,
+  MAX_RECONNECT_ATTEMPTS
+} from './config.js'
+import {
   receiveParts,
   uploadResource,
   outgoingBody,
@@ -13,12 +20,6 @@ import type {
 } from '@relanox/sdk'
 import { randomUUID } from 'node:crypto'
 import type { z } from 'zod'
-import {
-  configSchema,
-  validateTransportUrl,
-  HEARTBEAT_MS,
-  MAX_RECONNECT_ATTEMPTS
-} from './config.js'
 import type { WeComConfig } from './config.js'
 import {
   frameSchema,
@@ -133,7 +134,6 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
     const { text, attachments } = await receiveParts(
       message,
       host,
-      config,
       connection.signal
     )
 
@@ -156,7 +156,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
         replyToId: message.msgid,
         data: {
           chattype: message.chattype,
-          scope: { botId: config.botId, wsUrl: new URL(config.wsUrl).href }
+          scope: { botId: config.botId, wsUrl: new URL(WEBSOCKET_URL).href }
         }
       },
       receivedAt: Date.now(),
@@ -189,12 +189,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       config = configSchema.parse(nextConfig)
       connection = new JsonSocketConnection(
         host,
-        async () =>
-          validateTransportUrl(
-            config.wsUrl,
-            true,
-            config.allowInsecureLoopback
-          ),
+        async () => validateTransportUrl(WEBSOCKET_URL, true, false),
         async () => {
           const result = await request(
             'aibot_subscribe',
@@ -257,7 +252,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
       }
       if (
         target.data.scope.botId !== config.botId ||
-        target.data.scope.wsUrl !== new URL(config.wsUrl).href
+        target.data.scope.wsUrl !== new URL(WEBSOCKET_URL).href
       ) {
         return { status: 'rejected', errorCode: 'target_identity_changed' }
       }

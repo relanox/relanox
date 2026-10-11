@@ -1,3 +1,10 @@
+import {
+  apiBase,
+  TOKEN_URL,
+  configSchema,
+  validateTransportUrl,
+  MAX_RECONNECT_ATTEMPTS
+} from './config.js'
 import { downloadAttachments } from './media.js'
 import { apiError } from './api-error.js'
 import { uploadMedia } from './upload.js'
@@ -10,11 +17,6 @@ import type {
 } from '@relanox/sdk'
 import type { WebSocket } from 'ws'
 import type { z } from 'zod'
-import {
-  configSchema,
-  validateTransportUrl,
-  MAX_RECONNECT_ATTEMPTS
-} from './config.js'
 import type { QqConfig } from './config.js'
 import {
   sendResponseSchema,
@@ -61,7 +63,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   let dispatchSocket: WebSocket | undefined
 
   const api = (path: string): string =>
-    `${config.apiBase.replace(/\/$/u, '')}${path}`
+    `${apiBase(config).replace(/\/$/u, '')}${path}`
 
   async function getAccessToken(signal: AbortSignal): Promise<string> {
     const credential = secret(config.clientSecret)
@@ -73,7 +75,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     }
     tokenFlight = (async (): Promise<string> => {
       const raw = await httpJson(
-        api('/app/getAppAccessToken'),
+        TOKEN_URL,
         jsonPostRequest({ appId: config.appId, clientSecret: credential }),
         signal
       )
@@ -168,7 +170,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
           type: group ? 'group' : 'c2c',
           msgId: message.id,
           messageAt: Date.parse(message.timestamp),
-          scope: { appId: config.appId, apiBase: new URL(config.apiBase).href }
+          scope: { appId: config.appId, apiBase: new URL(apiBase(config)).href }
         }
       },
       receivedAt: Date.now(),
@@ -443,11 +445,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
           )
 
           const body = gatewayResponseSchema.parse(raw)
-          return validateTransportUrl(
-            body.url,
-            true,
-            config.allowInsecureLoopback
-          )
+          return validateTransportUrl(body.url, true, false)
         },
         async () => {},
         receive,
@@ -490,7 +488,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       }
       if (
         target.data.scope.appId !== config.appId ||
-        target.data.scope.apiBase !== new URL(config.apiBase).href
+        target.data.scope.apiBase !== new URL(apiBase(config)).href
       ) {
         return { status: 'rejected', errorCode: 'target_identity_changed' }
       }

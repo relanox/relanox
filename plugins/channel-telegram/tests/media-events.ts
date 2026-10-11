@@ -1,3 +1,4 @@
+import { routePlatform } from '../../channel-wecom/tests/network.js'
 import { createHash, createHmac } from 'node:crypto'
 import type { Json, MediaKind } from '@relanox/sdk'
 import { vi } from 'vitest'
@@ -35,36 +36,27 @@ export function channelConfig(
       }
     }
     case 'discord': {
-      return {
-        botToken: { env: 'MEDIA_NATIVE_TOKEN' },
-        botUserId: '999',
-        apiBaseUrl: origin,
-        gatewayUrl: gateway,
-        allowInsecureLoopback: true
-      }
+      routePlatform('https://discord.com', origin)
+      routePlatform('wss://gateway.discord.gg', gateway)
+      return { botToken: { env: 'MEDIA_NATIVE_TOKEN' } }
     }
     case 'slack': {
+      routePlatform('https://slack.com', origin)
+      routePlatform('https://files.slack.com', origin)
       return {
-        receiveMode: 'http',
         botToken: { env: 'MEDIA_NATIVE_TOKEN' },
         signingSecret: { env: 'MEDIA_NATIVE_SECRET' },
-        botUserId: 'U999',
-        teamId: 'T999',
-        appId: 'A999',
-        apiBaseUrl: origin,
-        allowInsecureLoopback: true
+        appId: 'A999'
       }
     }
     case 'feishu': {
+      routePlatform('https://open.feishu.cn', origin)
       return {
         appId: 'cli_999',
         appSecret: { env: 'MEDIA_NATIVE_TOKEN' },
         verificationToken: { env: 'MEDIA_NATIVE_SECRET' },
         encryptKey: { env: 'MEDIA_NATIVE_ENCRYPT' },
-        botOpenId: 'ou_999',
-        tenantKey: 'tenant999',
-        apiBaseUrl: origin,
-        allowInsecureLoopback: true
+        tenantKey: 'tenant999'
       }
     }
     case 'line': {
@@ -220,7 +212,7 @@ export async function httpIngress(
             name: 'incoming.bin',
             mimetype: mimeType,
             size,
-            url_private_download: `${origin}/asset`
+            url_private_download: 'https://slack.com/asset'
           }
         ]
       }

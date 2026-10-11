@@ -1,3 +1,4 @@
+import { API_BASE, UPLOAD_BASE } from './config.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -42,7 +43,7 @@ export async function downloadAttachment(
   }
 
   const response = await httpJson(
-    `${config.apiBase.replace(/\/$/u, '')}/v1.0/robot/messageFiles/download`,
+    `${API_BASE.replace(/\/$/u, '')}/v1.0/robot/messageFiles/download`,
     jsonPostRequest(
       { downloadCode: code, robotCode: config.robotCode },
       { 'x-acs-dingtalk-access-token': credential }
@@ -55,8 +56,8 @@ export async function downloadAttachment(
   const downloaded = await downloadMedia(url, {
     maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
     signal,
-    trustedOrigins: config.mediaOrigins,
-    allowInsecureLocalhost: config.allowInsecureLoopback
+    trustedOrigins: [],
+    allowInsecureLocalhost: false
   })
 
   return {
@@ -90,7 +91,7 @@ async function upload(
   ) {
     throw new Error('unsupported_media_format_or_size')
   }
-  const url = new URL(`${config.uploadBase.replace(/\/$/u, '')}/media/upload`)
+  const url = new URL(`${UPLOAD_BASE.replace(/\/$/u, '')}/media/upload`)
   url.searchParams.set('access_token', credential)
   url.searchParams.set('type', kind === 'audio' ? 'voice' : kind)
   const form = new FormData()

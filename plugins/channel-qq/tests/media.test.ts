@@ -1,5 +1,6 @@
-import type { MediaKind, SendInput } from '@relanox/sdk'
+import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
 import { expect, test, vi } from 'vitest'
+import type { MediaKind, SendInput } from '@relanox/sdk'
 import { z } from 'zod'
 import { createQqChannel } from '../src/index.js'
 import { wireText } from '../src/transport.js'
@@ -9,6 +10,8 @@ import {
   records,
   sendInput
 } from '../../channel-wecom/tests/test-support.js'
+
+installPeerNetwork()
 
 const smallBytes = Buffer.from([10, 20, 30, 40, 50])
 
@@ -180,10 +183,7 @@ async function fixture(
     plugin,
     {
       appId: 'app',
-      clientSecret: { env: 'QQ_MEDIA_SECRET' },
-      apiBase: remote.http,
-      mediaOrigins: [remote.http],
-      allowInsecureLoopback: true
+      clientSecret: { env: 'QQ_MEDIA_SECRET' }
     },
     [{ chatId: group ? 'group' : 'user', senderId: group ? 'member' : 'user' }]
   )
@@ -359,7 +359,7 @@ test.each(
   }
 )
 
-function outbound(bytes: Buffer, apiBase: string): SendInput {
+function outbound(bytes: Buffer): SendInput {
   const reference = {
     id: 'asset',
     kind: 'file' as MediaKind,
@@ -374,7 +374,7 @@ function outbound(bytes: Buffer, apiBase: string): SendInput {
       type: 'c2c',
       msgId: 'original',
       messageAt: Date.now(),
-      scope: { appId: 'app', apiBase: new URL(apiBase).href }
+      scope: { appId: 'app', apiBase: 'https://api.sgroup.qq.com/' }
     }),
     chunk: {
       text: '',
@@ -389,7 +389,7 @@ function outbound(bytes: Buffer, apiBase: string): SendInput {
 test('QQ uploads beyond direct JSON size limits and hashes exactly the first 10002432 bytes', async () => {
   const bytes = Buffer.alloc(10_002_433, 7)
   const { remote, plugin, base, blockSize } = await fixture(false, bytes)
-  expect(await plugin.send(outbound(bytes, remote.http))).toMatchObject({
+  expect(await plugin.send(outbound(bytes))).toMatchObject({
     status: 'sent'
   })
   assertUpload(remote, base, bytes, blockSize)
@@ -420,7 +420,7 @@ test.each([
       fault
     )
 
-    const input = outbound(smallBytes, remote.http)
+    const input = outbound(smallBytes)
     expect(await plugin.send(input)).toMatchObject({ status: 'retryable' })
     expect(
       remote.requests.filter(
@@ -461,8 +461,8 @@ test.each([
 )
 
 test('QQ upload retry classification does not change final message error handling', async () => {
-  const { remote, plugin } = await fixture(false, smallBytes, 'message_timeout')
-  expect(await plugin.send(outbound(smallBytes, remote.http))).toEqual({
+  const { plugin } = await fixture(false, smallBytes, 'message_timeout')
+  expect(await plugin.send(outbound(smallBytes))).toEqual({
     status: 'rejected',
     errorCode: 'qq_850027'
   })

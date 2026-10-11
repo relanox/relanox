@@ -8,7 +8,6 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { messageSchema } from './schemas.js'
-import type { WeComConfig } from './config.js'
 
 export const resourceSchema = z.object({
   url: z.url(),
@@ -42,7 +41,6 @@ export async function receiveResource(
   resource: z.infer<typeof resourceSchema>,
   kind: MediaUpload['kind'],
   host: ChannelHost,
-  config: WeComConfig,
   signal: AbortSignal
 ): Promise<MediaUpload> {
   const maximum = host.maxMediaBytes ?? 25 * 1024 * 1024
@@ -50,8 +48,8 @@ export async function receiveResource(
   const downloaded = await downloadMedia(resource.url, {
     maxBytes: maximum + 32,
     signal,
-    trustedOrigins: config.mediaOrigins,
-    allowInsecureLocalhost: config.allowInsecureLoopback
+    trustedOrigins: [],
+    allowInsecureLocalhost: false
   })
 
   const key = Buffer.from(resource.aeskey, 'base64')
@@ -173,7 +171,6 @@ export async function uploadResource(
 export async function receiveParts(
   message: z.infer<typeof messageSchema>,
   host: ChannelHost,
-  config: WeComConfig,
   signal: AbortSignal
 ): Promise<{ text: string; attachments: MediaUpload[] }> {
   const attachments: MediaUpload[] = []
@@ -191,9 +188,7 @@ export async function receiveParts(
     for (const kind of ['image', 'file', 'video'] as const) {
       const resource = item[kind]
       if (resource) {
-        attachments.push(
-          await receiveResource(resource, kind, host, config, signal)
-        )
+        attachments.push(await receiveResource(resource, kind, host, signal))
       }
     }
   }

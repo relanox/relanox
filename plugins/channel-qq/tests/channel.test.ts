@@ -1,6 +1,10 @@
+import {
+  installPeerNetwork,
+  outboundRequests
+} from '../../channel-wecom/tests/network.js'
+import { expect, test, vi } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
 import { wireText } from '../../channel-wecom/src/transport.js'
-import { expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import {
   assemble,
@@ -10,6 +14,8 @@ import {
   temporaryDatabase
 } from '../../channel-wecom/tests/test-support.js'
 import { createQqChannel } from '../src/index.js'
+
+installPeerNetwork()
 
 const createEvent = (
   id: string,
@@ -79,9 +85,7 @@ test('QQ authenticates latest token protocol, receives C2C/group text and resume
     plugin,
     {
       appId: 'app',
-      clientSecret: { env: 'QQ_SECRET' },
-      apiBase: remote.http,
-      allowInsecureLoopback: true
+      clientSecret: { env: 'QQ_SECRET' }
     },
     [
       { chatId: 'user', senderId: 'user' },
@@ -195,9 +199,7 @@ test('QQ reserves sequences using real SQLite CAS, reuses them after reopen and 
 
   const config = {
     appId: 'app',
-    clientSecret: { env: 'QQ_SECRET' },
-    apiBase: remote.http,
-    allowInsecureLoopback: true
+    clientSecret: { env: 'QQ_SECRET' }
   }
 
   const first = createQqChannel()
@@ -213,7 +215,7 @@ test('QQ reserves sequences using real SQLite CAS, reuses them after reopen and 
     type: 'group',
     msgId: 'incoming',
     messageAt: Date.now(),
-    scope: { appId: 'app', apiBase: new URL(remote.http).href }
+    scope: { appId: 'app', apiBase: 'https://api.sgroup.qq.com/' }
   }
 
   const a = sendInput('qq', 'group', target, 'arbitrary-key-a')
@@ -279,9 +281,7 @@ test.each([
       plugin,
       {
         appId: 'app',
-        clientSecret: { env: 'QQ_SECRET' },
-        apiBase: remote.http,
-        allowInsecureLoopback: true
+        clientSecret: { env: 'QQ_SECRET' }
       },
       [{ chatId: 'user', senderId: 'user' }]
     )
@@ -292,7 +292,7 @@ test.each([
             type,
             msgId: 'incoming',
             messageAt: Date.now() - ageMs,
-            scope: { appId: 'app', apiBase: new URL(remote.http).href }
+            scope: { appId: 'app', apiBase: 'https://api.sgroup.qq.com/' }
           })
         )
       ).status
@@ -322,9 +322,7 @@ test.each([
       plugin,
       {
         appId: 'app',
-        clientSecret: { env: 'QQ_SECRET' },
-        apiBase: remote.http,
-        allowInsecureLoopback: true
+        clientSecret: { env: 'QQ_SECRET' }
       },
       [{ chatId: 'user', senderId: 'user' }]
     )
@@ -333,7 +331,7 @@ test.each([
       type,
       msgId: 'incoming',
       messageAt: Date.now(),
-      scope: { appId: 'app', apiBase: new URL(remote.http).href }
+      scope: { appId: 'app', apiBase: 'https://api.sgroup.qq.com/' }
     }
 
     for (let index = 0; index < max; index++) {
@@ -357,8 +355,7 @@ test.each([
       {
         appId: 'app',
         clientSecret: { env: 'QQ_SECRET' },
-        apiBase: remote.http,
-        allowInsecureLoopback: true,
+
         allowProactive: true
       },
       [{ chatId: 'user', senderId: 'user' }]
@@ -369,7 +366,7 @@ test.each([
           sendInput('qq', 'user', {
             ...target,
             messageAt: Date.now() - 7_200_000,
-            scope: { appId: 'app', apiBase: new URL(remote.http).href }
+            scope: { appId: 'app', apiBase: 'https://api.sgroup.qq.com/' }
           })
         )
       ).status
@@ -415,7 +412,7 @@ test.each([
   async ({ reply, result }) => {
     vi.stubEnv('QQ_SECRET', 'secret')
 
-    const remote = await peer((request) =>
+    await peer((request) =>
       request.path === '/app/getAppAccessToken'
         ? { body: { access_token: 'token', expires_in: 7200 } }
         : reply
@@ -427,8 +424,7 @@ test.each([
       {
         appId: 'app',
         clientSecret: { env: 'QQ_SECRET' },
-        apiBase: remote.http,
-        allowInsecureLoopback: true,
+
         allowProactive: true
       },
       [{ chatId: 'user', senderId: 'user' }]
@@ -439,7 +435,7 @@ test.each([
           type: 'c2c',
           msgId: 'incoming',
           messageAt: Date.now() - 7_200_000,
-          scope: { appId: 'app', apiBase: new URL(remote.http).href }
+          scope: { appId: 'app', apiBase: 'https://api.sgroup.qq.com/' }
         })
       )
     ).toEqual(result)
@@ -455,8 +451,7 @@ test('QQ rejects deprecated static token configuration and remote insecure API b
     plugin.validateConfig({
       appId: 'app',
       clientSecret: { env: 'QQ_SECRET' },
-      apiBase: 'http://remote.example',
-      allowInsecureLoopback: true
+      apiBase: 'http://remote.example'
     })
   ).toThrow()
 })
@@ -503,9 +498,7 @@ test('QQ resumes before a failed SQLite write even with later dispatches already
     createQqChannel(),
     {
       appId: 'app',
-      clientSecret: { env: 'QQ_SECRET' },
-      apiBase: remote.http,
-      allowInsecureLoopback: true
+      clientSecret: { env: 'QQ_SECRET' }
     },
     [{ chatId: 'user', senderId: 'user' }],
     filename
@@ -570,9 +563,7 @@ test('QQ authentication still times out when an unready gateway acknowledges hea
     createQqChannel(),
     {
       appId: 'app',
-      clientSecret: { env: 'QQ_SECRET' },
-      apiBase: remote.http,
-      allowInsecureLoopback: true
+      clientSecret: { env: 'QQ_SECRET' }
     },
     [{ chatId: 'user', senderId: 'user' }]
   )
@@ -581,3 +572,44 @@ test('QQ authentication still times out when an unready gateway acknowledges hea
   await expect.poll(() => remote.sockets.length, { timeout: 13_000 }).toBe(2)
   expect(await records(host.storage)).toHaveLength(0)
 }, 15_000)
+
+test.each([
+  ['production', 'https://api.sgroup.qq.com'],
+  ['sandbox', 'https://sandbox.api.sgroup.qq.com']
+] as const)(
+  'QQ %s selects the native API while keeping token acquisition on the fixed token host',
+  async (environment, apiOrigin) => {
+    vi.stubEnv('QQ_ENV_SECRET', 'secret')
+
+    const remote = await peer((request) =>
+      request.path === '/app/getAppAccessToken'
+        ? { body: { access_token: 'token', expires_in: 7200 } }
+        : { body: { id: 'sent' } }
+    )
+
+    const plugin = createQqChannel()
+    await assemble(
+      plugin,
+      { appId: 'app', clientSecret: { env: 'QQ_ENV_SECRET' }, environment },
+      [{ chatId: 'user', senderId: 'user' }]
+    )
+    expect(
+      await plugin.send(
+        sendInput('qq', 'user', {
+          type: 'c2c',
+          msgId: 'incoming',
+          messageAt: Date.now(),
+          scope: { appId: 'app', apiBase: `${apiOrigin}/` }
+        })
+      )
+    ).toMatchObject({ status: 'sent' })
+    expect(outboundRequests).toEqual([
+      'https://bots.qq.com/app/getAppAccessToken',
+      `${apiOrigin}/v2/users/user/messages`
+    ])
+    expect(remote.requests.map((request) => request.path)).toEqual([
+      '/app/getAppAccessToken',
+      '/v2/users/user/messages'
+    ])
+  }
+)
