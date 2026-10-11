@@ -58,6 +58,82 @@ async function setup(filename?: string) {
 }
 
 describe("native LINE", () => {
+  it.each(["identity", "server", "legacy"])(
+    "refuses a persisted target after %s changes",
+    async (change) => {
+      const local = await setup();
+      await local.core.fetch(incoming(webhook()));
+      const completed = await local.complete();
+      const outbound = completed.delivery;
+      if (!outbound?.chunks[0]) {
+        throw new Error("Missing stored outbound");
+      }
+      const changedPlugin = createLineChannel();
+      const changed = await harness(
+        changedPlugin,
+        {
+          botUserId: change === "identity" ? "other-bot" : "bot",
+          channelSecret: { env: "LINE_SECRET" },
+          accessToken: { env: "LINE_TOKEN" },
+          apiBase: change === "server" ? `${local.remote.base}/different` : local.remote.base,
+          allowLoopback: true,
+        },
+        "group",
+        "user",
+      );
+      cleanup.push(changed.close);
+      expect(
+        await changedPlugin.send({
+          deliveryId: outbound.deliveryId,
+          requestId: outbound.requestId,
+          target:
+            change === "legacy"
+              ? { ...outbound.target, data: { destination: "group", sourceType: "group" } }
+              : outbound.target,
+          chunk: outbound.chunks[0],
+          chunkIndex: 0,
+          signal: new AbortController().signal,
+        }),
+      ).toEqual({ status: "rejected", errorCode: "invalid_target" });
+      expect(local.remote.traffic).toHaveLength(1);
+    },
+  );
+
+  it("keeps credential rotation on the same canonical API endpoint deliverable", async () => {
+    const local = await setup();
+    await local.core.fetch(incoming(webhook()));
+    const completed = await local.complete();
+    const outbound = completed.delivery;
+    if (!outbound?.chunks[0]) {
+      throw new Error("Missing stored outbound");
+    }
+    vi.stubEnv("LINE_TOKEN", "rotated-token");
+    const restartedPlugin = createLineChannel();
+    const restarted = await harness(
+      restartedPlugin,
+      config(`${local.remote.base}/`),
+      "group",
+      "user",
+    );
+    cleanup.push(restarted.close);
+    expect(
+      (
+        await restartedPlugin.send({
+          deliveryId: outbound.deliveryId,
+          requestId: outbound.requestId,
+          target: outbound.target,
+          chunk: outbound.chunks[0],
+          chunkIndex: 0,
+          signal: new AbortController().signal,
+        })
+      ).status,
+    ).toBe("sent");
+    expect(local.remote.traffic[1]).toMatchObject({
+      path: "/v2/bot/message/push",
+      headers: { authorization: "Bearer rotated-token" },
+    });
+  });
+
   it("authenticates exact bytes, deduplicates durably and independently pushes the frozen group", async () => {
     const local = await setup();
     expect((await local.core.fetch(incoming(webhook(), "bad"))).status).toBe(401);
@@ -74,7 +150,12 @@ describe("native LINE", () => {
       accountId: "business",
       chatId: "group",
       replyToId: "message-1",
-      data: { destination: "group", sourceType: "group" },
+      data: {
+        destination: "group",
+        sourceType: "group",
+        botId: "bot",
+        apiBaseUrl: local.remote.base,
+      },
     });
     const sent = local.remote.traffic[0];
     expect(sent?.path).toBe("/v2/bot/message/push");

@@ -17,3 +17,17 @@
 ## Audit evidence scope
 
 Review covers Telegram, Discord, Slack, Feishu and LINE production parsing, identity, signatures, durable handoff, sends, limits, lifecycle and recovery. No live accounts. Official sources checked: [Telegram Bot API](https://core.telegram.org/bots/api), [Discord Gateway](https://github.com/discord/discord-api-docs/blob/main/developers/events/gateway.mdx), [Slack Events](https://docs.slack.dev/apis/events-api/), [Feishu official request handling](https://github.com/larksuite/node-sdk/blob/main/dispatcher/request-handle.ts), [LINE retry contract](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/).
+
+## Frozen bot and API server identity (all five channels)
+
+1. Protect delayed replies from changing bot/application/server when an operator reuses an account ID with changed configuration. Persist only stable nonsecret IDs and the canonical API base. Credential rotation for the same identity must continue to work; historical targets without this evidence must be refused.
+2. Existing sends validate only account/channel and sometimes team/tenant; after restart they can send an old result using a different bot or to the same chat ID on a different API server.
+3. Existing target tests cover mismatched supplied account/team/tenant, not a valid formerly accepted target used by a newly configured plugin. Existing wire fixtures will add the frozen identity fields, and rejection tests verify no HTTP effect. LINE exercises actual persisted targets with SQLite; Discord already verifies its received target and real SQLite cursor restart.
+4. No new production seam: the existing serializable ReplyTarget.data carries identity and send verifies it before HTTP. Public plugin setup models restart/config changes. Tests do not implement routing, persistence, authorization or retries.
+
+## Discord saved Gateway origin and LINE canonical API base
+
+1. Protect restart using the currently configured Gateway, and LINE sending the same push endpoint after equivalent URL spelling and same-bot credential rotation.
+2. Discord reuses a saved resume URL based only on bot ID, so a changed API/Gateway configuration can ingest the old server's events under the new server's target identity. LINE appends `/v2` to a base ending in `/`, producing a double-slash path even though the frozen base is canonical.
+3. Existing Discord recovery tests retain all connection settings; existing LINE tests do not rotate credentials or vary trailing slashes. New cases record real connection opcodes/HTTP paths and use real SQLite state for the cached session.
+4. No new seams: existing plugin lifecycle, configurable endpoints and production plugin_state storage are used.

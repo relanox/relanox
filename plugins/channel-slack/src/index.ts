@@ -41,6 +41,7 @@ const configSchema = z.discriminatedUnion("receiveMode", [
   }),
 ]);
 export type SlackConfig = z.infer<typeof configSchema>;
+const targetSchema = z.object({ teamId: id, appId: id, botId: id, apiBaseUrl: z.string() });
 const envelopeSchema = z.looseObject({
   type: z.string(),
   team_id: id.optional(),
@@ -72,6 +73,12 @@ export function createSlackChannel(
   let host: ChannelHost;
   let account: AccountConfig;
   let config: SlackConfig;
+  const identity = () => ({
+    teamId: config.teamId,
+    appId: config.appId,
+    botId: config.botUserId,
+    apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, ""),
+  });
   let controller: AbortController | undefined;
   let task: Promise<void> | undefined;
   let socket: WebSocket | undefined;
@@ -126,7 +133,7 @@ export function createSlackChannel(
         chatId: event.channel,
         threadId: event.thread_ts ?? event.ts,
         replyToId: event.ts,
-        data: { teamId: config.teamId },
+        data: identity(),
       },
       context: { teamId: config.teamId },
       receivedAt: Date.now(),
@@ -366,13 +373,17 @@ export function createSlackChannel(
       task = undefined;
     },
     async send(input) {
-      const data = z.object({ teamId: id }).safeParse(input.target.data);
+      const data = targetSchema.safeParse(input.target.data);
+      const current = identity();
       if (
         input.target.channel !== "slack" ||
         input.target.accountId !== account.id ||
         !/^[A-Z0-9]+$/u.test(input.target.chatId) ||
         !data.success ||
-        data.data.teamId !== config.teamId ||
+        data.data.teamId !== current.teamId ||
+        data.data.appId !== current.appId ||
+        data.data.botId !== current.botId ||
+        data.data.apiBaseUrl !== current.apiBaseUrl ||
         (input.target.threadId && !/^\d+\.\d+$/u.test(input.target.threadId))
       ) {
         return { status: "rejected", errorCode: "invalid_target" };

@@ -8,6 +8,7 @@ import { peer, recorder, sendInput } from "./peer.js";
 
 const environment = {
   BOT: "xoxb-secret",
+  ROTATED: "xoxb-rotated",
   SIGN: "signing-secret",
   APP: "xapp-secret",
 };
@@ -23,7 +24,7 @@ const target = {
   chatId: "C7",
   threadId: "1700000000.001",
   replyToId: "1700000000.002",
-  data: { teamId: "T1" },
+  data: { teamId: "T1", appId: "A1", botId: "UBOT", apiBaseUrl: "https://slack.com/api" },
 };
 const event = {
   type: "event_callback",
@@ -55,6 +56,7 @@ async function setup(
   apiBaseUrl = "https://slack.com/api",
   socket = false,
   onIngest?: Parameters<typeof recorder>[0],
+  overrides: Record<string, unknown> = {},
 ) {
   const plugin = createSlackChannel(environment);
   const recorded = recorder(onIngest);
@@ -69,6 +71,7 @@ async function setup(
       apiBaseUrl,
       allowInsecureLoopback: true,
       reconnectDelayMs: 100,
+      ...overrides,
       ...(socket
         ? { receiveMode: "socket", appToken: { env: "APP" } }
         : { receiveMode: "http", signingSecret: { env: "SIGN" } }),
@@ -77,6 +80,7 @@ async function setup(
   return {
     plugin,
     ...recorded,
+    target: { ...target, data: { ...target.data, apiBaseUrl } },
     handler: recorded.handlers.get("/events") as NonNullable<
       ReturnType<typeof recorded.handlers.get>
     >,
@@ -111,6 +115,47 @@ describe("slack native protocol", () => {
     },
   );
 
+  it.each(["identity", "server", "legacy"])(
+    "refuses a frozen target after %s changes",
+    async (change) => {
+      const remote = await peer(() => ({ body: { ok: true, ts: "1700000002.004" } }));
+      cleanup.push(remote.close);
+      const initial = await setup(remote.url);
+      await initial.handler(request(event));
+      const frozen = initial.received[0]?.target;
+      if (!frozen) {
+        throw new Error("Missing accepted reply target");
+      }
+      const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+      const restarted = await setup(
+        nextBase,
+        false,
+        undefined,
+        change === "identity" ? { botUserId: "UOTHER" } : {},
+      );
+      expect(
+        await restarted.plugin.send(
+          sendInput(change === "legacy" ? { ...frozen, data: { teamId: "T1" } } : frozen),
+        ),
+      ).toEqual({
+        status: "rejected",
+        errorCode: "invalid_target",
+      });
+      expect(remote.requests).toEqual([]);
+    },
+  );
+
+  it("keeps same-identity credential rotation and canonical URL spelling deliverable", async () => {
+    const remote = await peer(() => ({ body: { ok: true, ts: "1700000002.004" } }));
+    cleanup.push(remote.close);
+    const initial = await setup(remote.url);
+    const restarted = await setup(`${remote.url}/`, false, undefined, {
+      botToken: { env: "ROTATED" },
+    });
+    expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
+    expect(remote.requests).toHaveLength(1);
+  });
+
   it("bounds event bodies and preserves canceled-send uncertainty", async () => {
     const remote = await peer(() => ({ body: { ok: true, ts: "1700000002.004" } }));
     cleanup.push(remote.close);
@@ -124,7 +169,7 @@ describe("slack native protocol", () => {
     expect(test.received).toEqual([]);
     const controller = new AbortController();
     controller.abort();
-    expect(await test.plugin.send(sendInput(target, controller.signal))).toEqual({
+    expect(await test.plugin.send(sendInput(test.target, controller.signal))).toEqual({
       status: "unknown",
       errorCode: "slack_transport_error",
     });
@@ -182,7 +227,7 @@ describe("slack native protocol", () => {
     }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(target))).toEqual({
+    expect(await test.plugin.send(sendInput(test.target))).toEqual({
       status: "sent",
       receipt: { platformMessageId: "1700000002.004" },
     });
@@ -228,7 +273,7 @@ describe("slack native protocol", () => {
     const remote = await peer(() => ({ status, body, headers }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(target))).toEqual(expected);
+    expect(await test.plugin.send(sendInput(test.target))).toEqual(expected);
   });
 
   it("opens Socket Mode with app token, ACKs only after ingest and reconnects on disconnect", async () => {
@@ -350,7 +395,11 @@ describe("slack native protocol", () => {
       }),
     ).toThrow();
     const test = await setup();
-    expect(await test.plugin.send(sendInput({ ...target, data: { teamId: "T2" } }))).toEqual({
+    expect(
+      await test.plugin.send(
+        sendInput({ ...test.target, data: { ...test.target.data, teamId: "T2" } }),
+      ),
+    ).toEqual({
       status: "rejected",
       errorCode: "invalid_target",
     });

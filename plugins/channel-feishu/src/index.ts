@@ -28,6 +28,7 @@ const configSchema = z.strictObject({
   ...transportOptions,
 });
 export type FeishuConfig = z.infer<typeof configSchema>;
+const targetSchema = z.object({ tenantKey: id, appId: id, botId: id, apiBaseUrl: z.string() });
 const headerSchema = z.looseObject({
   event_id: id,
   event_type: id,
@@ -73,6 +74,12 @@ export function createFeishuChannel(
   const base = () =>
     config.apiBaseUrl ??
     (config.domain === "lark" ? "https://open.larksuite.com" : "https://open.feishu.cn");
+  const identity = () => ({
+    tenantKey: config.tenantKey,
+    appId: config.appId,
+    botId: config.botOpenId,
+    apiBaseUrl: new URL(base()).toString().replace(/\/$/u, ""),
+  });
   async function accessToken(signal: AbortSignal): Promise<string | SendResult> {
     const appSecret = credential(config.appSecret, environment);
     const secretDigest = createHash("sha256").update(appSecret).digest("hex");
@@ -229,7 +236,7 @@ export function createFeishuChannel(
           chatId: message.chat_id,
           ...(threadId ? { threadId } : {}),
           replyToId: message.message_id,
-          data: { tenantKey: config.tenantKey },
+          data: identity(),
         },
         context: {
           tenantKey: config.tenantKey,
@@ -296,14 +303,18 @@ export function createFeishuChannel(
       });
     },
     async send(input) {
-      const data = z.object({ tenantKey: id }).safeParse(input.target.data);
+      const data = targetSchema.safeParse(input.target.data);
+      const current = identity();
       if (
         input.target.channel !== "feishu" ||
         input.target.accountId !== account.id ||
         !/^[A-Za-z0-9_-]+$/u.test(input.target.chatId) ||
         (input.target.replyToId && !/^[A-Za-z0-9_-]+$/u.test(input.target.replyToId)) ||
         !data.success ||
-        data.data.tenantKey !== config.tenantKey
+        data.data.tenantKey !== current.tenantKey ||
+        data.data.appId !== current.appId ||
+        data.data.botId !== current.botId ||
+        data.data.apiBaseUrl !== current.apiBaseUrl
       ) {
         return { status: "rejected", errorCode: "invalid_target" };
       }

@@ -10,7 +10,7 @@ import type { RawData } from "ws";
 import { createDiscordChannel } from "../src/index.js";
 import { peer, recorder, sendInput } from "./peer.js";
 
-const environment = { BOT: "discord-token" };
+const environment = { BOT: "discord-token", ROTATED: "rotated-token" };
 const account = {
   id: "dc",
   channel: "discord" as const,
@@ -22,7 +22,7 @@ const target = {
   accountId: "dc",
   chatId: "456",
   replyToId: "789",
-  data: null,
+  data: { botId: "999", apiBaseUrl: "https://discord.com/api/v10" },
 };
 const cleanup: (() => Promise<void>)[] = [];
 function readFrame(raw: RawData): Record<string, unknown> {
@@ -45,6 +45,7 @@ async function setup(
   gatewayUrl = "wss://gateway.discord.gg",
   onIngest?: Parameters<typeof recorder>[0],
   storage?: Storage,
+  overrides: Record<string, unknown> = {},
 ) {
   const plugin = createDiscordChannel(environment);
   const recorded = recorder(onIngest);
@@ -73,9 +74,10 @@ async function setup(
       gatewayUrl,
       reconnectDelayMs: 100,
       allowInsecureLoopback: true,
+      ...overrides,
     }),
   );
-  return { plugin, db, ...recorded };
+  return { plugin, db, ...recorded, target: { ...target, data: { ...target.data, apiBaseUrl } } };
 }
 async function gateway() {
   const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
@@ -168,13 +170,113 @@ describe("discord native Gateway and REST", () => {
     },
   );
 
+  it.each(["identity", "server", "legacy"])(
+    "refuses a frozen target after %s changes",
+    async (change) => {
+      const remote = await peer(() => ({ body: { id: "900" } }));
+      cleanup.push(remote.close);
+      const initial = await setup(remote.url);
+      const frozen = initial.target;
+      const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+      const restarted = await setup(
+        nextBase,
+        undefined,
+        undefined,
+        undefined,
+        change === "identity" ? { botUserId: "998" } : {},
+      );
+      expect(
+        await restarted.plugin.send(
+          sendInput(change === "legacy" ? { ...frozen, data: null } : frozen),
+        ),
+      ).toEqual({
+        status: "rejected",
+        errorCode: "invalid_target",
+      });
+      expect(remote.requests).toEqual([]);
+    },
+  );
+
+  it("does not resume a saved Gateway session after its configured API origin changes", async () => {
+    const remote = await gateway();
+    const frames: Record<string, unknown>[] = [];
+    remote.wss.on("connection", (ws) => {
+      ws.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }));
+      ws.on("message", (raw) => {
+        const frame = readFrame(raw);
+        frames.push(frame);
+        if (frame.op === 1) {
+          ws.send(JSON.stringify({ op: 11 }));
+        }
+        if (frame.op === 2) {
+          ws.send(
+            JSON.stringify({
+              op: 0,
+              s: 1,
+              t: "READY",
+              d: {
+                session_id: "origin-session",
+                resume_gateway_url: remote.url,
+                user: { id: "999" },
+              },
+            }),
+          );
+        }
+      });
+    });
+    const initial = await setup(undefined, remote.url);
+    cleanup.unshift(async () => {
+      await initial.plugin.stop?.();
+    });
+    await initial.plugin.start?.(new AbortController().signal);
+    await expect
+      .poll(
+        async () =>
+          (
+            await initial.db.getState(
+              { pluginId: "channel-discord", ownerId: "dc" },
+              "gateway-session",
+            )
+          )?.value,
+      )
+      .toMatchObject({ session_id: "origin-session" });
+    await initial.plugin.stop?.();
+    frames.length = 0;
+    const restarted = await setup(
+      "https://new-proxy.example/api/v10",
+      remote.url,
+      undefined,
+      initial.db,
+    );
+    cleanup.unshift(async () => {
+      await restarted.plugin.stop?.();
+    });
+    await restarted.plugin.start?.(new AbortController().signal);
+    await expect
+      .poll(() =>
+        frames.filter((frame) => [2, 6].includes(Number(frame.op))).map((frame) => frame.op),
+      )
+      .toEqual([2]);
+  });
+
+  it("keeps same-identity credential rotation and canonical URL spelling deliverable", async () => {
+    const remote = await peer(() => ({ body: { id: "900" } }));
+    cleanup.push(remote.close);
+    const initial = await setup(remote.url);
+    const restarted = await setup(`${remote.url}/`, undefined, undefined, undefined, {
+      botToken: { env: "ROTATED" },
+    });
+    expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
+    expect(remote.requests).toHaveLength(1);
+  });
+
   it("preserves canceled-send uncertainty without starting an HTTP effect", async () => {
     const remote = await peer(() => ({ body: { id: "900" } }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
     const controller = new AbortController();
     controller.abort();
-    expect(await test.plugin.send(sendInput(target, controller.signal))).toEqual({
+    expect(await test.plugin.send(sendInput(test.target, controller.signal))).toEqual({
       status: "unknown",
       errorCode: "discord_transport_error",
     });
@@ -471,7 +573,7 @@ describe("discord native Gateway and REST", () => {
     });
     await test.plugin.start?.(new AbortController().signal);
     await expect.poll(() => test.received.length).toBe(1);
-    const threadTarget = { ...target, chatId: "123", threadId: "456" };
+    const threadTarget = { ...test.target, chatId: "123", threadId: "456" };
     expect(test.received[0]).toMatchObject({ target: threadTarget, context: { guildId: "777" } });
     expect(remoteApi.requests[0]).toMatchObject({
       path: "/channels/456",
@@ -525,7 +627,7 @@ describe("discord native Gateway and REST", () => {
     const remote = await peer(() => ({ body: { id: "900" } }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(target))).toEqual({
+    expect(await test.plugin.send(sendInput(test.target))).toEqual({
       status: "sent",
       receipt: { platformMessageId: "900" },
     });
@@ -569,7 +671,7 @@ describe("discord native Gateway and REST", () => {
     const remote = await peer(() => ({ status, body }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(target))).toEqual(expected);
+    expect(await test.plugin.send(sendInput(test.target))).toEqual(expected);
   });
 
   it("rejects credential/intents/TLS config and account target mismatches", async () => {
@@ -590,7 +692,7 @@ describe("discord native Gateway and REST", () => {
       }),
     ).toThrow();
     const test = await setup();
-    expect(await test.plugin.send(sendInput({ ...target, accountId: "foreign" }))).toEqual({
+    expect(await test.plugin.send(sendInput({ ...test.target, accountId: "foreign" }))).toEqual({
       status: "rejected",
       errorCode: "invalid_target",
     });

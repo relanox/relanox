@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createTelegramChannel } from "../src/index.js";
 import { peer, recorder, sendInput } from "./peer.js";
 
-const environment = { TOKEN: "123:abc_DEF", SECRET: "webhook-secret" };
+const environment = {
+  TOKEN: "123:abc_DEF",
+  SECRET: "webhook-secret",
+  OTHER_TOKEN: "456:changed",
+  ROTATED_TOKEN: "123:rotated",
+};
 const account = {
   id: "tg",
   channel: "telegram" as const,
@@ -15,7 +20,7 @@ const target = {
   chatId: "-1007",
   threadId: "8",
   replyToId: "9",
-  data: null,
+  data: { botId: "123", apiBaseUrl: "https://api.telegram.org" },
 };
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -26,6 +31,7 @@ afterEach(async () => {
 async function setup(
   apiBaseUrl = "https://api.telegram.org",
   onIngest?: Parameters<typeof recorder>[0],
+  overrides: Record<string, unknown> = {},
 ) {
   const plugin = createTelegramChannel(environment);
   const recorded = recorder(onIngest);
@@ -37,11 +43,13 @@ async function setup(
       webhookSecret: { env: "SECRET" },
       apiBaseUrl,
       allowInsecureLoopback: true,
+      ...overrides,
     }),
   );
   return {
     plugin,
     ...recorded,
+    target: { ...target, data: { ...target.data, apiBaseUrl } },
     handler: recorded.handlers.get("/webhook") as NonNullable<
       ReturnType<typeof recorded.handlers.get>
     >,
@@ -76,6 +84,46 @@ describe("telegram native protocol", () => {
     },
   );
 
+  it.each(["identity", "server", "legacy"])(
+    "refuses a frozen target after %s changes",
+    async (change) => {
+      const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
+      cleanup.push(remote.close);
+      const initial = await setup(remote.url);
+      await initial.handler(webhook());
+      const frozen = initial.received[0]?.target;
+      if (!frozen) {
+        throw new Error("Missing accepted reply target");
+      }
+      const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+      const restarted = await setup(
+        nextBase,
+        undefined,
+        change === "identity" ? { botToken: { env: "OTHER_TOKEN" } } : {},
+      );
+      expect(
+        await restarted.plugin.send(
+          sendInput(change === "legacy" ? { ...frozen, data: null } : frozen),
+        ),
+      ).toEqual({
+        status: "rejected",
+        errorCode: "invalid_target",
+      });
+      expect(remote.requests).toEqual([]);
+    },
+  );
+
+  it("keeps same-identity credential rotation and canonical URL spelling deliverable", async () => {
+    const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
+    cleanup.push(remote.close);
+    const initial = await setup(remote.url);
+    const restarted = await setup(`${remote.url}/`, undefined, {
+      botToken: { env: "ROTATED_TOKEN" },
+    });
+    expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
+    expect(remote.requests).toHaveLength(1);
+  });
+
   it("bounds authenticated payloads and preserves canceled-send uncertainty", async () => {
     const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
     cleanup.push(remote.close);
@@ -89,7 +137,7 @@ describe("telegram native protocol", () => {
     expect(test.received).toEqual([]);
     const controller = new AbortController();
     controller.abort();
-    expect(await test.plugin.send(sendInput(target, controller.signal))).toEqual({
+    expect(await test.plugin.send(sendInput(test.target, controller.signal))).toEqual({
       status: "unknown",
       errorCode: "telegram_transport_error",
     });
@@ -159,7 +207,7 @@ describe("telegram native protocol", () => {
     }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(target))).toEqual({
+    expect(await test.plugin.send(sendInput(test.target))).toEqual({
       status: "sent",
       receipt: { platformMessageId: "100" },
     });
@@ -207,7 +255,7 @@ describe("telegram native protocol", () => {
     const remote = await peer(() => ({ body }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(target))).toEqual(result);
+    expect(await test.plugin.send(sendInput(test.target))).toEqual(result);
   });
 
   it("validates env references, secure URLs and target/account scope", async () => {
@@ -226,7 +274,7 @@ describe("telegram native protocol", () => {
       }),
     ).toThrow();
     const test = await setup();
-    expect(await test.plugin.send(sendInput({ ...target, accountId: "other" }))).toEqual({
+    expect(await test.plugin.send(sendInput({ ...test.target, accountId: "other" }))).toEqual({
       status: "rejected",
       errorCode: "invalid_target",
     });

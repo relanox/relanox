@@ -30,3 +30,9 @@ Bind `message.chat_id` and, when present, `message.thread_id` (otherwise `root_i
 Optional config: `domain` (`feishu` or `lark`, default `feishu`), `apiBaseUrl` override (defaults to `https://open.feishu.cn` or `https://open.larksuite.com`), `timeoutMs` (default 10000), `allowInsecureLoopback` (default false). Custom URLs support enterprise proxies; cleartext requires literal loopback/localhost opt-in, credentials/redirects are rejected.
 
 Local signed/encrypted HTTP and token/message peers were tested. Real-account support is experimental. Rich messages, cards, media, edits, ISV app tickets and Feishu WS transport are unsupported.
+
+## Frozen sender identity and configuration changes
+
+Accepted targets now preserve the canonical API base URL (including any proxy path) and stable nonsecret bot/application identity. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported. Telegram derives the bot ID from the public numeric token prefix; other channels use their configured bot/application IDs, so operators must keep those IDs accurate when replacing credentials.
+
+Upgrade boundary: older persisted targets without these identity fields are refused as `invalid_target`; requeue alone cannot add missing historical evidence. Drain pending work with the original version before upgrading, or retain the result for manual delivery under the verified original account. For new targets rejected after a configuration change, restore the matching original identity/API base before explicit recovery. The plugin never fills missing historical identity from current settings.
