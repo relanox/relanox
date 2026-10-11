@@ -4,6 +4,32 @@ This chapter contains manual configuration and protocol details. For account pre
 
 Merge these fragments into `relay.accounts` and `relay.bindings` in a complete configuration. Replace sample IDs and Agent names and set referenced environment variables in the service environment. See [Configuration schema](configuration.md) for the complete file.
 
+## Markdown replies {#markdown}
+
+Agent reply text is always Markdown; there is no formatting-mode setting. Relanox uses the platform's native Markdown or converts it to the formatting that platform supports. Long replies are split with complete code fences, emphasis and link destinations, using the destination's size limits. Raw HTML is displayed as text when generating HTML or structured formatting.
+
+| Channel         | Delivery format                                                                         |
+| --------------- | --------------------------------------------------------------------------------------- |
+| Telegram        | Message and caption entities with UTF-16 offsets; bold, italic, strike, code and links. |
+| Discord         | Native message Markdown.                                                                |
+| Slack           | Structured rich-text blocks for emphasis, code and links.                               |
+| Feishu / Lark   | Post message containing a Markdown element.                                             |
+| WeCom           | Native Markdown; callback mode combines the final text and supported images.            |
+| DingTalk        | `sampleMarkdown` robot message.                                                         |
+| QQ              | Markdown message (`msg_type: 2`).                                                       |
+| Microsoft Teams | Extended Markdown activity.                                                             |
+| WhatsApp        | Native bold, italic, strike and monospace syntax; links include their URL.              |
+| Google Chat     | Markdown message with `MARKUP_SYNTAX_MARKDOWN`.                                         |
+| LINE            | Flex text components and spans with supported emphasis and link actions.                |
+| Matrix          | Escaped HTML in `formatted_body`, with the required source `body`.                      |
+| Mattermost      | Native post Markdown.                                                                   |
+| Signal          | Native text-style ranges; links retain their URL.                                       |
+| IRC             | Native formatting controls, with each complete command kept within the wire limit.      |
+
+Formatting differs between clients. Platforms with limited styles retain the visible text of headings, lists and tables; code and links use the available representation. Markdown image syntax does not upload a file: use attachments to send media. Limits on a combined reply, such as WeCom callback replies, are checked before it is queued.
+
+See the native protocol references for [Feishu posts](https://open.feishu.cn/document/server-docs/im-v1/message-content-description/create_json), [DingTalk robot messages](https://open.dingtalk.com/document/development/robot-message-type), [Teams formatting](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/format-your-bot-messages), and [Matrix formatted messages](https://spec.matrix.org/latest/client-server-api/#mroommessage). Local HTTP and socket tests verify the generated protocol payloads; they do not establish live-account compatibility.
+
 ## DingTalk application robot {#dingtalk}
 
 User setup: [Connect DingTalk application robot](../channels/dingtalk.md).

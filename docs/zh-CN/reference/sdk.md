@@ -16,7 +16,11 @@
 4. 实现单个消息部分的发送。重试时保留原发送标识，成功时返回平台回执，并区分明确的临时失败和不确定结果。
 5. 通过 host 注册回调处理程序。应用负责监听地址，渠道路由会挂载在 `/channels/<accountId>` 下。
 
-回复次数受限的渠道可声明 `capabilities.maxChunksPerMessage`。Core 会在保存回复前拒绝超过该数量的文字分块。企业微信 HTTP 回调使用 `1`，因为回复 URL 只接受一次回复；这个限制与每个文字分块的长度限制分别声明。
+回复文字统一使用 Markdown。用 `capabilities.maxTextLength` 和 `lengthUnit` 声明平台长度限制，Core 会在保持格式和链接完整的前提下分段。如果转换后的消息大小不同，使用 `@relanox/markdown` 实现 `splitText(markdown, target)`，按实际发送格式计量长度。原生支持 Markdown 的渠道发送源文本，其余渠道转换为平台支持的格式，不提供单独的纯文本模式。
+
+`capabilities.maxChunksPerMessage` 限制一条回复的文字与媒体总分块数，`maxAttachmentsPerMessage` 限制附件数量，`maxTextLengthPerMessage` 按 `lengthUnit` 限制整条 Markdown 源文本长度。Core 在保存回复前检查这些限制。平台需要合并回复时，可以通过 `SendInput.chunkCount` 判断最后一个部分。
+
+回复已经准备好、等待平台取走时（例如企业微信回调刷新），返回 `pending` 与 `retryAfterMs`。Worker 延后同一部分，不消耗失败次数，也不记录为已送达。渠道观察到平台交接后再返回 `sent`。实际失败使用失败结果；等待外部回调不应耗尽发送重试次数。
 
 每个配置的账号都有自己的渠道实例。不要把凭据放进消息上下文、回复位置或日志。平台需要连接状态或序列号时，使用 host 提供的状态存储，避免重启丢失。
 

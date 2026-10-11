@@ -22,6 +22,8 @@
 | [Signal](signal.md)                    | 已注册账号的 signal-cli 服务       |
 | [IRC](irc.md)                          | IRC 服务器和机器人昵称             |
 
+回复默认使用 Markdown。可以让 Agent 使用标题、列表、代码块或带文字的链接，具体显示效果取决于聊天软件。各平台差异见 [Markdown 显示方式](../reference/channels.md#markdown)。
+
 ## 连接后做什么
 
 在[配置](../configuration.md)中指定允许使用的用户、聊天或群组，并选择接收消息的 Agent。随后按[连接 Agent](../agents.md)完成 dot 或 Grok Bot 设置，在指定会话发一条消息确认回复。
