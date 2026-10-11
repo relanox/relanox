@@ -32,20 +32,18 @@ const {
 
 <template>
   <div class="connection-app">
-    <header class="connection-header">
-      <a class="connection-brand" :href="link('')">Relanox</a>
+    <header class="connection-intro">
       <h1>{{ text('Connection configurator', '连接配置器') }}</h1>
-      <nav :aria-label="text('Navigation', '导航')">
-        <a :href="link('getting-started.html')">{{ text('Docs', '文档') }}</a>
-        <a
-          :href="chinese ? '../en/connect.html' : '../zh-CN/connect.html'"
-          :lang="chinese ? 'en' : 'zh-CN'"
-          >{{ chinese ? 'EN' : '中文' }}</a
-        >
-      </nav>
+      <p>
+        {{
+          text(
+            'Choose your channels and Agents. Your configuration updates as you go.',
+            '选择渠道和 Agent，实时查看生成的配置。'
+          )
+        }}
+      </p>
     </header>
-
-    <main id="VPContent" class="connection-workspace">
+    <div class="connection-workspace">
       <section
         class="connection-inputs"
         :aria-label="text('Connection settings', '连接设置')"
@@ -390,7 +388,7 @@ const {
           <p v-if="feedback" role="status">{{ feedback }}</p>
         </div>
       </section>
-    </main>
+    </div>
     <ConfiguratorTutorial
       v-if="tutorialOpen"
       :state="state"
