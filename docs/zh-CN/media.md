@@ -32,20 +32,17 @@ Agent 生成图片或文件后，需要提供可直接下载的公网 HTTPS 链�
 | Google Chat     | 图片卡片和文件下载按钮             |
 | Microsoft Teams | 群聊或频道中大于 15,000 字节的图片 |
 
-在 `relay.json` 顶层添加 `media`，与 `relay` 放在同一层：
+在 `relay.json` 顶层设置 `publicUrl`。如果已经为 Agent 连接配置过，媒体会自动使用同一个地址：
 
 ```json
 {
-  "media": {
-    "publicBaseUrl": "https://relay.example.com",
-    "urlLifetimeMs": 86400000
-  }
+  "publicUrl": "https://relay.example.com"
 }
 ```
 
 把 `relay.example.com` 换成你的域名，并让反向代理将 `/media/` 下的请求转发到 Relanox 的业务端口，默认是 `8787`。域名配置方法见[部署与日常管理](operations.md)。
 
-下载链接默认有效期为 24 小时。持有链接的人可以在有效期内访问文件，因此请把它当作临时文件分享链接管理。`urlLifetimeMs` 以毫秒计，最多可设为七天。
+下载链接默认有效期为 24 小时。持有链接的人可以在有效期内访问文件，因此请把它当作临时文件分享链接管理。需要调整时再添加可选的 `media` 对象，例如 `"media": { "urlLifetimeMs": 3600000 }` 表示一小时。该值以毫秒计，最多可设为七天。
 
 Teams 私聊中的大图片和文件使用平台的文件接收确认流程。IRC 用于文字聊天；LINE 可以接收文件，并发送图片、音频和视频。每个平台的具体呈现方式见其[渠道指南](channels/index.md)。
 

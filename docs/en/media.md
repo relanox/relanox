@@ -32,20 +32,17 @@ These delivery methods need a public HTTPS address served by Relanox:
 | Google Chat     | Image cards and file download buttons                      |
 | Microsoft Teams | Images larger than 15,000 bytes in group chats or channels |
 
-Add `media` at the top level of `relay.json`, alongside `relay`:
+Set top-level `publicUrl` in `relay.json`. If you already set it for your Agent connection, media uses the same address automatically:
 
 ```json
 {
-  "media": {
-    "publicBaseUrl": "https://relay.example.com",
-    "urlLifetimeMs": 86400000
-  }
+  "publicUrl": "https://relay.example.com"
 }
 ```
 
 Replace `relay.example.com` with your domain. Configure your reverse proxy to forward requests under `/media/` to Relanox's service port, which defaults to `8787`. See [Deployment and daily use](operations.md) for domain setup.
 
-Download links last 24 hours by default. Anyone with a link can access the file while it is valid, so treat it as a temporary file-sharing link. `urlLifetimeMs` is measured in milliseconds and can be set up to seven days.
+Download links last 24 hours by default. Anyone with a link can access the file while it is valid, so treat it as a temporary file-sharing link. To change this, add an optional `media` object such as `"media": { "urlLifetimeMs": 3600000 }` for one hour. The value is measured in milliseconds and can be set up to seven days.
 
 Large images and files in Teams personal chats use the platform's file consent flow. IRC handles text conversations; LINE receives files and sends images, audio and video. Each [channel guide](channels/index.md) explains how files appear in that app.
 

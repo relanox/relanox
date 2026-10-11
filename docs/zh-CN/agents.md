@@ -7,7 +7,7 @@
 | Grok  | MCP 连接、Routine webhook URL 和完整 Authorization 值 |
 | dot   | MCP 连接以及使用已授权回调地址的 Events 订阅          |
 
-使用账号中提供的连接器或 Routine 设置填写以下值。界面名称可能不同；这些步骤列出需要的地址和凭据。
+先将顶层 `publicUrl` 设为你的公开 HTTPS 地址，例如 `https://relay.example.com`，只需配置一次。使用账号中提供的连接器或 Routine 设置填写以下值。界面名称可能不同；这些步骤列出需要的地址和凭据。
 
 ## 连接 Grok
 
@@ -21,9 +21,7 @@
   "agent": "grok",
   "config": {
     "mcp": {
-      "token": { "env": "GROK_MCP_TOKEN" },
-      "allowedHosts": ["relay.example.com"],
-      "allowedOrigins": []
+      "token": { "env": "GROK_MCP_TOKEN" }
     },
     "routineUrl": { "env": "GROK_ROUTINE_URL" },
     "routineAuthorization": { "env": "GROK_ROUTINE_AUTHORIZATION" }
@@ -31,7 +29,7 @@
 }
 ```
 
-4. 将 `relay.example.com` 换成公开主机名并重启 Relanox。HTTPS 设置见[部署与备份](operations.md)。
+4. 设置好 `publicUrl` 后重启 Relanox。HTTPS 设置见[部署与备份](operations.md)。
 5. 为 bot 添加 MCP 连接，地址为 `https://relay.example.com/agents/grok/mcp/grok-main`，使用 Bearer 认证。token 输入框填原始 `GROK_MCP_TOKEN`；Authorization 头输入框填 `Bearer <token>`。
 6. 将下方固定回信指令加入 bot/Routine，把聊天绑定的 `endpointId` 设为 `grok-main`。
 7. 在这个聊天发送短消息，确认收到回信。卡住时用 `status` 查看。
@@ -41,7 +39,7 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
 ## 连接 dot
 
 1. 生成独立 token，提供为 `DOT_MCP_TOKEN`。
-2. 在 `relay.endpoints` 添加以下条目，将 `relay.example.com` 替换为你的公开主机名：
+2. 在 `relay.endpoints` 添加以下条目：
 
 ```json
 {
@@ -49,9 +47,7 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
   "agent": "dot",
   "config": {
     "mcp": {
-      "token": { "env": "DOT_MCP_TOKEN" },
-      "allowedHosts": ["relay.example.com"],
-      "allowedOrigins": []
+      "token": { "env": "DOT_MCP_TOKEN" }
     }
   }
 }
@@ -61,7 +57,9 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
 4. 通过连接的 Events 功能开启 `relanox.message_available` 订阅。在连接中开启自动续订，使它持续接收新消息。
 5. 将聊天绑定的 `endpointId` 设为 `dot-main`，加入下方指令，然后在该聊天发送消息。
 
-`callback` 整段可省略。Relanox 默认使用 `https://connectors.api.openai.com`、HTTPS 投递和 10 秒超时。使用自定义接收端时，可在 `callback.allowedOrigins` 填写准确来源，它会替换默认列表；也可以单独覆盖 `callback.transport`。回调、MCP 和 Grok Routine 请求的超时固定为 10 秒；MCP 和 Grok Routine 请求体限制为 1 MiB。dot 订阅最长保留 24 小时，签名密钥轮换后保留旧密钥签名 60 秒。`loopback-http` 用于本地协议测试。
+dot 通过 MCP 订阅时提供回调 URL。Relanox 固定接受原生的 `https://connectors.api.openai.com` 来源，并在投递前检查 DNS 解析结果为公网地址。配置文件中无需也不能填写 `callback`。
+
+回调、MCP 和 Grok Routine 请求的超时固定为 10 秒；MCP 和 Grok Routine 请求体限制为 1 MiB。dot 订阅最长保留 24 小时，签名密钥轮换后保留旧密钥签名 60 秒。
 
 保持订阅续期开启，默认有效期为一天。状态显示 `dot_no_active_subscription` 时重新连接或续订；来信已耗尽重试次数时，按[部署与备份](operations.md#查找并恢复卡住的消息)恢复。
 
@@ -121,4 +119,4 @@ Relanox 下载并保存文件后投递。使用可直接访问的 URL、准确�
 
 发送渠道消息并收到 Agent 回信。在 `status` 中，来信 `accepted` 表示通知已接收，回信 `sent` 表示平台已接收。MCP 返回 `queued` 表示 Relanox 已保存待发送的回信。
 
-MCP 认证失败时核对 token 和 URL，检查 `allowedHosts` 与公开主机名一致，并让代理保留 Host。客户端发送 Origin 时，将其准确来源加入 `mcp.allowedOrigins`。Grok 没收到消息时核对 Routine URL 和 Authorization；dot 没收到消息时检查有效订阅和回调来源授权。
+MCP 认证失败时核对 token 和 URL，检查 `publicUrl` 与公开地址一致，并让代理保留 Host。客户端发送 Origin 时，将其准确来源加入 `mcp.allowedOrigins`。Grok 没收到消息时核对 Routine URL 和 Authorization；dot 没收到消息时检查有效订阅及原生 OpenAI 回调地址是否可达。

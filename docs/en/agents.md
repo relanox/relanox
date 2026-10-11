@@ -7,7 +7,7 @@ Connect your existing dot or Grok Bot to receive channel messages and send repli
 | Grok  | MCP connection, Routine webhook URL and complete Authorization value       |
 | dot   | MCP connection and Events subscription with an authorized callback address |
 
-Use the connector/Routine setup available in your account with the values below. Interface names can vary; these steps describe the required addresses and credentials.
+Set top-level `publicUrl` to your public HTTPS address once, for example `https://relay.example.com`. Use the connector/Routine setup available in your account with the values below. Interface names can vary; these steps describe the required addresses and credentials.
 
 ## Connect Grok
 
@@ -21,9 +21,7 @@ Use the connector/Routine setup available in your account with the values below.
   "agent": "grok",
   "config": {
     "mcp": {
-      "token": { "env": "GROK_MCP_TOKEN" },
-      "allowedHosts": ["relay.example.com"],
-      "allowedOrigins": []
+      "token": { "env": "GROK_MCP_TOKEN" }
     },
     "routineUrl": { "env": "GROK_ROUTINE_URL" },
     "routineAuthorization": { "env": "GROK_ROUTINE_AUTHORIZATION" }
@@ -31,7 +29,7 @@ Use the connector/Routine setup available in your account with the values below.
 }
 ```
 
-4. Replace `relay.example.com` with your public hostname and restart Relanox. [Operations](operations.md) covers HTTPS setup.
+4. Restart Relanox with your `publicUrl` setting. [Operations](operations.md) covers HTTPS setup.
 5. Add the bot's MCP connection at `https://relay.example.com/agents/grok/mcp/grok-main` with Bearer authentication. Enter the raw `GROK_MCP_TOKEN` in a token field, or `Bearer <token>` in an Authorization header field.
 6. Add the fixed reply instructions below to the bot/Routine. Set the conversation binding's `endpointId` to `grok-main`.
 7. Send a short message in that conversation and check the reply. Use `status` if it stalls.
@@ -41,7 +39,7 @@ The Routine Authorization variable holds exactly the supplied value, including a
 ## Connect dot
 
 1. Generate a separate token and supply it as `DOT_MCP_TOKEN`.
-2. Add this entry to `relay.endpoints`, replacing `relay.example.com` with your public hostname:
+2. Add this entry to `relay.endpoints`:
 
 ```json
 {
@@ -49,9 +47,7 @@ The Routine Authorization variable holds exactly the supplied value, including a
   "agent": "dot",
   "config": {
     "mcp": {
-      "token": { "env": "DOT_MCP_TOKEN" },
-      "allowedHosts": ["relay.example.com"],
-      "allowedOrigins": []
+      "token": { "env": "DOT_MCP_TOKEN" }
     }
   }
 }
@@ -61,7 +57,9 @@ The Routine Authorization variable holds exactly the supplied value, including a
 4. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
 5. Set your conversation binding's `endpointId` to `dot-main`, add the instructions below, and send a message through that conversation.
 
-The `callback` section is optional. Relanox defaults to `https://connectors.api.openai.com`, HTTPS delivery and a 10-second timeout. For a custom receiver, set `callback.allowedOrigins` to its exact origin; this replaces the default list. You can also override `callback.transport`. Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MiB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds. `loopback-http` is for local protocol testing.
+dot provides its callback URL when it subscribes through MCP. Relanox accepts the native `https://connectors.api.openai.com` origin and checks that DNS resolves to public addresses before delivery. There is no `callback` configuration section.
+
+Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MiB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds.
 
 Keep subscription renewal enabled. The default lifetime is one day. If status reports `dot_no_active_subscription`, reconnect or renew; if the request exhausted retries, use [Operations](operations.md#find-and-recover-a-stalled-message) to recover it.
 
@@ -123,4 +121,4 @@ Relanox downloads and saves the file before sending. Use a directly accessible U
 
 Send a channel message and receive the Agent's reply. In `status`, incoming `accepted` means the notification was accepted; outgoing `sent` means the platform accepted the reply. MCP `queued` means Relanox saved the reply for sending.
 
-If MCP authentication fails, compare the token and URL, check `allowedHosts` against the public hostname, and preserve Host through your proxy. Add the client's exact Origin to `mcp.allowedOrigins` when it sends that header. If Grok receives nothing, compare the Routine URL and Authorization. If dot receives nothing, check the active subscription and authorized callback origin.
+If MCP authentication fails, compare the token and URL, check `publicUrl` against your public address, and preserve Host through your proxy. Add the client's exact Origin to `mcp.allowedOrigins` when it sends that header. If Grok receives nothing, compare the Routine URL and Authorization. If dot receives nothing, check the active subscription and connectivity to the native OpenAI callback.

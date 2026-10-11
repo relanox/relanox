@@ -6,6 +6,20 @@ For a new setup, use the [connection configurator](connect.md): choose channels 
 
 The generated file omits default listener settings and monitoring switches. Without a `server` section, the business listener uses `127.0.0.1:8787` and management uses `127.0.0.1:8788`. Standard observability with `config: {}` enables logs and metrics. Add overrides only when your deployment needs them; containers need `server.host: "0.0.0.0"`.
 
+## Set your public address once
+
+Set `publicUrl` at the top level, alongside `relay`:
+
+```json
+{
+  "publicUrl": "https://relay.example.com"
+}
+```
+
+Relanox uses this address for MCP Host checks, attachment download links and the Google Chat authentication audience. Public media downloads are enabled automatically. The configurator also uses it to show your channel webhook and Agent connection URLs.
+
+Use an HTTPS origin, optionally with a port, without credentials, a path, query or fragment. For local development, literal `http://127.0.0.1:8787` and `http://[::1]:8787` are accepted. The listener address remains controlled by `server`. Keep the public Host header when proxying requests.
+
 ## Choose who can talk to which agent
 
 Three lists describe your connections:
@@ -102,7 +116,7 @@ The optional top-level `server` object controls listeners and processing interva
 | `startupTimeoutMs`  | `30000`     | Allow more time to initialize platform connections                                                   |
 | `shutdownTimeoutMs` | `15000`     | Allow more time for graceful stop, and increase your service manager's stop timeout too              |
 
-Ports accept integers from 0 to 65535; use fixed nonzero ports for deployment. Management uses a literal loopback address. Forward business port 8787 through HTTPS and keep management local. Set agent `mcp.allowedHosts` to the public hostname, including a non-default port. If the MCP client sends Origin, add its exact origin to `mcp.allowedOrigins`; an empty list suits server-to-server clients without this header.
+Ports accept integers from 0 to 65535; use fixed nonzero ports for deployment. Management uses a literal loopback address. Forward business port 8787 through HTTPS and keep management local. If the MCP client sends Origin, add its exact origin to `mcp.allowedOrigins`. This identifies the calling client and is separate from your deployment address; the default empty list suits server-to-server clients without this header.
 
 Enable logs and metrics with `relay.observability`:
 
@@ -115,27 +129,29 @@ Enable logs and metrics with `relay.observability`:
 }
 ```
 
-Management serves `/health/live`, `/health/ready`, and `/metrics` when enabled. [Observability](reference/observability.md) describes metric names. Configure attachment limits and public download URLs using top-level `media` and `mediaLimits`; see [Media transfer](media.md).
+Management serves `/health/live`, `/health/ready`, and `/metrics` when enabled. [Observability](reference/observability.md) describes metric names. Optional `media.urlLifetimeMs` controls download-link lifetime; `mediaLimits` controls attachment sizes. Download URLs use `publicUrl`; see [Media transfer](media.md).
 
 ## Update an older configuration
 
-Connection timing and fixed platform identities are now managed internally. If an older file includes any of the fields below, delete them before running `validate`; unknown fields are rejected. Their former defaults remain in effect.
+Move your public deployment address into top-level `publicUrl`. Remove `mcp.allowedHosts`, `media.publicBaseUrl`, `media.allowInsecureLocalhost` and Google Chat's `audience`: Relanox derives the host, media origin and Google Chat endpoint URL from the new setting. Remove an empty `media` object unless you want to override link lifetime.
 
-| Configuration                                                     | Remove                                                        |
-| ----------------------------------------------------------------- | ------------------------------------------------------------- |
-| Agent `mcp`                                                       | `maxBodyBytes`, `timeoutMs`                                   |
-| dot                                                               | `callback.timeoutMs`, `subscriptionTtlMs`, `rotationWindowMs` |
-| Grok                                                              | `timeoutMs`, `maxBodyBytes`                                   |
-| Telegram, Slack, Discord, Feishu, IRC, Matrix, Mattermost, Signal | `timeoutMs`                                                   |
-| Slack, Discord                                                    | `reconnectDelayMs`                                            |
-| IRC, Matrix, Mattermost, Signal                                   | `reconnectMs`                                                 |
-| Matrix                                                            | `syncTimeoutMs`                                               |
-| DingTalk, WeCom, QQ                                               | `maxReconnectAttempts`                                        |
-| WeCom                                                             | `heartbeatMs`                                                 |
-| QQ                                                                | `transport`                                                   |
-| Discord                                                           | `intents`                                                     |
-| Google Chat                                                       | `callerEmail`, `issuer`                                       |
-| Microsoft Teams                                                   | `issuer`                                                      |
+Connection timing and fixed platform identities are now managed internally. If an older file includes any of the fields below, delete them before running `validate`; unknown fields are rejected. dot now accepts only its native OpenAI callback origin. Other fixed timing defaults remain in effect.
+
+| Configuration                                                     | Remove                                              |
+| ----------------------------------------------------------------- | --------------------------------------------------- |
+| Agent `mcp`                                                       | `maxBodyBytes`, `timeoutMs`                         |
+| dot                                                               | `callback`, `subscriptionTtlMs`, `rotationWindowMs` |
+| Grok                                                              | `timeoutMs`, `maxBodyBytes`                         |
+| Telegram, Slack, Discord, Feishu, IRC, Matrix, Mattermost, Signal | `timeoutMs`                                         |
+| Slack, Discord                                                    | `reconnectDelayMs`                                  |
+| IRC, Matrix, Mattermost, Signal                                   | `reconnectMs`                                       |
+| Matrix                                                            | `syncTimeoutMs`                                     |
+| DingTalk, WeCom, QQ                                               | `maxReconnectAttempts`                              |
+| WeCom                                                             | `heartbeatMs`                                       |
+| QQ                                                                | `transport`                                         |
+| Discord                                                           | `intents`                                           |
+| Google Chat                                                       | `callerEmail`, `issuer`                             |
+| Microsoft Teams                                                   | `issuer`                                            |
 
 Credentials, sender allowlists, trusted origins and deployment addresses remain configurable. The configurator uses native platform addresses automatically; self-hosted services still need their addresses. Advanced server, storage, monitoring and media limits are optional deployment settings.
 

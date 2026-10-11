@@ -34,12 +34,12 @@ Copy-Item examples/relanox.sqlite.json relay.json
 
 Linux/macOS 使用 `cp examples/relanox.sqlite.json relay.json`。编辑 `relay.json`：
 
-| 位置                                         | 你的值                                                             |
-| -------------------------------------------- | ------------------------------------------------------------------ |
-| `relay.accounts[0].allowedSenders`           | 字符串形式的 Telegram 用户 ID，例如 `["123456789"]`                |
-| `relay.bindings[0].chatId`                   | 字符串形式的准确 Telegram 聊天 ID                                  |
-| `relay.endpoints[0].config.mcp.allowedHosts` | 公开主机名，例如 `["relay.example.com"]`；使用非默认端口时带上端口 |
-| `relay.storage.config.filename`              | 数据库路径；示例为启动目录中的 `relanox.sqlite`                    |
+| 位置                               | 你的值                                                                      |
+| ---------------------------------- | --------------------------------------------------------------------------- |
+| `relay.accounts[0].allowedSenders` | 字符串形式的 Telegram 用户 ID，例如 `["123456789"]`                         |
+| `relay.bindings[0].chatId`         | 字符串形式的准确 Telegram 聊天 ID                                           |
+| `publicUrl`                        | 公开 HTTPS 地址，例如 `https://relay.example.com`；使用非默认端口时带上端口 |
+| `relay.storage.config.filename`    | 数据库路径；示例为启动目录中的 `relanox.sqlite`                             |
 
 保留本地名字 `telegram-main` 和 `grok-main`，下面的 URL 会使用它们。同一主机上的反向代理使用 `server.host: "127.0.0.1"`；容器内使用 `0.0.0.0`。
 

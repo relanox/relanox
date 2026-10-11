@@ -50,6 +50,7 @@ export type ConfiguratorState = {
 }
 
 export type GeneratedConfig = {
+  publicUrl: string
   relay: {
     accounts: {
       id: string
@@ -70,5 +71,4 @@ export type GeneratedConfig = {
       config: Record<string, Json>
     }
   }
-  media: { publicBaseUrl: string }
 }

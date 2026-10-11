@@ -52,7 +52,7 @@ Send “Hello” from an allowed user to the Official Account or into the bound 
 
 ## Images and files
 
-Send images, audio, videos or files with your question. Image, audio and video replies need `media.publicBaseUrl`; follow [Media](../media.md) to expose it over HTTPS. Use JPEG/PNG images up to 10 MB. Images larger than 1 MB (1,000,000 bytes) and every MP4 video require a JPEG/PNG preview up to 1 MB. Generated audio uses MP3/M4A with a duration. Audio/video can be up to 200 MB, within your relay limit.
+Send images, audio, videos or files with your question. Image, audio and video replies need `publicUrl`; follow [Media](../media.md) to expose it over HTTPS. Use JPEG/PNG images up to 10 MB. Images larger than 1 MB (1,000,000 bytes) and every MP4 video require a JPEG/PNG preview up to 1 MB. Generated audio uses MP3/M4A with a duration. Audio/video can be up to 200 MB, within your relay limit.
 
 ## Troubleshooting
 

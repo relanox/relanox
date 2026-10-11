@@ -1,4 +1,5 @@
 {
+  "publicUrl": "https://relay.example.com",
   "relay": {
     "accounts": [
       {
@@ -145,7 +146,6 @@
       {
         "id": "googlechat-main",
         "config": {
-          "audience": "https://relay.example.com/channels/googlechat-main/webhook",
           "serviceAccount": {
             "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
           }
@@ -219,9 +219,7 @@
           "mcp": {
             "token": {
               "env": "DOT_MCP_TOKEN"
-            },
-            "allowedHosts": ["relay.example.com"],
-            "allowedOrigins": []
+            }
           }
         }
       },
@@ -232,9 +230,7 @@
           "mcp": {
             "token": {
               "env": "GROK_MCP_TOKEN"
-            },
-            "allowedHosts": ["relay.example.com"],
-            "allowedOrigins": []
+            }
           },
           "routineUrl": {
             "env": "GROK_ROUTINE_URL"
