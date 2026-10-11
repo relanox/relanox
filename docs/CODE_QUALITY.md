@@ -15,6 +15,18 @@ Pre-commit runs format and lint checks across the checkout. It never rewrites or
 
 The hook is verified by an actual disposable Git repository: malformed formatting is rejected, an unhandled Promise is rejected by type-aware linting, partial staging is rejected without changing the index, and a clean commit succeeds. This works with Node 26's native TypeScript stripping; no additional hook manager or shell interpolation of filenames is needed.
 
+## Source organization
+
+Organize code around responsibilities that change together. Package `index.ts` files declare the public API or compose the package runtime; they should not also contain configuration schemas, protocol codecs, SQL operations and transport state machines. Internal modules import their concrete siblings directly rather than importing their own public entrypoint.
+
+- Keep configuration shape, cross-reference validation and resource acquisition distinct. Schema parsing must not resolve secrets, open databases or register live handlers. Name schema primitives by their domain meaning, such as configuration IDs and platform IDs.
+- Keep transaction bodies and connection/session state under one owner. Extract a module when it owns a complete operation or lifecycle; do not split one atomic transition across generic repositories or callbacks solely to shorten a file.
+- Use descriptive record, query and protocol names in nontrivial flows. Format SQL so predicates, parameters and version fences can be reviewed together. Comments explain authority, ordering, recovery and ownership constraints rather than restating statements.
+- Keep public contracts explicit and stable. SDK contracts have domain files and one public export entrypoint; runtime implementation stays in core or the concrete plugin. New internal exports do not imply new package subpath APIs.
+- Prefer existing public API and protocol regression tests for refactoring. Do not add tests asserting filenames, import layout, private helper calls or the new module structure.
+
+There is no arbitrary maximum file length. A cohesive session state machine may remain longer than a schema module; a short forwarding module is not automatically an improvement. Review ownership, dependency direction and how many files a behavior change requires. The current source map is documented in [architecture](ARCHITECTURE.md#source-organization).
+
 ## Rule policy
 
 All available rules in correctness, suspicious, pedantic, performance and style categories are errors for the TypeScript, Unicorn, Oxc, Import, Promise, Node, Vitest and JSDoc plugins plus ESLint core. Explicit restrictions include no `any`, non-null assertion, unsafe assignment/call/member/argument/return, floating/misused Promise, eval/new Function, console, var, parameter reassignment or loose equality. Exhaustive switches, explicit braces, one declaration per statement, complexity at most 20 and nesting depth at most 4 are enforced. Nursery rules and frontend-only plugins are not appropriate to this Node service.
