@@ -4,9 +4,9 @@
 
 C2C/group attachments become durable bytes before the gateway cursor advances, including pure-media messages. Downloads enforce DNS/byte limits and refuse redirects. `mediaOrigins` optionally contains exact private download origins; loopback HTTP also requires `allowInsecureLoopback:true`.
 
-Configure top-level relay `media.publicBaseUrl` so QQ can fetch output bytes. The adapter calls `/v2/users/<id>/files` or `/v2/groups/<id>/files` with `srv_send_msg:false`, then sends `msg_type:7` and `media.file_info`, retaining durable passive reply allocation. Every attempt obtains fresh file_info to avoid TTL expiry; C2C/group tokens never mix. Captions precede media as separate text chunks. Publication URLs are short lived and account/request scoped.
+Output uses native multipart transfer and does not require `media.publicBaseUrl`. The adapter calls the target-specific `upload_prepare` with file size and protocol-required MD5/SHA1 checksums, PUTs original byte ranges to the returned signed URLs, confirms each through `upload_part_finish`, then merges through `/v2/users/<id>/files` or `/v2/groups/<id>/files` with `upload_id` and `srv_send_msg:false`. It finally sends `msg_type:7` and `media.file_info`, retaining durable passive reply allocation. This handles small files and files above the separate 5 MB binary-JSON upload limit. Each retry starts a fresh upload to avoid expired URLs or file_info; C2C/group tokens never mix. A failed upload cannot send a recipient message. QQ credentials are never forwarded to signed upload URLs; redirects are refused. Captions precede media as separate text chunks.
 
-The current protocol supports PNG/JPEG images, MP4 video, SILK audio and ordinary files (`file_type:4`). It does not transcode. Platform soft limits are 20 MiB image/audio, 30 MiB video and 200 MiB files; the default 25 MiB relay limit also applies. Uploading never implicitly sends proactive messages.
+The current protocol supports PNG/JPEG images, MP4 video, SILK audio and ordinary files (`file_type:4`). It does not transcode. Platform soft limits are 20 MB image/audio, 30 MB video and 200 MB files; the default 25 MiB relay limit also applies. Uploading never implicitly sends proactive messages.
 
 Protocols: [rich media](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/rich-media.html), [group upload](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_files.post.html). Local HTTP/socket and SQLite tests do not establish live-account compatibility.
 
@@ -48,3 +48,5 @@ Accepted targets also freeze the app ID and normalized API base URL. Reusing a l
 `maxReconnectAttempts` accepts 0–1,000 and defaults to 20.
 
 [Media transfer](../media.md)
+
+[Upload preparation](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_id_upload_prepare.post.html) · [Part confirmation](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_id_upload_part_finish.post.html)

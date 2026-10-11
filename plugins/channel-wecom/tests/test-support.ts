@@ -19,6 +19,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 export interface HttpRequest {
+  readonly method: string;
   readonly path: string;
   readonly headers: IncomingHttpHeaders;
   readonly body: unknown;
@@ -54,6 +55,7 @@ export async function peer(
           : raw;
       }
       const input = {
+        method: request.method ?? "GET",
         path: request.url ?? "/",
         headers: request.headers,
         body,

@@ -21,7 +21,7 @@ Both dot and Grok expose the media tools. The hosted client must support inline 
 
 ## Public URLs for native delivery
 
-Some platforms fetch outbound bytes from a URL instead of accepting an upload. For those adapters, add a public HTTPS origin at the top level of the CLI configuration:
+The current adapters require public URLs for LINE image/audio/video output, Google Chat image cards and download buttons, and Teams group/channel images above 15,000 bytes. LINE requires HTTPS media URLs; Google Chat native attachment upload requires a separately authorized user identity rather than the configured bot. QQ uses native signed multipart uploads without publication. Teams personal-chat images above 15,000 bytes use native file consent and arrive as file cards; small images remain inline. For the remaining URL-based paths, add a public HTTPS origin at the top level of the CLI configuration:
 
 ```json
 {
