@@ -1,13 +1,15 @@
-import { validateIncoming, sameReference } from './media-contracts.js'
+import {
+  validateIncoming,
+  sameReference,
+  encodeDurableRecord,
+  resultDigest,
+  matchesInitialResult,
+  isRequestInScope
+} from '@relanox/storage-support'
+import { decodeDurableRecord } from './record-codec.js'
 import { readMedia, insertIncomingMedia } from './media.js'
 import type { Storage, InboundRecord } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
-import {
-  encodeDurableRecord,
-  decodeDurableRecord,
-  resultDigest
-} from './record-codec.js'
-import { matchesInitialResult, isRequestInScope } from './record-contracts.js'
 
 export function createRequestOperations(
   context: DatabaseContext

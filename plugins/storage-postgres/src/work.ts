@@ -7,7 +7,7 @@ import type {
 import type { DatabaseContext } from './database.js'
 import { boundedLimit } from './database.js'
 import { randomUUID } from 'node:crypto'
-import { isActiveLease } from './record-contracts.js'
+import { isActiveLease } from '@relanox/storage-support'
 
 export function createWorkOperations(
   context: Pick<

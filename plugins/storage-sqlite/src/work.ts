@@ -1,8 +1,8 @@
+import { decodeDurableRecord } from './record-codec.js'
 import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { randomUUID } from 'node:crypto'
-import { decodeDurableRecord } from './record-codec.js'
-import { isActiveLease } from './record-contracts.js'
+import { isActiveLease } from '@relanox/storage-support'
 
 export function createWorkOperations(
   context: Pick<

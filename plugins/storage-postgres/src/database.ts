@@ -9,7 +9,7 @@ import type { PoolClient, QueryResultRow } from 'pg'
 import type { z } from 'zod'
 import type { PostgresConfig } from './config.js'
 import { configSchema } from './config.js'
-import { encodeDurableRecord } from './record-codec.js'
+import { encodeDurableRecord } from '@relanox/storage-support'
 
 /** Owns the connection and atomic transaction boundary for every storage operation. */
 export function openDatabase(
