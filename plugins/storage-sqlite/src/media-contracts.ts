@@ -10,6 +10,10 @@ export function validMedia(media: StoredMedia): boolean {
     ["image", "audio", "video", "file"].includes(ref.kind) &&
     typeof ref.mimeType === "string" &&
     typeof ref.fileName === "string" &&
+    (ref.durationMs === undefined ||
+      (Number.isSafeInteger(ref.durationMs) && ref.durationMs > 0)) &&
+    (ref.previewMediaId === undefined ||
+      (typeof ref.previewMediaId === "string" && ref.previewMediaId.length > 0)) &&
     media.data instanceof Uint8Array &&
     ref.size === media.data.byteLength &&
     ref.sha256 === createHash("sha256").update(media.data).digest("hex")
