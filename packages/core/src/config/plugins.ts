@@ -31,12 +31,16 @@ export function validatePluginConfigurations(
       plugin.capabilities.maxTextLength,
       plugin.capabilities.lengthUnit
     )
-    const maxChunks = plugin.capabilities.maxChunksPerMessage
-    if (
-      maxChunks !== undefined &&
-      (!Number.isSafeInteger(maxChunks) || maxChunks < 1)
-    ) {
-      throw new CoreError('invalid_channel_chunk_limit')
+    for (const maximum of [
+      plugin.capabilities.maxChunksPerMessage,
+      plugin.capabilities.maxAttachmentsPerMessage
+    ]) {
+      if (
+        maximum !== undefined &&
+        (!Number.isSafeInteger(maximum) || maximum < 1)
+      ) {
+        throw new CoreError('invalid_channel_chunk_limit')
+      }
     }
     accountValidated.set(
       account.id,

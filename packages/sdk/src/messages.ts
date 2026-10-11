@@ -145,6 +145,8 @@ export type SendInput = {
   readonly target: ReplyTarget
   readonly chunk: DeliveryChunk
   readonly chunkIndex: number
+  /** Total persisted chunks, allowing callback transports to publish one completed reply. */
+  readonly chunkCount?: number
   /** Resolved by core from durable storage, bound to this request and chunk. */
   readonly media?: StoredMedia
   /** Preview resolved from the same request by core. */

@@ -44,6 +44,7 @@ export async function sendChunk(
     target: structuredClone(record.target),
     chunk: structuredClone(chunk),
     chunkIndex: record.currentChunk,
+    chunkCount: record.chunks.length,
     ...(media ? { media } : {}),
     ...(preview ? { preview } : {}),
     signal

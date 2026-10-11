@@ -40,6 +40,7 @@ function chunksFor(
   media: readonly StoredMedia[]
 ): readonly DeliveryChunk[] {
   if (
+    media.length > (plugin.capabilities.maxAttachmentsPerMessage ?? Infinity) ||
     media.some(
       (item) => !plugin.capabilities.media?.send.includes(item.reference.kind)
     )
