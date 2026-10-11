@@ -50,3 +50,5 @@ Oxfmt owns formatting and type-aware Oxlint owns linting. Use the root scripts a
 - Complexity is limited to 20 and nesting to four levels. Unsafe types, unhandled promises and unused suppressions fail the lint gate. Refactoring should use existing API and protocol tests, not assertions about private structure.
 
 The static CLI catalog in `apps/cli/src/plugins.ts` has an explicit import limit of 18 for fifteen channels, two agents and the SDK contract; other files retain the default limit of ten. Other scoped rule exceptions are defined in `.oxlintrc.json`, including test method references and synchronous tooling subprocesses. Do not disable a rule merely to pass a check; justify any narrow policy change in the pull request.
+
+Document the current behavior, configuration and maintenance requirements. Keep task status, review reports, test-run results and dependency registry snapshots out of the repository; use pull requests and CI for change-specific evidence. Dependency versions and resolution belong in package manifests and the lockfile.

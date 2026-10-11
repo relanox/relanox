@@ -2,7 +2,7 @@
 
 Implemented by `@relanox/agent-dot` and `@relanox/agent-grok`, exported as `createDotAgentPlugin()` and `createGrokAgentPlugin()`. Both depend on SDK only for Relanox host contracts. Configure one instance per agent kind in the core agents map. Core validates every endpoint configuration before setup, supplies original endpoint snapshots plus `{}` to setup, and freezes endpoint SecretRefs at message acceptance. Plugins parse endpoint configs during setup and again during dispatch. Runtime credentials are resolved from environment at use, so rotating an environment value does not require rewriting persisted tasks.
 
-Tests cover published protocols, the installed MCP SDK, real SQLite persistence and local HTTP peers. dot/Grok live-account support remains experimental; account installation, Bot comprehension of Routine content, approval rules and unattended execution have not been validated.
+dot/Grok live-account support remains experimental; account installation, Bot comprehension of Routine content, approval rules and unattended execution have not been validated.
 
 ## Configuration and HTTP routes
 
@@ -118,10 +118,8 @@ The submitted JSON is `{content,source:"relanox",sentAt}`. `content` is a JSON s
 
 These are Relanox transport policy, not a claim about undocumented Grok internal side effects. MCP completion is the only durable final-result path. The public Coda/Linq implementations demonstrate JSON/content transmission, but are not a complete official Webhook schema or live-account proof.
 
-## Sources and verification
+## Protocol references
 
-- [OpenAI MCP Events](https://developers.openai.com/plugins/build/mcp-events): discovery, event/subscription schemas, callback verification, signing, rotation and delivery restrictions; checked 2026-10-11.
-- [MCP SDK HTTP serving](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/serving/http.md), [custom methods](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/advanced/custom-methods.md), [versions](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/protocol-versions.md), [legacy serving](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/serving/legacy-clients.md): verified against installed 2.3.1 source and actual SDK client traffic.
-- [Coda Pack author implementation](https://connect.superhuman.com/t/how-a-coda-pack-calls-grok-bot/61506) and [fixed Linq forwarder source](https://github.com/jeffhuber/linq-grokbot-text-channel/blob/91eddc9203c28b747c81678f5012dd7e150b6c30/forwarder/api/index.js): evidence for content/JSON forwarding only; no copied runtime code.
-
-Run `pnpm exec vitest run plugins/agent-dot/tests plugins/agent-grok/tests`. Core plus real SQLite exercise ingest → dispatch → SDK claim → complete → original outbound, restart, endpoint scope and stable protocol identities. Local peers independently verify HMAC headers and capture Routine bytes; they implement no Relanox business rules.
+- [OpenAI MCP Events](https://developers.openai.com/plugins/build/mcp-events): discovery, event/subscription schemas, callback verification, signing, rotation and delivery restrictions.
+- [MCP SDK HTTP serving](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/serving/http.md), [custom methods](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/advanced/custom-methods.md), [versions](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/protocol-versions.md), [legacy serving](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/serving/legacy-clients.md): HTTP transport, custom methods and protocol compatibility.
+- [Coda Pack author implementation](https://connect.superhuman.com/t/how-a-coda-pack-calls-grok-bot/61506) and [fixed Linq forwarder source](https://github.com/jeffhuber/linq-grokbot-text-channel/blob/91eddc9203c28b747c81678f5012dd7e150b6c30/forwarder/api/index.js): examples of the content/JSON forwarding format.
