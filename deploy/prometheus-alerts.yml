@@ -14,7 +14,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Relanox's oldest pending request is over 15 minutes old"
+          summary: "Relanox's oldest due notification is over 15 minutes old"
       - alert: RelanoxWorkerStalled
         expr: time() - relanox_worker_last_success_timestamp_seconds > 120
         for: 2m

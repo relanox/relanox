@@ -86,7 +86,7 @@ async function setup(filename = ':memory:'): Promise<{
   core: CoreRuntime
   storage: Storage
   dispatches: string[]
-  complete(
+  sendReply(
     this: void,
     text?: string
   ): Promise<{
@@ -161,7 +161,7 @@ describe('native WhatsApp Cloud', () => {
       )
 
       cleanup.push(restarted.close)
-      const completed = await restarted.complete()
+      const completed = await restarted.sendReply()
       expect(completed.delivery?.status).toBe(
         change === 'rotation' ? 'sent' : 'rejected'
       )
@@ -219,7 +219,7 @@ describe('native WhatsApp Cloud', () => {
         )
       ).status
     ).toBe(200)
-    const completed = await restarted.complete()
+    const completed = await restarted.sendReply()
     expect(completed.delivery?.status).toBe('rejected')
     expect(completed.delivery?.errorCode).toBe('customer_window_expired')
     expect(local.remote.traffic).toHaveLength(0)
@@ -278,7 +278,7 @@ describe('native WhatsApp Cloud', () => {
     expect((await local.core.fetch(incoming(body))).status).toBe(200)
     expect((await local.core.fetch(incoming(body))).status).toBe(200)
     expect((await local.storage.getStats()).pending).toBe(1)
-    const completed = await local.complete()
+    const completed = await local.sendReply()
     expect(completed.delivery?.status).toBe('sent')
     expect(local.dispatches).toEqual(['hello'])
     const sent = local.remote.traffic[0]
@@ -305,7 +305,7 @@ describe('native WhatsApp Cloud', () => {
         )
       ).status
     ).toBe(200)
-    const completed = await local.complete()
+    const completed = await local.sendReply()
     expect(completed.delivery?.status).toBe('rejected')
     expect(completed.delivery?.errorCode).toBe('customer_window_expired')
     expect(local.remote.traffic).toHaveLength(0)
@@ -345,7 +345,7 @@ describe('native WhatsApp Cloud', () => {
     const local = await setup()
     await local.core.fetch(incoming(webhook()))
     local.remote.respond(status, {}, { 'retry-after': '2' })
-    expect((await local.complete()).delivery?.status).toBe(expected)
+    expect((await local.sendReply()).delivery?.status).toBe(expected)
     expect(local.remote.traffic).toHaveLength(1)
   })
 

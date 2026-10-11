@@ -2,11 +2,11 @@
 
 Use only SDK `host.observe` / the injected facade. Assembly uses `createStandardObservability()` from `@relanox/observability-standard`; validate its configuration, setup, pass observe to core, and mount the optional Web Request/Response metrics handler privately. Configuration, metrics and lifecycle details follow below.
 
-Finite log events: inbound.accepted, inbound.duplicate, inbound.rejected, dispatch.completed, claim.completed, complete.completed, fail.completed, delivery.completed, retry.scheduled, delivery.unknown, connection.changed, worker.completed, storage.failed, recovery.completed, retention.completed, startup.completed, shutdown.completed, operation.failed. Unknown events become operation.failed; never put arbitrary error/message strings in event.
+Finite log events: inbound.accepted, inbound.duplicate, inbound.rejected, dispatch.completed, message.queued, media.read, delivery.completed, retry.scheduled, delivery.unknown, connection.changed, worker.completed, storage.failed, recovery.completed, retention.completed, startup.completed, shutdown.completed, operation.failed. Unknown events become operation.failed; never put arbitrary error/message strings in event.
 
-Finite span names and operation labels: ingest, dispatch, claim, complete, fail, send, storage, http, worker, connection, recovery, retention, startup, shutdown.
+Finite span names and operation labels: ingest, dispatch, enqueue_message, read_media, send, storage, http, worker, connection, recovery, retention, startup, shutdown.
 
-Finite outcomes: ok, error, accepted, duplicate, rejected, retryable, unknown, sent, busy, conflict, unauthorized, connected, disconnected, degraded, stale, not_found, not_pending, claimed, completed, updated.
+Finite outcomes: ok, error, accepted, duplicate, rejected, retryable, unknown, sent, conflict, unauthorized, connected, disconnected, degraded, stale, not_found, queued, updated.
 
 Plugin field/label accepts core, cli, storage-sqlite, storage-postgres, observability-standard, agent-dot, agent-grok and `channel-<channel>` for each of the 15 channel IDs. channel labels accept the 15 SDK ChannelIds; agent labels accept dot/grok. Arbitrary account, endpoint, user, chat or request identifiers are forbidden metric labels. Unknown label keys/values drop the observation, and each metric has at most 64 label tuples per runtime.
 
@@ -46,24 +46,24 @@ Only exported `events`/`operations`, known plugin IDs and fixed outcome/error ca
 
 All business metrics use SDK labels channel/agent/plugin/operation/outcome/error_class. Values are fixed known channels/agents/plugin IDs and operation/outcome/error categories exported/defined in source. Missing labels appear as `none`; unknown keys/values reject the observation. Each metric accepts at most 64 distinct label tuples per runtime to prevent multiplication of finite vocabularies. Unknown metric names, negative/nonfinite values and wrong method types are ignored. No request/user/chat/account/endpoint label exists. No global registry registration occurs.
 
-| SDK call / metric                                                             | Meaning                                                                        |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| count relanox_inbound_total                                                   | channel/outcome accepted, duplicate, rejected                                  |
-| count relanox_dispatch_total                                                  | agent/outcome of short notification                                            |
-| count relanox_delivery_total                                                  | channel/outcome of persisted chunk send                                        |
-| count relanox_retries_total                                                   | operation dispatch/send; local retry observations                              |
-| record relanox_http_duration_seconds                                          | seconds; bounded HTTP operation                                                |
-| record relanox_storage_duration_seconds                                       | seconds; storage call                                                          |
-| record relanox_dispatch_duration_seconds                                      | seconds; dispatch call                                                         |
-| record relanox_send_duration_seconds                                          | seconds; send call                                                             |
-| record relanox_result_duration_seconds                                        | seconds; acceptance to committed result                                        |
-| record relanox_delivery_duration_seconds                                      | seconds; committed result to delivery                                          |
-| record relanox_pending / relanox_claimed / relanox_outbound / relanox_unknown | gauges set from Storage.getStats                                               |
-| record relanox_oldest_pending_age_seconds                                     | current age, zero only after successful empty snapshot                         |
-| record relanox_storage_stats_stale                                            | 1 when refresh fails, 0 after success; retain other previous gauges on failure |
-| record relanox_worker_last_success_timestamp_seconds                          | Unix seconds of successful loop, permits external freshness alert              |
-| record relanox_connection_status                                              | plugin label; connected=1, disconnected/degraded=0                             |
-| relanox_telemetry_dropped_total                                               | internal counter with fixed signal logs/metrics/traces                         |
+| SDK call / metric                                           | Meaning                                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| count relanox_inbound_total                                 | channel/outcome accepted, duplicate, rejected                                  |
+| count relanox_dispatch_total                                | agent/outcome of short notification                                            |
+| count relanox_delivery_total                                | channel/outcome of persisted chunk send                                        |
+| count relanox_retries_total                                 | operation dispatch/send; local retry observations                              |
+| record relanox_http_duration_seconds                        | seconds; bounded HTTP operation                                                |
+| record relanox_storage_duration_seconds                     | seconds; storage call                                                          |
+| record relanox_dispatch_duration_seconds                    | seconds; dispatch call                                                         |
+| record relanox_send_duration_seconds                        | seconds; send call                                                             |
+| record relanox_reply_duration_seconds                       | seconds; input acceptance to queued reply                                      |
+| record relanox_delivery_duration_seconds                    | seconds; queued message to delivery                                            |
+| record relanox_pending / relanox_outbound / relanox_unknown | gauges set from Storage.getStats                                               |
+| record relanox_oldest_pending_age_seconds                   | current age, zero only after successful empty snapshot                         |
+| record relanox_storage_stats_stale                          | 1 when refresh fails, 0 after success; retain other previous gauges on failure |
+| record relanox_worker_last_success_timestamp_seconds        | Unix seconds of successful loop, permits external freshness alert              |
+| record relanox_connection_status                            | plugin label; connected=1, disconnected/degraded=0                             |
+| relanox_telemetry_dropped_total                             | internal counter with fixed signal logs/metrics/traces                         |
 
 Duration histograms have seconds buckets 0.005, 0.025, 0.1, 0.5, 1, 5, 30, 120, 600, 3600 and +Inf. Counters are process observations and reset on restart. Gauges are snapshots, never business facts. Collecting metrics does not access storage or write business state. Core owns freshness, health and storage polling. Readiness must not depend on collectors or this plugin. `noopObservability` from SDK is the disabled alternative; CLI may retain minimum startup errors independently.
 

@@ -34,7 +34,6 @@ export type EndpointConfig = {
   readonly id: string
   readonly agent: AgentId
   readonly config: Json
-  readonly dispatchMode: 'push' | 'pull'
 }
 
 export type Binding = {

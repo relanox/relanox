@@ -15,7 +15,6 @@
       {
         "id": "grok-main",
         "agent": "grok",
-        "dispatchMode": "push",
         "config": {
           "mcp": {
             "token": { "env": "GROK_MCP_TOKEN" },

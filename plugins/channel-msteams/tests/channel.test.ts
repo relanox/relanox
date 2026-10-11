@@ -34,7 +34,7 @@ async function setup(
   storage: Storage
   dispatches: string[]
   principal(this: void): ScopedAgentHost
-  complete(
+  sendReply(
     this: void,
     text?: string
   ): Promise<{
@@ -175,7 +175,7 @@ describe('native Microsoft Teams', () => {
     expect((await local.core.fetch(await local.incoming())).status).toBe(200)
     expect((await local.core.fetch(await local.incoming())).status).toBe(200)
     expect((await local.storage.getStats()).pending).toBe(1)
-    const completed = await local.complete()
+    const completed = await local.sendReply()
     expect(completed.delivery?.status).toBe('sent')
     expect(local.dispatches).toEqual(['hello'])
     expect(completed.request.target).toEqual({
@@ -356,7 +356,7 @@ describe('native Microsoft Teams', () => {
       const local = await setup()
       await local.core.fetch(await local.incoming())
       local.remote.token(status, { error: 'temporarily_unavailable' })
-      const completed = await local.complete()
+      const completed = await local.sendReply()
       expect(completed.delivery?.status).toBe(expected)
       expect(
         local.remote.traffic.filter((request) =>
@@ -392,7 +392,7 @@ describe('native Microsoft Teams', () => {
     const token = `opaque-token-${'a'.repeat(2048)}`
     local.remote.token(200, { access_token: token })
     await local.core.fetch(await local.incoming())
-    expect((await local.complete()).delivery?.status).toBe('sent')
+    expect((await local.sendReply()).delivery?.status).toBe('sent')
 
     const sent = local.remote.traffic.find((request) =>
       request.path.startsWith('/teams/v3')
@@ -409,7 +409,7 @@ describe('native Microsoft Teams', () => {
     const local = await setup()
     await local.core.fetch(await local.incoming())
     local.remote.respond(status, {}, { 'retry-after': '2' })
-    expect((await local.complete()).delivery?.status).toBe(expected)
+    expect((await local.sendReply()).delivery?.status).toBe(expected)
     expect(
       local.remote.traffic.filter((request) =>
         request.path.startsWith('/teams/v3')
@@ -473,18 +473,13 @@ it.each([
       (await local.core.fetch(await local.incoming({}, incoming))).status
     ).toBe(200)
     const scoped = local.principal()
-    const item = (await scoped.listPending(10))[0]
+    const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
     if (!item?.attachments?.[0]) {
       throw new Error('missing_media')
     }
-    const claim = await scoped.claim(item.requestId, 'image-claim')
-    if (claim.status !== 'claimed') {
-      throw new Error('claim_failed')
-    }
-    await scoped.complete({
-      requestId: item.requestId,
-      claimToken: claim.claimToken,
-      resultId: 'image-result',
+    await scoped.sendMessage({
+      replyTo: item.requestId,
+      idempotencyKey: 'image-result',
       text: '',
       attachments: [item.attachments[0].id]
     })
@@ -569,18 +564,13 @@ it.each([
       (await local.core.fetch(await local.incoming({}, incoming))).status
     ).toBe(200)
     const scoped = local.principal()
-    const item = (await scoped.listPending(10))[0]
+    const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
     if (!item?.attachments?.[0]) {
       throw new Error('missing_media')
-    }
-    const claim = await scoped.claim(item.requestId, 'file-claim')
-    if (claim.status !== 'claimed') {
-      throw new Error('claim_failed')
     }
 
     const media = await scoped.media?.read({
       requestId: item.requestId,
-      claimToken: claim.claimToken,
       mediaId: item.attachments[0].id
     })
 
@@ -632,7 +622,6 @@ it.each([
 
     const resumed = await restarted.principal().media?.read({
       requestId: item.requestId,
-      claimToken: claim.claimToken,
       mediaId: media.reference.id
     })
 

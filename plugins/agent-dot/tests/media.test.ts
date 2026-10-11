@@ -1,6 +1,5 @@
 import type { Client } from '@modelcontextprotocol/client'
 import type { CoreRuntime } from '../../../packages/core/src/index.js'
-import { randomUUID } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type {
@@ -65,52 +64,44 @@ async function setup(agent: AgentId): Promise<{
   const plugin =
     agent === 'dot' ? createDotAgentPlugin() : createGrokAgentPlugin()
 
-  const fx = await fixture(
-    agent,
-    plugin,
-    [config, { ...config, mcp: mcp('AGENT_TEST_TOKEN_1') }],
-    false
-  )
+  const fx = await fixture(agent, plugin, [
+    config,
+    { ...config, mcp: mcp('AGENT_TEST_TOKEN_1') }
+  ])
 
   cleanups.push(async () => fx.close())
   return fx
 }
 
-const claimSchema = z.looseObject({
-  status: z.literal('claimed'),
-  claimToken: z.string(),
-  request: z.looseObject({
-    attachments: z.array(
-      z.looseObject({
-        id: z.string(),
-        kind: z.string(),
-        fileName: z.string(),
-        size: z.number()
-      })
-    )
-  })
-})
+function resourceUri(result: unknown): string {
+  const parsed = z
+    .object({
+      content: z.array(
+        z.looseObject({ type: z.literal('resource_link'), uri: z.url() })
+      )
+    })
+    .parse(result)
 
-const transferSchema = z.looseObject({ url: z.url(), maxBytes: z.number() })
+  const first = parsed.content[0]
+  if (!first) {
+    throw new Error('missing_resource')
+  }
+  return first.uri
+}
 
 describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
-  it('projects inbound metadata, exposes image/audio bytes, transfers binary files and completes ordered media through SQLite', async () => {
+  it('reads received media without a claim, preserves binary bytes across restart and sends ordered media', async () => {
     const fx = await setup(agent)
+    const image = Buffer.from('image bytes')
+    const audio = Buffer.from('audio bytes')
+    const file = Buffer.from('file bytes')
 
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
-      'base64'
-    )
-
-    const audio = Buffer.from('RIFF-relanox-audio', 'utf8')
-    const file = Buffer.from('inbound file bytes', 'utf8')
-
-    const receipt = await fx.ingest(0, 'inspect these assets', 'media-event', [
+    const receipt = await fx.ingest(0, 'inspect assets', 'media-event', [
       {
         kind: 'image',
         mimeType: 'image/png',
         fileName: 'pixel.png',
-        data: png
+        data: image
       },
       {
         kind: 'audio',
@@ -127,53 +118,21 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
       }
     ])
 
+    const snapshot = (await fx.storage.getInbound(receipt.requestId))?.snapshot
+    const [picture, sound, document] = snapshot?.attachments ?? []
+    if (!picture || !sound || !document) {
+      throw new Error('missing_assets')
+    }
     const client = await fx.client()
-
-    const pending = await client.callTool({
-      name: 'relanox_list_pending',
-      arguments: {}
-    })
-
-    expect(pending).toMatchObject({
-      structuredContent: {
-        requests: [
-          {
-            attachments: [
-              { kind: 'image', fileName: 'pixel.png' },
-              { kind: 'audio', fileName: 'voice.wav', durationMs: 1500 },
-              { kind: 'file', fileName: 'input.bin' }
-            ]
-          }
-        ]
-      }
-    })
-
-    const claimed = claimSchema.parse(
-      (
-        await client.callTool({
-          name: 'relanox_claim',
-          arguments: { requestId: receipt.requestId, claimKey: 'media-run' }
-        })
-      ).structuredContent
-    )
-
-    const common = {
-      requestId: receipt.requestId,
-      claimToken: claimed.claimToken
-    }
-
-    const [image, sound, document] = claimed.request.attachments
-    if (!image || !sound || !document) {
-      throw new Error('media_metadata_missing')
-    }
+    const common = { replyTo: receipt.requestId }
     expect(
       await client.callTool({
         name: 'relanox_read_media',
-        arguments: { ...common, mediaId: image.id }
+        arguments: { ...common, mediaId: picture.id }
       })
     ).toMatchObject({
       content: [
-        { type: 'image', data: png.toString('base64'), mimeType: 'image/png' }
+        { type: 'image', data: image.toString('base64'), mimeType: 'image/png' }
       ]
     })
     expect(
@@ -187,235 +146,123 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
       ]
     })
 
-    const download = await client.callTool({
-      name: 'relanox_read_media',
-      arguments: { ...common, mediaId: document.id }
-    })
-
-    const link = z
-      .object({
-        content: z.array(
-          z.looseObject({
-            type: z.literal('resource_link'),
-            uri: z.url(),
-            name: z.string()
-          })
-        )
-      })
-      .parse(download).content[0]
-
-    if (!link) {
-      throw new Error('media_download_missing')
-    }
-    expect(link.name).toBe('input.bin')
-    const fetched = await fx.core.fetch(new Request(link.uri))
-    expect(fetched.status).toBe(200)
-    expect(fetched.headers.get('x-content-type-options')).toBe('nosniff')
-    expect(new Uint8Array(await fetched.arrayBuffer())).toEqual(
-      new Uint8Array(file)
-    )
-    const uploadId = randomUUID()
-
-    const transfer = transferSchema.parse(
-      (
-        await client.callTool({
-          name: 'relanox_media_transfer',
-          arguments: {
-            ...common,
-            mediaId: uploadId,
-            method: 'PUT',
-            metadata: {
-              kind: 'video',
-              mimeType: 'video/mp4',
-              fileName: 'generated.mp4',
-              durationMs: 2500,
-              previewMediaId: image.id
-            }
-          }
-        })
-      ).structuredContent
-    )
-
-    expect(new URL(transfer.url).origin).toBe('http://relanox.test')
-    expect(transfer.url).not.toContain('secret-0')
-    const generated = Buffer.alloc(3_000_000, 23)
-
-    const put = async (): Promise<Response> =>
-      fx.core.fetch(
-        new Request(transfer.url, { method: 'PUT', body: generated })
-      )
-
-    expect(await (await put()).json()).toMatchObject({
-      status: 'stored',
-      replay: false,
-      media: {
-        id: uploadId,
-        size: generated.length,
-        durationMs: 2500,
-        previewMediaId: image.id
-      }
-    })
-    expect(await (await put()).json()).toMatchObject({
-      status: 'stored',
-      replay: true
-    })
-
-    const conflicting = await fx.core.fetch(
-      new Request(transfer.url, {
-        method: 'PUT',
-        body: Buffer.from('different')
+    const uri = resourceUri(
+      await client.callTool({
+        name: 'relanox_read_media',
+        arguments: { ...common, mediaId: document.id }
       })
     )
 
-    expect(await conflicting.json()).toEqual({ status: 'conflict' })
+    expect(uri).not.toContain('secret-0')
     await fx.reopen(
       agent === 'dot' ? createDotAgentPlugin() : createGrokAgentPlugin()
     )
-    const afterRestart = await fx.core.fetch(new Request(link.uri))
-    expect(afterRestart.status).toBe(200)
-    expect(new Uint8Array(await afterRestart.arrayBuffer())).toEqual(
+    const downloaded = await fx.core.fetch(new Request(uri))
+    expect(downloaded.status).toBe(200)
+    expect(downloaded.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(
       new Uint8Array(file)
     )
+    const reconnected = await fx.client()
 
-    const completion = {
+    const input = {
       ...common,
-      resultId: 'media-result',
       text: 'done',
-      attachments: [uploadId, document.id]
+      attachments: [{ mediaId: document.id }, { mediaId: picture.id }]
     }
 
     expect(
-      await client.callTool({ name: 'relanox_complete', arguments: completion })
-    ).toMatchObject({
-      structuredContent: { status: 'completed', replay: false }
-    })
+      await reconnected.callTool({
+        name: 'relanox_send_message',
+        arguments: input
+      })
+    ).toMatchObject({ structuredContent: { status: 'queued', replay: false } })
     expect(
-      await client.callTool({ name: 'relanox_complete', arguments: completion })
-    ).toMatchObject({
-      structuredContent: { status: 'completed', replay: true }
-    })
+      await reconnected.callTool({
+        name: 'relanox_send_message',
+        arguments: input
+      })
+    ).toMatchObject({ structuredContent: { status: 'queued', replay: true } })
     await fx.core.processDue()
     expect(fx.sent).toMatchObject([
       { chunk: { text: 'done' } },
-      {
-        media: {
-          reference: {
-            id: uploadId,
-            durationMs: 2500,
-            previewMediaId: image.id
-          }
-        },
-        preview: { reference: { id: image.id }, data: new Uint8Array(png) }
-      },
-      { media: { reference: { id: document.id } } }
+      { media: { reference: { id: document.id } } },
+      { media: { reference: { id: picture.id } } }
     ])
-
-    const sentMedia = z
-      .looseObject({ media: z.looseObject({ data: z.instanceof(Uint8Array) }) })
-      .parse(fx.sent[1])
-
-    expect(Buffer.from(sentMedia.media.data).equals(generated)).toBe(true)
   })
 
-  it('rejects tampered, cross-endpoint, expired and revoked capabilities, and authorizes before reading an upload body', async () => {
+  it('rejects tampered, expired, cross-endpoint and write tickets and isolates media tools', async () => {
     const fx = await setup(agent)
-    const receipt = await fx.ingest()
+
+    const receipt = await fx.ingest(0, '', 'file-event', [
+      {
+        kind: 'file',
+        mimeType: 'application/octet-stream',
+        fileName: 'safe.bin',
+        data: new Uint8Array([1, 2, 3])
+      }
+    ])
+
+    const media = (await fx.storage.getInbound(receipt.requestId))?.snapshot
+      .attachments?.[0]
+
+    if (!media) {
+      throw new Error('missing_asset')
+    }
     const client = await fx.client()
+    const input = { replyTo: receipt.requestId, mediaId: media.id }
+    const other = await fx.client('secret-1', 1)
+    expect(
+      await other.callTool({ name: 'relanox_read_media', arguments: input })
+    ).toMatchObject({ isError: true })
 
-    const result = await client.callTool({
-      name: 'relanox_claim',
-      arguments: { requestId: receipt.requestId, claimKey: 'capability-run' }
-    })
-
-    const claimToken = z
-      .looseObject({ claimToken: z.string() })
-      .parse(result.structuredContent).claimToken
-
-    const uploadId = randomUUID()
-
-    const transfer = transferSchema.parse(
-      (
-        await client.callTool({
-          name: 'relanox_media_transfer',
-          arguments: {
-            requestId: receipt.requestId,
-            claimToken,
-            mediaId: uploadId,
-            method: 'PUT',
-            metadata: {
-              kind: 'file',
-              mimeType: 'application/octet-stream',
-              fileName: 'safe.bin'
-            }
-          }
-        })
-      ).structuredContent
+    const uri = resourceUri(
+      await client.callTool({ name: 'relanox_read_media', arguments: input })
     )
 
-    const tampered = new URL(transfer.url)
+    const tampered = new URL(uri)
     tampered.searchParams.set(
       'ticket',
       `${tampered.searchParams.get('ticket')}x`
     )
-    let bodyReads = 0
-
-    const stalledBody = new ReadableStream<Uint8Array>(
-      {
-        pull(): void {
-          bodyReads += 1
-        }
-      },
-      { highWaterMark: 0 }
-    )
-
-    const init: RequestInit & { duplex: 'half' } = {
-      method: 'PUT',
-      body: stalledBody,
-      duplex: 'half'
-    }
-
-    expect((await fx.core.fetch(new Request(tampered, init))).status).toBe(401)
-    expect(bodyReads).toBe(0)
+    expect((await fx.core.fetch(new Request(tampered))).status).toBe(401)
     expect(
-      (
-        await fx.core.fetch(
-          new Request(transfer.url.replace('endpoint0', 'endpoint1'), {
-            method: 'PUT',
-            body: 'bytes'
-          })
-        )
-      ).status
+      (await fx.core.fetch(new Request(uri.replace('endpoint0', 'endpoint1'))))
+        .status
     ).toBe(401)
-    const now = Date.now()
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 300_001)
     expect(
-      (
-        await fx.core.fetch(
-          new Request(transfer.url, { method: 'PUT', body: 'bytes' })
-        )
-      ).status
+      (await fx.core.fetch(new Request(uri, { method: 'PUT', body: 'bytes' })))
+        .status
     ).toBe(401)
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 300_001)
+    expect((await fx.core.fetch(new Request(uri))).status).toBe(401)
     clock.mockRestore()
-    const request = await fx.storage.getInbound(receipt.requestId)
-    if (!request) {
-      throw new Error('request_missing')
-    }
-    expect(
-      await fx.core.requeue({
-        kind: 'request',
-        id: receipt.requestId,
-        expectedVersion: request.version,
-        acknowledgeUnknown: true
-      })
-    ).toMatchObject({ status: 'updated' })
-
-    const stale = await fx.core.fetch(
-      new Request(transfer.url, { method: 'PUT', body: 'bytes' })
-    )
-
-    expect(await stale.json()).toEqual({ status: 'unauthorized' })
-    expect(
-      await fx.storage.media?.get(receipt.requestId, uploadId)
-    ).toBeUndefined()
+    process.env.AGENT_TEST_TOKEN_0 = 'rotated'
+    expect((await fx.core.fetch(new Request(uri))).status).toBe(401)
   })
+
+  it.each([
+    'http://127.0.0.1:1/file',
+    'https://127.0.0.1/file',
+    'https://169.254.169.254/latest/meta-data',
+    'https://user:password@example.com/file'
+  ])(
+    'refuses generated media from forbidden URL %s without queueing a delivery',
+    async (url) => {
+      const fx = await setup(agent)
+      const receipt = await fx.ingest()
+      const client = await fx.client()
+      expect(
+        await client.callTool({
+          name: 'relanox_send_message',
+          arguments: {
+            replyTo: receipt.requestId,
+            attachments: [{ url, kind: 'file' }]
+          }
+        })
+      ).toMatchObject({ isError: true })
+      await fx.core.processDue()
+      expect(fx.sent).toEqual([])
+    }
+  )
 })

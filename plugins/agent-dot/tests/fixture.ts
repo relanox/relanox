@@ -121,8 +121,7 @@ export async function peer(
 export async function fixture(
   agent: AgentId,
   plugin: AgentPlugin<unknown>,
-  configs: readonly Json[],
-  push = true
+  configs: readonly Json[]
 ): Promise<{
   endpoints: EndpointConfig[]
   filename: ReturnType<typeof join>
@@ -185,8 +184,7 @@ export async function fixture(
   const endpoints: EndpointConfig[] = configs.map((config, i) => ({
     id: `endpoint${i}`,
     agent,
-    config,
-    dispatchMode: push ? 'push' : 'pull'
+    config
   }))
 
   const config = {

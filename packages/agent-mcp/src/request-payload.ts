@@ -1,9 +1,11 @@
+import { z } from 'zod'
 import type { InboundSnapshot } from '@relanox/sdk'
 
 export type AgentRequestPayload = Pick<
   InboundSnapshot,
-  'requestId' | 'text' | 'context' | 'attachments'
+  'text' | 'context' | 'attachments'
 > & {
+  readonly replyTo: string
   readonly source: Pick<InboundSnapshot['source'], 'channel' | 'eventId'>
 }
 
@@ -11,7 +13,7 @@ export function projectAgentRequest(
   request: InboundSnapshot
 ): AgentRequestPayload {
   return {
-    requestId: request.requestId,
+    replyTo: request.requestId,
     text: request.text,
     context: request.context,
     ...(request.attachments ? { attachments: request.attachments } : {}),
@@ -21,3 +23,24 @@ export function projectAgentRequest(
     }
   }
 }
+
+export const agentRequestSchema = z.strictObject({
+  replyTo: z.string(),
+  text: z.string(),
+  context: z.json(),
+  attachments: z
+    .array(
+      z.strictObject({
+        id: z.string(),
+        kind: z.enum(['image', 'audio', 'video', 'file']),
+        mimeType: z.string(),
+        fileName: z.string(),
+        size: z.number().int().nonnegative(),
+        sha256: z.string(),
+        durationMs: z.number().int().positive().optional(),
+        previewMediaId: z.string().optional()
+      })
+    )
+    .optional(),
+  source: z.strictObject({ channel: z.string(), eventId: z.string() })
+})

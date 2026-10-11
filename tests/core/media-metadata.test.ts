@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { incoming, mediaFixture, picture } from './fixture.js'
 
-it('preserves duration and request-owned image previews through upload, completion and send', async () => {
+it('preserves duration and generated image previews through atomic enqueue and send', async () => {
   const f = await mediaFixture()
   try {
     const receipt = await f.channel.ingest({
@@ -14,64 +14,65 @@ it('preserves duration and request-owned image previews through upload, completi
       endpointIds: ['first']
     })
 
-    const claim = await scoped.claim(receipt.requestId, 'claim')
+    const previewId = (await f.storage.getInbound(receipt.requestId))?.snapshot
+      .attachments?.[0]?.id
 
-    const previewId =
-      claim.status === 'claimed'
-        ? claim.request.attachments?.[0]?.id
-        : undefined
-
-    if (claim.status !== 'claimed' || !previewId || !scoped.media) {
-      throw new Error('Expected claim')
-    }
-    const uploadId = crypto.randomUUID()
-
-    const upload = {
-      requestId: receipt.requestId,
-      claimToken: claim.claimToken,
-      uploadId,
-      media: {
-        ...picture,
-        kind: 'file' as const,
-        mimeType: 'application/octet-stream',
-        durationMs: 1500,
-        previewMediaId: previewId
-      }
+    if (!previewId) {
+      throw new Error('Expected incoming preview')
     }
 
-    expect(await scoped.media.upload(upload)).toMatchObject({
-      status: 'stored',
-      media: { durationMs: 1500, previewMediaId: previewId }
-    })
+    const media = {
+      ...picture,
+      kind: 'file' as const,
+      mimeType: 'application/octet-stream',
+      durationMs: 1500,
+      previewMediaId: previewId
+    }
+
     await expect(
-      scoped.media.upload({
-        ...upload,
-        uploadId: crypto.randomUUID(),
-        media: { ...upload.media, previewMediaId: crypto.randomUUID() }
-      })
-    ).rejects.toMatchObject({ code: 'invalid_media_preview' })
-    await expect(
-      scoped.media.upload({
-        ...upload,
-        uploadId: crypto.randomUUID(),
-        media: { ...upload.media, previewMediaId: uploadId }
+      scoped.sendMessage({
+        replyTo: receipt.requestId,
+        text: '',
+        attachments: [{ ...media, previewMediaId: crypto.randomUUID() }]
       })
     ).rejects.toMatchObject({ code: 'invalid_media_preview' })
     expect(
-      await scoped.complete({
-        requestId: receipt.requestId,
-        claimToken: claim.claimToken,
-        resultId: 'final',
+      await scoped.sendMessage({
+        replyTo: receipt.requestId,
         text: '',
-        attachments: [uploadId]
+        attachments: [media]
       })
-    ).toMatchObject({ status: 'completed' })
+    ).toMatchObject({ status: 'queued' })
     await f.runtime.processDue()
     expect(f.sent[0]?.media?.reference).toMatchObject({
       durationMs: 1500,
       previewMediaId: previewId
     })
     expect(f.sent[0]?.preview?.data).toEqual(new Uint8Array([1, 2, 3]))
+    expect(
+      await scoped.sendMessage({
+        replyTo: receipt.requestId,
+        text: '',
+        attachments: [
+          {
+            media: {
+              ...picture,
+              kind: 'file',
+              mimeType: 'application/octet-stream',
+              durationMs: 1500
+            },
+            preview: {
+              ...picture,
+              fileName: 'generated.png',
+              data: new Uint8Array([4, 5, 6])
+            }
+          }
+        ]
+      })
+    ).toMatchObject({ status: 'queued' })
+    await f.runtime.processDue()
+    expect(f.sent[1]?.preview?.data).toEqual(new Uint8Array([4, 5, 6]))
+    expect(f.sent[1]?.media?.reference.durationMs).toBe(1500)
   } finally {
     await f.close()
   }

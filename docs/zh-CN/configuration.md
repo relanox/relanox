@@ -7,14 +7,14 @@ CLI 接收严格 JSON 对象：必需的 `relay` 和可选的 `server`、`media`
 | 字段            | 内容                                                                        |
 | --------------- | --------------------------------------------------------------------------- |
 | `accounts`      | 渠道账号数组：`id`、`channel`、`allowedSenders`、插件 `config`              |
-| `endpoints`     | Agent endpoint 数组：`id`、`agent`、`dispatchMode`、插件 `config`           |
+| `endpoints`     | Agent endpoint 数组：`id`、`agent`、插件 `config`                           |
 | `bindings`      | `accountId`、`chatId`、可选 `threadId`、`endpointId`、可选 `allowedSenders` |
 | `storage`       | `plugin: "sqlite"` 或 `"postgres"` 与对应 `config`                          |
 | `observability` | `plugin: "standard"` 或 `"none"` 与对应 `config`                            |
 
 账号和 endpoint 的 ID 是 1–128 字符的本地名称，以字母或数字开头，其余允许字母、数字、下划线和连字符。平台 ID 是不透明字符串，即使看起来是数字也保持字符串。绑定必须引用存在的账号和 endpoint；`(accountId,chatId,threadId)` 不重复。匹配精确聊天与线程，没有线程回退或通配符。账号发送者白名单不能为空；绑定白名单存在时必须同时满足两层白名单。
 
-endpoint 的 `agent` 只支持 `dot` 与 `grok`。`push` 由持久工作循环发送通知，`pull` 通过 MCP 直接领取，不自动 dispatch。完整配置见 [全部渠道示例](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json)，各插件字段见对应渠道指南和 [Agent](agents.md)。凭据字段使用 `{"env":"VARIABLE_NAME"}`；Google Chat 服务账号 JSON 是引用变量的值。
+endpoint 的 `agent` 只支持 `dot` 与 `grok`。持久工作循环向所有 endpoint 推送完整消息，接纳的通知不自动重发。完整配置见 [全部渠道示例](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json)，各插件字段见对应渠道指南和 [Agent](agents.md)。凭据字段使用 `{"env":"VARIABLE_NAME"}`；Google Chat 服务账号 JSON 是引用变量的值。
 
 ### 存储
 
@@ -56,7 +56,7 @@ node apps/cli/dist/main.js validate --config relay.json
 node apps/cli/dist/main.js run --config relay.json
 node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
 node apps/cli/dist/main.js status --config relay.json --limit 100
-node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --request-status claimed
+node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --dispatch-status unknown
 node apps/cli/dist/main.js status --config relay.json --include-content
 node apps/cli/dist/main.js requeue --config relay.json --kind request --id REQUEST_ID --expected-version 4
 node apps/cli/dist/main.js requeue --config relay.json --kind delivery --id DELIVERY_ID --expected-version 7 --acknowledge-unknown
@@ -65,11 +65,11 @@ node apps/cli/dist/main.js cleanup --config relay.json --before 1790000000000 --
 
 `validate` 检查配置及全部插件 schema，不解析凭据、不打开存储、不启动连接，也不证明平台权限。
 
-`status` 返回持久统计和独立的请求/发送分页，`--limit` 为 1–1000，默认 100。`--after-id` 是不包含自身的 ID 游标；`--endpoint-id` 作用于两类记录。`--request-status` 为 pending/claimed/completed/failed，`--delivery-status` 为 pending/sent/rejected/unknown。默认省略文字、endpoint 配置、token、目标和回执；`--include-content` 只额外包含消息/结果文字。这是本地管理数据。
+`status` 返回持久统计和独立的请求/发送分页，`--limit` 为 1–1000，默认 100。`--after-id` 是不包含自身的 ID 游标；`--endpoint-id` 作用于两类记录。`--dispatch-status` 为 due/accepted/rejected/unknown，`--delivery-status` 为 pending/sent/rejected/unknown。默认省略文字、endpoint 配置、token、目标和回执；`--include-content` 只额外包含入站/出站消息文字。这是本地管理数据。
 
 `doctor` 输出缺失的变量名、存储健康，可通过显式回环 HTTP origin 检查运行中服务的 readiness；拒绝重定向和远端管理地址。
 
-`requeue` 要求 `status` 给出的当前版本，返回 updated/not_found/conflict/unauthorized。unknown 必须用 `--acknowledge-unknown` 承认重复外部效果的可能性。恢复只撤销本地 claim/lease；已发送分片保留，无法取消已运行的远端 Agent。详细恢复步骤见 [运维](operations.md)。
+`requeue` 要求 `status` 给出的当前版本，返回 updated/not_found/conflict/unauthorized。unknown 必须用 `--acknowledge-unknown` 承认重复外部效果的可能性。恢复只撤销本地 lease；已发送分片保留，无法取消已运行的远端 Agent。详细恢复步骤见 [运维](operations.md)。
 
 `cleanup` 使用 Unix 毫秒时间边界，limit 为 1–1000，默认 100；只清理符合保留条件的终态正文，保留去重和所有未完成/未送达工作。退出码 0 表示成功或帮助，1 表示脱敏后的命令失败，2 表示 doctor 不健康或恢复被拒绝。错误 JSON 不复制任意平台/驱动异常文字。
 

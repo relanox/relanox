@@ -4,7 +4,7 @@ title: 文档
 hero:
   name: Relanox
   text: 在消息渠道中使用已有的 Agent。
-  tagline: 面向 dot 和 Grok Bot 的自托管消息网关。接收文字和媒体、持久保存交接状态，再将结果发回原会话。
+  tagline: 面向 dot 和 Grok Bot 的自托管消息网关。接收文字和媒体、持久保存交接状态，再将回复发回原会话。
   actions:
     - theme: brand
       text: 快速开始
@@ -16,7 +16,7 @@ features:
   - title: 15 个原生渠道
     details: 通过平台消息协议连接 Telegram、Discord、Slack、飞书、企业微信、钉钉、QQ 等渠道。
   - title: 持久交接
-    details: 使用 SQLite 或 PostgreSQL 保存请求、领取状态和发送进度，重启后继续处理。
+    details: 使用 SQLite 或 PostgreSQL 保存入站消息、通知状态和发送进度，重启后继续处理。
   - title: 自行部署
     details: 运行 Node 服务或 Docker 容器，通过环境变量管理凭据，并使用日志、指标和 trace 监控服务。
 ---

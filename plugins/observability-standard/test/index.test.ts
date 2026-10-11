@@ -296,6 +296,12 @@ describe('prometheus public facade', () => {
     first.observe.record('relanox_send_duration_seconds', 0.25, {
       channel: 'telegram'
     })
+    first.observe.record('relanox_reply_duration_seconds', 0.5, {
+      operation: 'enqueue_message',
+      outcome: 'queued'
+    })
+    first.observe.record('relanox_claimed', 1)
+    first.observe.record('relanox_result_duration_seconds', 1)
     const body = await metrics(first)
     expect(body).toMatch(
       /relanox_inbound_total\{[^\n]*channel="telegram"[^\n]*outcome="accepted"[^\n]*\} 3/u
@@ -306,6 +312,11 @@ describe('prometheus public facade', () => {
     expect(body).toMatch(
       /relanox_send_duration_seconds_bucket\{le="0.5"[^\n]*\} 1/u
     )
+    expect(body).toMatch(
+      /relanox_reply_duration_seconds_sum\{[^\n]*operation="enqueue_message"[^\n]*outcome="queued"[^\n]*\} 0.5/u
+    )
+    expect(body).not.toContain('relanox_claimed')
+    expect(body).not.toContain('relanox_result_duration_seconds')
     expect(await metrics(second)).not.toMatch(/channel="telegram"/u)
 
     const response = await first.metrics?.(

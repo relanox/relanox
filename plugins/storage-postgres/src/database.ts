@@ -153,7 +153,7 @@ export function openDatabase(
     const changed = await client.query(
       'UPDATE inbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5',
       [
-        record.status,
+        record.dispatch.status,
         record.version,
         encodeDurableRecord(record),
         record.snapshot.requestId,
@@ -187,38 +187,6 @@ export function openDatabase(
     }
   }
 
-  const isEndpointHead = async (
-    client: PoolClient,
-    record: InboundRecord
-  ): Promise<boolean> =>
-    (
-      await query(
-        client,
-        `
-          SELECT id
-          FROM inbound
-          WHERE endpoint=$1
-            AND id<>$3
-            AND status IN ('pending','claimed')
-            AND (status='claimed'
-              OR record#>'{dispatch,lease}' IS NOT NULL
-              OR (record#>>'{dispatch,attempts}')::int>0
-              OR record#>>'{dispatch,status}' IN ('unknown','rejected')
-              OR (NOT $4
-                AND (accepted_at,id)<($2,$3)))
-          LIMIT 1
-        `,
-        [
-          record.snapshot.endpoint.id,
-          record.snapshot.acceptedAt,
-          record.snapshot.requestId,
-          Boolean(record.dispatch.lease) ||
-            record.dispatch.attempts > 0 ||
-            ['unknown', 'rejected'].includes(record.dispatch.status)
-        ]
-      )
-    ).length === 0
-
   return {
     config,
     pool,
@@ -227,8 +195,7 @@ export function openDatabase(
     readInbound,
     readOutbound,
     saveInbound,
-    saveOutbound,
-    isEndpointHead
+    saveOutbound
   }
 }
 
@@ -267,11 +234,6 @@ export type DatabaseContext = {
     record: OutboundRecord,
     expectedVersion?: number
   ): Promise<void>
-  isEndpointHead(
-    this: void,
-    client: PoolClient,
-    record: InboundRecord
-  ): Promise<boolean>
 }
 
 export const boundedLimit = (limit: number): number => {

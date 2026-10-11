@@ -40,9 +40,9 @@ export function createInspectionOperations(
     async listInbound(filter) {
       const where = ['1=1']
       const params: (string | number)[] = []
-      if (filter.requestStatus) {
+      if (filter.dispatchStatus) {
         where.push('status=?')
-        params.push(filter.requestStatus)
+        params.push(filter.dispatchStatus)
       }
       if (filter.endpointId) {
         where.push('endpoint=?')
@@ -95,15 +95,13 @@ export function createInspectionOperations(
         .prepare(
           `
             SELECT
-              SUM(status='pending') pending,
-              SUM(status='claimed') claimed,
-              MIN(CASE WHEN status='pending' THEN accepted_at END) oldest
+              SUM(status='due') pending,
+              MIN(CASE WHEN status='due' THEN accepted_at END) oldest
             FROM inbound
           `
         )
         .get() as {
         pending: number | null
-        claimed: number | null
         oldest: number | null
       }
 
@@ -118,15 +116,13 @@ export function createInspectionOperations(
           `
             SELECT COUNT(*) count
             FROM inbound
-            WHERE status='pending'
-              AND json_extract(record,'$.dispatch.status')='unknown'
+            WHERE json_extract(record,'$.dispatch.status')='unknown'
           `
         )
         .get() as { count: number }
 
       return {
         pending: inboundStats.pending ?? 0,
-        claimed: inboundStats.claimed ?? 0,
         undelivered: outboundStats.undelivered ?? 0,
         unknown: (outboundStats.unknown ?? 0) + unknownDispatches.count,
         ...(inboundStats.oldest !== null
@@ -136,54 +132,41 @@ export function createInspectionOperations(
     },
     async cleanup(input) {
       return transaction(() => {
-        let redacted = 0
-
         const rows = db
           .prepare(
-            `
-              SELECT inbound_request.record AS inbound_record,outbound_delivery.record AS outbound_record
-              FROM inbound inbound_request
-              LEFT JOIN outbound outbound_delivery ON outbound_delivery.request_id=inbound_request.id
-              WHERE inbound_request.accepted_at<?
-                AND json_extract(inbound_request.record,'$.redactedAt') IS NULL
-                AND (inbound_request.status='failed'
-                  OR (inbound_request.status='completed'
-                    AND outbound_delivery.status='sent'))
-              ORDER BY inbound_request.accepted_at,inbound_request.id
-              LIMIT ?
-            `
+            `SELECT i.record FROM inbound i WHERE i.accepted_at<? AND i.status IN ('accepted','rejected') AND json_extract(i.record,'$.redactedAt') IS NULL AND NOT EXISTS(SELECT 1 FROM outbound o WHERE o.request_id=i.id AND (o.status!='sent' OR json_extract(o.record,'$.createdAt')>=?)) ORDER BY i.accepted_at,i.id LIMIT ?`
           )
-          .all(input.before, input.limit) as {
-          inbound_record: string
-          outbound_record: string | null
-        }[]
+          .all(input.before, input.before, input.limit) as { record: string }[]
 
         for (const row of rows) {
-          const record = decodeDurableRecord<InboundRecord>(row.inbound_record)
-
-          const delivery = row.outbound_record
-            ? decodeDurableRecord<OutboundRecord>(row.outbound_record)
-            : undefined
-
+          const record = decodeDurableRecord<InboundRecord>(row.record)
           saveInbound({
             ...record,
+            version: record.version + 1,
             snapshot: {
               ...record.snapshot,
               text: '',
               context: null,
               attachments: []
             },
-            ...(record.result
-              ? { result: { ...record.result, text: '', attachments: [] } }
-              : {}),
             redactedAt: input.before
           })
-          db.prepare(
-            'UPDATE media SET data=NULL,reference=? WHERE request_id=?'
-          ).run('{}', record.snapshot.requestId)
-          if (delivery) {
+          db.prepare('UPDATE media SET data=NULL WHERE request_id=?').run(
+            record.snapshot.requestId
+          )
+
+          const deliveries = db
+            .prepare('SELECT record FROM outbound WHERE request_id=?')
+            .all(record.snapshot.requestId) as { record: string }[]
+
+          for (const deliveryRow of deliveries) {
+            const delivery = decodeDurableRecord<OutboundRecord>(
+              deliveryRow.record
+            )
+
             saveOutbound({
               ...delivery,
+              version: delivery.version + 1,
               chunks: delivery.chunks.map((chunk) => ({
                 text: '',
                 state: null,
@@ -192,9 +175,8 @@ export function createInspectionOperations(
               receipts: delivery.receipts.map(() => ({}))
             })
           }
-          redacted++
         }
-        return { redacted }
+        return { redacted: rows.length }
       })
     }
   }

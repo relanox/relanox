@@ -8,42 +8,11 @@ import { equalSecret, resolveAgentSecret } from './secrets.js'
 
 const id = z.string().min(1).max(1024)
 
-const metadata = z.strictObject({
-  durationMs: z
-    .number()
-    .int()
-    .positive()
-    .max(Number.MAX_SAFE_INTEGER)
-    .optional(),
-  previewMediaId: z.uuid().optional(),
-  kind: z.enum(['image', 'audio', 'video', 'file']),
-  mimeType: z
-    .string()
-    .min(1)
-    .max(128)
-    .regex(/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/u),
-  fileName: z
-    .string()
-    .min(1)
-    .max(255)
-    .refine(
-      (name) =>
-        name.isWellFormed() &&
-        !/[\p{Cc}/\\]/u.test(name) &&
-        name !== '.' &&
-        name !== '..',
-      'Invalid file name'
-    )
-})
-
 const ticketSchema = z.strictObject({
   endpointId: id,
   requestId: id,
   mediaId: id,
-  claimToken: id,
-  method: z.enum(['GET', 'PUT']),
-  expiresAt: z.number(),
-  metadata: metadata.optional()
+  expiresAt: z.number()
 })
 
 type Ticket = z.infer<typeof ticketSchema>
@@ -114,7 +83,7 @@ export function createMediaTransport(
       const suffix = `/media/${encodeURIComponent(endpointId)}/${encodeURIComponent(ticket.requestId)}/${encodeURIComponent(ticket.mediaId)}`
       return ticket.endpointId === endpointId &&
         ticket.expiresAt > Date.now() &&
-        request.method === ticket.method &&
+        request.method === 'GET' &&
         url.pathname.endsWith(suffix)
         ? ticket
         : undefined
@@ -133,49 +102,17 @@ export function createMediaTransport(
     if (!ticket || !host.media) {
       return Response.json({ error: 'unauthorized' }, { status: 401 })
     }
-    if (ticket.method === 'GET') {
-      const stored = await host.media.read(ticket)
-      if (!stored) {
-        return Response.json({ error: 'not_found' }, { status: 404 })
+    const stored = await host.media.read(ticket)
+    if (!stored) {
+      return Response.json({ error: 'not_found' }, { status: 404 })
+    }
+    return new Response(new Uint8Array(stored.data), {
+      headers: {
+        'Content-Type': stored.reference.mimeType,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(stored.reference.fileName)}`,
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
       }
-      return new Response(new Uint8Array(stored.data), {
-        headers: {
-          'Content-Type': stored.reference.mimeType,
-          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(stored.reference.fileName)}`,
-          'Cache-Control': 'no-store',
-          'X-Content-Type-Options': 'nosniff'
-        }
-      })
-    }
-    if (!ticket.metadata) {
-      return Response.json({ error: 'invalid_metadata' }, { status: 400 })
-    }
-    const bytes = new Uint8Array(await request.arrayBuffer())
-    if (bytes.byteLength > host.media.maxBytes) {
-      return Response.json({ error: 'body_too_large' }, { status: 413 })
-    }
-
-    const result = await host.media.upload({
-      requestId: ticket.requestId,
-      claimToken: ticket.claimToken,
-      uploadId: ticket.mediaId,
-      media: {
-        kind: ticket.metadata.kind,
-        mimeType: ticket.metadata.mimeType,
-        fileName: ticket.metadata.fileName,
-        ...(ticket.metadata.durationMs === undefined
-          ? {}
-          : { durationMs: ticket.metadata.durationMs }),
-        ...(ticket.metadata.previewMediaId === undefined
-          ? {}
-          : { previewMediaId: ticket.metadata.previewMediaId }),
-        data: bytes
-      }
-    })
-
-    return Response.json(result, {
-      status: result.status === 'stored' ? 200 : 403,
-      headers: { 'Cache-Control': 'no-store' }
     })
   }
 
@@ -184,47 +121,6 @@ export function createMediaTransport(
       return
     }
     const mediaHost = host.media
-    server.registerTool(
-      'relanox_media_transfer',
-      {
-        annotations: {
-          readOnlyHint: true,
-          destructiveHint: false,
-          idempotentHint: false,
-          openWorldHint: false
-        },
-        description:
-          'Issue a five-minute claim-bound binary download or upload URL. PUT the raw generated file bytes to the upload URL, then include its returned media.id in relanox_complete attachments. Never send file base64 through tool arguments. URLs are credentials; do not share them.',
-        inputSchema: z.strictObject({
-          requestId: id,
-          claimToken: id,
-          mediaId: z.uuid(),
-          method: z.enum(['GET', 'PUT']),
-          metadata: metadata.optional()
-        })
-      },
-      async (input) => {
-        if (input.method === 'PUT' && !input.metadata) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: 'Upload metadata is required.' }]
-          }
-        }
-        const expiresAt = Date.now() + 300_000
-
-        const value = {
-          url: issue({ ...input, endpointId, expiresAt }),
-          method: input.method,
-          expiresAt,
-          maxBytes: mediaHost.maxBytes
-        }
-
-        return {
-          content: [{ type: 'text', text: JSON.stringify(value) }],
-          structuredContent: value
-        }
-      }
-    )
     server.registerTool(
       'relanox_read_media',
       {
@@ -235,20 +131,20 @@ export function createMediaTransport(
           openWorldHint: false
         },
         description:
-          'Read request media after claiming. Small image/audio assets are returned as model-visible MCP content; other assets are a binary download resource link. Client support for consuming download links must be verified separately.',
+          'Read media attached to the incoming message. Small image/audio assets are returned as model-visible MCP content; other assets are a binary download resource link. Client support for consuming download links must be verified separately.',
         inputSchema: z.strictObject({
-          requestId: id,
-          claimToken: id,
+          replyTo: id,
           mediaId: id
         })
       },
       async (input) => {
-        const stored = await mediaHost.read(input)
+        const request = { requestId: input.replyTo, mediaId: input.mediaId }
+        const stored = await mediaHost.read(request)
         if (!stored) {
           return {
             isError: true,
             content: [
-              { type: 'text', text: 'Media unavailable for this claim.' }
+              { type: 'text', text: 'Media unavailable for this message.' }
             ]
           }
         }
@@ -269,9 +165,8 @@ export function createMediaTransport(
         }
 
         const uri = issue({
-          ...input,
+          ...request,
           endpointId,
-          method: 'GET',
           expiresAt: Date.now() + 300_000
         })
 

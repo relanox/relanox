@@ -1,10 +1,4 @@
-import {
-  encodeDurableRecord,
-  validMedia,
-  withinMediaBudget,
-  mediaDigest,
-  isRequestInScope
-} from '@relanox/storage-support'
+import { encodeDurableRecord, mediaDigest } from '@relanox/storage-support'
 import { decodeDurableRecord } from './record-codec.js'
 import type { MediaStorage, StoredMedia } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
@@ -52,47 +46,6 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
   return {
     async get(requestId, mediaId) {
       return readMedia(context, requestId, mediaId)
-    },
-    async put(input) {
-      return context.transaction(() => {
-        const record = context.readInbound(input.requestId)
-        if (!record) {
-          return { status: 'not_found' }
-        }
-        if (
-          !isRequestInScope(record, input) ||
-          record.claim?.token !== input.claimToken
-        ) {
-          return { status: 'unauthorized' }
-        }
-        if (record.status !== 'claimed' || !validMedia(input.media)) {
-          return { status: 'conflict' }
-        }
-
-        const existing = context.db
-          .prepare('SELECT request_id,digest FROM media WHERE id=?')
-          .get(input.media.reference.id) as
-          { request_id: string; digest: string } | undefined
-
-        if (existing) {
-          return existing.request_id === input.requestId &&
-            existing.digest === mediaDigest(input.media)
-            ? { status: 'stored', media: input.media.reference, replay: true }
-            : { status: 'conflict' }
-        }
-
-        const usage = context.db
-          .prepare(
-            'SELECT COUNT(*) count,COALESCE(SUM(length(data)),0) bytes FROM media WHERE request_id=? AND data IS NOT NULL'
-          )
-          .get(input.requestId) as { count: number; bytes: number }
-
-        if (!withinMediaBudget(input, usage.count, usage.bytes)) {
-          return { status: 'conflict' }
-        }
-        insertIncomingMedia(context, input.requestId, [input.media])
-        return { status: 'stored', media: input.media.reference, replay: false }
-      })
     }
   }
 }

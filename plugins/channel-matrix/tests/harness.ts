@@ -164,28 +164,14 @@ function protocolAgent(dispatchUrl: string): AgentPlugin {
         }
 
         const input = z
-          .discriminatedUnion('method', [
-            z.object({
-              method: z.literal('claim'),
-              requestId: z.string(),
-              claimKey: z.string()
-            }),
-            z.object({
-              method: z.literal('complete'),
-              requestId: z.string(),
-              claimToken: z.string(),
-              resultId: z.string(),
-              text: z.string()
-            })
-          ])
+          .object({
+            replyTo: z.string(),
+            idempotencyKey: z.string(),
+            text: z.string()
+          })
           .parse((await request.json()) as unknown)
 
-        const scoped = host.forPrincipal(principal)
-
-        const output =
-          input.method === 'claim'
-            ? await scoped.claim(input.requestId, input.claimKey)
-            : await scoped.complete(input)
+        const output = await host.forPrincipal(principal).sendMessage(input)
 
         return Response.json(output)
       })
@@ -220,12 +206,12 @@ export async function harness(
   runtime: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
   filename: string
-  complete(
+  sendReply(
     this: void,
     requestId: string,
     text?: string
   ): Promise<{
-    status: 'completed'
+    status: 'queued'
     deliveryId: string
   }>
 }> {
@@ -253,9 +239,7 @@ export async function harness(
       accounts: [
         { id: 'bot', channel: plugin.channel, config, allowedSenders: senders }
       ],
-      endpoints: [
-        { id: 'worker', agent: 'grok', dispatchMode: 'push', config: {} }
-      ],
+      endpoints: [{ id: 'worker', agent: 'grok', config: {} }],
       bindings,
       storage: { plugin: 'sqlite', config: {} },
       observability: { plugin: 'none', config: {} }
@@ -267,10 +251,10 @@ export async function harness(
     await storage.close()
   })
 
-  async function complete(
+  async function sendReply(
     requestId: string,
     text = 'delayed answer'
-  ): Promise<{ status: 'completed'; deliveryId: string }> {
+  ): Promise<{ status: 'queued'; deliveryId: string }> {
     const call = async (input: unknown): Promise<Response> =>
       runtime.fetch(
         new Request('http://relanox.test/agents/grok/tools', {
@@ -283,30 +267,16 @@ export async function harness(
         })
       )
 
-    const claimed = z
-      .object({ status: z.literal('claimed'), claimToken: z.string() })
-      .parse(
-        (await (
-          await call({
-            method: 'claim',
-            requestId,
-            claimKey: `claim:${requestId}`
-          })
-        ).json()) as unknown
-      )
-
     const completed = await call({
-      method: 'complete',
-      requestId,
-      claimToken: claimed.claimToken,
-      resultId: `result:${requestId}`,
+      replyTo: requestId,
+      idempotencyKey: `reply:${requestId}`,
       text
     })
 
     return z
-      .object({ status: z.literal('completed'), deliveryId: z.string() })
+      .object({ status: z.literal('queued'), deliveryId: z.string() })
       .parse((await completed.json()) as unknown)
   }
 
-  return { runtime, storage, filename, complete }
+  return { runtime, storage, filename, sendReply }
 }

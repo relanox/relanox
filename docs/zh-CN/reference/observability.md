@@ -4,9 +4,9 @@ Core 和原生插件只通过 SDK host.observe 或注入 facade 观测。装配�
 
 ## 字段与范围
 
-日志 event 是有限集合：inbound.accepted/duplicate/rejected、dispatch.completed、claim.completed、complete.completed、fail.completed、delivery.completed、retry.scheduled、delivery.unknown、connection.changed、worker.completed、storage.failed、recovery.completed、retention.completed、startup.completed、shutdown.completed、operation.failed。未知 event 归为 operation.failed，不能写任意错误或消息字符串。
+日志 event 是有限集合：inbound.accepted/duplicate/rejected、dispatch.completed、message.queued、media.read、delivery.completed、retry.scheduled、delivery.unknown、connection.changed、worker.completed、storage.failed、recovery.completed、retention.completed、startup.completed、shutdown.completed、operation.failed。未知 event 归为 operation.failed，不能写任意错误或消息字符串。
 
-span/operation 为 ingest、dispatch、claim、complete、fail、send、storage、http、worker、connection、recovery、retention、startup、shutdown。outcome 为 ok、error、accepted、duplicate、rejected、retryable、unknown、sent、busy、conflict、unauthorized、connected、disconnected、degraded、stale、not_found、not_pending、claimed、completed、updated。
+span/operation 为 ingest、dispatch、enqueue_message、read_media、send、storage、http、worker、connection、recovery、retention、startup、shutdown。outcome 为 ok、error、accepted、duplicate、rejected、retryable、unknown、sent、conflict、unauthorized、connected、disconnected、degraded、stale、not_found、queued、updated。
 
 plugin 只允许 core、cli、storage-sqlite/postgres、observability-standard、agent-dot/grok 和十五个 channel 插件；channel/agent 使用 SDK 固定 ID。账号、endpoint、用户、聊天、请求 ID 不允许作为指标标签；未知 label key/value 丢弃整次观测，每个指标每 runtime 最多 64 个标签 tuple。
 
@@ -54,9 +54,9 @@ stdout 返回 false 时队列最多 logBufferBytes，溢出丢弃并计数，des
 | record relanox_storage_duration_seconds              | 存储操作秒数                                      |
 | record relanox_dispatch_duration_seconds             | dispatch 秒数                                     |
 | record relanox_send_duration_seconds                 | send 秒数                                         |
-| record relanox_result_duration_seconds               | 接纳到提交结果秒数                                |
-| record relanox_delivery_duration_seconds             | 结果到送达秒数                                    |
-| record relanox_pending/claimed/outbound/unknown      | getStats 快照 gauge                               |
+| record relanox_reply_duration_seconds                | 入站接纳到回复入队秒数                            |
+| record relanox_delivery_duration_seconds             | 消息入队到送达秒数                                |
+| record relanox_pending/outbound/unknown              | getStats 快照 gauge                               |
 | record relanox_oldest_pending_age_seconds            | 最老 pending 年龄，成功空快照才归零               |
 | record relanox_storage_stats_stale                   | 刷新失败 1，成功 0，失败保留其他 gauge            |
 | record relanox_worker_last_success_timestamp_seconds | 成功循环 Unix 秒时间                              |

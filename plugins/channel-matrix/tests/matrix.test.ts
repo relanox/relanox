@@ -209,7 +209,7 @@ it('persists threaded sync before cursor, filters identities and sends the froze
   expect(dispatches).toEqual([
     { requestId: request.snapshot.requestId, text: 'question' }
   ])
-  const completed = await fixture.complete(request.snapshot.requestId)
+  const completed = await fixture.sendReply(request.snapshot.requestId)
   await fixture.runtime.processDue()
   expect(
     (await fixture.storage.getOutbound(completed.deliveryId))?.status

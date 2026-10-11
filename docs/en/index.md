@@ -4,7 +4,7 @@ title: Documentation
 hero:
   name: Relanox
   text: Your agents, in your channels.
-  tagline: A self-hosted message gateway for dot and Grok Bot. Receive text and media, persist the handoff, and deliver results to the original conversation.
+  tagline: A self-hosted message gateway for dot and Grok Bot. Receive text and media, persist the handoff, and send replies to the original conversation.
   actions:
     - theme: brand
       text: Get started
@@ -16,7 +16,7 @@ features:
   - title: 15 native channels
     details: Connect Telegram, Discord, Slack, Feishu, WeCom, DingTalk, QQ and more through their messaging protocols.
   - title: Durable handoff
-    details: SQLite or PostgreSQL preserves requests, claims and delivery progress across restarts.
+    details: SQLite or PostgreSQL preserves incoming messages, notification state and delivery progress across restarts.
   - title: Your infrastructure
     details: Run a Node service or Docker container. Keep credentials in your environment and monitor logs, metrics and traces.
 ---

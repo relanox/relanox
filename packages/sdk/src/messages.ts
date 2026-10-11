@@ -41,20 +41,13 @@ export type InboundSnapshot = {
   readonly acceptedAt: EpochMs
 } & Omit<IngestInput, 'attachments'>
 
-export type RequestStatus = 'pending' | 'claimed' | 'completed' | 'failed'
 export type AttemptStatus = 'due' | 'accepted' | 'rejected' | 'unknown'
 
-export type FinalResult = {
-  readonly resultId: string
+export type OutboundMessage = {
+  readonly messageId: string
   readonly text: string
   readonly attachments?: readonly MediaReference[]
-  readonly completedAt: EpochMs
-}
-
-export type ProcessingClaim = {
-  readonly key: string
-  readonly token: string
-  readonly claimedAt: EpochMs
+  readonly createdAt: EpochMs
 }
 
 export type AttemptState = {
@@ -73,12 +66,8 @@ export type Lease = {
 
 export type InboundRecord = {
   readonly snapshot: InboundSnapshot
-  readonly status: RequestStatus
   readonly version: number
   readonly dispatch: AttemptState
-  readonly claim?: ProcessingClaim
-  readonly result?: FinalResult
-  readonly errorCode?: string
   readonly redactedAt?: EpochMs
 }
 
@@ -100,7 +89,7 @@ export type DeliveryStatus = 'pending' | 'sent' | 'rejected' | 'unknown'
 export type OutboundRecord = {
   readonly deliveryId: string
   readonly requestId: string
-  readonly resultId: string
+  readonly messageId: string
   readonly target: ReplyTarget
   readonly chunks: readonly DeliveryChunk[]
   readonly currentChunk: number
@@ -120,18 +109,9 @@ export type IngestReceipt = {
   readonly duplicate: boolean
 }
 
-export type ClaimResult =
+export type MessageReceipt =
   | {
-      readonly status: 'claimed'
-      readonly request: InboundSnapshot
-      readonly claimToken: string
-      readonly replay: boolean
-    }
-  | { readonly status: 'busy' | 'not_found' | 'not_pending' }
-
-export type CompletionResult =
-  | {
-      readonly status: 'completed'
+      readonly status: 'queued'
       readonly deliveryId: string
       readonly replay: boolean
     }

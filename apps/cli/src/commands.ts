@@ -98,9 +98,13 @@ function addStatus(program: Command): void {
     .option('--limit <number>', 'Page size', '100')
     .option('--after-id <id>', 'Exclusive ID cursor')
     .option('--endpoint-id <id>', 'Endpoint scope')
-    .option('--request-status <status>', 'pending, claimed, completed, failed')
+    .option('--dispatch-status <status>', 'due, accepted, rejected, unknown')
     .option('--delivery-status <status>', 'pending, sent, rejected, unknown')
-    .option('--include-content', 'Include message/result text', false)
+    .option(
+      '--include-content',
+      'Include inbound and outbound message text',
+      false
+    )
     .action(async (_options: unknown, command: Command) => {
       const config = await configFrom(command)
 
@@ -109,8 +113,8 @@ function addStatus(program: Command): void {
           limit: numberOption(1, 1000),
           afterId: z.string().optional(),
           endpointId: z.string().optional(),
-          requestStatus: z
-            .enum(['pending', 'claimed', 'completed', 'failed'])
+          dispatchStatus: z
+            .enum(['due', 'accepted', 'rejected', 'unknown'])
             .optional(),
           deliveryStatus: z
             .enum(['pending', 'sent', 'rejected', 'unknown'])
@@ -125,9 +129,9 @@ function addStatus(program: Command): void {
         ...(options.endpointId === undefined
           ? {}
           : { endpointId: options.endpointId }),
-        ...(options.requestStatus === undefined
+        ...(options.dispatchStatus === undefined
           ? {}
-          : { requestStatus: options.requestStatus }),
+          : { dispatchStatus: options.dispatchStatus }),
         ...(options.deliveryStatus === undefined
           ? {}
           : { deliveryStatus: options.deliveryStatus })

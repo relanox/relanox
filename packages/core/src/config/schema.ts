@@ -33,8 +33,7 @@ const accountSchema = z.strictObject({
 const endpointSchema = z.strictObject({
   id: configIdSchema,
   agent: z.enum(['dot', 'grok']),
-  config: z.json(),
-  dispatchMode: z.enum(['push', 'pull'])
+  config: z.json()
 })
 
 const bindingSchema = z.strictObject({

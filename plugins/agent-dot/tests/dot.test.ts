@@ -206,95 +206,75 @@ describe('dot MCP Events and tools', () => {
     })
     const tools = await client.listTools()
     expect(tools.tools.map((tool) => tool.name)).toEqual([
-      'relanox_list_pending',
-      'relanox_claim',
-      'relanox_complete',
-      'relanox_fail',
-      'relanox_media_transfer',
+      'relanox_send_message',
       'relanox_read_media'
     ])
     expect(tools.tools.map((tool) => tool.annotations?.readOnlyHint)).toEqual([
-      true,
       false,
-      false,
-      false,
-      true,
       true
     ])
-
-    const pending = await client.callTool({
-      name: 'relanox_list_pending',
-      arguments: {}
-    })
-
-    expect(pending.structuredContent).toEqual({
-      requests: [
-        {
-          requestId: first.requestId,
-          text: '中文\nsecond line',
-          context: { thread: 'protocol-context' },
-          source: { channel: 'telegram', eventId: 'event-1' }
-        }
-      ]
-    })
-
-    const denied = await client.callTool({
-      name: 'relanox_claim',
-      arguments: { requestId: other.requestId, claimKey: 'run-1' }
-    })
-
-    expect(denied).toMatchObject({
+    expect(
+      await client.callTool({
+        name: 'relanox_send_message',
+        arguments: { replyTo: other.requestId, text: 'intrusion' }
+      })
+    ).toMatchObject({
       isError: true,
       structuredContent: { status: 'not_found' }
     })
     expect(
       await client.callTool({
-        name: 'relanox_list_pending',
-        arguments: { endpointIds: ['endpoint1'] }
+        name: 'relanox_send_message',
+        arguments: {
+          replyTo: first.requestId,
+          text: 'done',
+          endpointIds: ['endpoint1']
+        }
       })
     ).toMatchObject({ isError: true })
 
-    const claim = await client.callTool({
-      name: 'relanox_claim',
-      arguments: { requestId: first.requestId, claimKey: 'run-1' }
-    })
+    const send = {
+      replyTo: first.requestId,
+      idempotencyKey: 'result-1',
+      text: 'done'
+    }
 
-    expect(claim).toMatchObject({
+    expect(
+      await client.callTool({ name: 'relanox_send_message', arguments: send })
+    ).toMatchObject({
       isError: false,
-      structuredContent: { status: 'claimed', replay: false }
+      structuredContent: { status: 'queued', replay: false }
     })
-
-    const token = z
-      .object({ claimToken: z.string() })
-      .parse(claim.structuredContent).claimToken
-
-    const completed = await client.callTool({
-      name: 'relanox_complete',
-      arguments: {
-        requestId: first.requestId,
-        claimToken: token,
-        resultId: 'result-1',
-        text: 'done'
-      }
-    })
-
-    expect(completed).toMatchObject({
-      isError: false,
-      structuredContent: { status: 'completed', replay: false }
+    expect(
+      await client.callTool({ name: 'relanox_send_message', arguments: send })
+    ).toMatchObject({ structuredContent: { replay: true } })
+    expect(
+      await client.callTool({
+        name: 'relanox_send_message',
+        arguments: { ...send, text: 'different' }
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { status: 'conflict' }
     })
     expect(
       await client.callTool({
-        name: 'relanox_complete',
+        name: 'relanox_send_message',
+        arguments: { replyTo: first.requestId, text: 'second message' }
+      })
+    ).toMatchObject({ structuredContent: { status: 'queued', replay: false } })
+    expect(
+      await client.callTool({
+        name: 'relanox_send_message',
         arguments: {
-          requestId: first.requestId,
-          claimToken: token,
-          resultId: 'result-1',
-          text: 'done'
+          replyTo: first.requestId,
+          text: 'done',
+          idempotencyKey: 'result-2'
         }
       })
-    ).toMatchObject({ structuredContent: { replay: true } })
+    ).toMatchObject({ structuredContent: { status: 'queued', replay: false } })
     await fx.core.processDue()
-    expect(fx.sent).toHaveLength(1)
+    expect(fx.sent).toHaveLength(3)
     for (const [headers, expected] of [
       [{}, 401],
       [{ Authorization: 'Bearer wrong' }, 401],
@@ -357,7 +337,12 @@ describe('dot MCP Events and tools', () => {
       eventId: `evt_${received.requestId}`,
       name: 'relanox.message_available',
       timestamp: stringValue,
-      data: { requestId: received.requestId },
+      data: {
+        replyTo: received.requestId,
+        text: '中文\nsecond line',
+        context: { thread: 'protocol-context' },
+        source: { channel: 'telegram', eventId: 'event-1' }
+      },
       cursor: null
     })
     verify(receiver.traffic[1])
@@ -417,6 +402,78 @@ describe('dot MCP Events and tools', () => {
       })
     ).toEqual({ status: 'retryable', errorCode: 'dot_no_active_subscription' })
     expect(receiver.traffic).toHaveLength(before + 1)
+  })
+
+  it('delivers complete media metadata and advertises the same payload fields, rejecting oversized messages explicitly', async () => {
+    const { fx, url, receiver } = await setup()
+    const client = await fx.client()
+
+    const catalog = await client.request(
+      { method: 'events/list', params: {} },
+      z.object({
+        events: z.array(
+          z.looseObject({
+            payloadSchema: z.looseObject({
+              properties: z.record(z.string(), z.unknown())
+            })
+          })
+        )
+      })
+    )
+
+    expect(
+      Object.keys(catalog.events[0]?.payloadSchema.properties ?? {})
+    ).toEqual(['replyTo', 'text', 'context', 'attachments', 'source'])
+    await client.request(subscribe(url, signingKey, 10_000), subResult)
+
+    const receipt = await fx.ingest(0, 'inspect attachment', 'full-media', [
+      {
+        kind: 'video',
+        mimeType: 'video/mp4',
+        fileName: 'clip.mp4',
+        durationMs: 2300,
+        data: new Uint8Array([1, 2, 3])
+      }
+    ])
+
+    await fx.core.processDue()
+    expect(parseWire(receiver.traffic[1]?.body ?? '')).toMatchObject({
+      data: {
+        replyTo: receipt.requestId,
+        text: 'inspect attachment',
+        context: { thread: 'protocol-context' },
+        source: { channel: 'telegram', eventId: 'full-media' },
+        attachments: [
+          {
+            id: stringValue,
+            kind: 'video',
+            mimeType: 'video/mp4',
+            fileName: 'clip.mp4',
+            durationMs: 2300,
+            size: 3,
+            sha256: stringValue
+          }
+        ]
+      }
+    })
+
+    const event = z
+      .object({ data: z.record(z.string(), z.unknown()) })
+      .parse(parseWire(receiver.traffic[1]?.body ?? ''))
+
+    expect(event.data).not.toHaveProperty('endpoint')
+    expect(event.data).not.toHaveProperty('target')
+    const request = (await fx.storage.getInbound(receipt.requestId))?.snapshot
+    if (!request) {
+      throw new Error('missing_request')
+    }
+    expect(
+      await fx.agent.dispatch({
+        request: { ...request, text: 'x'.repeat(262_144) },
+        signal: new AbortController().signal
+      })
+    ).toEqual({ status: 'rejected', errorCode: 'dot_event_too_large' })
+    expect(receiver.traffic).toHaveLength(2)
   })
 
   it('refuses failed challenges and callback SSRF without activating state', async () => {
@@ -490,7 +547,12 @@ describe('dot MCP Events and tools', () => {
         eventId: `evt_${receipt.requestId}`,
         name: 'relanox.message_available',
         timestamp: new Date(request.acceptedAt).toISOString(),
-        data: { requestId: receipt.requestId },
+        data: {
+          replyTo: receipt.requestId,
+          text: '中文\nsecond line',
+          context: { thread: 'protocol-context' },
+          source: { channel: 'telegram', eventId: 'event-1' }
+        },
         cursor: null
       })
       expect(first?.headers['x-mcp-subscription-id']).toBe(subscription.id)

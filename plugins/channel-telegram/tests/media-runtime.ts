@@ -5,9 +5,8 @@ import {
   Client,
   StreamableHTTPClientTransport
 } from '@modelcontextprotocol/client'
-import type { ChannelId, Json } from '@relanox/sdk'
+import type { ChannelId, Json, ScopedAgentHost } from '@relanox/sdk'
 import { vi } from 'vitest'
-import { z } from 'zod'
 import { startRuntime, validateApp } from '../../../apps/cli/src/runtime.js'
 import { availablePort } from '../../../tests/e2e/peer.js'
 import { mediaPeer } from './media-peer.js'
@@ -25,6 +24,7 @@ export async function mediaRuntime(
   start(this: void): Promise<MediaRuntime>
   client(this: void, runtime: MediaRuntime): Promise<Client>
   routine: Awaited<ReturnType<typeof mediaPeer>>
+  principal(this: void): ScopedAgentHost
 }> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-native-media-'))
   cleanups.push(async () => rm(directory, { recursive: true, force: true }))
@@ -42,7 +42,6 @@ export async function mediaRuntime(
         {
           id: 'media',
           agent: 'grok',
-          dispatchMode: 'push',
           config: {
             mcp: {
               token: { env: 'MEDIA_AGENT_TOKEN' },
@@ -86,6 +85,32 @@ export async function mediaRuntime(
       : {})
   })
 
+  let principal: ScopedAgentHost | undefined
+  const catalog = await import('../../../apps/cli/src/plugins.js')
+  const loadPlugins = catalog.loadPlugins
+
+  const capture = vi
+    .spyOn(catalog, 'loadPlugins')
+    .mockImplementation((relayConfig) => {
+      const plugins = loadPlugins(relayConfig)
+      const agent = plugins.agents.get('grok')
+      if (agent) {
+        const setup = agent.setup.bind(agent)
+        agent.setup = async (host, endpoints, pluginConfig): Promise<void> => {
+          principal = host.forPrincipal({
+            subject: 'media',
+            endpointIds: ['media']
+          })
+          await setup(host, endpoints, pluginConfig)
+        }
+      }
+      return plugins
+    })
+
+  cleanups.push(async () => {
+    capture.mockRestore()
+  })
+
   const start = async (): Promise<MediaRuntime> => {
     const runtime = await startRuntime(app)
     cleanups.push(runtime.stop)
@@ -115,85 +140,15 @@ export async function mediaRuntime(
     return connected
   }
 
-  return { start, client, routine }
-}
-
-export const mediaRequestSchema = z.looseObject({
-  requestId: z.string(),
-  text: z.string(),
-  attachments: z.array(
-    z.looseObject({
-      id: z.string(),
-      kind: z.string(),
-      mimeType: z.string(),
-      fileName: z.string(),
-      size: z.number()
-    })
-  )
-})
-
-export async function claimMedia(client: Client): Promise<{
-  request: {
-    [x: string]: unknown
-    requestId: string
-    text: string
-    attachments: {
-      [x: string]: unknown
-      id: string
-      kind: string
-      mimeType: string
-      fileName: string
-      size: number
-    }[]
-  }
-  claimToken: string
-}> {
-  const pending = z.object({ requests: z.array(mediaRequestSchema) }).parse(
-    (
-      await client.callTool({
-        name: 'relanox_list_pending',
-        arguments: {}
-      })
-    ).structuredContent
-  )
-
-  const request = pending.requests[0]
-  if (!request) {
-    throw new Error('missing_media_request')
-  }
-
-  const claim = z
-    .looseObject({ status: z.literal('claimed'), claimToken: z.string() })
-    .parse(
-      (
-        await client.callTool({
-          name: 'relanox_claim',
-          arguments: { requestId: request.requestId, claimKey: 'media-run' }
-        })
-      ).structuredContent
-    )
-
-  return { request, claimToken: claim.claimToken }
-}
-
-export async function mediaUrl(
-  client: Client,
-  requestId: string,
-  claimToken: string,
-  mediaId: string,
-  method: 'GET' | 'PUT',
-  metadata?: Json
-): Promise<string> {
-  const result = await client.callTool({
-    name: 'relanox_media_transfer',
-    arguments: {
-      requestId,
-      claimToken,
-      mediaId,
-      method,
-      ...(metadata === undefined ? {} : { metadata })
+  return {
+    start,
+    client,
+    routine,
+    principal: () => {
+      if (!principal) {
+        throw new Error('missing_media_principal')
+      }
+      return principal
     }
-  })
-
-  return z.object({ url: z.url() }).parse(result.structuredContent).url
+  }
 }

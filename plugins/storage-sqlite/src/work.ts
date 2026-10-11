@@ -13,7 +13,6 @@ export function createWorkOperations(
     | 'readOutbound'
     | 'saveInbound'
     | 'saveOutbound'
-    | 'isEndpointHead'
   >
 ): Pick<Storage, 'requeue' | 'takeDue' | 'settleAttempt'> {
   const {
@@ -22,8 +21,7 @@ export function createWorkOperations(
     readInbound,
     readOutbound,
     saveInbound,
-    saveOutbound,
-    isEndpointHead
+    saveOutbound
   } = context
 
   return {
@@ -37,12 +35,8 @@ export function createWorkOperations(
           if (
             record.version !== input.expectedVersion ||
             record.redactedAt !== undefined ||
-            record.status === 'completed' ||
-            !(
-              record.status === 'claimed' ||
-              record.status === 'failed' ||
-              record.dispatch.status === 'unknown' ||
-              record.dispatch.status === 'rejected'
+            !['accepted', 'unknown', 'rejected'].includes(
+              record.dispatch.status
             ) ||
             (record.dispatch.status === 'unknown' && !input.acknowledgeUnknown)
           ) {
@@ -51,13 +45,10 @@ export function createWorkOperations(
 
           const next = {
             ...record,
-            status: 'pending' as const,
             version: record.version + 1,
             dispatch: { status: 'due' as const, attempts: 0, dueAt: input.now }
           }
 
-          delete next.claim
-          delete next.errorCode
           saveInbound(next)
           return { status: 'updated', version: next.version }
         }
@@ -96,12 +87,11 @@ export function createWorkOperations(
               `
                 SELECT record
                 FROM inbound
-                WHERE status='pending'
-                  AND json_extract(record,'$.snapshot.endpoint.dispatchMode')='push'
+                WHERE status='due'
                   AND (json_extract(record,'$.dispatch.lease.expiresAt')<=?
                     OR (json_extract(record,'$.dispatch.lease') IS NULL
                       AND json_extract(record,'$.dispatch.dueAt')<=?
-                      AND json_extract(record,'$.dispatch.status') IN ('due','accepted')))
+                      AND json_extract(record,'$.dispatch.status') ='due'))
                 ORDER BY accepted_at,id
               `
             )
@@ -124,12 +114,9 @@ export function createWorkOperations(
           }
           if (
             work.length >= input.limit ||
-            next.snapshot.endpoint.dispatchMode === 'pull' ||
-            next.dispatch.status === 'unknown' ||
-            next.dispatch.status === 'rejected' ||
+            next.dispatch.status !== 'due' ||
             next.dispatch.lease ||
-            next.dispatch.dueAt > input.now ||
-            !isEndpointHead(next)
+            next.dispatch.dueAt > input.now
           ) {
             continue
           }
@@ -153,12 +140,13 @@ export function createWorkOperations(
             .prepare(
               `
                 SELECT record
-                FROM outbound
-                WHERE status='pending'
+                FROM outbound o
+                WHERE o.status='pending'
+                  AND NOT EXISTS(SELECT 1 FROM outbound earlier WHERE earlier.request_id=o.request_id AND earlier.rowid<o.rowid AND earlier.status IN ('pending','unknown'))
                   AND (json_extract(record,'$.lease.expiresAt')<=?
                     OR (json_extract(record,'$.lease') IS NULL
                       AND json_extract(record,'$.dueAt')<=?))
-                ORDER BY id
+                ORDER BY o.rowid
               `
             )
             .all(input.now, input.now) as { record: string }[]
@@ -209,7 +197,6 @@ export function createWorkOperations(
             return { status: 'not_found' }
           }
           if (
-            record.status !== 'pending' ||
             record.version !== input.lease.version ||
             !isActiveLease(record.dispatch.lease, input.lease, input.now)
           ) {

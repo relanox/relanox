@@ -30,7 +30,7 @@
 
 图片、音频、视频、文件通过 `contentApiBase`（默认 `https://api-data.line.me`）认证下载；外部内容提供方的 URL 不携带 LINE 令牌。接收纯媒体及原生文字事件，确认前保存真实字节和音视频时长。
 
-原生图片、音频、视频输出需要全局公开媒体发布配置，参见[媒体传输](../media.md)。LINE 通过不含代理 claim 凭据的随机公开 URL 获取字节。图片需 JPEG/PNG，最多 10 MB；预览图片最多 1 MB。小图片复用原图 URL，大图片及所有视频必须提供暂存图片 `previewMediaId`。视频需 MP4，音频需 MP3/M4A 和正数 `durationMs`；音视频最多 200 MB，仍受中转限制。最终文字另发；push 沿用持久 retry key。
+原生图片、音频、视频输出需要全局公开媒体发布配置，参见[媒体传输](../media.md)。LINE 通过不含代理凭据的随机公开 URL 获取字节。图片需 JPEG/PNG，最多 10 MB；预览图片最多 1 MB。小图片复用原图 URL，大图片及所有视频必须提供生成 previewUrl 或已有 previewMediaId。视频需 MP4，音频需 MP3/M4A 和正数 `durationMs`；音视频最多 200 MB，仍受中转限制。回复文字另发；push 沿用持久 retry key。
 
 Messaging API 的[图片](https://developers.line.biz/en/reference/messaging-api/#image-message)、[音频](https://developers.line.biz/en/reference/messaging-api/#audio-message)和[视频](https://developers.line.biz/en/reference/messaging-api/#video-message)发送对象都要求 HTTPS `originalContentUrl`，图片和视频还要求 `previewImageUrl`。这些对象不提供二进制上传或可复用媒体 ID，因此媒体输出仍需 `media.publicBaseUrl`；文字输出和入站媒体下载不需要该发布配置。[Get content](https://developers.line.biz/en/reference/messaging-api/#get-content) 用于下载收到的消息，[图文菜单图片上传](https://developers.line.biz/en/reference/messaging-api/#upload-rich-menu-image)只为图文菜单设置图片，不能为 push 消息提供媒体。
 

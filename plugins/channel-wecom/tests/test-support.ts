@@ -194,7 +194,7 @@ export async function assemble<C>(
       agentHost = value
     },
     async dispatch() {
-      throw new Error('Pull endpoint must not dispatch')
+      return { status: 'accepted' }
     }
   }
 
@@ -213,9 +213,7 @@ export async function assemble<C>(
           ]
         }
       ],
-      endpoints: [
-        { id: 'agent', agent: 'grok', config: {}, dispatchMode: 'pull' }
-      ],
+      endpoints: [{ id: 'agent', agent: 'grok', config: {} }],
       bindings: bindings.map((binding) => ({
         accountId: 'bot',
         chatId: binding.chatId,

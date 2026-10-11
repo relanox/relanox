@@ -30,7 +30,7 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
     db
       .prepare('UPDATE inbound SET status=?, version=?, record=? WHERE id=?')
       .run(
-        record.status,
+        record.dispatch.status,
         record.version,
         encodeDurableRecord(record),
         record.snapshot.requestId
@@ -46,35 +46,13 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
         record.deliveryId
       )
 
-  const isEndpointHead = (record: InboundRecord): boolean =>
-    (
-      db
-        .prepare(
-          `
-            SELECT id
-            FROM inbound
-            WHERE endpoint=?
-              AND status IN ('pending','claimed')
-            ORDER BY CASE
-              WHEN status='claimed' THEN 0
-              WHEN json_extract(record,'$.dispatch.lease') IS NOT NULL
-              OR json_extract(record,'$.dispatch.attempts')>0
-              OR json_extract(record,'$.dispatch.status') IN ('unknown','rejected') THEN 1
-              ELSE 2 END,accepted_at,id
-            LIMIT 1
-          `
-        )
-        .get(record.snapshot.endpoint.id) as { id: string } | undefined
-    )?.id === record.snapshot.requestId
-
   return {
     db,
     transaction,
     readInbound,
     readOutbound,
     saveInbound,
-    saveOutbound,
-    isEndpointHead
+    saveOutbound
   }
 }
 
@@ -85,5 +63,4 @@ export type DatabaseContext = {
   readOutbound(this: void, id: string): OutboundRecord | undefined
   saveInbound(this: void, record: InboundRecord): Database.RunResult
   saveOutbound(this: void, record: OutboundRecord): Database.RunResult
-  isEndpointHead(this: void, record: InboundRecord): boolean
 }

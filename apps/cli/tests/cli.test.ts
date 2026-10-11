@@ -39,7 +39,6 @@ test('assembled Telegram ingress persists before ACK and status projects only op
       {
         id: 'grok-main',
         agent: 'grok',
-        dispatchMode: 'pull',
         config: {
           mcp: {
             token: { env: 'CLI_TEST_AGENT_TOKEN' },
@@ -83,16 +82,20 @@ test('assembled Telegram ingress persists before ACK and status projects only op
   )
 
   expect(response.status).toBe(204)
+  await expect
+    .poll(
+      async () => (await runtime.core.status()).requests[0]?.dispatch.status
+    )
+    .toBe('rejected')
   const plain = await cli(value.configPath, ['status'])
   expect(plain.code).toBe(0)
   expect(JSON.parse(plain.stdout)).toMatchObject({
-    stats: { pending: 1 },
+    stats: { pending: 0 },
     requests: [
       {
         endpointId: 'grok-main',
         accountId: 'telegram-bot',
-        status: 'pending',
-        version: 1
+        dispatch: { status: 'rejected' }
       }
     ]
   })
@@ -130,7 +133,6 @@ test('requeue passes exact version and explicit unknown-effect acknowledgement i
       endpoint: {
         id: 'endpoint',
         agent: 'grok',
-        dispatchMode: 'push',
         config: {}
       }
     })
@@ -305,7 +307,7 @@ test('run initializes a new database and preserves work on restart while diagnos
   const db = await storage(value.filename)
   await db.acceptInbound({
     ...snapshot(),
-    endpoint: { id: 'ep', agent: 'grok', dispatchMode: 'pull', config: {} }
+    endpoint: { id: 'ep', agent: 'grok', config: {} }
   })
   await db.close()
   const second = await runCli(value.configPath)

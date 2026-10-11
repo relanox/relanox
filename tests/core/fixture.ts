@@ -108,8 +108,8 @@ export async function mediaFixture(
       }
     ],
     endpoints: [
-      { id: 'first', agent: 'grok', config: null, dispatchMode: 'pull' },
-      { id: 'other', agent: 'grok', config: null, dispatchMode: 'pull' }
+      { id: 'first', agent: 'grok', config: null },
+      { id: 'other', agent: 'grok', config: null }
     ],
     bindings: [{ accountId: 'bot', chatId: 'chat', endpointId: 'first' }],
     storage: { plugin: 'sqlite', config: {} },

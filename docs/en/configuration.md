@@ -9,14 +9,14 @@ SQLite filenames resolve against the process working directory, not the config f
 | Field           | Contents                                                                            |
 | --------------- | ----------------------------------------------------------------------------------- |
 | `accounts`      | Channel accounts: `id`, `channel`, `allowedSenders`, plugin `config`                |
-| `endpoints`     | Agent endpoints: `id`, `agent`, `dispatchMode`, plugin `config`                     |
+| `endpoints`     | Agent endpoints: `id`, `agent`, plugin `config`                                     |
 | `bindings`      | `accountId`, `chatId`, optional `threadId`, `endpointId`, optional `allowedSenders` |
 | `storage`       | `plugin: "sqlite"` or `"postgres"` and plugin `config`                              |
 | `observability` | `plugin: "standard"` or `"none"` and plugin `config`                                |
 
 Local account/endpoint IDs are 1–128 characters, begin with a letter/digit and otherwise allow letters, digits, underscores and hyphens. Platform IDs remain opaque strings. Bindings reference existing accounts/endpoints and have unique `(accountId,chatId,threadId)` tuples. Matching is exact, with no thread fallback or wildcard. Account allowlists are nonempty; a configured binding allowlist must also permit the sender.
 
-Agent kinds are `dot` and `grok`. `push` endpoints receive durable notifications; `pull` endpoints use direct MCP claims and do not dispatch automatically. Credential fields use `{"env":"VARIABLE_NAME"}`; Google Chat's referenced variable contains service-account JSON. See [Agents](agents.md) and the selected channel guide for plugin fields; the [all-channel example](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) contains every supported account.
+Agent kinds are `dot` and `grok`. Every endpoint receives a push containing the full message and its `replyTo`. Credential fields use `{"env":"VARIABLE_NAME"}`; Google Chat's referenced variable contains service-account JSON. See [Agents](agents.md) and the selected channel guide for plugin fields; the [all-channel example](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) contains every supported account.
 
 ## Server configuration
 
@@ -37,7 +37,7 @@ Run owns native connections and one durable worker. Connected channels can persi
 
 ```sh
 node apps/cli/dist/main.js status --config relay.json --limit 100
-node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --request-status claimed
+node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --dispatch-status unknown
 node apps/cli/dist/main.js status --config relay.json --include-content
 node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
 node apps/cli/dist/main.js requeue --config relay.json --kind request --id REQUEST_ID --expected-version 4
@@ -45,8 +45,8 @@ node apps/cli/dist/main.js requeue --config relay.json --kind delivery --id DELI
 node apps/cli/dist/main.js cleanup --config relay.json --before 1790000000000 --limit 100
 ```
 
-All commands require `--config <path>` (`-c`). Status/cleanup limits allow 1–1000, default 100; cleanup uses integer Unix epoch milliseconds. Request status filters are pending/claimed/completed/failed; delivery filters are pending/sent/rejected/unknown.
+All commands require `--config <path>` (`-c`). Status/cleanup limits allow 1–1000, default 100; cleanup uses integer Unix epoch milliseconds. Dispatch status filters are due/accepted/rejected/unknown; delivery filters are pending/sent/rejected/unknown.
 
-Status reads persisted stats and independent request/delivery pages. `--after-id` is an exclusive ID cursor, `--delivery-status` filters deliveries, and `--endpoint-id` scopes both. Default projections omit message text, endpoint configuration, processing tokens, targets and receipts. Explicit `--include-content` adds message/result text only. This output is local administrative data and should be handled accordingly. Doctor reports missing environment variable names, storage health, and optionally running readiness from an explicitly supplied loopback HTTP origin. It refuses redirects and remote management origins.
+Status reads persisted stats and independent request/delivery pages. `--after-id` is an exclusive ID cursor, `--delivery-status` filters deliveries, and `--endpoint-id` scopes both. Default projections omit message text, endpoint configuration, targets and receipts. Explicit `--include-content` adds inbound/outbound message text only. This output is local administrative data and should be handled accordingly. Doctor reports missing environment variable names, storage health, and optionally running readiness from an explicitly supplied loopback HTTP origin. It refuses redirects and remote management origins.
 
-Requeue requires the current record version shown by status and returns `updated`, `not_found`, `conflict`, or `unauthorized`. An unknown attempt requires `--acknowledge-unknown`; this acknowledges possible duplicate external effects. It revokes only local persisted claims/leases, preserves sent delivery chunks, and cannot cancel an already running remote agent. Cleanup redacts eligible terminal text while preserving deduplication and all unfinished/undelivered work. Exit codes are 0 for success/help, 1 for a redacted command failure, and 2 for an unhealthy doctor or rejected recovery. JSON command errors intentionally omit arbitrary provider/driver exception messages.
+Requeue requires the current record version shown by status and returns `updated`, `not_found`, `conflict`, or `unauthorized`. An unknown attempt requires `--acknowledge-unknown`; this acknowledges possible duplicate external effects. It resets local lease/retry state, preserves sent delivery chunks, and cannot cancel an already running remote agent. Notification requeue repeats the frozen message without revoking its reply authority. Cleanup redacts eligible terminal text while preserving deduplication and all unfinished/undelivered work. Exit codes are 0 for success/help, 1 for a redacted command failure, and 2 for an unhealthy doctor or rejected recovery. JSON command errors intentionally omit arbitrary provider/driver exception messages.
