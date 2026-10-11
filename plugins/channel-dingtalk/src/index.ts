@@ -61,9 +61,14 @@ const tokenSchema = z.object({
   accessToken: z.string().min(1),
   expireIn: z.number().int().positive(),
 });
+const scopeSchema = z
+  .object({ clientId: z.string().min(1), robotCode: z.string().min(1), apiBase: z.url() })
+  .strict();
 const targetSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("single"), staffId: z.string().min(1) }).strict(),
-  z.object({ type: z.literal("group"), openConversationId: z.string().min(1) }).strict(),
+  z.object({ type: z.literal("single"), staffId: z.string().min(1), scope: scopeSchema }).strict(),
+  z
+    .object({ type: z.literal("group"), openConversationId: z.string().min(1), scope: scopeSchema })
+    .strict(),
 ]);
 const sendResponse = z.object({
   processQueryKey: z.string().min(1),
@@ -71,6 +76,14 @@ const sendResponse = z.object({
   flowControlledStaffIdList: z.array(z.string()).optional(),
 });
 const topic = "/v1.0/im/bot/messages/get";
+
+function matchesScope(scope: z.infer<typeof scopeSchema>, config: DingTalkConfig): boolean {
+  return (
+    scope.clientId === config.clientId &&
+    scope.robotCode === config.robotCode &&
+    scope.apiBase === new URL(config.apiBase).href
+  );
+}
 
 export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
   let host: ChannelHost;
@@ -157,6 +170,11 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       });
       return;
     }
+    const scope = {
+      clientId: config.clientId,
+      robotCode: config.robotCode,
+      apiBase: new URL(config.apiBase).href,
+    };
     const group = message.conversationType === "2";
     const chatId = group ? message.conversationId : message.senderStaffId;
     await ingestText(host, {
@@ -173,8 +191,8 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         chatId,
         replyToId: message.msgId,
         data: group
-          ? { type: "group", openConversationId: message.conversationId }
-          : { type: "single", staffId: message.senderStaffId },
+          ? { type: "group", openConversationId: message.conversationId, scope }
+          : { type: "single", staffId: message.senderStaffId, scope },
       },
       receivedAt: Date.now(),
       context: null,
@@ -250,6 +268,9 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         return { status: "rejected", errorCode: "invalid_target" };
       }
       const data = target.data;
+      if (!matchesScope(data.scope, config)) {
+        return { status: "rejected", errorCode: "target_identity_changed" };
+      }
       if (
         input.target.chatId !== (data.type === "group" ? data.openConversationId : data.staffId)
       ) {

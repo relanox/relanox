@@ -47,6 +47,7 @@ const activitySchema = z.object({
   replyToId: identifier.optional(),
 });
 const targetSchema = z.strictObject({
+  appId: identifier,
   serviceUrl: z.url(),
   conversationId: identifier,
   tenantId: identifier,
@@ -123,6 +124,7 @@ async function receive(
       ...(threadId ? { threadId } : {}),
       replyToId: activity.id,
       data: {
+        appId: config.appId,
         serviceUrl: activity.serviceUrl,
         conversationId: activity.conversation.id,
         tenantId: config.tenantId,
@@ -145,8 +147,13 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       return { status: "rejected", errorCode: "invalid_target" };
     }
     const { config } = runtime;
-    const target = targetSchema.parse(input.target.data);
+    const parsed = targetSchema.safeParse(input.target.data);
+    if (!parsed.success) {
+      return { status: "rejected", errorCode: "invalid_target" };
+    }
+    const target = parsed.data;
     if (
+      target.appId !== config.appId ||
       target.conversationId !== input.target.chatId ||
       target.tenantId !== config.tenantId ||
       target.botId !== config.botId

@@ -22,3 +22,20 @@ Scope: WeCom, DingTalk, QQ, Microsoft Teams and Google Chat. Tests use local HTT
 2. Credible regression: installing the heartbeat clears the pending authentication deadline before READY, leaving the channel unauthenticated indefinitely.
 3. Existing coverage: the gateway peer always immediately responds READY after Identify.
 4. Production seam: none. Use a real WebSocket peer and the production deadline; no timer injection or alternative connection implementation.
+
+## Frozen account identity and transport destination
+
+1. Observable behavior: after accepting text and reopening SQLite with the same local account ID but a different robot/application or API/WebSocket base, the old target is rejected before any message is sent. Ordinary secret/key rotation for the same identity remains usable. Legacy targets missing the frozen identity are rejected rather than redirected.
+2. Credible regression: the send adapter resolves only the current account config, so account IDs reused for another bot or deployment redirect older accepted work.
+3. Existing coverage: targets preserve conversation/thread IDs, but tests never reopen the same account with another bot/server. The Chinese protocol tests manually construct old target data and must now include the same nonsecret scope that ingress freezes; their existing protocol assertions stay intact. Teams' exact target assertion gains app ID, and Google Chat's original ingress fixture remains unchanged.
+4. Production seam: none. Native ingress creates targets in real SQLite, then fresh plugin/core instances read the same database. External peers only acknowledge native protocol requests. Teams/Google Chat use the existing signed HTTP peers; their old target is exercised against a separately assembled account after credential/config changes.
+
+## Review evidence
+
+- WeCom: checked the official WecomTeam SDK command/message schemas and existing real WS regressions. Subscribe, request correlation, DM/group address selection, independent Markdown send, escaping/UTF-8 bounds, unknown send handling and replacement-connection stop remain covered. Added account/server scope and reopened-database refusal/secret-rotation proof.
+- DingTalk: checked the official Stream protocol/client and current OpenAPI documentation links. Existing real HTTP/WS tests protect OAuth headers, stable body IDs versus delivery ACK IDs, successful ACK after SQLite commit, no ACK after a failed write, single/group API bodies and non-idempotent failure mapping. Added account/server scope and reopened-database refusal/secret-rotation proof.
+- QQ: inspected gateway control/data concurrency, token acquisition, passive windows, per-chunk durable CAS sequence reservations and restart behavior. Real SQLite-trigger failure reproduced Resume skipping sequence 2 and sending cursor 3; repair preserves cursor 1 until replay. A live heartbeat-only gateway reproduced missing authentication timeout. Existing window/reply-limit/unknown-effect tests remain unchanged apart from required frozen target scope.
+- Teams: verified official JWT/OAuth/endorsement requirements and inspected conversation-reference service-origin validation. OAuth failures and the arbitrary token-length cap reproduced at real HTTP peers, then passed after repair. Frozen app identity now complements the existing bot/tenant/service URL checks.
+- Google Chat: verified HTTP interaction caller identity and app-authenticated create-message/thread docs. OAuth acquisition now distinguishes definitely-unsent failures from unknown message effects. Frozen service-account email/server survives SQLite reopen, and a fresh private key for the same service account remains valid.
+
+No real account credentials or platform accounts were used. WebSocket session cursors remain process-local where documented; these tests prove local durability/protocol behavior, not platform replay or live-account compatibility. Targets predating frozen identity are intentionally not automatically rebound.

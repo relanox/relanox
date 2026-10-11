@@ -51,7 +51,11 @@ const eventSchema = z.object({
   space: z.object({ name: spaceId }).optional(),
   message: messageSchema.optional(),
 });
-const targetSchema = z.strictObject({ space: spaceId, thread: threadId.optional() });
+const targetSchema = z.strictObject({
+  space: spaceId,
+  thread: threadId.optional(),
+  scope: z.strictObject({ clientEmail: z.email(), apiBase: z.url() }),
+});
 const receiptSchema = z.object({ name: identifier });
 
 async function accessToken(
@@ -91,6 +95,7 @@ async function receive(
   host: ChannelHost,
   account: AccountConfig,
   event: z.infer<typeof eventSchema>,
+  config: GoogleChatConfig,
 ): Promise<void> {
   const { space, message } = event;
   if (event.type !== "MESSAGE" || !space || !message || message.sender.type === "BOT") {
@@ -114,7 +119,15 @@ async function receive(
     chatId: space.name,
     ...(message.thread ? { threadId: message.thread.name } : {}),
     replyToId: message.name,
-    data: { space: space.name, ...(message.thread ? { thread: message.thread.name } : {}) },
+    data: {
+      space: space.name,
+      ...(message.thread ? { thread: message.thread.name } : {}),
+      scope: {
+        clientEmail: serviceSchema.parse(JSON.parse(secret(config.serviceAccount)) as unknown)
+          .client_email,
+        apiBase: new URL(config.apiBase).href,
+      },
+    },
   };
   await ingest(host, {
     source: { channel: "googlechat", accountId: account.id, eventId: message.name },
@@ -137,9 +150,27 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       return { status: "rejected", errorCode: "invalid_target" };
     }
     const { config } = runtime;
-    const target = targetSchema.parse(input.target.data);
+    const parsed = targetSchema.safeParse(input.target.data);
+    if (!parsed.success) {
+      return { status: "rejected", errorCode: "invalid_target" };
+    }
+    const target = parsed.data;
     if (target.space !== input.target.chatId || target.thread !== input.target.threadId) {
       return { status: "rejected", errorCode: "invalid_target" };
+    }
+    let clientEmail: string;
+    try {
+      clientEmail = serviceSchema.parse(
+        JSON.parse(secret(config.serviceAccount)) as unknown,
+      ).client_email;
+    } catch {
+      return { status: "retryable", errorCode: "oauth_unavailable" };
+    }
+    if (
+      target.scope.clientEmail !== clientEmail ||
+      target.scope.apiBase !== new URL(config.apiBase).href
+    ) {
+      return { status: "rejected", errorCode: "target_identity_changed" };
     }
     let token: string | SendResult;
     try {
@@ -229,7 +260,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         if (!event.success) {
           return new Response(null, { status: 400 });
         }
-        await receive(host, account, event.data);
+        await receive(host, account, event.data, config);
         return Response.json({});
       });
     },

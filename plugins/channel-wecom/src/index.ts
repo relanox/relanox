@@ -42,7 +42,12 @@ const messageSchema = z.object({
   msgtype: z.string(),
   text: z.object({ content: z.string().min(1) }).optional(),
 });
-const targetSchema = z.object({ chattype: z.enum(["single", "group"]) }).strict();
+const targetSchema = z
+  .object({
+    chattype: z.enum(["single", "group"]),
+    scope: z.object({ botId: z.string().min(1), wsUrl: z.url() }).strict(),
+  })
+  .strict();
 type Frame = z.infer<typeof frameSchema>;
 
 export function createWeComChannel(): ChannelPlugin<WeComConfig> {
@@ -134,7 +139,10 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
         accountId: account.id,
         chatId,
         replyToId: message.msgid,
-        data: { chattype: message.chattype },
+        data: {
+          chattype: message.chattype,
+          scope: { botId: config.botId, wsUrl: new URL(config.wsUrl).href },
+        },
       },
       receivedAt: Date.now(),
       context: null,
@@ -208,12 +216,19 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
     start: (signal) => connection.start(signal),
     stop: () => connection.stop(),
     async send(input: SendInput): Promise<SendResult> {
+      const target = targetSchema.safeParse(input.target.data);
       if (
         input.target.channel !== "wecom" ||
         input.target.accountId !== account.id ||
-        !targetSchema.safeParse(input.target.data).success
+        !target.success
       ) {
         return { status: "rejected", errorCode: "invalid_target" };
+      }
+      if (
+        target.data.scope.botId !== config.botId ||
+        target.data.scope.wsUrl !== new URL(config.wsUrl).href
+      ) {
+        return { status: "rejected", errorCode: "target_identity_changed" };
       }
       if (!authenticated) {
         return {
