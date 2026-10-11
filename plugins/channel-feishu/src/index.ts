@@ -9,6 +9,7 @@ import {
   failure,
   fresh,
   id,
+  ingest,
   jsonResponse,
   post,
   secret,
@@ -211,7 +212,7 @@ export function createFeishuChannel(
     }
     try {
       const threadId = message.thread_id ?? message.root_id;
-      await host.ingest({
+      await ingest(host, {
         source: {
           channel: "feishu",
           accountId: account.id,

@@ -100,6 +100,17 @@ function request(
   });
 }
 describe("slack native protocol", () => {
+  it.each(["sender_not_allowed", "unbound_conversation"])(
+    "acknowledges terminal core policy rejection: %s",
+    async (code) => {
+      const test = await setup(undefined, false, async () => {
+        throw Object.assign(new Error(code), { code });
+      });
+      expect((await test.handler(request(event))).status).toBe(204);
+      expect(test.received).toEqual([]);
+    },
+  );
+
   it("bounds event bodies and preserves canceled-send uncertainty", async () => {
     const remote = await peer(() => ({ body: { ok: true, ts: "1700000002.004" } }));
     cleanup.push(remote.close);
