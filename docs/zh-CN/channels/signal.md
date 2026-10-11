@@ -1,40 +1,56 @@
-# 通过 signal-cli 接入 Signal
+# Signal 与 signal-cli
 
-账号 `config`（[配置说明](../configuration.md)）：
+通过独立维护的 signal-cli 服务，使用专用 Signal 账号。
+
+## 准备账号
+
+安装 signal-cli，注册或关联 Signal 账号，并启动其 HTTP JSON-RPC/SSE 服务。记录账号号码和 UUID。备份 Relanox 数据库时一并备份 signal-cli 账号/会话数据。远程访问使用带认证的 HTTPS 代理，将完整 Authorization 请求头值保存到 `SIGNAL_BRIDGE_AUTHORIZATION`。
+
+## 添加配置
+
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "serviceUrl": "https://signal-bridge.example.com",
-  "account": "+15551234567",
-  "selfUuid": "the_registered_accounts_uuid",
-  "authorization": {
-    "env": "SIGNAL_BRIDGE_AUTHORIZATION"
-  }
+  "accounts": [
+    {
+      "id": "signal-main",
+      "config": {
+        "serviceUrl": "https://signal-bridge.example.com",
+        "account": "+15551234567",
+        "selfUuid": "22222222-2222-4222-8222-222222222222",
+        "authorization": {
+          "env": "SIGNAL_BRIDGE_AUTHORIZATION"
+        }
+      },
+      "channel": "signal",
+      "allowedSenders": ["11111111-1111-4111-8111-111111111111"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "signal-main",
+      "chatId": "direct:11111111-1111-4111-8111-111111111111",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+要取得发送者 ID，先发送一条测试消息，让服务管理员查看 `/api/v1/events?account=<account>` 事件流。允许发送者优先使用收到信封的 `sourceUuid`；没有 UUID 时使用号码/source 标识。私聊绑定填写 `direct:<sender>`，群聊填写 `group:<groupId>`。群组 ID 可从服务的群组信息或收到的信封取得。`selfUuid` 填服务账号自己的 UUID。
 
-需要自行安装、注册并维护非官方 signal-cli HTTP JSON-RPC/SSE daemon，此处没有官方 Signal Bot API。Relanox 不注册号码、安装 daemon 或管理其账号/加密/会话存储。daemon 应保持私网访问，远程访问使用认证 TLS 代理。白名单优先 sourceUuid，缺少时使用号码/source；绑定 `direct:<sender>` 或 `group:<groupId>`。建议 selfUuid 排除自身 UUID；非文字、阅后即焚、回执、输入状态和自身事件不建任务。
+## 启用连接
 
-## 投递与恢复
+`serviceUrl` 填服务或代理基础地址，`account` 填已注册账号号码。Relanox 启动时自动连接。同机服务可使用 HTTP 回环地址并添加 `allowInsecureLocalhost:true`；本地服务无需认证时移除 `authorization`。
 
-SSE `/api/v1/events?account=<account>` 持久接收后保存 ID，重连携带 Last-Event-ID。上游缓冲有限且仅在内存，daemon 重启或长时间断线可能丢历史。独立 `/api/v1/rpc` JSON-RPC send 要求匹配 RPC ID 和结果时间戳，提供的收件人结果必须全为 SUCCESS。群部分失败保留 unknown，避免重复成功成员；兼容旧版仅时间戳响应。每片最多 16,000 UTF-8 字节。signal-cli 账号/会话状态须在 Relanox 数据库之外单独备份。
+## 发送第一条消息
 
-## 参数与限制
+用允许的 Signal 联系人，向专用账号或其已加入的绑定群组发送“你好”。保持 signal-cli 和 Relanox 同时运行，以接收问题。
 
-`serviceUrl`/`account` 必填；可选 authorization 向可信代理提供完整 Authorization 头；`timeoutMs` 为 100–120,000，默认 10,000；`reconnectMs` 为 100–60,000，默认 1,000；`allowInsecureLocalhost` 默认 false，仅本地 HTTP daemon 可显式设 true。
+## 图片和文件
 
-## 账号变更
+正常发送图片、音频、视频或文件。确保 signal-cli 下载接收附件，以便 Relanox 获取。生成附件通过同一专用 Signal 账号发出，并需符合 Signal 与 Relanox 媒体限制。
 
-冻结桥接 URL 和配置的 Signal 账号。
+## 常见问题
 
-## 原生媒体
-
-支持图片、音频、视频和文件附件，也接收纯附件消息；不处理阅后即焚、回执、输入状态或自身消息。附件元数据来自认证 daemon 事件，调用原生 JSON-RPC getAttachment，传入配置账号、附件 ID 和原发送者或群组 ID。验证返回的 `{data}` base64，并同时限制响应编码大小和解码字节数。Daemon 必须已经下载附件；文件缺失或超限时不推进 SSE 游标。不会读取任意 URL 或 daemon 文件路径。
-
-输出通过原生 send attachments 传递包含 MIME、文件名和完整字节的 RFC 2397 data URI。图片、音频、视频和文件使用同一原生附件接口。媒体完整缓冲并持久保存；仍受 Signal 原生上限和 daemon 外部附件保留策略限制。本地 SSE、JSON-RPC、SQLite 和 MCP 测试验证字节收发与群组目标。
-
-协议来源：[signal-cli 手册](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli.1.adoc#getattachment)、[JSON-RPC 手册](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli-jsonrpc.5.adoc)。
-
-[媒体传输](../media.md)
+消息缺失时，检查服务的注册账号、事件流和代理认证。附件失败时，确认 signal-cli 已下载并保留附件。服务重启或长时间断线后，重新发送仍未得到回答的问题。

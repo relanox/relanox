@@ -1,74 +1,86 @@
-# 可观测性
+# 日志与运行状态
 
-Core 和原生插件只通过 SDK host.observe 或注入 facade 观测。装配使用 `@relanox/observability-standard` 的 createStandardObservability：校验配置、setup、把 runtime.observe 交给 Core/Storage/Channel，并把可选 runtime.metrics 私下挂在管理 listener。
+Relanox 输出 JSON 日志，并可提供 Prometheus 指标。日志帮助定位失败环节，指标帮助发现队列积压或渠道断线，消息状态则用于判断是否需要恢复。
 
-## 字段与范围
+## 开启日志和指标
 
-日志 event 是有限集合：inbound.accepted/duplicate/rejected、dispatch.completed、message.queued、media.read、delivery.completed、retry.scheduled、delivery.unknown、connection.changed、worker.completed、storage.failed、recovery.completed、retention.completed、startup.completed、shutdown.completed、operation.failed。未知 event 归为 operation.failed，不能写任意错误或消息字符串。
+在配置文件的 `relay` 中放入以下 `observability` 部分：
 
-span/operation 为 ingest、dispatch、enqueue_message、read_media、send、storage、http、worker、connection、recovery、retention、startup、shutdown。outcome 为 ok、error、accepted、duplicate、rejected、retryable、unknown、sent、conflict、unauthorized、connected、disconnected、degraded、stale、not_found、queued、updated。
+```json
+{
+  "observability": {
+    "plugin": "standard",
+    "config": {
+      "logs": true,
+      "level": "info",
+      "metrics": true,
+      "processMetrics": true
+    }
+  }
+}
+```
 
-plugin 只允许 core、cli、storage-sqlite/postgres、observability-standard、agent-dot/grok 和十五个 channel 插件；channel/agent 使用 SDK 固定 ID。账号、endpoint、用户、聊天、请求 ID 不允许作为指标标签；未知 label key/value 丢弃整次观测，每个指标每 runtime 最多 64 个标签 tuple。
+日志写到服务的标准输出。可以在运行 Relanox 的终端、服务管理器中查看；使用项目提供的 Compose 部署时，可以运行 `docker compose logs -f relanox`。需要时将 `level` 改为 `debug`、`warn` 或 `error`，然后重启服务。
 
-通用 errorCode/error_class 为 timeout、network、authentication、authorization、rate_limit、invalid_input、conflict、storage、unsupported、unavailable、unknown、internal。日志还接受 Core 的 call_timeout、retry_budget_exhausted、invalid_chunk_index、plugin_missing、plugin_exception、invalid_plugin_outcome、storage_unavailable、not_accepting、worker_failed。平台错误映射通用类别，详细有界协议码只留业务结果记录，不进入日志。
+使用默认管理设置时，可以检查以下本机地址：
 
-日志白名单为 plugin/requestId/deliveryId/traceId/errorCode/outcome/operation。request/delivery ID 只接受 UUID，trace ID 为 32 位 hex，不序列化正文、密钥、任意对象、free text 或 Error。Pino 不输出默认 hostname/pid。
+```sh
+curl http://127.0.0.1:8788/health/live
+curl http://127.0.0.1:8788/health/ready
+curl http://127.0.0.1:8788/metrics
+```
 
-原生诊断事件有显式有限映射：channel_policy_rejection、channel_input_discarded、channel_unsupported_input、channel_unsupported_sender、channel_event_ignored、channel_invalid_frame 变为 inbound.rejected；channel_connection_replaced 变为 connection.changed；receive 变 ingest。sender_not_allowed 映射 authorization，encrypted_unsupported 映射 unsupported，bot_connection_replaced 映射 conflict。不按前缀推断或保留任意平台码，新调用使用通用词汇。
+`/health/live` 检查服务是否运行；`/health/ready` 检查数据库访问、服务是否接受工作以及处理任务是否正常。服务就绪时，渠道仍可能断线，因此也要查看连接指标。地址由 `server.managementHost` 和 `server.managementPort` 决定，请保持管理监听地址私有。容器部署时，从容器内部访问，或使用文档中的本机管理命令。
 
-## Standard 配置
+## 回复没到，先查什么？
 
-配置是严格对象：
+按消息经过的环节查看以下日志事件。日志中若有 `requestId`，可用它关联输入和后续步骤；`deliveryId` 标识一条已保存的回复。
 
-| 字段                       | 默认值               | 范围/含义                                                        |
-| -------------------------- | -------------------- | ---------------------------------------------------------------- |
-| logs                       | true                 | JSON Pino 日志                                                   |
-| level                      | info                 | debug/info/warn/error                                            |
-| metrics                    | true                 | false 时无指标 handler                                           |
-| processMetrics             | true                 | 独立 registry 的 CPU/内存/事件循环指标                           |
-| logBufferBytes             | 65536                | 整数 1024–1048576，背压等待队列                                  |
-| lifecycleTimeoutMs         | 3000                 | 整数 100–10000                                                   |
-| tracing                    | 缺省                 | 显式启用对象，无默认 endpoint/环境激活                           |
-| tracing.endpoint           | 必需                 | 完整 OTLP HTTP trace URL；http/https，无 userinfo/query/fragment |
-| tracing.sampleRatio        | 0.1                  | 0–1                                                              |
-| tracing.maxQueueSize       | 512                  | 整数 1–4096                                                      |
-| tracing.maxExportBatchSize | min(128, queue size) | 整数 1–queue size                                                |
-| tracing.scheduledDelayMs   | 1000                 | 整数 100–10000                                                   |
-| tracing.exportTimeoutMs    | 2000                 | 整数 100–10000                                                   |
+| 事件                 | 检查方向                                            |
+| -------------------- | --------------------------------------------------- |
+| `inbound.rejected`   | 发送者允许名单、会话绑定或不支持的输入。            |
+| `dispatch.completed` | Agent 是否接受通知；查看 `outcome` 和 `errorCode`。 |
+| `message.queued`     | 回复已保存，等待发送。                              |
+| `retry.scheduled`    | 临时失败将会重试。                                  |
+| `delivery.completed` | 查看发送结果。                                      |
+| `delivery.unknown`   | 远端结果不确定，重试前先检查会话。                  |
+| `connection.changed` | 平台连接状态有变化。                                |
+| `storage.failed`     | 数据库访问需要检查。                                |
 
-metrics handler 使用 Web Request/Response，只接受 GET/HEAD，其余 405；不监听、不鉴权、不选择 bind 地址。flush(signal) 与幂等 shutdown(signal) 等待已接纳日志回调，受 signal 和本地期限限制。调用方拥有 logDestination Writable，关闭前保持存活；插件不结束 stdout/collector stream，期限到达仍可能有未完成日志。
+`authentication`、`authorization`、`rate_limit`、`timeout` 和 `storage` 等错误分类可以帮助缩小范围。日志不包含消息正文、已解析的凭据或平台原始错误对象。使用[运行维护](../operations.md)中的状态命令查看相关记录，仅在需要时开启消息正文，并妥善保护输出。
 
-stdout 返回 false 时队列最多 logBufferBytes，溢出丢弃并计数，destination 失败被吸收。未知指标、负/非有限值或错误调用类型忽略；未知 label 丢弃，缺失标签显示 none。不注册全局 registry。
+## 选择有用的告警
 
-## 指标
+让 Prometheus 采集器访问私有的 `/metrics` 地址。可以先关注以下指标：
 
-业务标签为 channel/agent/plugin/operation/outcome/error_class，全部取有限集合。
+| 指标                                            | 含义                                               |
+| ----------------------------------------------- | -------------------------------------------------- |
+| `relanox_connection_status`                     | `1` 表示已连接，`0` 表示断线或连接降级。           |
+| `relanox_pending`                               | 等待通知 Agent 的输入数量。                        |
+| `relanox_outbound`                              | 尚未送达的回复数量，包括已停止的回复。             |
+| `relanox_unknown`                               | 远端结果不确定、需要检查的操作数量。               |
+| `relanox_oldest_pending_age_seconds`            | 最早等待通知的输入已等待多久。                     |
+| `relanox_worker_last_success_timestamp_seconds` | 最近一次成功处理任务的时间；长时间不更新时可告警。 |
+| `relanox_storage_stats_stale`                   | `1` 表示队列统计无法刷新。                         |
+| `relanox_telemetry_dropped_total`               | 监控数据被丢弃，例如日志输出端处理太慢。           |
 
-| 调用/指标                                            | 含义                                              |
-| ---------------------------------------------------- | ------------------------------------------------- |
-| count relanox_inbound_total                          | 接纳/重复/拒绝                                    |
-| count relanox_dispatch_total                         | 短通知结果                                        |
-| count relanox_delivery_total                         | 持久分片发送结果                                  |
-| count relanox_retries_total                          | dispatch/send 的本地重试观测                      |
-| record relanox_http_duration_seconds                 | HTTP 操作秒数                                     |
-| record relanox_storage_duration_seconds              | 存储操作秒数                                      |
-| record relanox_dispatch_duration_seconds             | dispatch 秒数                                     |
-| record relanox_send_duration_seconds                 | send 秒数                                         |
-| record relanox_reply_duration_seconds                | 入站接纳到回复入队秒数                            |
-| record relanox_delivery_duration_seconds             | 消息入队到送达秒数                                |
-| record relanox_pending/outbound/unknown              | getStats 快照 gauge                               |
-| record relanox_oldest_pending_age_seconds            | 最老 pending 年龄，成功空快照才归零               |
-| record relanox_storage_stats_stale                   | 刷新失败 1，成功 0，失败保留其他 gauge            |
-| record relanox_worker_last_success_timestamp_seconds | 成功循环 Unix 秒时间                              |
-| record relanox_connection_status                     | plugin 聚合，connected=1，disconnected/degraded=0 |
-| relanox_telemetry_dropped_total                      | 内部丢弃计数，signal 为 logs/metrics/traces       |
+按部署所需的响应时间设置队列等待和处理任务新鲜度告警。`relanox_storage_stats_stale` 为 `1` 时，其他队列数值可能仍是上一次成功获取的快照。`relanox_delivery_total`、`relanox_retries_total` 等计数器会在进程重启后重置；耗时指标的单位为秒。
 
-duration histogram 桶为 0.005、0.025、0.1、0.5、1、5、30、120、600、3600、+Inf 秒。counter 是进程观测，重启归零；gauge 是快照，不是业务事实。收集 metrics 不访问存储或写业务状态。Core 负责存储轮询、新鲜度和健康；readiness 不依赖 exporter。
+## 将追踪发送到采集器
 
-## Trace 与失败隔离
+追踪是可选功能。在标准监控插件的 `config` 中添加 `tracing`，填写采集器完整的 OTLP HTTP 追踪地址：
 
-Trace provider 是 runtime 本地对象，不全局注册 context manager/provider。Core 创建短 span，持久保存可选 W3C span.context 供后续关联；丢弃输入 tracestate，避免不透明密钥传播。重复 end 无效果。没有长远端任务 span、自动埋点、HTTP body、SQL、host/cloud 检测或 OTel 日志/指标导出。
+```json
+{
+  "tracing": {
+    "endpoint": "http://127.0.0.1:4318/v1/traces",
+    "sampleRatio": 0.1
+  }
+}
+```
 
-导出错误不 reject 业务调用；SDK/exporter 可产生自身有界诊断，插件不递归记录导出失败。期限可丢失 telemetry，不影响数据库持久化。只有配置 tracing.endpoint 才激活 OTLP；激活后上游可读取 OTEL_EXPORTER_OTLP_HEADERS/OTEL_EXPORTER_OTLP_TRACES_HEADERS 作 collector 鉴权，按部署密钥管理。
+请替换为 Relanox 进程可以访问的地址。容器内的 `127.0.0.1` 指向容器自身。`sampleRatio: 0.1` 表示采样 10% 的追踪。追踪覆盖本地接收、通知和发送步骤，Agent 远端处理时间不会作为一个连续操作进行追踪。
 
-观测同步尽力，不是业务状态。noopObservability 是支持的禁用 facade；CLI 可独立保留最小启动错误。健康检查在观测关闭或失败时仍工作。告警部署见 [运维](../operations.md)。
+采集器需要认证时，导出器可以使用 `OTEL_EXPORTER_OTLP_HEADERS` 或 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`。这些环境变量应按凭据保护。采集器或日志输出失败不会停止消息处理，但监控数据可能丢失。
+
+关闭监控时，将 `relay.observability` 设置为 `{ "plugin": "none", "config": {} }`。健康检查和就绪检查仍可使用。

@@ -1,48 +1,64 @@
-# WhatsApp Business Cloud API
+# WhatsApp Business
 
-账号 `config`（[配置说明](../configuration.md)）：
+通过 WhatsApp Business Cloud API 号码回答客户消息。
+
+## 准备账号
+
+创建具有 WhatsApp Business Platform 权限的 Meta 应用，注册企业电话号码。记录电话号码 ID 和 Business Account ID。取得具备 `whatsapp_business_messaging` 且可访问该号码/企业的 Access Token。保存应用密钥，并选择回调验证 Token。`apiVersion` 使用应用支持的 Graph API 版本；下方 `v25.0` 为示例。
+
+## 添加配置
+
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "phoneNumberId": "your_phone_number_id",
-  "businessAccountId": "your_whatsapp_business_account_id",
-  "apiVersion": "v25.0",
-  "appSecret": {
-    "env": "WHATSAPP_APP_SECRET"
-  },
-  "verifyToken": {
-    "env": "WHATSAPP_VERIFY_TOKEN"
-  },
-  "accessToken": {
-    "env": "WHATSAPP_ACCESS_TOKEN"
-  }
+  "accounts": [
+    {
+      "id": "whatsapp-main",
+      "config": {
+        "phoneNumberId": "your_phone_number_id",
+        "businessAccountId": "your_whatsapp_business_account_id",
+        "apiVersion": "v25.0",
+        "appSecret": {
+          "env": "WHATSAPP_APP_SECRET"
+        },
+        "verifyToken": {
+          "env": "WHATSAPP_VERIFY_TOKEN"
+        },
+        "accessToken": {
+          "env": "WHATSAPP_ACCESS_TOKEN"
+        }
+      },
+      "channel": "whatsapp",
+      "allowedSenders": ["15551234567"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "whatsapp-main",
+      "chatId": "15551234567",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-创建 Meta 应用、注册企业电话号码，为 Business Account 订阅 messages Webhook，获取 `whatsapp_business_messaging` 和相应电话/企业权限。配置 `https://relay.example/channels/<accountId>/webhook` 与验证令牌，明确选择应用支持的 API 版本；示例版本不代表账号兼容承诺。
+将收到消息的 `from` 值同时填入 `allowedSenders` 和 `chatId`，如 `15551234567`，按企业消息事件原样复制数字。`phoneNumberId` 填平台电话号码 ID，而非显示的电话号码。
 
-## 投递与恢复
+## 启用连接
 
-白名单和 `chatId` 绑定使用客户 `from` ID，用于客户私聊。GET 验证注册参数，POST 验证原始正文 `X-Hub-Signature-256`、企业和电话身份；源消息 ID 去重，状态通知及不支持的消息类型不建任务；接收文字与原生图片、音频、视频和文档。可信时间戳按 API/企业/电话/客户持久维护 24 小时客服窗口，新客户消息刷新；未来超过五分钟时间戳拒绝。延迟发送本地拒绝过期窗口，平台政策仍适用。独立 `POST /<apiVersion>/<phoneNumberId>/messages` 每片最多 4,096 UTF-16 单元，成功需平台消息 ID；429 重试，明确 4xx 拒绝。
+启动 Relanox，在 WhatsApp 回调配置中填写 `https://relay.example.com/channels/whatsapp-main/webhook`，验证 Token 使用 `WHATSAPP_VERIFY_TOKEN` 的值。将应用订阅到 Business Account 的 `messages` 事件。
 
-## 参数与限制
+## 发送第一条消息
 
-`apiVersion` 必填，格式 `vN.N`；`apiBase` 默认 `https://graph.facebook.com`；`allowLoopback` 默认 false。支持通过 WhatsApp Business Cloud API 收发客服自由文字和原生媒体。
+由允许的客户号码向企业号码发送“你好”。客户消息会开启 24 小时服务窗口，供文字和媒体回复使用。延迟回答遇到窗口过期时，再发送一条新消息。
 
-## 账号变更
+## 图片和文件
 
-冻结电话号码 ID、Business Account ID 和规范化 API 地址；客户窗口同样按身份隔离，不复用无身份范围的旧窗口。
+可发送图片、音频、视频或文档，在可用时附带说明文字。回复可包含 5 MB 内 JPEG/PNG 图片、16 MB 内受支持音频和 MP4/3GPP 视频，以及 100 MB 内文本/PDF/Office 文档，同时受 Relanox 限制。使用对应格式时，准备单声道 Opus OGG 音频和 H.264/AAC 视频。
 
-## 原生媒体
+## 常见问题
 
-签名 Webhook 中的图片、音频、视频和文档按媒体 ID 读取。先请求 `GET /<apiVersion>/<mediaId>?phone_number_id=<配置电话>`，再带 bearer token 下载返回的短期 URL。凭证仅发送到配置 API origin 或 HTTPS lookaside.fbsbx.com；拒绝消息任意 URL、其他 origin 和重定向。保留说明文字与文档文件名，下载同时遵守核心和媒体类型大小上限。
-
-输出先向 `POST /<apiVersion>/<phoneNumberId>/media` 上传包含 file/type/messaging_product 的 multipart，再以媒体 ID 发送原生 image/audio/video/document 消息。文档保留文件名。适配器允许 JPEG/PNG 图片最多 5,000,000 字节，AAC/AMR/MP3/MP4/OGG 音频和 MP4/3GPP 视频最多 16,000,000 字节，文本/PDF 和支持的 Microsoft Office 文档最多 100,000,000 字节；核心上限更低时仍受其限制。Meta 要求 OGG 为单声道 Opus、视频为 H.264/AAC，以及有效图片格式；Relanox 不转码或检查编码比特流。媒体元数据使用各原生消息类型的字段。
-
-媒体也受 24 小时客服窗口限制。创建消息前的上传失败可安全重试；消息创建结果不明确时保留 unknown。媒体完整缓冲并持久保存。本地签名 HTTP、SQLite、MCP 和 multipart 测试验证字节收发。
-
-协议来源：[WhatsApp Business Platform 媒体](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media)。
-
-[媒体传输](../media.md)
+回调验证失败时，逐字核对验证 Token。消息缺失时，检查 `messages` 订阅、Business Account ID 和电话号码 ID。发送错误时，检查 Token 权限、应用 API 版本，以及客户是否在过去 24 小时内发送过消息。

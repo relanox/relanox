@@ -1,43 +1,57 @@
 # Matrix
 
-Reception uses native Client-Server `/sync`; output uses room message APIs.
+Use a dedicated Matrix account in unencrypted rooms and threads.
 
-Account `config` ([configuration](../configuration.md)):
+## Prepare your account
+
+Create a dedicated account/device on your homeserver and obtain its access token. Save it as `MATRIX_ACCESS_TOKEN` and record its full user ID. Invite the account into each room and let it join. Give it permission to send messages and upload files.
+
+## Add the configuration
+
+Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
 
 ```json
 {
-  "homeserver": "https://matrix.example.com",
-  "userId": "@relay:example.com",
-  "accessToken": {
-    "env": "MATRIX_ACCESS_TOKEN"
-  }
+  "accounts": [
+    {
+      "id": "matrix-main",
+      "config": {
+        "homeserver": "https://matrix.example.com",
+        "userId": "@relay:example.com",
+        "accessToken": {
+          "env": "MATRIX_ACCESS_TOKEN"
+        }
+      },
+      "channel": "matrix",
+      "allowedSenders": ["@alice:example.com"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "matrix-main",
+      "chatId": "!support:example.com",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## Setup and delivery
+Use exact Matrix user IDs such as `@alice:example.com` for allowed senders. Copy the internal room ID, such as `!support:example.com`, from room information or a room event for `chatId`. A room alias like `#support:example.com` is different from the room ID. For a thread, use the original `m.thread` root event ID as `threadId`.
 
-Create a dedicated account/device and invite it into the configured rooms. Allowlist exact sender MXIDs such as `@alice:example.com`; bind `chatId` to the room ID. Thread bindings use the original `m.thread` root event ID. The plugin ignores its own events and accepts `m.text`, `m.image`, `m.audio`, `m.video` and `m.file`. Replies preserve the room, thread and original event relation.
+Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
 
-Use unencrypted rooms with native message events.
+## Enable the connection
 
-Each send first reads the room encryption state. Transient failures of that read are safely retryable because no message has been issued. Transport or server failures after the message PUT remain unknown and require explicit recovery.
+Start Relanox to begin receiving messages from the homeserver automatically. Keep the account logged in on the configured device and keep Relanox running. Use an HTTPS homeserver address.
 
-The sync cursor is persisted with compare-and-set only after all received events have been handed off durably or explicitly excluded. Replayed event IDs deduplicate in core storage. If an existing cursor receives a limited timeline, the plugin reports a history gap and refuses to advance; it does not implement history backfill. Resolve the gap operationally rather than assuming missing events were processed.
+## Send your first message
 
-Outbound `PUT /rooms/<room>/send/m.room.message/<transactionId>` reuses the persisted chunk identity. Matrix transaction deduplication is scoped to the same device and endpoint; a new login/device can lose that scope. The plugin therefore declares `idempotentSend:false`: a SecretRef can be rotated to a new device, so unknown sends require explicit recovery. Known safe retries still reuse the same transaction ID.
+Send “Hello” from an allowed account in the bound unencrypted room. For a thread binding, reply inside that thread. The dedicated account sends the agent’s answer into the same room or thread.
 
-Text chunks are at most 16,000 UTF-8 bytes. `timeoutMs` defaults to 10,000, `syncTimeoutMs` to 30,000 and `reconnectMs` to 1,000. Sync calls allow the long-poll interval plus request timeout. HTTPS is required; `allowInsecureLocalhost:true` permits HTTP only for an explicit loopback homeserver/proxy. URLs reject embedded credentials, query and fragments; redirects are not followed.
+## Images and files
 
-The reply target also freezes the homeserver and configured user identity. If the account is reconfigured to another server or user, old results are rejected instead of being redirected; restore the original account configuration to deliver them.
+Attach images, audio, videos or files to your room message. Generated attachments are uploaded to the homeserver and appear as native room messages. Keep them within both your homeserver upload limit and the Relanox media limit.
 
-## Native media
+## Troubleshooting
 
-Images, audio, video and files are downloaded through the authenticated `/_matrix/client/v1/media/download/<server>/<mediaId>` endpoint of the configured homeserver. An `mxc://` server name is a media identifier, never a credential-bearing download destination. Downloads reject redirects and enforce the core byte limit. Use unencrypted attachments.
-
-Outgoing assets use `POST /_matrix/media/v3/upload` and native `m.image`, `m.audio`, `m.video` or `m.file` room events. Filenames, MIME types, sizes and optional duration are preserved; an explicit request-owned image preview becomes `thumbnail_url` and `thumbnail_info`. Core sends queued assets in order after text. Upload or send ambiguity follows the existing unknown-send recovery policy. Media is buffered and durably stored. Homeserver upload limits can be lower than the core limit. Local HTTP/SQLite/MCP tests verify these protocol contracts.
-
-Protocol source: [Matrix Client-Server API](https://spec.matrix.org/latest/client-server-api/).
-
-Media uploads finish before the recipient message is submitted. Upload transport errors, invalid upload responses and server failures are retryable; explicit client rejection remains rejected and rate limits honor retry delay. The subsequent message send retains its normal ambiguity handling. When a native media event supplies a separate `filename`, a different `body` is preserved as its caption alongside the stored attachment.
-
-[Media transfer](../media.md)
+If no messages arrive, check that the account joined the room, the room is unencrypted and the token is valid. If a thread gets no answer, compare the root event ID. If Relanox reports a history gap after an outage, inspect the missing conversation and resend the questions you still want answered before recovering the connection.

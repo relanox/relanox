@@ -1,64 +1,21 @@
-# Production dependency licenses
+# Licenses
 
-Production dependency license overview. The package manifests and lockfile define exact versions; this page identifies the declared licenses and shipped notices. Dependency archives retain their own license files in `node_modules`. Supplemental upstream texts missing from two npm archives are shipped under [licenses/](https://github.com/relanox/relanox/tree/master/licenses). Development tools are not shipped in the runtime image.
+Relanox is released under the [MIT License](https://github.com/relanox/relanox/blob/master/LICENSE). You may use, modify and redistribute it, including commercially, provided you retain the copyright and license notice. The license includes the terms on warranty and liability.
 
-| Package                                 | Declared license |
-| --------------------------------------- | ---------------- |
-| @hono/node-server                       | MIT              |
-| @modelcontextprotocol/core              | Apache-2.0       |
-| @modelcontextprotocol/server            | Apache-2.0       |
-| @opentelemetry/api                      | Apache-2.0       |
-| @opentelemetry/api-logs                 | Apache-2.0       |
-| @opentelemetry/context-async-hooks      | Apache-2.0       |
-| @opentelemetry/core                     | Apache-2.0       |
-| @opentelemetry/exporter-trace-otlp-http | Apache-2.0       |
-| @opentelemetry/otlp-exporter-base       | Apache-2.0       |
-| @opentelemetry/otlp-transformer         | Apache-2.0       |
-| @opentelemetry/resources                | Apache-2.0       |
-| @opentelemetry/sdk-logs                 | Apache-2.0       |
-| @opentelemetry/sdk-metrics              | Apache-2.0       |
-| @opentelemetry/sdk-trace                | Apache-2.0       |
-| @opentelemetry/sdk-trace-base           | Apache-2.0       |
-| @opentelemetry/sdk-trace-node           | Apache-2.0       |
-| @opentelemetry/semantic-conventions     | Apache-2.0       |
-| @pinojs/redact                          | MIT              |
-| @prometheus-io/client                   | Apache-2.0       |
-| @stablelib/base64                       | MIT              |
-| atomic-sleep                            | MIT              |
-| better-sqlite3                          | MIT              |
-| bintrees                                | MIT              |
-| commander                               | MIT              |
-| fast-sha256                             | Unlicense        |
-| hono                                    | MIT              |
-| jose                                    | MIT              |
-| node-addon-api                          | MIT              |
-| on-exit-leak-free                       | MIT              |
-| pg                                      | MIT              |
-| pg-cloudflare                           | MIT              |
-| pg-connection-string                    | MIT              |
-| pg-int8                                 | ISC              |
-| pg-pool                                 | MIT              |
-| pg-protocol                             | MIT              |
-| pg-types                                | MIT              |
-| pgpass                                  | MIT              |
-| pino                                    | MIT              |
-| pino-abstract-transport                 | MIT              |
-| pino-std-serializers                    | MIT              |
-| postgres-array                          | MIT              |
-| postgres-bytea                          | MIT              |
-| postgres-date                           | MIT              |
-| postgres-interval                       | MIT              |
-| process-warning                         | MIT              |
-| quick-format-unescaped                  | MIT              |
-| real-require                            | MIT              |
-| safe-stable-stringify                   | MIT              |
-| sonic-boom                              | MIT              |
-| split2                                  | ISC              |
-| standardwebhooks                        | MIT              |
-| tdigest                                 | MIT              |
-| thread-stream                           | MIT              |
-| ws                                      | MIT              |
-| xtend                                   | MIT              |
-| zod                                     | MIT              |
+## Redistributing Relanox
 
-SQLite embedded by better-sqlite3 is public domain. Two MIT packages embed their license in README.md (pg-types and pgpass). Standard Webhooks omits its library license file from the npm archive; its exact published gitHead supplies the MIT text. The Prometheus client archive omits upstream NOTICE, which is included from its exact published gitHead. Reference repositories are not installed or included in the image.
+Include Relanox's license and the notices for the dependencies you distribute. The repository's [supplemental license files](https://github.com/relanox/relanox/tree/master/licenses) accompany the production dependencies. Dependency packages also retain their own license files in `node_modules`.
+
+The package manifests and lockfile identify the exact versions. The shipped runtime uses dependencies under the following declared licenses:
+
+| License       | Examples in the runtime                                                             |
+| ------------- | ----------------------------------------------------------------------------------- |
+| MIT           | Hono, Pino, better-sqlite3, PostgreSQL's `pg` client, Zod, `ws`, Standard Webhooks. |
+| Apache-2.0    | Model Context Protocol packages, OpenTelemetry packages, Prometheus client.         |
+| ISC           | `pg-int8` and `split2`.                                                             |
+| Unlicense     | `fast-sha256`.                                                                      |
+| Public domain | SQLite embedded by better-sqlite3.                                                  |
+
+The MIT texts for `pg-types` and `pgpass` are included in their README files. Standard Webhooks' missing archive license and the Prometheus client's missing upstream NOTICE are supplied in `licenses/` from the matching published upstream commits. Development tools are separate from the production image.
+
+If you change the production dependency set before redistributing, check the installed packages' license files and update the notices alongside the dependency change. See [Contributing](../development.md) for dependency maintenance.

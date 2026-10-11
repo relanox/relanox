@@ -1,39 +1,60 @@
-# Google Chat HTTP 应用
+# Google Chat
 
-账号 `config`（[配置说明](../configuration.md)）：
+通过 Google Chat HTTP 应用，在空间和消息串中使用 Agent。
+
+## 准备账号
+
+在 Google Cloud 项目启用 Chat API，配置 Chat 应用并创建其服务账号。将完整服务账号 JSON 保存到 `GOOGLE_CHAT_SERVICE_ACCOUNT_JSON`。使用 `chat.bot` 权限的应用认证。按照组织策略开放应用，并将它加入目标空间。
+
+## 添加配置
+
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "audience": "https://relay.example/channels/chat/webhook",
-  "callerEmail": "chat@system.gserviceaccount.com",
-  "serviceAccount": {
-    "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
-  }
+  "accounts": [
+    {
+      "id": "googlechat-main",
+      "config": {
+        "audience": "https://relay.example.com/channels/googlechat-main/webhook",
+        "callerEmail": "chat@system.gserviceaccount.com",
+        "serviceAccount": {
+          "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
+        }
+      },
+      "channel": "googlechat",
+      "allowedSenders": ["users/123456789"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "googlechat-main",
+      "chatId": "spaces/AAAAExample",
+      "endpointId": "my-agent",
+      "threadId": "spaces/AAAAExample/threads/BBBBExample"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-启用 Chat API，创建应用服务账号，将 JSON 凭据存入环境变量。配置普通 Chat 应用（非 Workspace add-on），HTTP audience 精确匹配 `https://relay.example/channels/<accountId>/webhook`。安装到目标空间并检查组织策略。输出使用 `chat.bot` 应用认证，不模拟人类或使用域级委派。
+从消息事件取得发送者资源名（`users/<id>`）填入 `allowedSenders`、空间名（`spaces/<id>`）填入 `chatId`、消息串名（`spaces/<id>/threads/<id>`）填入指定的 `threadId`。复制完整资源名。示例绑定一个精确的空间/消息串组合。收到的消息含消息串时，其完整名称必须与 `threadId` 一致。需要使用其他消息串时，分别添加对应绑定。
 
-## 投递与恢复
+会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
 
-白名单使用 `users/<id>`，绑定 `spaces/<id>` 和可选完整 `spaces/<id>/threads/<id>`。MESSAGE 优先使用 `argumentText` 去除应用 mention，忽略应用自身与无附件的空白内容；消息资源名去重。通过 JWKS 验证 RS256 OIDC 签名、issuer、准确 audience、时间和已验证调用者邮箱，不信任 JSON 声称的调用者。服务账号 JWT 交换 OAuth，独立 `/v1/spaces/<id>/messages` 对线程使用 `REPLY_MESSAGE_OR_FAIL`。每片最多 30,000 UTF-8 字节；发消息前临时 OAuth 失败可重试。
+## 启用连接
 
-## 参数与限制
+将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`。应用认证 audience 和账号的 `audience` 均填写这一完整地址。发送应用交互前启动 Relanox。默认调用者邮箱为 `chat@system.gserviceaccount.com`。
 
-`callerEmail` 默认 `chat@system.gserviceaccount.com`；`issuer` 默认 `https://accounts.google.com`；`jwksUrl` 默认 `https://www.googleapis.com/oauth2/v3/certs`；`tokenUrl` 默认 `https://oauth2.googleapis.com/token`；`apiBase` 默认 `https://chat.googleapis.com`；`allowLoopback` 默认 false。覆盖地址由管理员信任，不能由事件指定。
+## 发送第一条消息
 
-## 账号变更
+在配置的空间/消息串中 @ 已安装应用并发送“你好”。私聊也需先按其消息事件中的实际空间和消息串字段完成绑定。打开同一消息串查看回答。
 
-冻结服务账号 client email 和规范化 API 地址，不保存私钥。
+## 图片和文件
 
-## 媒体与应用身份
+提问时可直接上传附件到 Chat。接收生成媒体需按[媒体](../media.md)配置 `media.publicBaseUrl`。图片回复显示为卡片，音频、视频和文件显示为带名称的下载按钮。公网媒体地址需让收件者访问，并供 Google 获取图片。
 
-原生上传附件通过 `attachmentDataRef.resourceName` 和 `/v1/media/<resource>?alt=media` 下载，使用服务账号 `chat.bot` 认证；资源必须属于事件空间，纯媒体作为持久任务。Drive 引用需要额外 Drive 授权，当前明确拒绝，不静默丢弃。下载限制 DNS 地址与字节，凭据只发送到配置 API origin，禁止跳转。
+## 常见问题
 
-输出要求顶层 `media.publicBaseUrl`。保持机器人身份，图片以原生 `cardsV2` 图片组件和具名下载按钮发送；音频、视频、普通文件以具名下载按钮发送。后者是**链接降级**，不是上传的原生附件。保留冻结机器人/空间/线程身份与 `REPLY_MESSAGE_OR_FAIL`，说明文字独立发送。发送能力声明表示接受这些媒体并按上述卡片/链接方式交付。
-
-Google 原生附件上传要求用户 OAuth（`chat.messages.create`/`chat.messages`），不接受当前配置的服务账号 `chat.bot` 身份。官方流程先通过 `media.upload` 上传文件字节，再将返回的 `attachmentDataRef` 放入消息的 `attachment` 列表。改用这一流程需要单独授权的用户凭据，并改变发送者身份，不能直接替换当前机器人投递。Relanox 不隐式模拟用户或启用域级委派。卡片 `imageUrl` 要求 HTTPS 托管图片，官方没有提供内联 base64/data URL 替代方案；因此当前应用身份的媒体回复仍需要 `media.publicBaseUrl`。协议依据：[下载](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download)、[上传认证限制](https://developers.google.com/workspace/chat/api/reference/rest/v1/media/upload)、[上传与附件消息流程](https://developers.google.com/workspace/chat/upload-media-attachments)、[卡片图片 URL](https://developers.google.com/workspace/chat/api/reference/rest/v1/cards#image)。本地 JWT、HTTP、SQLite 测试不代表实账号兼容性已验证。
-
-[媒体传输](../media.md)
+认证错误时，核对 `audience` 与完整端点地址，包括账号 ID 和路径。发送失败时，检查服务账号 JSON、Chat API 和应用是否在空间内。图片或下载不可用时，检查公网媒体地址。需要 Agent 读取文件内容时，将文件直接上传到 Chat。

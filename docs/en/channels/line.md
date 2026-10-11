@@ -1,45 +1,59 @@
-# LINE Messaging API
+# LINE
 
-Use a LINE Messaging API Official Account with signed HTTP webhooks and independent push output.
+Connect a LINE Official Account to answer private, group and room messages.
 
-Account `config` ([configuration](../configuration.md)):
+## Prepare your account
 
-Create a LINE Official Account with a Messaging API channel, obtain its channel secret and access token, enable Webhooks and optionally webhook redelivery. Set the webhook URL to `/channels/<accountId>/webhook` on the public HTTPS listener. The bot must be a friend of the user or a member of the addressed group/room and have the relevant push permissions/quota.
+Create an Official Account with a Messaging API channel. Save its channel secret and access token in the environment variables below. Obtain its bot user ID from bot information or the webhook’s `destination`. Add the Official Account as a friend, or invite it into the intended group/room. Check that your plan has enough push-message quota.
+
+## Add the configuration
+
+Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
 
 ```json
 {
-  "botUserId": "U_your_bot_destination",
-  "channelSecret": {
-    "env": "LINE_CHANNEL_SECRET"
-  },
-  "accessToken": {
-    "env": "LINE_ACCESS_TOKEN"
-  }
+  "accounts": [
+    {
+      "id": "line-main",
+      "config": {
+        "botUserId": "U_your_bot_destination",
+        "channelSecret": {
+          "env": "LINE_CHANNEL_SECRET"
+        },
+        "accessToken": {
+          "env": "LINE_ACCESS_TOKEN"
+        }
+      },
+      "channel": "line",
+      "allowedSenders": ["U_example_user"]
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "line-main",
+      "chatId": "G_example_group",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## Setup and delivery
+Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-`botUserId` must match the webhook `destination`. Sender allowlists contain the source `userId`; bind `chatId` to the user, group or room destination. LINE destinations are users, groups or rooms. Source `webhookEventId` is the durable deduplication key. Text is limited to 5,000 UTF-16 units per chunk. Incoming messages require an identifiable sender; outgoing messages use the push API.
+Use event `source.userId` in `allowedSenders`. For a private conversation use that user ID as `chatId`; for a group use `source.groupId`, and for a room use `source.roomId`. The example is a group binding. `botUserId` must equal the account’s webhook `destination`.
 
-Incoming requests require the original bytes' HMAC-SHA256 `X-Line-Signature`. Relanox verifies the configured destination and waits for durable ingest before ACK. Known allowlist/unbound exclusions are diagnosed and ACKed; unexpected persistence failures return an error. The frozen target stores only the source destination/type/message reference; credentials and `replyToken` are never persisted.
+## Enable the connection
 
-Independent output uses `POST /v2/bot/message/push` with the current environment-backed token. Each persisted chunk gets a random UUID retry key saved atomically in protocol state before network IO. Retries and explicit recovery reuse that key; `409` with `X-Line-Accepted-Request-Id` confirms prior acceptance. The retry key's provider validity is 24 hours from its first attempt. After that conservative local deadline sends become unknown and require operator handling; the plugin declares `idempotentSend:false` so a lease expiry never blindly replays a finite-window effect. A 429 is retryable, a definitive 4xx is rejected, and a transport error/5xx is unknown. Acceptance is not proof the user read or received the message.
+Enable Webhooks and set the URL to `https://relay.example.com/channels/line-main/webhook`. Start Relanox, then use the platform’s webhook verification. Enable webhook redelivery if you want LINE to retry failed event delivery.
 
-Optional `apiBase` (default `https://api.line.me`) supports an explicitly authorized gateway. `allowLoopback:true` permits HTTP only for loopback peers; HTTPS and redirect rejection remain the default. Configuration is strict and credentials require `{env}` references.
+## Send your first message
 
-## Native media
+Send “Hello” from an allowed user to the Official Account or into the bound group/room. The reply is sent by the Official Account to that conversation.
 
-Image/audio/video/file inputs use authenticated content downloads from `contentApiBase` (default `https://api-data.line.me`); external-provider content is downloaded without the LINE token. Both pure media and native text events are accepted. Original bytes and supplied audio/video duration are stored before acknowledgement.
+## Images and files
 
-Native outbound image/audio/video messages require the global public media publisher; see [Media transfer](../media.md). LINE fetches opaque public URLs without agent credentials. Images must be JPEG/PNG at most 10 MB; previews must be JPEG/PNG at most 1 MB. Images within the preview limit reuse their original URL; larger images and every video require an explicit generated previewUrl or received previewMediaId. Video must be MP4; audio must be MP3/M4A with positive `durationMs`. Video/audio are capped at 200 MB and relay limits. Core sends reply text separately; push requests reuse durable retry keys.
+Send images, audio, videos or files with your question. Image, audio and video replies need `media.publicBaseUrl`; follow [Media](../media.md) to expose it over HTTPS. Use JPEG/PNG images up to 10 MB. Images larger than 1 MB (1,000,000 bytes) and every MP4 video require a JPEG/PNG preview up to 1 MB. Generated audio uses MP3/M4A with a duration. Audio/video can be up to 200 MB, within your relay limit.
 
-The Messaging API requires an HTTPS `originalContentUrl` for [image](https://developers.line.biz/en/reference/messaging-api/#image-message), [audio](https://developers.line.biz/en/reference/messaging-api/#audio-message) and [video](https://developers.line.biz/en/reference/messaging-api/#video-message) output; image/video also require `previewImageUrl`. It provides no binary upload or reusable media ID for these message objects, so outbound media still needs `media.publicBaseUrl`. Text output and inbound media downloads do not need this publisher. [Get content](https://developers.line.biz/en/reference/messaging-api/#get-content) downloads received messages; [rich menu image upload](https://developers.line.biz/en/reference/messaging-api/#upload-rich-menu-image) attaches an image to a rich menu and cannot supply media for a push message.
+## Troubleshooting
 
-LINE receives files and sends native image, audio and video messages. Optional `contentApiBase` supports an administrator-configured gateway under the same transport policy as `apiBase`.
-
-The official [message objects](https://developers.line.biz/en/reference/messaging-api/index.html.md) define these limits. Local tests verify signed ingress and native URL-fetch bytes; live account playback, reachability and quota remain unverified.
-
-## Account changes
-
-Accepted targets freeze the bot user and canonical API base URL. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported.
+If webhook verification fails, check the channel secret and bot destination ID. For missing group messages, enable group access for the Official Account and confirm its membership. If text works but media replies fail, verify the HTTPS media address, preview image and duration; check push quota for all replies.

@@ -1,47 +1,59 @@
 # DingTalk application robot
 
-Reception uses application robot Stream CALLBACK events; output uses independent OAuth single/group robot APIs.
+Connect a DingTalk application robot for private questions and group conversations.
 
-Account `config` ([configuration](../configuration.md)):
+## Prepare your account
+
+Create an application robot, record its client ID and robot code, and save its app secret as `DINGTALK_APP_SECRET`. Enable Stream reception. Grant the robot the independent single-user/group message API permissions and media download/upload permissions. Add it to the intended groups and make it available to the intended staff.
+
+## Add the configuration
+
+Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
 
 ```json
 {
-  "clientId": "application-client-id",
-  "clientSecret": {
-    "env": "DINGTALK_APP_SECRET"
-  },
-  "robotCode": "application-robot-code",
-  "apiBase": "https://api.dingtalk.com",
-  "maxReconnectAttempts": 20
+  "accounts": [
+    {
+      "id": "dingtalk-main",
+      "channel": "dingtalk",
+      "allowedSenders": ["$:LWCP_v1:opaque-platform-sender-id"],
+      "config": {
+        "clientId": "application-client-id",
+        "clientSecret": {
+          "env": "DINGTALK_APP_SECRET"
+        },
+        "robotCode": "application-robot-code",
+        "apiBase": "https://api.dingtalk.com",
+        "maxReconnectAttempts": 20
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "dingtalk-main",
+      "chatId": "staff-user-id",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## Setup and delivery
+Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-Enable Stream in the application robot configuration, use the matching `robotCode`, and grant the application robot independent single/group message API permissions. Users must be reachable by the application; the robot must belong to the group. Direct-message recipients require a usable `senderStaffId`. Sender allowlists use the trusted callback's opaque `senderId`, which avoids assuming corporate staff IDs are globally unique. DM bindings use `senderStaffId`; group bindings use `conversationId` (the OpenAPI `openConversationId`). Callbacks with another robot code, own-bot sender or group `isInAtList != true` are ignored.
+The sender allowlist uses the callback’s opaque `senderId`, including any prefix. A direct-chat `chatId` uses `senderStaffId`; a group `chatId` uses `conversationId` (the open conversation ID). Read these values from an application-robot message event. The sender and direct-chat identifiers serve different purposes, so copy each exact field.
 
-Stream connections obtain fresh tickets. Ping/pong detects dead connections; bounded exponential reconnect obtains a new ticket. Shutdown stops the account’s socket and reconnect work.
+## Enable the connection
 
-Stable `data.msgId` is the durable source identity; `headers.messageId` identifies the particular delivery ACK. Text ACK `{code:200,data:"{\"response\":null}"}` is sent after durable ingestion succeeds. A failed storage write produces no successful ACK. Unsupported or malformed input is diagnosed and receives a non-success callback response. The protocol can still duplicate callbacks; storage source deduplication remains authoritative.
+Start Relanox after saving the account configuration. It opens the Stream connection automatically using the application credentials. Keep outbound HTTPS and WebSocket access available.
 
-Durable targets contain staff ID or open conversation ID and no `sessionWebhook`, ticket or access token. OAuth `/v1.0/oauth2/accessToken` credentials resolve at use. Tokens are kept in memory and refreshed before expiry, after explicit auth expiry or SecretRef environment rotation. Single sends POST `/v1.0/robot/oToMessages/batchSend` with one `userIds` entry. Group sends POST `/v1.0/robot/groupMessages/send` with `openConversationId`. Text sends carry `robotCode`, `msgKey:"sampleText"`, and JSON-encoded `msgParam:{content:...}`, authenticated by `x-acs-dingtalk-access-token`.
+## Send your first message
 
-Text chunks conservatively use 4000 UTF-8 bytes. `processQueryKey` is retained as a query handle in receipt data; it is not presented as a platform message ID. Invalid staff IDs reject; flow-controlled single recipients and 429 retry with bounded delays; permission failures reject. Missing/malformed acceptance responses, network loss and generic 5xx preserve unknown effects. `idempotentSend=false`; no client-generated send UUID is documented for these APIs.
+Send “Hello” to the application robot from an allowed staff member. In a group, mention the robot; the group event must indicate that the bot was addressed.
 
-`apiBase` can select a deployment-approved API domain or proxy. Redirects are refused, TLS verification remains enabled, and only explicit `allowInsecureLoopback:true` permits plain HTTP/WS on loopback for local protocol peers. It cannot permit remote insecure endpoints. Operators should restrict configuration access because the API base receives application credentials.
+## Images and files
 
-Accepted targets also freeze the client ID, robot code and normalized API base URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported.
+Send pictures, audio, videos, files or rich-text messages. Replies can include JPEG/PNG/GIF/BMP images, MP4 video and files up to 20 MiB, and AMR audio up to 2 MiB, within the relay limit. Generated audio needs a duration; video also needs an image preview and a duration. File replies use XLSX, PDF, ZIP, RAR, DOC or DOCX formats.
 
-`maxReconnectAttempts` accepts 0–1,000 and defaults to 20.
+## Troubleshooting
 
-## Media
-
-Stream picture/audio/video/file and rich-text callbacks resolve `downloadCode` or `pictureDownloadCode` through `/v1.0/robot/messageFiles/download`. Bounded resource bytes are durable before successful ACK; pure media, speech transcription and rich-text captions are accepted.
-
-Output submits multipart field `media` to `uploadBase` (default `https://oapi.dingtalk.com`), then sends `sampleImageMsg`, `sampleAudio`, `sampleVideo` or `sampleFile` to the frozen single/group target. JPEG/PNG/GIF/BMP images, MP4 video and files are limited to 20 MiB, AMR audio to 2 MiB. File templates accept XLSX/PDF/ZIP/RAR/DOC/DOCX. Audio requires `durationMs`; video also requires an image `previewMediaId` from the same request. Missing metadata and unsupported formats/sizes reject explicitly; durations/thumbnails are never invented. Captions use independent text chunks.
-
-`mediaOrigins` optionally contains exact private download origins. Downloads enforce DNS/byte limits and refuse redirects; loopback HTTP additionally requires the trusted origin and `allowInsecureLoopback:true`. Media targets also freeze `uploadBase`, without persisting credentials.
-
-Protocols: [native upload](https://open.dingtalk.com/document/development/upload-media-files), [robot download](https://open.dingtalk.com/document/development/download-the-file-content-of-the-robot-receiving-message). Local native HTTP/socket and SQLite tests do not establish live-account compatibility.
-
-[Media transfer](../media.md)
+If the robot connects but sends no reply, check the independent message API permissions and the staff/group availability. If private questions are filtered, compare `senderId` with the allowlist and `senderStaffId` with the binding. For group failures, check the robot code and group membership.

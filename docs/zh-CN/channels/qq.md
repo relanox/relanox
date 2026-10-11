@@ -1,46 +1,60 @@
-# QQ 私聊与群消息
+# QQ 机器人
 
-## 媒体
+通过官方 QQ 机器人，在私聊和 @ 机器人的群聊中使用 Agent。
 
-私聊/群附件持久保存为字节后才推进 gateway 游标，支持纯媒体。下载限制 DNS 地址与字节、禁止跳转；`mediaOrigins` 可配置准确私有服务 origin，回环 HTTP 还需开启 `allowInsecureLoopback:true`。
+## 准备账号
 
-输出使用原生分片直传，不需要 `media.publicBaseUrl`。向对应会话的 `upload_prepare` 提交文件大小及协议要求的 MD5/SHA1 校验值，将原始字节分片 PUT 到返回的签名 URL，每片通过 `upload_part_finish` 确认，然后以 `upload_id` 和固定 `srv_send_msg:false` 调用 `/v2/users/<id>/files` 或 `/v2/groups/<id>/files` 合并。最后以 `msg_type:7` 和 `media.file_info` 输出，沿用持久被动回复序号。该流程同时处理小文件和超过另一种二进制 JSON 直传 5 MB 上限的文件。每次重试重新申请上传，避免签名 URL 或 file_info 过期，不混用私聊/群上传令牌。上传失败不会发送收件人消息；签名上传 URL 不携带 QQ 凭据，且拒绝重定向。说明文字先独立发送。
+在 QQ 机器人平台创建并启用机器人，记录 App ID，将 Client Secret 存入环境变量，并获得 `GROUP_AND_C2C_EVENT` 权限。根据应用的测试或发布状态，向对应用户和群组开放机器人。
 
-当前原生协议支持 PNG/JPEG 图片、MP4 视频、SILK 音频与普通文件（`file_type:4`），不自动转码。平台软上限：图片/音频 20 MB、视频 30 MB、文件 200 MB，仍受中继默认 25 MiB 上限限制。上传不会隐式产生主动消息。
+## 添加配置
 
-协议依据：[富媒体](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/rich-media.html)、[群上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_files.post.html)。本地 HTTP、socket、SQLite 测试不代表实账号兼容性已验证。
-
-账号 `config`（[配置说明](../configuration.md)）：
+将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
 
 ```json
 {
-  "appId": "robot-app-id",
-  "clientSecret": {
-    "env": "QQ_CLIENT_SECRET"
-  },
-  "transport": "websocket",
-  "apiBase": "https://api.bot.qq.com",
-  "allowProactive": false,
-  "maxReconnectAttempts": 20
+  "accounts": [
+    {
+      "id": "qq-main",
+      "channel": "qq",
+      "allowedSenders": ["user-openid", "group-member-openid"],
+      "config": {
+        "appId": "123456789",
+        "clientSecret": {
+          "env": "QQ_CLIENT_SECRET"
+        },
+        "transport": "websocket",
+        "apiBase": "https://api.bot.qq.com",
+        "allowProactive": false,
+        "maxReconnectAttempts": 20
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "qq-main",
+      "chatId": "user-openid",
+      "endpointId": "my-agent"
+    }
+  ]
 }
 ```
 
-## 接入与身份
+请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-启用官方 QQ 机器人并授予 GROUP_AND_C2C_EVENT 权限，仅支持 `transport:"websocket"`，无 Webhook、频道或子频道接入。`/app/getAppAccessToken` 获取令牌，使用 `Authorization: QQBot ACCESS_TOKEN`。私聊白名单/绑定使用 `author.user_openid`；群绑定 `group_openid`，白名单使用 `author.member_openid`。
+私聊的允许发送者和绑定 `chatId` 均使用 `author.user_openid`。群聊允许发送者使用 `author.member_openid`，`chatId` 使用 `group_openid`。从机器人消息事件取得这些值；它们是平台 OpenID，与显示的 QQ 号码不同。
 
-## 投递与恢复
+## 启用连接
 
-接收 C2C 和群 @机器人文字，保留群内容原文，忽略机器人及不支持的消息类型；文字与富媒体类型（0 和 7）的附件作为持久任务字节保存，支持纯媒体。事件类型、消息 ID 和 scene 索引标识源事件，不保存临时 auth token。心跳/Identify/Resume 使用 `intents=1<<25`；游标接收成功才推进，失败阻止后续事件越过失败消息。会话和游标仅在进程内，重启不能保证重放；致命 Gateway 错误停止恢复。输出调用 `/v2/users/{openid}/messages` 或 `/v2/groups/{openid}/messages`，每片最多 2,000 UTF-8 字节。发送前持久分配分片 msg_seq，重试/重启复用，每个源最多 256 个分配。
+Relanox 启动后会自动通过 WebSocket 连接，保持进程运行及访问 QQ API 和网关的出站网络。示例用于回复收到的消息，接入时保持 `allowProactive` 为 false。
 
-## 参数与限制
+## 发送第一条消息
 
-被动回复私聊为 60 分钟/4 条，群为 5 分钟/5 条，均从平台时间戳计算，平台仍可提前拒绝。默认额度耗尽/过期即拒绝；`allowProactive:true` 可让新分片主动发送，仍需平台权限和用户/群接收偏好允许。已有被动分配和 API 拒绝不自动转换。重复被动错误 `40054005` 无可恢复回执，保留 unknown。`apiBase` 默认 `https://api.bot.qq.com`；`allowProactive` 默认 false；`maxReconnectAttempts` 为 0–1,000，默认 20；`allowInsecureLoopback` 默认 false。
+私聊发送“你好”，或在绑定群组中 @ 机器人。先请它简短回复：平台为每条私聊输入提供 60 分钟、4 条回复额度，为每条群聊输入提供 5 分钟、5 条回复额度。
 
-## 账号变更
+## 图片和文件
 
-冻结应用 ID 和规范化 API 地址，令牌仅在内存缓存。
+可发送原生图片、音频、视频和文件，生成的回复通过 QQ 附件发送。准备 PNG/JPEG 图片、MP4 视频、SILK 音频或普通文件。QQ 限制为图片/音频 20 MB、视频 30 MB、文件 200 MB；Relanox 默认 25 MiB 限制可能更低。回复文字与各个附件分别消耗回复额度。
 
-[媒体传输](../media.md)
+## 常见问题
 
-[分片预上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_id_upload_prepare.post.html) · [分片确认](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_id_upload_part_finish.post.html)
+网关拒绝连接时，检查机器人发布状态、应用凭据及事件权限。群消息缺失时，@ 机器人并核对群组/成员 OpenID。回答延迟超过回复窗口时，发送新问题。取得平台主动消息权限且用户或群组允许接收后，才启用 `allowProactive:true`。
