@@ -6,6 +6,8 @@ import {
   createMediaTransport,
   guard,
   registerTools,
+  equalSecret,
+  resolveAgentSecret,
   agentInstructions
 } from '@relanox/agent-mcp'
 import { dispatchRoutine } from './routine.js'
@@ -66,10 +68,44 @@ export function createGrokAgentPlugin(): AgentPlugin<GrokConfig> {
         })
 
         handlers.push(handler)
-        host.mountHttp(`/mcp/${endpoint.id}`, async (request) => {
-          const checked = await guard(request, config.mcp, publicUrl)
+
+        const authenticatePath = async (
+          request: Request
+        ): Promise<Response | undefined> => {
+          const prefix = `/agents/grok/mcp/${endpoint.id}/`
+          const pathname = new URL(request.url).pathname
+          let token: string | undefined
+          if (pathname.startsWith(prefix)) {
+            const segment = pathname.slice(prefix.length)
+            if (segment.length > 0 && !segment.includes('/')) {
+              try {
+                token = decodeURIComponent(segment)
+              } catch {
+                // Malformed URL encoding is an invalid credential.
+              }
+            }
+          }
+          return token !== undefined &&
+            equalSecret(token, resolveAgentSecret(config.mcp.token))
+            ? undefined
+            : Response.json({ error: 'unauthorized' }, { status: 401 })
+        }
+
+        const fetch = async (request: Request): Promise<Response> => {
+          const checked = await guard(
+            request,
+            config.mcp,
+            publicUrl,
+            config.mcp.auth === 'path' ? authenticatePath : undefined
+          )
+
           return checked instanceof Response ? checked : handler.fetch(checked)
-        })
+        }
+
+        host.mountHttp(`/mcp/${endpoint.id}`, fetch)
+        if (config.mcp.auth === 'path') {
+          host.mountHttp(`/mcp/${endpoint.id}/*`, fetch)
+        }
       }
     },
     dispatch: dispatchRoutine,

@@ -5,6 +5,7 @@ export const secretRef = z.strictObject({
 })
 
 export const mcpConfig = z.strictObject({
+  auth: z.enum(['bearer', 'path', 'oauth']).default('bearer'),
   token: secretRef,
   allowedOrigins: z.array(z.url()).default([])
 })

@@ -2,6 +2,7 @@
 export { mcpConfig, secretRef } from './config.js'
 export type { McpConfig } from './config.js'
 export { guard, registerTools } from './mcp.js'
+export type { AuthenticateMcpRequest } from './mcp.js'
 export { agentInstructions } from './instructions.js'
 export { createMediaTransport } from './media.js'
 export { projectAgentRequest, agentRequestSchema } from './request-payload.js'

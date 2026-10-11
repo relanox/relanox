@@ -1,3 +1,7 @@
+import {
+  Client,
+  StreamableHTTPClientTransport
+} from '@modelcontextprotocol/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { fixture, mcp, parseWire, peer } from '../../agent-dot/tests/fixture.js'
@@ -32,7 +36,8 @@ afterEach(async () => {
 
 async function setup(
   status = 200,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
+  auth: 'bearer' | 'path' = 'bearer'
 ): Promise<{
   receiver: Awaited<ReturnType<typeof peer>>
   plugin: ReturnType<typeof createGrokAgentPlugin>
@@ -44,7 +49,7 @@ async function setup(
   process.env.GROK_TEST_URL = 'https://routine.test/user-supplied-routine'
 
   const config = {
-    mcp: mcp(),
+    mcp: { ...mcp(), auth },
     routineUrl: { env: 'GROK_TEST_URL' },
     routineAuthorization: { env: 'GROK_TEST_AUTH' }
   }
@@ -53,7 +58,7 @@ async function setup(
 
   const fx = await fixture('grok', plugin, [
     config,
-    { ...config, mcp: mcp('AGENT_TEST_TOKEN_1') }
+    { ...config, mcp: { ...mcp('AGENT_TEST_TOKEN_1'), auth } }
   ])
 
   cleanups.push(async () => fx.close())
@@ -61,6 +66,64 @@ async function setup(
 }
 
 describe('grok configured Routine and scoped MCP', () => {
+  it('authenticates encoded URL credentials without headers and isolates endpoints', async () => {
+    process.env.AGENT_TEST_TOKEN_0 = 'editable /token?中文%'
+    const { fx } = await setup(200, {}, 'path')
+    const receipt = await fx.ingest()
+    const other = await fx.ingest(1, 'private', 'other')
+    const client = new Client({ name: 'path-client', version: '1.0.0' })
+    cleanups.push(async () => client.close())
+    const url = `https://relanox.test/agents/grok/mcp/endpoint0/${encodeURIComponent('editable /token?中文%')}`
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), {
+        fetch: async (input, init): Promise<Response> =>
+          fx.core.fetch(new Request(input, init))
+      })
+    )
+    expect(client.getInstructions()).toContain('Call relanox_send_message')
+    expect(
+      await client.callTool({
+        name: 'relanox_send_message',
+        arguments: { replyTo: receipt.requestId, text: 'answer' }
+      })
+    ).toMatchObject({ structuredContent: { status: 'queued' } })
+    expect(
+      await client.callTool({
+        name: 'relanox_send_message',
+        arguments: { replyTo: other.requestId, text: 'answer' }
+      })
+    ).toMatchObject({ structuredContent: { status: 'not_found' } })
+    for (const suffix of [
+      '',
+      '/wrong',
+      '/secret-1',
+      '/%ZZ',
+      '/secret-0/extra'
+    ]) {
+      const response = await fx.core.fetch(
+        new Request(`https://relanox.test/agents/grok/mcp/endpoint0${suffix}`, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer secret-0' }
+        })
+      )
+
+      expect(response.status).toBe(401)
+      expect(await response.json()).toEqual({ error: 'unauthorized' })
+    }
+    process.env.AGENT_TEST_TOKEN_0 = 'rotated'
+    await expect(client.listTools()).rejects.toThrow()
+  })
+
+  it('rejects OAuth configuration for Grok', () => {
+    expect(() =>
+      createGrokAgentPlugin().validateConfig({
+        mcp: { ...mcp(), auth: 'oauth' },
+        routineUrl: { env: 'GROK_TEST_URL' },
+        routineAuthorization: { env: 'GROK_TEST_AUTH' }
+      })
+    ).toThrow()
+  })
+
   it.each([false, true])(
     'provides Routine reply guidance through MCP discovery (modern: %s)',
     async (modern) => {

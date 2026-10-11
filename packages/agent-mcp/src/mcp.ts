@@ -16,23 +16,14 @@ async function cancelReader(
   }
 }
 
-/** All checks precede MCP parsing and Host access, including streamed/dishonest bodies. */
-export async function guard(
-  request: Request,
-  config: McpConfig,
-  publicUrl: string
-): Promise<Request | Response> {
-  const url = new URL(request.url)
-  const host = request.headers.get('host') ?? url.host
-  const origin = request.headers.get('origin')
-  if (
-    host !== url.host ||
-    host !== new URL(validatePublicUrl(publicUrl)).host ||
-    (origin !== null && !config.allowedOrigins.includes(origin))
-  ) {
-    return Response.json({ error: 'forbidden_origin' }, { status: 403 })
-  }
+export type AuthenticateMcpRequest = (
+  request: Request
+) => Promise<Response | undefined>
 
+function authenticateBearer(
+  request: Request,
+  config: McpConfig
+): Response | undefined {
   const bearer = /^Bearer (?<token>[^\s]+)$/u.exec(
     request.headers.get('authorization') ?? ''
   )
@@ -50,6 +41,32 @@ export async function guard(
         headers: { 'WWW-Authenticate': 'Bearer realm="relanox"' }
       }
     )
+  }
+  return undefined
+}
+
+/** All checks precede MCP parsing and Host access, including streamed/dishonest bodies. */
+export async function guard(
+  request: Request,
+  config: McpConfig,
+  publicUrl: string,
+  authenticate: AuthenticateMcpRequest = async (input) =>
+    authenticateBearer(input, config)
+): Promise<Request | Response> {
+  const url = new URL(request.url)
+  const host = request.headers.get('host') ?? url.host
+  const origin = request.headers.get('origin')
+  if (
+    host !== url.host ||
+    host !== new URL(validatePublicUrl(publicUrl)).host ||
+    (origin !== null && !config.allowedOrigins.includes(origin))
+  ) {
+    return Response.json({ error: 'forbidden_origin' }, { status: 403 })
+  }
+
+  const rejected = await authenticate(request)
+  if (rejected !== undefined) {
+    return rejected
   }
   if (request.signal.aborted) {
     return Response.json({ error: 'request_timeout' }, { status: 408 })

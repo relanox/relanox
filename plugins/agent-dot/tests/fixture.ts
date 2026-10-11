@@ -313,10 +313,12 @@ export async function fixture(
 }
 
 export function mcp(token = 'AGENT_TEST_TOKEN_0'): {
+  auth: 'bearer'
   token: { env: string }
   allowedOrigins: never[]
 } {
   return {
+    auth: 'bearer',
     token: { env: token },
     allowedOrigins: []
   }
