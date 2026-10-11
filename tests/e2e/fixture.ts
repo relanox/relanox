@@ -89,7 +89,6 @@ export async function fixture(
       routineUrl: { env: string }
       routineAuthorization: { env: string }
       routineTransport: string
-      timeoutMs: number
     }
   } => ({
     id,
@@ -101,8 +100,7 @@ export async function fixture(
       },
       routineUrl: { env: `E2E_ROUTINE_${id.toUpperCase()}_URL` },
       routineAuthorization: { env: 'E2E_ROUTINE_AUTH' },
-      routineTransport: 'loopback-http',
-      timeoutMs: 1000
+      routineTransport: 'loopback-http'
     }
   })
 
@@ -117,8 +115,7 @@ export async function fixture(
             botToken: { env: 'E2E_TELEGRAM_TOKEN' },
             webhookSecret: { env: 'E2E_TELEGRAM_WEBHOOK' },
             apiBaseUrl: telegram.origin,
-            allowInsecureLoopback: true,
-            timeoutMs: 1000
+            allowInsecureLoopback: true
           }
         }
       ],

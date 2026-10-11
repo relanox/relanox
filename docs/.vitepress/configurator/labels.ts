@@ -5,7 +5,6 @@ export const fieldLabels: Record<string, [string, string]> = {
     'Webhook 密钥环境变量'
   ],
   botUserId: ['Bot user ID', '机器人用户 ID'],
-  receiveMode: ['Receive mode', '接收模式'],
   signingSecret: ['Signing secret environment variable', '签名密钥环境变量'],
   teamId: ['Team ID', '工作区 ID'],
   appId: ['Application ID', '应用 ID'],
@@ -20,14 +19,9 @@ export const fieldLabels: Record<string, [string, string]> = {
   domain: ['Platform domain (feishu or lark)', '平台域（feishu 或 lark）'],
   botId: ['Bot ID', '机器人 ID'],
   secret: ['Bot secret environment variable', '机器人密钥环境变量'],
-  wsUrl: ['WebSocket URL', 'WebSocket 地址'],
-  heartbeatMs: ['Heartbeat interval (ms)', '心跳间隔（毫秒）'],
-  maxReconnectAttempts: ['Maximum reconnection attempts', '最大重连次数'],
   clientId: ['Client ID', '客户端 ID'],
   clientSecret: ['Client secret environment variable', '客户端密钥环境变量'],
   robotCode: ['Robot code', '机器人代码'],
-  apiBase: ['API base URL', 'API 基础地址'],
-  transport: ['Transport', '传输方式'],
   allowProactive: ['Allow proactive messages', '允许主动消息'],
   tenantId: ['Tenant ID', '租户 ID'],
   trustedServiceOrigins: [
@@ -45,7 +39,6 @@ export const fieldLabels: Record<string, [string, string]> = {
     'Authentication audience (generated from public host)',
     '认证受众（由公开域名生成）'
   ],
-  callerEmail: ['Authenticated caller email', '认证调用方邮箱'],
   serviceAccount: [
     'Service account JSON environment variable',
     '服务账号 JSON 环境变量'
@@ -62,7 +55,6 @@ export const fieldLabels: Record<string, [string, string]> = {
   ],
   server: ['IRC server hostname', 'IRC 服务器域名'],
   port: ['TLS port', 'TLS 端口'],
-  tls: ['Use TLS', '使用 TLS'],
   nick: ['Bot nickname', '机器人昵称'],
   channels: ['Joined channels (comma separated)', '加入频道（逗号分隔）'],
   'sasl.username': ['SASL account name', 'SASL 账户名'],

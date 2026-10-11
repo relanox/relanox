@@ -109,7 +109,6 @@ function wireText(data: RawData): string {
 export async function nativePeers(): Promise<{
   origin: string
   discovered: Promise<void>
-  authenticated: Promise<void>
   releaseDiscovery(this: void): void
   readonly fastClosed: boolean
   publish(this: void): void
@@ -117,7 +116,6 @@ export async function nativePeers(): Promise<{
 }> {
   const discovery = gate()
   const discovered = gate()
-  const authenticated = gate()
   let origin = ''
   let fastSocket: WebSocket | undefined
   let closed = false
@@ -150,16 +148,12 @@ export async function nativePeers(): Promise<{
         .parse(JSON.parse(wireText(data)) as unknown)
 
       socket.send(JSON.stringify({ headers: frame.headers, errcode: 0 }))
-      if (frame.cmd === 'ping') {
-        authenticated.release()
-      }
     })
   })
   origin = await listen(server, 0, '127.0.0.1')
   return {
     origin,
     discovered: discovered.waiting,
-    authenticated: authenticated.waiting,
     releaseDiscovery: discovery.release,
     get fastClosed() {
       return closed

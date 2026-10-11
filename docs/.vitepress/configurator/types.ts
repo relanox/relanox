@@ -67,14 +67,8 @@ export type GeneratedConfig = {
     storage: { plugin: 'sqlite'; config: { filename: string } }
     observability: {
       plugin: 'standard'
-      config: { logs: boolean; metrics: boolean; processMetrics: boolean }
+      config: Record<string, Json>
     }
-  }
-  server: {
-    host: string
-    port: number
-    managementHost: string
-    managementPort: number
   }
   media: { publicBaseUrl: string }
 }

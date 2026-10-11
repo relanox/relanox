@@ -45,9 +45,7 @@ const userFields = new Set([
 ])
 
 const choices: Record<string, string[]> = {
-  domain: ['feishu', 'lark'],
-  receiveMode: ['http'],
-  transport: ['websocket']
+  domain: ['feishu', 'lark']
 }
 
 function personalizeField(field: FieldDefinition): FieldDefinition {

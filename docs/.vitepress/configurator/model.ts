@@ -129,6 +129,9 @@ function accountConfig(
   if (channel.channel === 'googlechat') {
     config.audience = `${publicOrigin(host)}/channels/googlechat-main/webhook`
   }
+  if (channel.channel === 'slack') {
+    config.receiveMode = 'http'
+  }
   return config
 }
 
@@ -174,14 +177,8 @@ export function buildConfig(state: ConfiguratorState): GeneratedConfig {
       },
       observability: {
         plugin: 'standard',
-        config: { logs: true, metrics: true, processMetrics: true }
+        config: {}
       }
-    },
-    server: {
-      host: '127.0.0.1',
-      port: 8787,
-      managementHost: '127.0.0.1',
-      managementPort: 8788
     },
     media: { publicBaseUrl: publicOrigin(state.publicHost) }
   }
@@ -345,24 +342,11 @@ function fieldProblem(
   if (field.key === 'domain' && !['feishu', 'lark'].includes(value)) {
     return 'fieldValue'
   }
-  if (field.key === 'receiveMode' && value !== 'http') {
-    return 'fieldValue'
-  }
-  if (field.key === 'transport' && value !== 'websocket') {
-    return 'fieldValue'
-  }
-  if (field.key === 'tls' && value !== 'true') {
-    return 'fieldValue'
-  }
   if (field.key === 'apiVersion' && !/^v[0-9]+\.[0-9]+$/u.test(value)) {
     return 'fieldValue'
   }
-  if (
-    ['wsUrl', 'apiBase', 'homeserver', 'serverUrl', 'serviceUrl'].includes(
-      field.key
-    )
-  ) {
-    return secureUrlProblem(field.key, value)
+  if (['homeserver', 'serverUrl', 'serviceUrl'].includes(field.key)) {
+    return secureUrlProblem(value)
   }
   if (
     field.key === 'trustedServiceOrigins' &&
@@ -373,12 +357,11 @@ function fieldProblem(
   return undefined
 }
 
-function secureUrlProblem(key: string, value: string): string | undefined {
+function secureUrlProblem(value: string): string | undefined {
   try {
     const url = new URL(value)
-    const protocol = key === 'wsUrl' ? 'wss:' : 'https:'
     if (
-      url.protocol !== protocol ||
+      url.protocol !== 'https:' ||
       url.username ||
       url.password ||
       url.search ||

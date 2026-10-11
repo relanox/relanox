@@ -70,10 +70,7 @@
           "botId": "intelligent-robot-id",
           "secret": {
             "env": "WECOM_BOT_SECRET"
-          },
-          "wsUrl": "wss://openws.work.weixin.qq.com",
-          "heartbeatMs": 30000,
-          "maxReconnectAttempts": 20
+          }
         }
       },
       {
@@ -85,9 +82,7 @@
           "clientSecret": {
             "env": "DINGTALK_APP_SECRET"
           },
-          "robotCode": "application-robot-code",
-          "apiBase": "https://api.dingtalk.com",
-          "maxReconnectAttempts": 20
+          "robotCode": "application-robot-code"
         }
       },
       {
@@ -99,10 +94,7 @@
           "clientSecret": {
             "env": "QQ_CLIENT_SECRET"
           },
-          "transport": "websocket",
-          "apiBase": "https://api.bot.qq.com",
-          "allowProactive": false,
-          "maxReconnectAttempts": 20
+          "allowProactive": false
         }
       },
       {
@@ -154,7 +146,6 @@
         "id": "googlechat-main",
         "config": {
           "audience": "https://relay.example.com/channels/googlechat-main/webhook",
-          "callerEmail": "chat@system.gserviceaccount.com",
           "serviceAccount": {
             "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
           }
@@ -230,17 +221,8 @@
               "env": "DOT_MCP_TOKEN"
             },
             "allowedHosts": ["relay.example.com"],
-            "allowedOrigins": [],
-            "maxBodyBytes": 1048576,
-            "timeoutMs": 10000
-          },
-          "callback": {
-            "allowedOrigins": ["https://connectors.api.openai.com"],
-            "transport": "public-https",
-            "timeoutMs": 10000
-          },
-          "subscriptionTtlMs": 86400000,
-          "rotationWindowMs": 60000
+            "allowedOrigins": []
+          }
         }
       },
       {
@@ -350,21 +332,7 @@
     },
     "observability": {
       "plugin": "standard",
-      "config": {
-        "logs": true,
-        "metrics": true,
-        "processMetrics": true
-      }
+      "config": {}
     }
-  },
-  "server": {
-    "host": "127.0.0.1",
-    "port": 8787,
-    "managementHost": "127.0.0.1",
-    "managementPort": 8788,
-    "workerIntervalMs": 1000,
-    "workerStaleMs": 60000,
-    "startupTimeoutMs": 30000,
-    "shutdownTimeoutMs": 15000
   }
 }
