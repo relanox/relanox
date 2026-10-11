@@ -4,6 +4,8 @@ Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://gi
 
 首次配置可以使用[连接配置器](connect.md)：左侧选择渠道和 Agent，右侧实时更新配置。展开“连接信息”，填写域名、聊天 ID 和允许使用的用户，再复制或下载 JSON；接入教程会按你的选择生成。每个渠道先配置一个账号和一个聊天，更多聊天可按下文添加绑定。凭据保留为环境变量引用。
 
+默认监听地址和监控开关无需重复填写，生成器会省略这些默认值。不写 `server` 时，业务端口为 `127.0.0.1:8787`，管理端口为 `127.0.0.1:8788`；标准可观测性插件使用 `config: {}` 即可启用日志和指标。只在部署需要时添加覆盖值；容器中需要设置 `server.host: "0.0.0.0"`。
+
 ## 决定谁可以和哪个 Agent 聊天
 
 三个列表描述你的连接：
@@ -114,6 +116,28 @@ Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://gi
 ```
 
 管理端口提供 `/health/live`、`/health/ready` 和开启后的 `/metrics`。[日志与运行状态](reference/observability.md)介绍指标名称。附件大小限制和公开下载地址使用顶层 `media`、`mediaLimits`，见[收发图片和文件](media.md)。
+
+## 更新旧配置
+
+连接时序和固定的平台身份现在由程序内部管理。如果旧文件包含下列字段，请删除后再运行 `validate`；校验器会拒绝未知字段。原来的默认行为仍然保留。
+
+| 配置位置                                                        | 删除字段                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------- |
+| Agent 的 `mcp`                                                  | `maxBodyBytes`、`timeoutMs`                                   |
+| dot                                                             | `callback.timeoutMs`、`subscriptionTtlMs`、`rotationWindowMs` |
+| Grok                                                            | `timeoutMs`、`maxBodyBytes`                                   |
+| Telegram、Slack、Discord、飞书、IRC、Matrix、Mattermost、Signal | `timeoutMs`                                                   |
+| Slack、Discord                                                  | `reconnectDelayMs`                                            |
+| IRC、Matrix、Mattermost、Signal                                 | `reconnectMs`                                                 |
+| Matrix                                                          | `syncTimeoutMs`                                               |
+| 钉钉、企业微信、QQ                                              | `maxReconnectAttempts`                                        |
+| 企业微信                                                        | `heartbeatMs`                                                 |
+| QQ                                                              | `transport`                                                   |
+| Discord                                                         | `intents`                                                     |
+| Google Chat                                                     | `callerEmail`、`issuer`                                       |
+| Microsoft Teams                                                 | `issuer`                                                      |
+
+凭据、发送者白名单、可信来源和部署地址仍可配置。配置器自动使用平台原生地址，自建服务仍需填写地址。服务、数据库、监控和媒体容量等高级选项按部署需要设置即可。
 
 ## 使用 CLI
 

@@ -39,7 +39,6 @@ export const channelData = [
     chatExample: 'C123ABC',
     senderExample: 'U123ABC',
     defaults: {
-      receiveMode: 'http',
       botToken: {
         env: 'SLACK_BOT_TOKEN'
       },
@@ -89,10 +88,7 @@ export const channelData = [
       botId: 'intelligent-robot-id',
       secret: {
         env: 'WECOM_BOT_SECRET'
-      },
-      wsUrl: 'wss://openws.work.weixin.qq.com',
-      heartbeatMs: 30_000,
-      maxReconnectAttempts: 20
+      }
     },
     webhook: false,
     name: {
@@ -109,9 +105,7 @@ export const channelData = [
       clientSecret: {
         env: 'DINGTALK_APP_SECRET'
       },
-      robotCode: 'application-robot-code',
-      apiBase: 'https://api.dingtalk.com',
-      maxReconnectAttempts: 20
+      robotCode: 'application-robot-code'
     },
     webhook: false,
     name: {
@@ -128,10 +122,7 @@ export const channelData = [
       clientSecret: {
         env: 'QQ_CLIENT_SECRET'
       },
-      transport: 'websocket',
-      apiBase: 'https://api.bot.qq.com',
-      allowProactive: false,
-      maxReconnectAttempts: 20
+      allowProactive: false
     },
     webhook: false,
     name: {
@@ -205,7 +196,6 @@ export const channelData = [
     senderExample: 'users/123456789',
     defaults: {
       audience: 'https://relay.example.com/channels/googlechat-main/webhook',
-      callerEmail: 'chat@system.gserviceaccount.com',
       serviceAccount: {
         env: 'GOOGLE_CHAT_SERVICE_ACCOUNT_JSON'
       }
@@ -277,7 +267,6 @@ export const channelData = [
     defaults: {
       server: 'irc.example.com',
       port: 6697,
-      tls: true,
       nick: 'relanox',
       channels: ['#support'],
       sasl: {

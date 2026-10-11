@@ -4,6 +4,8 @@ Relanox reads one JSON file. Copy [the SQLite example](https://github.com/relano
 
 For a new setup, use the [connection configurator](connect.md): choose channels and Agents on the left and see the configuration update on the right. Expand connection details to enter your hostname, chat IDs and permitted users, then copy or download the JSON. The setup guide follows your selections. Each channel starts with one account and one conversation; add further conversations using bindings below. Credentials stay as environment variable references.
 
+The generated file omits default listener settings and monitoring switches. Without a `server` section, the business listener uses `127.0.0.1:8787` and management uses `127.0.0.1:8788`. Standard observability with `config: {}` enables logs and metrics. Add overrides only when your deployment needs them; containers need `server.host: "0.0.0.0"`.
+
 ## Choose who can talk to which agent
 
 Three lists describe your connections:
@@ -114,6 +116,28 @@ Enable logs and metrics with `relay.observability`:
 ```
 
 Management serves `/health/live`, `/health/ready`, and `/metrics` when enabled. [Observability](reference/observability.md) describes metric names. Configure attachment limits and public download URLs using top-level `media` and `mediaLimits`; see [Media transfer](media.md).
+
+## Update an older configuration
+
+Connection timing and fixed platform identities are now managed internally. If an older file includes any of the fields below, delete them before running `validate`; unknown fields are rejected. Their former defaults remain in effect.
+
+| Configuration                                                     | Remove                                                        |
+| ----------------------------------------------------------------- | ------------------------------------------------------------- |
+| Agent `mcp`                                                       | `maxBodyBytes`, `timeoutMs`                                   |
+| dot                                                               | `callback.timeoutMs`, `subscriptionTtlMs`, `rotationWindowMs` |
+| Grok                                                              | `timeoutMs`, `maxBodyBytes`                                   |
+| Telegram, Slack, Discord, Feishu, IRC, Matrix, Mattermost, Signal | `timeoutMs`                                                   |
+| Slack, Discord                                                    | `reconnectDelayMs`                                            |
+| IRC, Matrix, Mattermost, Signal                                   | `reconnectMs`                                                 |
+| Matrix                                                            | `syncTimeoutMs`                                               |
+| DingTalk, WeCom, QQ                                               | `maxReconnectAttempts`                                        |
+| WeCom                                                             | `heartbeatMs`                                                 |
+| QQ                                                                | `transport`                                                   |
+| Discord                                                           | `intents`                                                     |
+| Google Chat                                                       | `callerEmail`, `issuer`                                       |
+| Microsoft Teams                                                   | `issuer`                                                      |
+
+Credentials, sender allowlists, trusted origins and deployment addresses remain configurable. The configurator uses native platform addresses automatically; self-hosted services still need their addresses. Advanced server, storage, monitoring and media limits are optional deployment settings.
 
 ## Use the CLI
 

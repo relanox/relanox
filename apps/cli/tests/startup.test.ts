@@ -38,8 +38,7 @@ function endpoint(): EndpointConfig {
       },
       routineUrl: { env: 'START_ROUTINE_URL' },
       routineAuthorization: { env: 'START_ROUTINE_AUTH' },
-      routineTransport: 'loopback-http',
-      timeoutMs: 2000
+      routineTransport: 'loopback-http'
     }
   }
 }
@@ -83,6 +82,10 @@ test("accepts native text during another channel's initialization while manageme
   const config = {
     relay: {
       ...value.config.relay,
+      observability: {
+        plugin: 'standard',
+        config: { logs: false, processMetrics: false }
+      },
       accounts: [
         {
           id: 'fast',
@@ -92,9 +95,7 @@ test("accepts native text during another channel's initialization while manageme
             botId: 'robot',
             secret: { env: 'START_WECOM_SECRET' },
             wsUrl: `${peers.origin.replace('http:', 'ws:')}/wecom`,
-            allowInsecureLoopback: true,
-            heartbeatMs: 1000,
-            maxReconnectAttempts: 0
+            allowInsecureLoopback: true
           }
         },
         {
@@ -106,8 +107,7 @@ test("accepts native text during another channel's initialization while manageme
             clientSecret: { env: 'START_DING_SECRET' },
             robotCode: 'robot',
             apiBase: peers.origin,
-            allowInsecureLoopback: true,
-            maxReconnectAttempts: 0
+            allowInsecureLoopback: true
           }
         }
       ],
@@ -121,7 +121,14 @@ test("accepts native text during another channel's initialization while manageme
   let runtime: Awaited<ReturnType<typeof startRuntime>> | null = null
   void starting.catch(() => {})
   try {
-    await deadline(Promise.all([peers.discovered, peers.authenticated]), 3000)
+    await deadline(peers.discovered, 3000)
+    await expect
+      .poll(async () =>
+        (await fetch(`http://127.0.0.1:${managementPort}/metrics`)).text()
+      )
+      .toMatch(
+        /^relanox_connection_status\{[^}]*plugin="channel-wecom"[^}]*\} 1$/mu
+      )
     expect(
       (await fetch(`http://127.0.0.1:${managementPort}/health/ready`)).status
     ).toBe(503)
@@ -364,8 +371,7 @@ test('contains a real first-scan SQLite lock failure and recovers readiness afte
             clientSecret: { env: 'START_DING_SECRET' },
             robotCode: 'robot',
             apiBase: peers.origin,
-            allowInsecureLoopback: true,
-            maxReconnectAttempts: 0
+            allowInsecureLoopback: true
           }
         }
       ]

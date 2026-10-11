@@ -49,8 +49,7 @@ export async function mediaRuntime(
             },
             routineUrl: { env: 'MEDIA_ROUTINE_URL' },
             routineAuthorization: { env: 'MEDIA_ROUTINE_AUTH' },
-            routineTransport: 'loopback-http',
-            timeoutMs: 2000
+            routineTransport: 'loopback-http'
           }
         }
       ],
