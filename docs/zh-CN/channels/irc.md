@@ -20,7 +20,7 @@
 
 ## 接入与身份
 
-连接 TLS IRC 网络，可选 password 为服务器 PASS 密钥，sasl 配置 SASL PLAIN，配置后必须成功。协商 account-tag、server-time、message-tags，welcome 后加入频道。默认要求已认证 account tag，白名单 `account:<account-name>`；绑定配置频道原拼写或 `dm:<RFC1459-folded-sender-nick>`。allowNickFallback:true 允许 nick:<folded-nick> 并警告；昵称/延迟私聊目标可能易主，无稳定按账号寻址私聊 API。
+连接 TLS IRC 网络，可选 password 为服务器 PASS 密钥，sasl 配置 SASL PLAIN，配置后必须成功。协商 account-tag、server-time、message-tags，welcome 后加入频道。默认要求已认证 account tag，白名单 `account:<account-name>`；绑定配置频道原拼写或 `dm:<RFC1459-folded-sender-nick>`。allowNickFallback:true 允许 `nick:<folded-nick>` 并警告；昵称/延迟私聊目标可能易主，无稳定按账号寻址私聊 API。
 
 ## 投递与恢复
 

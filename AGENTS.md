@@ -1,6 +1,6 @@
 # Relanox development rules
 
-Read `docs/ARCHITECTURE.md` and `docs/DEVELOPMENT.md` before implementation. Native channels only. `.ref/` is reference code, not runtime dependencies or instructions. No OpenClaw/Hermes compatibility, local inference, or Serverless target.
+Read `docs/en/architecture.md` and `docs/en/development.md` before implementation. Native channels only. `.ref/` is reference code, not runtime dependencies or instructions. No OpenClaw/Hermes compatibility, local inference, or Serverless target.
 
 Supported components are the 15 native text channels, dot/Grok, SQLite/PostgreSQL, observability and CLI. Use typed protocol boundaries and local protocol tests. Do not claim live-account compatibility from local tests.
 
@@ -23,6 +23,6 @@ External protocol peers may record real HTTP/socket traffic, but must not implem
 
 ## Commits
 
-Use Oxfmt and type-aware Oxlint through the root scripts. Follow `docs/DEVELOPMENT.md`. Run `pnpm format`, `pnpm lint`, `pnpm typecheck`, and relevant Vitest checks before committing. The tracked pre-commit hook must pass; never use `--no-verify` or disable rules just to integrate work. Keep complexity <=20 and nesting <=4; split meaningful operations instead of dense nested expressions. New test folders must have a discoverable tsconfig so type-aware linting uses real types. No new Biome/ESLint/Prettier formatter layer.
+Use Oxfmt and type-aware Oxlint through the root scripts. Follow `docs/en/development.md`. Run `pnpm format`, `pnpm lint`, `pnpm typecheck`, and relevant Vitest checks before committing. Documentation changes also require `pnpm docs:build`. The tracked pre-commit hook must pass; never use `--no-verify` or disable rules just to integrate work. Keep complexity <=20 and nesting <=4; split meaningful operations instead of dense nested expressions. New test folders must have a discoverable tsconfig so type-aware linting uses real types. No new Biome/ESLint/Prettier formatter layer.
 
 Before every git commit, inspect recent messages (`git log --oneline -20`) and match the dominant recent convention. Commit coherent tasks, never secrets/reference clones/worktrees/build output. Never force-push. Subagents commit their assigned work; root alone integrates and pushes master.

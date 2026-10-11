@@ -12,4 +12,5 @@ coverage/
 *.log
 data/
 .vitest/
+docs/.vitepress/cache/
 deploy/relanox.json

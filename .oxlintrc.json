@@ -22,7 +22,8 @@
     ".research/**",
     ".firecrawl/**",
     ".worktree/**",
-    "coverage/**"
+    "coverage/**",
+    "docs/.vitepress/cache/**"
   ],
   "rules": {
     "eslint/curly": ["error", "all"],
@@ -130,7 +131,12 @@
     {
       "files": ["apps/cli/src/plugins.ts"],
       "rules": {
-        "import/max-dependencies": ["error", { "max": 18 }]
+        "import/max-dependencies": [
+          "error",
+          {
+            "max": 18
+          }
+        ]
       }
     },
     {
@@ -143,6 +149,17 @@
       "files": ["scripts/**"],
       "rules": {
         "node/no-sync": "off"
+      }
+    },
+    {
+      "files": ["docs/.vitepress/theme/index.ts"],
+      "rules": {
+        "import/no-unassigned-import": [
+          "error",
+          {
+            "allow": ["**/*.css"]
+          }
+        ]
       }
     }
   ]
