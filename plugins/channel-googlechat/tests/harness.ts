@@ -16,6 +16,8 @@ export async function peer() {
   let output: Json = {};
   let headers: Record<string, string> = {};
   let jwks: Json = {};
+  let tokenStatus = 200;
+  let tokenBody: Json = { access_token: "oauth-token", token_type: "Bearer" };
   async function receive(incoming: IncomingMessage, response: ServerResponse): Promise<void> {
     const parts: Buffer[] = [];
     for await (const part of incoming) {
@@ -29,7 +31,8 @@ export async function peer() {
       return;
     }
     if (path === "/token") {
-      response.end(JSON.stringify({ access_token: "oauth-token", token_type: "Bearer" }));
+      response.writeHead(tokenStatus);
+      response.end(JSON.stringify(tokenBody));
       return;
     }
     response.writeHead(status, headers);
@@ -51,6 +54,10 @@ export async function peer() {
       status = code;
       output = body;
       headers = responseHeaders;
+    },
+    token(code: number, body: Json) {
+      tokenStatus = code;
+      tokenBody = body;
     },
     keys(value: Json) {
       jwks = value;

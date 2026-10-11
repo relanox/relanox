@@ -69,7 +69,7 @@ function serviceUrl(value: string, config: TeamsConfig): URL {
   return url;
 }
 
-async function accessToken(config: TeamsConfig, signal: AbortSignal): Promise<string> {
+async function accessToken(config: TeamsConfig, signal: AbortSignal): Promise<string | SendResult> {
   const response = await request(
     endpoint(config.tokenUrl, config.allowLoopback),
     {
@@ -85,7 +85,9 @@ async function accessToken(config: TeamsConfig, signal: AbortSignal): Promise<st
     signal,
   );
   if (!response.ok) {
-    throw new Error("oauth_rejected");
+    return response.status >= 500
+      ? { status: "retryable", errorCode: "oauth_unavailable" }
+      : failure(response);
   }
   return oauthResponse.parse(await response.json()).access_token;
 }
@@ -152,8 +154,16 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       return { status: "rejected", errorCode: "invalid_target" };
     }
     const base = serviceUrl(target.serviceUrl, config);
+    let token: string | SendResult;
     try {
-      const token = await accessToken(config, input.signal);
+      token = await accessToken(config, input.signal);
+    } catch {
+      return { status: "retryable", errorCode: "oauth_unavailable" };
+    }
+    if (typeof token !== "string") {
+      return token;
+    }
+    try {
       const suffix = target.replyToId ? `/${encodeURIComponent(target.replyToId)}` : "";
       const url = new URL(
         `${base.href.replace(/\/$/u, "")}/v3/conversations/${encodeURIComponent(target.conversationId)}/activities${suffix}`,
