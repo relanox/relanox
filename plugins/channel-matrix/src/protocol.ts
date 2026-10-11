@@ -18,31 +18,7 @@ export function secret(
   return value
 }
 
-export async function readJson(response: Response): Promise<unknown> {
-  if (!response.body) {
-    throw new Error('empty_response')
-  }
-  const reader = response.body.getReader()
-  const pieces: Uint8Array[] = []
-  let size = 0
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) {
-        break
-      }
-      size += value.byteLength
-      if (size > 2_097_152) {
-        throw new Error('response_too_large')
-      }
-      pieces.push(value)
-    }
-    return JSON.parse(Buffer.concat(pieces).toString('utf8')) as unknown
-  } finally {
-    await reader.cancel().catch(() => {})
-    reader.releaseLock()
-  }
-}
+export { readJson } from '@relanox/transport'
 
 export function diagnose(host: ChannelHost, errorCode: string): void {
   host.observe.log('warn', 'operation.failed', {

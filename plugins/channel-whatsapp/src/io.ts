@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
 import type {
   ChannelHost,
   IngestInput,
@@ -7,47 +6,15 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 
+export { signed } from '@relanox/transport'
+export { rawBody, parseBody, request } from '@relanox/transport'
+
 export function secret(ref: SecretRef): string {
   const value = process.env[ref.env]
   if (!value) {
     throw new Error('missing_credential')
   }
   return value
-}
-
-export function signed(
-  body: Uint8Array,
-  header: string | null,
-  key: string,
-  encoding: 'hex' | 'base64',
-  prefix = ''
-): boolean {
-  if (!header?.startsWith(prefix)) {
-    return false
-  }
-  const supplied = header.slice(prefix.length)
-  const expected = createHmac('sha256', key).update(body).digest(encoding)
-  const left = Buffer.from(supplied)
-  const right = Buffer.from(expected)
-  return left.length === right.length && timingSafeEqual(left, right)
-}
-
-export async function rawBody(incoming: Request): Promise<Uint8Array> {
-  const bytes = new Uint8Array(await incoming.arrayBuffer())
-  if (bytes.length > 2_097_152) {
-    throw new Error('body_too_large')
-  }
-  return bytes
-}
-
-export function parseBody(bytes: Uint8Array): unknown {
-  try {
-    return JSON.parse(
-      new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-    ) as unknown
-  } catch {
-    return undefined
-  }
 }
 
 export async function ingest(
@@ -68,16 +35,6 @@ export async function ingest(
       errorCode: code.data.code
     })
   }
-}
-
-export async function request(
-  url: URL,
-  init: RequestInit,
-  signal?: AbortSignal
-): Promise<Response> {
-  const deadline = AbortSignal.timeout(10_000)
-  const bounded = signal ? AbortSignal.any([signal, deadline]) : deadline
-  return fetch(url, { ...init, signal: bounded, redirect: 'error' })
 }
 
 export function failure(response: Response): SendResult {
