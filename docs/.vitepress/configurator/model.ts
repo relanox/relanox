@@ -1,3 +1,4 @@
+import { validatePublicUrl } from '../../../packages/sdk/src/index.js'
 import { CHANNELS } from './channels.js'
 import type {
   AgentState,
@@ -32,7 +33,7 @@ export function removeAgent(state: ConfiguratorState, id: string): void {
 
 export function createState(): ConfiguratorState {
   const state: ConfiguratorState = {
-    publicHost: 'relay.example.com',
+    publicHost: '',
     agents: [],
     channels: [],
     nextAgentNumber: 1
@@ -61,7 +62,11 @@ export function splitIds(value: string): string[] {
 }
 
 function publicOrigin(host: string): string {
-  return host.includes('://') ? host.replace(/\/+$/u, '') : `https://${host}`
+  const value = host.trim()
+  if (!value) {
+    return 'http://127.0.0.1:8787'
+  }
+  return value.includes('://') ? value.replace(/\/+$/u, '') : `https://${value}`
 }
 
 function fieldValue(field: FieldDefinition, value: string): Json {
@@ -199,27 +204,9 @@ export function environmentNames(config: GeneratedConfig): string[] {
 export type DraftIssue = { code: string; target: string }
 
 export function validateDraft(state: ConfiguratorState): DraftIssue[] {
-  const issues: DraftIssue[] = []
-  if (state.publicHost.includes('relay.example.com')) {
-    issues.push({ code: 'placeholderHost', target: 'publicHost' })
-  }
+  const issues = publicHostIssues(state)
   if (!state.channels.some((channel) => channel.enabled)) {
     issues.push({ code: 'channelRequired', target: 'channels' })
-  }
-  try {
-    const url = new URL(publicOrigin(state.publicHost))
-    if (
-      url.protocol !== 'https:' ||
-      url.username ||
-      url.password ||
-      url.pathname !== '/' ||
-      url.search ||
-      url.hash
-    ) {
-      issues.push({ code: 'publicHost', target: 'publicHost' })
-    }
-  } catch {
-    issues.push({ code: 'publicHost', target: 'publicHost' })
   }
   if (state.agents.length === 0) {
     issues.push({ code: 'agentRequired', target: 'agents' })
@@ -233,6 +220,36 @@ export function validateDraft(state: ConfiguratorState): DraftIssue[] {
     issues.push(...channelIssues(channel, state))
   }
   return issues
+}
+
+export function publicHttpsChannels(state: ConfiguratorState): typeof CHANNELS {
+  return CHANNELS.filter(
+    (definition) =>
+      definition.webhook &&
+      state.channels.some(
+        (channel) => channel.enabled && channel.channel === definition.id
+      )
+  )
+}
+
+function publicHostIssues(state: ConfiguratorState): DraftIssue[] {
+  const required = publicHttpsChannels(state).length > 0
+  const host = state.publicHost.trim()
+  if (!host && required) {
+    return [{ code: 'publicHostRequired', target: 'publicHost' }]
+  }
+  try {
+    const origin = validatePublicUrl(publicOrigin(host))
+    if (required && !origin.startsWith('https:')) {
+      return [{ code: 'publicHostRequired', target: 'publicHost' }]
+    }
+  } catch {
+    return [{ code: 'publicHost', target: 'publicHost' }]
+  }
+  if (host.includes('relay.example.com')) {
+    return [{ code: 'placeholderHost', target: 'publicHost' }]
+  }
+  return []
 }
 
 function validOrigin(value: string): boolean {
