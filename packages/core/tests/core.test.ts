@@ -1,3 +1,4 @@
+import { noopObservability } from "@relanox/sdk";
 import type {
   AgentHost,
   AgentPlugin,
@@ -397,6 +398,29 @@ it("binds accounts, intersects principals, preserves snapshots and isolates rout
   expect((await runtime.fetch(new Request("https://relay.test/channels/bot/webhook"))).status).toBe(
     503,
   );
+});
+
+it("reports connection diagnostics and recovery through the registered plugin's observability", async () => {
+  const p = plugins();
+  const log = vi.fn();
+  await createCore({
+    config,
+    channels: p.channels,
+    agents: p.agents,
+    storage: recordingStorage({}),
+    observe: { ...noopObservability, log },
+  });
+  p.channelHost.connection("degraded", "network");
+  expect(log).toHaveBeenLastCalledWith("warn", "connection.changed", {
+    plugin: "channel-telegram",
+    outcome: "error",
+    errorCode: "network",
+  });
+  p.channelHost.connection("connected");
+  expect(log).toHaveBeenLastCalledWith("info", "connection.changed", {
+    plugin: "channel-telegram",
+    outcome: "ok",
+  });
 });
 
 it("binds mutations to the principal agent and rejects a reused endpoint's foreign snapshot", async () => {
