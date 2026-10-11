@@ -50,11 +50,31 @@ function fence(text: string, language = ''): string {
   return `${marker}${safeLanguage}\n${text}\n${marker}`
 }
 
+function startsIndented(text: string): boolean {
+  return /^(?:[ \t]*\n)*(?: {4}| {0,3}\t)/u.test(text)
+}
+
+function paragraphBoundary(
+  characters: readonly string[],
+  offset: number,
+  count: number
+): number {
+  if (!startsIndented(characters.slice(offset + count).join(''))) {
+    return count
+  }
+  let boundary = count
+  while (boundary > 0 && /\s/u.test(characters[offset + boundary - 1] ?? '')) {
+    boundary -= 1
+  }
+  return Math.max(0, boundary - 1)
+}
+
 /** Binary-search scalar boundaries; formatting is regenerated for every completed fragment. */
 function splitCharacters(
   text: string,
   render: (part: string) => string,
-  fits: Fits
+  fits: Fits,
+  paragraph = false
 ): string[] {
   if (!text) {
     if (!fits(render(''))) {
@@ -77,6 +97,9 @@ function splitCharacters(
       } else {
         high = middle - 1
       }
+    }
+    if (paragraph && count < characters.length - offset) {
+      count = paragraphBoundary(characters, offset, count)
     }
     if (count === 0) {
       throw new Error('markdown_fragment_exceeds_limit')
@@ -131,11 +154,17 @@ function wrapped(
   fits: Fits,
   depth: number
 ): string[] {
-  return inlineParts(
-    tokens,
-    (text) => fits(`${prefix}${text}${suffix}`),
-    depth
-  ).map((text) => `${prefix}${text}${suffix}`)
+  const render = (text: string): string => {
+    if (!['*', '**', '~~'].includes(prefix)) {
+      return `${prefix}${text}${suffix}`
+    }
+    const leading = /^\s*/u.exec(text)?.[0] ?? ''
+    const trailing = /\s*$/u.exec(text)?.[0] ?? ''
+    const content = text.trim()
+    return content ? `${leading}${prefix}${content}${suffix}${trailing}` : text
+  }
+
+  return inlineParts(tokens, (text) => fits(render(text)), depth).map(render)
 }
 
 function inlineToken(token: MarkedToken, fits: Fits, depth: number): string[] {
@@ -159,8 +188,13 @@ function inlineToken(token: MarkedToken, fits: Fits, depth: number): string[] {
         .replaceAll('<', '%3C')
         .replaceAll('\n', '%0A')
 
+      const tokens =
+        token.tokens.length > 0
+          ? token.tokens
+          : Lexer.lexInline(escaped(token.type === 'image' ? 'Image' : href))
+
       return wrapped(
-        token.tokens,
+        tokens,
         token.type === 'image' ? '![' : '[',
         `](<${href}>)`,
         fits,
@@ -173,16 +207,16 @@ function inlineToken(token: MarkedToken, fits: Fits, depth: number): string[] {
     case 'text': {
       return token.tokens
         ? inlineParts(token.tokens, fits, depth)
-        : splitCharacters(decodeHTML(token.text), escaped, fits)
+        : splitCharacters(decodeHTML(token.text), escaped, fits, true)
     }
     case 'escape': {
-      return splitCharacters(token.text, escaped, fits)
+      return splitCharacters(token.text, escaped, fits, true)
     }
     case 'br': {
       return ['  \n']
     }
     case 'html': {
-      return splitCharacters(token.text, escaped, fits)
+      return splitCharacters(token.text, escaped, fits, true)
     }
   }
   throw new Error('unsupported_markdown_token')
@@ -260,11 +294,16 @@ function blockToken(token: MarkedToken, fits: Fits, depth: number): string[] {
   switch (token.type) {
     case 'paragraph':
     case 'text': {
-      return inlineParts(
+      const paragraphs = inlineParts(
         token.tokens ?? Lexer.lexInline(token.text),
         fits,
         depth
       )
+
+      if (paragraphs.some(startsIndented)) {
+        throw new Error('markdown_fragment_exceeds_limit')
+      }
+      return paragraphs
     }
     case 'heading': {
       const prefix = `${'#'.repeat(token.depth)} `

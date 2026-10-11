@@ -17,6 +17,6 @@ Relanox 使用 [MIT 许可证](https://github.com/relanox/relanox/blob/master/LI
 | Unlicense    | `fast-sha256`。                                                                               |
 | 公有领域     | better-sqlite3 内嵌的 SQLite。                                                                |
 
-`pg-types` 和 `pgpass` 的 MIT 文本包含在各自的 README 文件中。Standard Webhooks 的发布包缺少许可文件，Prometheus 客户端的发布包缺少上游 NOTICE；仓库在 `licenses/` 中提供了对应发布提交的补充文件。开发工具与生产镜像分开。
+`pg-types` 和 `pgpass` 的 MIT 文本包含在各自的 README 文件中。Standard Webhooks 的发布包缺少许可文件，Prometheus 客户端的发布包缺少上游 NOTICE；仓库在 `licenses/` 中提供了对应发布提交的补充文件。Marked 的许可文件还保留了原始 Markdown 实现的 BSD-3-Clause 声明。开发工具与生产镜像分开。
 
 如果在再分发前修改了生产依赖，请检查已安装包的许可文件，并随依赖变更更新声明。依赖维护步骤见[贡献指南](../development.md)。

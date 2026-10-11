@@ -17,6 +17,6 @@ The package manifests and lockfile identify the exact versions. The shipped runt
 | Unlicense     | `fast-sha256`.                                                                              |
 | Public domain | SQLite embedded by better-sqlite3.                                                          |
 
-The MIT texts for `pg-types` and `pgpass` are included in their README files. Standard Webhooks' missing archive license and the Prometheus client's missing upstream NOTICE are supplied in `licenses/` from the matching published upstream commits. Development tools are separate from the production image.
+The MIT texts for `pg-types` and `pgpass` are included in their README files. Standard Webhooks' missing archive license and the Prometheus client's missing upstream NOTICE are supplied in `licenses/` from the matching published upstream commits. Marked also retains the BSD-3-Clause notice for the original Markdown implementation in its license file. Development tools are separate from the production image.
 
 If you change the production dependency set before redistributing, check the installed packages' license files and update the notices alongside the dependency change. See [Contributing](../development.md) for dependency maintenance.

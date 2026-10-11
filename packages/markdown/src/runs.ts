@@ -159,11 +159,12 @@ class RunBuilder {
       case 'link':
       case 'image': {
         const href = safeLink(token.href)
-        this.inline(
-          token.tokens,
-          { ...style, ...(href ? { href } : {}) },
-          depth + 1
-        )
+        const linkStyle = { ...style, ...(href ? { href } : {}) }
+        if (token.tokens.length === 0) {
+          this.add(token.type === 'image' ? 'Image' : (href ?? ''), linkStyle)
+        } else {
+          this.inline(token.tokens, linkStyle, depth + 1)
+        }
         break
       }
       case 'codespan': {

@@ -21,7 +21,9 @@ const parser = new Marked({
     link(token): string {
       const label = this.parser.parseInline(token.tokens)
       const href = safeLink(token.href)
-      return href ? `<a href="${escapeHtml(href)}">${label}</a>` : label
+      return href
+        ? `<a href="${escapeHtml(href)}">${label || escapeHtml(href)}</a>`
+        : label
     },
 
     image(token): string {
