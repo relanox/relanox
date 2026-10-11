@@ -39,7 +39,7 @@ if (staged.length > 0) {
     process.exit(1);
   }
   // Invoke the pinned local CLIs directly, without platform shell interpolation.
-  run(process.execPath, [path.resolve("node_modules/oxfmt/bin/oxfmt"), "--check", "."]);
+  run(process.execPath, [path.resolve("node_modules/prettier/bin/prettier.cjs"), "--check", "."]);
   run(process.execPath, [
     path.resolve("node_modules/oxlint/bin/oxlint"),
     "--deny-warnings",

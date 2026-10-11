@@ -54,7 +54,8 @@ it("enforces format, declaration spacing and type-aware lint on real commits wit
   for (const file of [
     ".githooks",
     ".oxlintrc.json",
-    ".oxfmtrc.json",
+    ".prettierrc.json",
+    ".prettierignore",
     "scripts",
     "tsconfig.base.json",
   ]) {
@@ -88,7 +89,7 @@ it("enforces format, declaration spacing and type-aware lint on real commits wit
   expect(
     (
       await execute(folder, process.execPath, [
-        path.join(root, "node_modules/oxfmt/bin/oxfmt"),
+        path.join(root, "node_modules/prettier/bin/prettier.cjs"),
         "--write",
         ".",
       ])
@@ -137,7 +138,7 @@ it("enforces format, declaration spacing and type-aware lint on real commits wit
   expect(
     (
       await execute(folder, process.execPath, [
-        path.join(root, "node_modules/oxfmt/bin/oxfmt"),
+        path.join(root, "node_modules/prettier/bin/prettier.cjs"),
         "--write",
         "sample.ts",
       ])
@@ -162,7 +163,7 @@ it("enforces format, declaration spacing and type-aware lint on real commits wit
   expect(
     (
       await execute(folder, process.execPath, [
-        path.join(root, "node_modules/oxfmt/bin/oxfmt"),
+        path.join(root, "node_modules/prettier/bin/prettier.cjs"),
         "--write",
         "sample.ts",
       ])

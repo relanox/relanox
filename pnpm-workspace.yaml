@@ -13,6 +13,7 @@ minimumReleaseAgeExclude:
   - "@oxlint-tsgolint/win32-arm64@7.0.2004"
   - "@oxlint-tsgolint/win32-x64@7.0.2004"
   - process-warning@5.1.1
+  - prettier@3.9.10
 
 # esbuild verifies its pinned optional platform binary during installation.
 allowBuilds:

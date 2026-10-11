@@ -15,8 +15,7 @@ export function createRequestOperations(
         const row = db
           .prepare("SELECT id FROM inbound WHERE channel=? AND account=? AND event=?")
           .get(snapshot.source.channel, snapshot.source.accountId, snapshot.source.eventId) as
-          | { id: string }
-          | undefined;
+          { id: string } | undefined;
 
         if (row) {
           return { requestId: row.id, duplicate: true };

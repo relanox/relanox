@@ -40,8 +40,7 @@ export function createStateOperations(
         const old = db
           .prepare("SELECT version,record FROM plugin_state WHERE plugin=? AND owner=? AND key=?")
           .get(ns.pluginId, ns.ownerId, input.key) as
-          | { version: number; record: string }
-          | undefined;
+          { version: number; record: string } | undefined;
 
         const active = old?.record !== undefined && old.record !== "null";
         if (

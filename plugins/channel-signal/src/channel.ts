@@ -32,8 +32,7 @@ export function createSignalChannel(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ChannelPlugin<SignalConfig> {
   let runtime:
-    | { host: ChannelHost; account: AccountConfig; config: SignalConfig; base: string }
-    | undefined;
+    { host: ChannelHost; account: AccountConfig; config: SignalConfig; base: string } | undefined;
 
   let task: Promise<void> | undefined;
   let controller: AbortController | undefined;
