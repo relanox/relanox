@@ -2,7 +2,7 @@
 
 Reception uses Gateway v10 JSON over WSS; output uses REST API v10.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 ```json
 {
@@ -28,7 +28,5 @@ Optional config: `apiBaseUrl` (default `https://discord.com/api/v10`), `gatewayU
 ## Account changes
 
 Accepted targets freeze the bot user and canonical API base URL. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported.
-
-For unknown deliveries or targets lacking frozen account identity, follow the [configuration recovery rules](../configuration.md).
 
 Saved Gateway sessions also bind bot ID, canonical API base and configured Gateway URL. Changing these settings, or loading a session without matching identity fields, starts a new Identify instead of resuming that session.

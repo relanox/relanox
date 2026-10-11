@@ -2,7 +2,7 @@
 
 Reception uses application robot Stream CALLBACK events; output uses independent OAuth single/group robot APIs.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 ```json
 {
@@ -30,6 +30,6 @@ Text chunks conservatively use 4000 UTF-8 bytes. `processQueryKey` is retained a
 
 `apiBase` can select a deployment-approved API domain or proxy. Redirects are refused, TLS verification remains enabled, and only explicit `allowInsecureLoopback:true` permits plain HTTP/WS on loopback for local protocol peers. It cannot permit remote insecure endpoints. Operators should restrict configuration access because the API base receives application credentials.
 
-Accepted targets also freeze the client ID, robot code and normalized API base URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported. Restore matching account configuration before explicit recovery; see [configuration](../configuration.md) for unscoped targets.
+Accepted targets also freeze the client ID, robot code and normalized API base URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported.
 
 `maxReconnectAttempts` accepts 0–1,000 and defaults to 20.

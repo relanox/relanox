@@ -2,7 +2,7 @@
 
 Use Meta’s WhatsApp Business Cloud API with signed webhooks and independent Graph API output.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 Create a Meta app with WhatsApp Business Platform access, register the phone number, subscribe the app to the Business Account's `messages` Webhooks, and obtain a token with the required `whatsapp_business_messaging` permission and appropriate business/phone access. Set the public HTTPS callback to `/channels/<accountId>/webhook`, with the configured verification token. Register the Graph API version currently supported by your Meta app explicitly; Relanox never guesses or silently upgrades that version.
 
@@ -35,4 +35,4 @@ Output uses `POST /<apiVersion>/<phoneNumberId>/messages`, bearer token, `messag
 
 Optional `apiBase` defaults to `https://graph.facebook.com`; configured HTTPS gateways are operator trust. `allowLoopback:true` permits HTTP loopback protocol peers. Redirects reject. Credentials must be environment SecretRefs.
 
-Pending targets refuse delivery if the configured phone, Business Account or API server changes. Token rotation for the same identity remains supported; the configured nonsecret identity must remain accurate because opaque tokens cannot independently prove that identity. Targets without frozen identity are rejected, and unscoped customer windows are not reused. Such targets require manual delivery; requeue cannot reconstruct missing identity. Restoring the original configuration permits scoped targets to be recovered.
+Pending targets refuse delivery if the configured phone, Business Account or API server changes. Token rotation for the same identity remains supported; the configured nonsecret identity must remain accurate because opaque tokens cannot independently prove that identity. Unscoped customer windows are not reused.

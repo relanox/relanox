@@ -2,7 +2,7 @@
 
 Configure a native HTTP Chat app, not a Workspace add-on. Its authentication audience must exactly match the public HTTPS `/channels/<accountId>/webhook` URL. Workspace add-on envelopes, Pub/Sub/Workspace Events and project-number JWT mode are unsupported.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 Enable the Chat API in the app's Google Cloud project, create an app service account, and store its service-account JSON as an environment variable. Install the app into the intended spaces and ensure organization policies permit it. Sending uses app authentication with `https://www.googleapis.com/auth/chat.bot`; it does not impersonate a human or grant domain-wide delegation.
 
@@ -26,6 +26,6 @@ Optional `issuer`, `jwksUrl`, `tokenUrl` and `apiBase` configure trusted soverei
 
 Temporary OAuth acquisition failures are retryable before message submission; explicit token 4xx rejections remain rejected.
 
-Accepted targets also freeze the service-account client email and normalized API base URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported. Restore matching account configuration before explicit recovery; see [configuration](../configuration.md) for unscoped targets.
+Accepted targets also freeze the service-account client email and normalized API base URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported.
 
 Defaults: `callerEmail` is `chat@system.gserviceaccount.com`; `issuer` is `https://accounts.google.com`; `jwksUrl` is `https://www.googleapis.com/oauth2/v3/certs`; `tokenUrl` is `https://oauth2.googleapis.com/token`; `apiBase` is `https://chat.googleapis.com`.

@@ -2,7 +2,7 @@
 
 Use an enabled intelligent robot with one resident process owning its WebSocket connection. Multiple processes displace each other; a replaced connection reports bot_connection_replaced and stops reconnect.
 
-Place the following object in the account’s `config`. Account IDs, sender allowlists, agent bindings, secret references and common recovery rules are described in [configuration](../configuration.md). See [agents](../agents.md) for the destination agent.
+Account `config` ([configuration](../configuration.md)):
 
 ```json
 {
@@ -26,6 +26,6 @@ The persisted reply target contains chat ID, message ID, `chattype` and the nons
 
 Subscription, ping and send responses correlate by freshly generated `req_id`. A successful send ACK provides no documented platform message ID, so the receipt stays empty. Socket write, unrelated ACK, connection loss and missing ACK do not imply delivery. Explicit busy/rate-limit responses retry; unknown sends require operator recovery. `idempotentSend=false` because request correlation does not provide durable external deduplication. Start completes after the initial bounded connection/subscription attempt; reconnect delays grow from 1 to 30 seconds and stop after the configured consecutive attempt budget. Heartbeat, protocol request timeout and AbortSignal close the owned connection and stop timers.
 
-Accepted targets also freeze the bot ID and normalized WebSocket URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported. Restore matching account configuration before explicit recovery; see [configuration](../configuration.md) for unscoped targets.
+Accepted targets also freeze the bot ID and normalized WebSocket URL. Reusing a local account ID with a different identity/server rejects older targets before sending; rotating the secret/private key for the same identity remains supported.
 
 `heartbeatMs` accepts 1,000–60,000 and defaults to 30,000. `maxReconnectAttempts` accepts 0–1,000 and defaults to 20.

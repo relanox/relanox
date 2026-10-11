@@ -1,6 +1,6 @@
 # Discord
 
-将下列对象放入账号的 `config`。账号 ID、白名单、Agent 绑定及环境变量密钥引用见[配置说明](../configuration.md)，目标 Agent 见 [Agent 接入](../agents.md)。
+账号 `config`（[配置说明](../configuration.md)）：
 
 ```json
 {
@@ -25,6 +25,4 @@ READY 必须匹配 `botUserId`。原生处理心跳/ACK、Identify/Resume 和重
 
 ## 账号变更
 
-冻结机器人用户和规范化 API 地址；保存的 Gateway 会话还匹配 Gateway URL，身份/服务器变化后重新 Identify。 同一身份可轮换密钥；恢复旧投递前须恢复匹配配置，缺少身份范围的旧目标不能自动重绑定。
-
-本渠道不声明持久外部幂等保证。安全传输、重试和 unknown 结果的人工恢复见[配置说明](../configuration.md)。
+冻结机器人用户和规范化 API 地址；保存的 Gateway 会话还匹配 Gateway URL，身份/服务器变化后重新 Identify。
