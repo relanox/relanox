@@ -9,15 +9,6 @@ import { createDingTalkChannel } from '../../plugins/channel-dingtalk/src/index.
 
 const cases = [
   {
-    name: 'LINE',
-    plugin: createLineChannel(),
-    config: {
-      botUserId: 'bot',
-      channelSecret: { env: 'SECRET' },
-      accessToken: { env: 'TOKEN' }
-    }
-  },
-  {
     name: 'WhatsApp',
     plugin: createWhatsAppChannel(),
     config: {
@@ -28,11 +19,6 @@ const cases = [
       accessToken: { env: 'TOKEN' },
       apiVersion: 'v25.0'
     }
-  },
-  {
-    name: 'Google Chat',
-    plugin: createGoogleChatChannel(),
-    config: { serviceAccount: { env: 'SERVICE' } }
   },
   {
     name: 'QQ',
@@ -94,14 +80,28 @@ describe('channel API base URL contract', () => {
     expect(config.gatewayUrl).toBe('wss://gateway.example/?v=10&encoding=json')
   })
 
-  it('preserves query parameters on complete Google Chat OAuth and JWKS endpoints', () => {
-    const config = createGoogleChatChannel().validateConfig({
-      serviceAccount: { env: 'SERVICE' },
-      tokenUrl: 'https://auth.example/token?tenant=one',
-      jwksUrl: 'https://auth.example/keys?tenant=one'
-    })
+  it.each(['apiBase', 'tokenUrl', 'jwksUrl', 'allowLoopback'])(
+    'rejects removed Google Chat endpoint setting %s',
+    (field) => {
+      expect(() =>
+        createGoogleChatChannel().validateConfig({
+          serviceAccount: { env: 'SERVICE' },
+          [field]: 'https://operator.example'
+        })
+      ).toThrow()
+    }
+  )
 
-    expect(config.tokenUrl).toBe('https://auth.example/token?tenant=one')
-    expect(config.jwksUrl).toBe('https://auth.example/keys?tenant=one')
-  })
+  it.each(['botUserId', 'apiBase', 'contentApiBase', 'allowLoopback'])(
+    'rejects removed LINE setting %s',
+    (field) => {
+      expect(() =>
+        createLineChannel().validateConfig({
+          channelSecret: { env: 'SECRET' },
+          accessToken: { env: 'TOKEN' },
+          [field]: 'https://operator.example'
+        })
+      ).toThrow()
+    }
+  )
 })

@@ -1,5 +1,12 @@
-import { createServer } from 'node:http'
+import https from 'node:https'
+import dns from 'node:dns/promises'
+import { request as httpRequest, createServer } from 'node:http'
+import type { LookupAllOptions } from 'node:dns'
+import { syncBuiltinESMExports } from 'node:module'
+
 import type {
+  RequestOptions,
+  IncomingMessage as HttpResponse,
   IncomingHttpHeaders,
   IncomingMessage,
   ServerResponse
@@ -16,6 +23,35 @@ import type {
   OutboundRecord
 } from '@relanox/sdk'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
+
+const transport = {
+  destinations: new Map<string, string>(),
+  fetch: globalThis.fetch,
+  request: https.request,
+  lookup: dns.lookup
+}
+
+function interceptMedia(): void {
+  https.request = ((
+    url: URL,
+    options: RequestOptions,
+    callback: (response: HttpResponse) => void
+  ) => {
+    const destination = transport.destinations.get(url.hostname)
+    if (!destination) {
+      return transport.request(url, options, callback)
+    }
+    const local = new URL(url.pathname + url.search, destination)
+    return httpRequest(local, { ...options, lookup: undefined }, callback)
+  }) as typeof https.request
+  dns.lookup = (async (hostname: string, options: LookupAllOptions) => {
+    if (transport.destinations.has(hostname)) {
+      return [{ address: '203.0.113.1', family: 4 }]
+    }
+    return transport.lookup(hostname, options)
+  }) as typeof dns.lookup
+  syncBuiltinESMExports()
+}
 
 export type Traffic = {
   path: string
@@ -78,11 +114,11 @@ export async function peer(): Promise<{
       return
     }
     response.setHeader('content-type', 'application/json')
-    if (path === '/keys') {
+    if (path === '/v1/.well-known/keys') {
       response.end(JSON.stringify(jwks))
       return
     }
-    if (path === '/token') {
+    if (path === '/botframework.com/oauth2/v2.0/token') {
       response.writeHead(tokenStatus)
       response.end(JSON.stringify(tokenBody))
       return
@@ -111,8 +147,33 @@ export async function peer(): Promise<{
     server.listen(0, '127.0.0.1', resolve)
   })
   const address = server.address() as AddressInfo
+  interceptMedia()
+  const destination = `http://127.0.0.1:${address.port}`
+  const base = `https://${address.port}.teams.test`
+
+  const hosts = [
+    'login.botframework.com',
+    'login.microsoftonline.com',
+    new URL(base).hostname
+  ]
+
+  for (const host of hosts) {
+    transport.destinations.set(host, destination)
+  }
+  globalThis.fetch = async (input, init): Promise<Response> => {
+    const requested = new URL(input instanceof Request ? input.url : input)
+    const mapped = transport.destinations.get(requested.hostname)
+    if (!mapped) {
+      return transport.fetch(input, init)
+    }
+    const local = new URL(requested.pathname + requested.search, mapped)
+    return transport.fetch(
+      input instanceof Request ? new Request(local, input) : local,
+      init
+    )
+  }
   return {
-    base: `http://127.0.0.1:${address.port}`,
+    base,
     traffic,
     disconnectOnce(path: string): void {
       disconnects.add(path)
@@ -142,6 +203,17 @@ export async function peer(): Promise<{
       jwks = value
     },
     async close(): Promise<void> {
+      for (const host of hosts) {
+        if (transport.destinations.get(host) === destination) {
+          transport.destinations.delete(host)
+        }
+      }
+      if (transport.destinations.size === 0) {
+        globalThis.fetch = transport.fetch
+        https.request = transport.request
+        dns.lookup = transport.lookup
+        syncBuiltinESMExports()
+      }
       server.closeAllConnections()
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

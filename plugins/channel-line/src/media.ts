@@ -1,3 +1,4 @@
+import { contentApiBase } from './constants.js'
 import { downloadMedia, mediaKind } from '@relanox/channel-media'
 import type { ChannelHost, Json, MediaUpload, SendInput } from '@relanox/sdk'
 import type { z } from 'zod'
@@ -30,7 +31,7 @@ export async function receiveMedia(
 
   const url = external
     ? message.contentProvider?.originalContentUrl
-    : `${config.contentApiBase}/v2/bot/message/${encodeURIComponent(message.id)}/content`
+    : `${contentApiBase}/v2/bot/message/${encodeURIComponent(message.id)}/content`
 
   if (!url) {
     throw new Error('missing_content_url')
@@ -41,8 +42,7 @@ export async function receiveMedia(
     signal: AbortSignal.timeout(10_000),
     ...(!external
       ? {
-          trustedOrigins: [new URL(config.contentApiBase).origin],
-          allowInsecureLocalhost: config.allowLoopback,
+          trustedOrigins: [new URL(contentApiBase).origin],
           headers: { authorization: `Bearer ${secret(config.accessToken)}` }
         }
       : {})

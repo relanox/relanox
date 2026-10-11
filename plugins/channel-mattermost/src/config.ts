@@ -26,7 +26,6 @@ export const platformIdSchema = z.string().min(1).max(1024)
 
 const configSchema = z.strictObject({
   serverUrl: z.url(),
-  botUserId: platformIdSchema,
   token: secretRefSchema,
   allowInsecureLocalhost: z.boolean().default(false)
 })

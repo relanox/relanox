@@ -28,7 +28,8 @@ const issuer = 'https://api.botframework.com'
 async function setup(
   endorsements = ['msteams'],
   filename = ':memory:',
-  publicUrl?: string
+  publicUrl?: string,
+  tokenUrl?: string
 ): Promise<{
   core: CoreRuntime
   storage: Storage
@@ -84,11 +85,9 @@ async function setup(
     botId: 'bot-id',
     tenantId: 'tenant-id',
     appSecret: { env: 'TEAMS_SECRET' },
+    ...(tokenUrl ? { tokenUrl } : {}),
     trustedServiceOrigins: [remote.base],
-    trustedUploadOrigins: [remote.base],
-    jwksUrl: `${remote.base}/keys`,
-    tokenUrl: `${remote.base}/token`,
-    allowLoopback: true
+    trustedUploadOrigins: [remote.base]
   }
 
   const plugin = createTeamsChannel()
@@ -149,6 +148,32 @@ async function setup(
 }
 
 describe('native Microsoft Teams', () => {
+  it('uses the application registration authority independently of the allowed inbound tenant', async () => {
+    const local = await setup(
+      ['msteams'],
+      ':memory:',
+      undefined,
+      'https://login.microsoftonline.com/app-registration-tenant/oauth2/v2.0/token'
+    )
+
+    local.remote.route('/app-registration-tenant/oauth2/v2.0/token', {
+      access_token: 'single-tenant-token'
+    })
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    expect((await local.sendReply()).delivery?.status).toBe('sent')
+
+    const token = local.remote.traffic.find(
+      (request) => request.path === '/app-registration-tenant/oauth2/v2.0/token'
+    )
+
+    expect(new URLSearchParams(token?.body).get('client_id')).toBe('app-id')
+    expect(
+      local.remote.traffic.find((request) =>
+        request.path.includes('/activities')
+      )?.headers.authorization
+    ).toBe('Bearer single-tenant-token')
+  })
+
   it.each(['?', '#'])(
     "rejects a signed service base with a bare '%s' delimiter",
     async (suffix) => {
@@ -196,7 +221,7 @@ describe('native Microsoft Teams', () => {
     })
 
     const oauth = local.remote.traffic.find(
-      (request) => request.path === '/token'
+      (request) => request.path === '/botframework.com/oauth2/v2.0/token'
     )
 
     const form = new URLSearchParams(oauth?.body)

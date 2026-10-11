@@ -69,12 +69,8 @@ export function channelConfig(
     }
     case 'line': {
       return {
-        botUserId: 'U999',
         accessToken: { env: 'MEDIA_NATIVE_TOKEN' },
-        channelSecret: { env: 'MEDIA_NATIVE_SECRET' },
-        apiBase: origin,
-        contentApiBase: origin,
-        allowLoopback: true
+        channelSecret: { env: 'MEDIA_NATIVE_SECRET' }
       }
     }
   }

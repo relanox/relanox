@@ -1,3 +1,4 @@
+import { apiBase } from './constants.js'
 import { downloadMedia, mediaKind } from '@relanox/channel-media'
 import type { ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
 import type { z } from 'zod'
@@ -32,12 +33,11 @@ export async function downloadAttachments(
       }
 
       const downloaded = await downloadMedia(
-        `${config.apiBase}/v1/media/${name}?alt=media`,
+        `${apiBase}/v1/media/${name}?alt=media`,
         {
           maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
           signal,
-          trustedOrigins: [new URL(config.apiBase).origin],
-          allowInsecureLocalhost: config.allowLoopback,
+          trustedOrigins: [new URL(apiBase).origin],
           headers: { authorization: `Bearer ${token}` }
         }
       )

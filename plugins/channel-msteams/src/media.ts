@@ -301,7 +301,6 @@ export async function downloadAttachments(
       maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
       signal,
       trustedOrigins: [...config.trustedServiceOrigins, ...config.mediaOrigins],
-      allowInsecureLocalhost: config.allowLoopback,
       ...(typeof token === 'string'
         ? { headers: { authorization: `Bearer ${token}` } }
         : {})

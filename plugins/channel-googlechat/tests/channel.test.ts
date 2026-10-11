@@ -46,10 +46,7 @@ const body = JSON.stringify({
   }
 })
 
-async function setup(
-  filename = ':memory:',
-  baseSuffix = ''
-): Promise<{
+async function setup(filename = ':memory:'): Promise<{
   core: CoreRuntime
   storage: Storage
   dispatches: string[]
@@ -96,11 +93,7 @@ async function setup(
   remote.respond(200, { name: 'spaces/space/messages/sent' })
 
   const config: Json = {
-    serviceAccount: { env: 'CHAT_SERVICE' },
-    apiBase: `${remote.base}${baseSuffix}`,
-    tokenUrl: `${remote.base}/token`,
-    jwksUrl: `${remote.base}/keys`,
-    allowLoopback: true
+    serviceAccount: { env: 'CHAT_SERVICE' }
   }
 
   const plugin = createGoogleChatChannel()
@@ -153,60 +146,57 @@ async function setup(
 }
 
 describe('native Google Chat', () => {
-  it.each(['', '/'])(
-    "verifies caller JWT then persists, deduplicates, obtains service-account OAuth and sends to the frozen thread with base suffix '%s'",
-    async (baseSuffix) => {
-      const local = await setup(':memory:', baseSuffix)
-      expect(
-        (await local.core.fetch(await local.incoming(undefined, '{'))).status
-      ).toBe(400)
-      expect((await local.core.fetch(await local.incoming())).status).toBe(200)
-      expect((await local.core.fetch(await local.incoming())).status).toBe(200)
-      expect((await local.storage.getStats()).pending).toBe(1)
-      const completed = await local.sendReply()
-      expect(completed.delivery?.status).toBe('sent')
-      expect(local.dispatches).toEqual(['hello'])
+  it('verifies caller JWT then persists, deduplicates, obtains service-account OAuth and sends to the frozen thread', async () => {
+    const local = await setup()
+    expect(
+      (await local.core.fetch(await local.incoming(undefined, '{'))).status
+    ).toBe(400)
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    expect((await local.storage.getStats()).pending).toBe(1)
+    const completed = await local.sendReply()
+    expect(completed.delivery?.status).toBe('sent')
+    expect(local.dispatches).toEqual(['hello'])
 
-      const oauth = local.remote.traffic.find(
-        (request) => request.path === '/token'
-      )
+    const oauth = local.remote.traffic.find(
+      (request) => request.path === '/token'
+    )
 
-      const form = new URLSearchParams(oauth?.body)
-      expect(form.get('grant_type')).toBe(
-        'urn:ietf:params:oauth:grant-type:jwt-bearer'
-      )
-      const assertion = form.get('assertion')
-      if (!assertion) {
-        throw new Error('Missing OAuth assertion')
-      }
-
-      const verified = await jwtVerify(assertion, local.keys.publicKey, {
-        algorithms: ['RS256'],
-        issuer: 'relay@example.iam.gserviceaccount.com',
-        audience: `${local.remote.base}/token`
-      })
-
-      expect(verified.payload.scope).toBe(
-        'https://www.googleapis.com/auth/chat.bot'
-      )
-
-      const sent = local.remote.traffic.find((request) =>
-        request.path.startsWith('/v1/')
-      )
-
-      expect(sent?.path).toBe(
-        '/v1/spaces/space/messages?messageReplyOption=REPLY_MESSAGE_OR_FAIL'
-      )
-      expect(sent?.headers.authorization).toBe('Bearer oauth-token')
-      expect(JSON.parse(sent?.body ?? 'null') as unknown).toEqual({
-        text: 'answer',
-        thread: { name: 'spaces/space/threads/thread' }
-      })
-      expect(completed.request.target.threadId).toBe(
-        'spaces/space/threads/thread'
-      )
+    const form = new URLSearchParams(oauth?.body)
+    expect(form.get('grant_type')).toBe(
+      'urn:ietf:params:oauth:grant-type:jwt-bearer'
+    )
+    const assertion = form.get('assertion')
+    if (!assertion) {
+      throw new Error('Missing OAuth assertion')
     }
-  )
+
+    const verified = await jwtVerify(assertion, local.keys.publicKey, {
+      algorithms: ['RS256'],
+      issuer: 'relay@example.iam.gserviceaccount.com',
+      audience: 'https://oauth2.googleapis.com/token'
+    })
+
+    expect(verified.payload.scope).toBe(
+      'https://www.googleapis.com/auth/chat.bot'
+    )
+
+    const sent = local.remote.traffic.find((request) =>
+      request.path.startsWith('/v1/')
+    )
+
+    expect(sent?.path).toBe(
+      '/v1/spaces/space/messages?messageReplyOption=REPLY_MESSAGE_OR_FAIL'
+    )
+    expect(sent?.headers.authorization).toBe('Bearer oauth-token')
+    expect(JSON.parse(sent?.body ?? 'null') as unknown).toEqual({
+      text: 'answer',
+      thread: { name: 'spaces/space/threads/thread' }
+    })
+    expect(completed.request.target.threadId).toBe(
+      'spaces/space/threads/thread'
+    )
+  })
 
   it.each([
     { aud: 'another-app' },
@@ -256,7 +246,7 @@ describe('native Google Chat', () => {
   })
 
   it.each(['service account', 'server'])(
-    'rejects frozen targets after %s changes across SQLite reopen',
+    'rejects frozen targets with an obsolete %s scope across SQLite reopen',
     async (change) => {
       const directory = await mkdtemp(join(tmpdir(), 'relanox-chat-identity-'))
       cleanup.push(async () => rm(directory, { recursive: true, force: true }))
@@ -266,6 +256,7 @@ describe('native Google Chat', () => {
       await local.close()
       const replacement = await peer()
       cleanup.push(replacement.close)
+      replacement.token(200, { access_token: 'oauth-token' })
       replacement.respond(200, { name: 'spaces/space/messages/wrong-server' })
       if (change === 'service account') {
         vi.stubEnv(
@@ -279,8 +270,7 @@ describe('native Google Chat', () => {
       }
 
       const config = {
-        ...local.config,
-        ...(change === 'server' ? { apiBase: replacement.base } : {})
+        ...local.config
       }
 
       const plugin = createGoogleChatChannel()
@@ -305,7 +295,21 @@ describe('native Google Chat', () => {
         requestId: item.snapshot.requestId,
         chunkIndex: 0,
         signal: new AbortController().signal,
-        target: item.snapshot.target,
+        target:
+          change === 'server'
+            ? {
+                ...item.snapshot.target,
+                data: {
+                  ...z
+                    .record(z.string(), z.json())
+                    .parse(item.snapshot.target.data),
+                  scope: {
+                    clientEmail: 'relay@example.iam.gserviceaccount.com',
+                    apiBase: 'https://different.example/'
+                  }
+                }
+              }
+            : item.snapshot.target,
         chunk: { text: 'answer', idempotencyKey: 'delivery:0', state: null }
       }
 
@@ -345,7 +349,9 @@ describe('native Google Chat', () => {
           target: { ...input.target, data: legacy }
         })
       ).toMatchObject({ status: 'rejected' })
-      expect(await restoredPlugin.send(input)).toMatchObject({ status: 'sent' })
+      expect(
+        await restoredPlugin.send({ ...input, target: item.snapshot.target })
+      ).toMatchObject({ status: 'sent' })
     }
   )
 
@@ -428,7 +434,7 @@ describe('native Google Chat', () => {
         serviceAccount: { env: 'SERVICE' },
         jwksUrl: 'http://127.0.0.1/keys'
       })
-    ).toThrow('unsafe_endpoint')
+    ).toThrow()
   })
 })
 

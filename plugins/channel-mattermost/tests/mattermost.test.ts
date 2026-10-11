@@ -16,13 +16,12 @@ import { createMattermostChannel } from '../src/index.js'
 
 function config(base: string): {
   serverUrl: string
-  botUserId: string
+
   token: { env: string }
   allowInsecureLocalhost: boolean
 } {
   return {
     serverUrl: base,
-    botUserId: 'self-bot',
     token: { env: 'MATTERMOST_TOKEN' },
     allowInsecureLocalhost: true
   }

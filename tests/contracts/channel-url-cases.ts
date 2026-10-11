@@ -49,13 +49,13 @@ export const otherCases = [
     name: 'Matrix',
     plugin: createMatrixChannel(),
     field: 'homeserver',
-    config: { userId: '@bot:example.org', accessToken: { env: 'TOKEN' } }
+    config: { accessToken: { env: 'TOKEN' } }
   },
   {
     name: 'Mattermost',
     plugin: createMattermostChannel(),
     field: 'serverUrl',
-    config: { botUserId: 'bot', token: { env: 'TOKEN' } }
+    config: { token: { env: 'TOKEN' } }
   },
   {
     name: 'Signal',
