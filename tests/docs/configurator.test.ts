@@ -15,9 +15,6 @@ import {
 function completedState(): ReturnType<typeof createState> {
   const state = createState()
   state.publicHost = 'relay.test.example:8443'
-  for (const agent of state.agents) {
-    agent.callbackOrigin = 'https://dot-callback.example.com'
-  }
   for (const channel of state.channels) {
     const definition = CHANNELS.find((entry) => entry.id === channel.channel)
     channel.enabled = true
@@ -113,6 +110,7 @@ describe('connection configurator production contracts', () => {
       allowedHosts: ['relay.test.example:8443'],
       allowedOrigins: []
     })
+    expect(config.relay.endpoints[0]?.config).not.toHaveProperty('callback')
     expect(
       config.relay.accounts.find((entry) => entry.channel === 'googlechat')
         ?.config.audience
@@ -143,7 +141,6 @@ describe('connection configurator production contracts', () => {
     })
     expect(environmentNames(config)).toContain('RELANOX_AGENT_2_ROUTINE_URL')
     second.type = 'dot'
-    second.callbackOrigin = 'https://dot-callback.example.com'
     config = buildConfig(state)
     expect(validateApp(config).relay.endpoints[1]?.agent).toBe('dot')
     expect(environmentNames(config)).not.toContain(

@@ -14,8 +14,7 @@ export function addAgent(state: ConfiguratorState): AgentState {
   const agent: AgentState = {
     id: `agent-${number}`,
     name: `Agent ${number}`,
-    type: 'dot',
-    callbackOrigin: ''
+    type: 'dot'
   }
 
   state.agents.push(agent)
@@ -149,13 +148,7 @@ function endpointConfig(agent: AgentState, host: string): Record<string, Json> {
       routineAuthorization: { env: `${prefix}_ROUTINE_AUTHORIZATION` }
     }
   }
-  return {
-    mcp,
-    callback: {
-      allowedOrigins: [agent.callbackOrigin],
-      transport: 'public-https'
-    }
-  }
+  return { mcp }
 }
 
 /** Produce an editable draft, including incomplete fields, for the live preview. */
@@ -260,9 +253,6 @@ export function validateDraft(state: ConfiguratorState): DraftIssue[] {
   for (const agent of state.agents) {
     if (!agent.name.trim()) {
       issues.push({ code: 'agentName', target: agent.id })
-    }
-    if (agent.type === 'dot' && !validOrigin(agent.callbackOrigin)) {
-      issues.push({ code: 'callbackOrigin', target: agent.id })
     }
   }
   for (const channel of state.channels.filter((entry) => entry.enabled)) {

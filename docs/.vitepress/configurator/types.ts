@@ -30,7 +30,6 @@ export type AgentState = {
   id: string
   name: string
   type: AgentType
-  callbackOrigin: string
 }
 
 export type ChannelState = {

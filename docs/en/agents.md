@@ -41,8 +41,7 @@ The Routine Authorization variable holds exactly the supplied value, including a
 ## Connect dot
 
 1. Generate a separate token and supply it as `DOT_MCP_TOKEN`.
-2. Obtain the callback address used by your dot Events connection. Its origin is the scheme and host, plus any non-default port. Authorize that exact origin in `callback.allowedOrigins`.
-3. Add this entry to `relay.endpoints`, replacing both example hosts:
+2. Add this entry to `relay.endpoints`, replacing `relay.example.com` with your public hostname:
 
 ```json
 {
@@ -53,18 +52,16 @@ The Routine Authorization variable holds exactly the supplied value, including a
       "token": { "env": "DOT_MCP_TOKEN" },
       "allowedHosts": ["relay.example.com"],
       "allowedOrigins": []
-    },
-    "callback": {
-      "allowedOrigins": ["https://your-dot-callback.example.com"],
-      "transport": "public-https"
     }
   }
 }
 ```
 
-4. Restart Relanox and connect dot to `https://relay.example.com/agents/dot/mcp/dot-main` with Bearer authentication using `DOT_MCP_TOKEN`.
-5. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
-6. Set your conversation binding's `endpointId` to `dot-main`, add the instructions below, and send a message through that conversation.
+3. Restart Relanox and connect dot to `https://relay.example.com/agents/dot/mcp/dot-main` with Bearer authentication using `DOT_MCP_TOKEN`.
+4. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
+5. Set your conversation binding's `endpointId` to `dot-main`, add the instructions below, and send a message through that conversation.
+
+The `callback` section is optional. Relanox defaults to `https://connectors.api.openai.com`, HTTPS delivery and a 10-second timeout. For a custom receiver, set `callback.allowedOrigins` to its exact origin; this replaces the default list. You can also override `callback.timeoutMs` or `callback.transport` individually. `loopback-http` is for local protocol testing.
 
 Keep subscription renewal enabled. The default lifetime is one day. If status reports `dot_no_active_subscription`, reconnect or renew; if the request exhausted retries, use [Operations](operations.md#find-and-recover-a-stalled-message) to recover it.
 

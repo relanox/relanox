@@ -41,8 +41,7 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
 ## 连接 dot
 
 1. 生成独立 token，提供为 `DOT_MCP_TOKEN`。
-2. 获取 dot Events 连接使用的回调地址。来源由协议和主机名组成，非默认端口也需包含。在 `callback.allowedOrigins` 中授权这个准确来源。
-3. 在 `relay.endpoints` 添加以下条目，替换两处示例主机名：
+2. 在 `relay.endpoints` 添加以下条目，将 `relay.example.com` 替换为你的公开主机名：
 
 ```json
 {
@@ -53,18 +52,16 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
       "token": { "env": "DOT_MCP_TOKEN" },
       "allowedHosts": ["relay.example.com"],
       "allowedOrigins": []
-    },
-    "callback": {
-      "allowedOrigins": ["https://your-dot-callback.example.com"],
-      "transport": "public-https"
     }
   }
 }
 ```
 
-4. 重启 Relanox，让 dot 连接 `https://relay.example.com/agents/dot/mcp/dot-main`，使用 `DOT_MCP_TOKEN` 的 Bearer 认证。
-5. 通过连接的 Events 功能开启 `relanox.message_available` 订阅。在连接中开启自动续订，使它持续接收新消息。
-6. 将聊天绑定的 `endpointId` 设为 `dot-main`，加入下方指令，然后在该聊天发送消息。
+3. 重启 Relanox，让 dot 连接 `https://relay.example.com/agents/dot/mcp/dot-main`，使用 `DOT_MCP_TOKEN` 的 Bearer 认证。
+4. 通过连接的 Events 功能开启 `relanox.message_available` 订阅。在连接中开启自动续订，使它持续接收新消息。
+5. 将聊天绑定的 `endpointId` 设为 `dot-main`，加入下方指令，然后在该聊天发送消息。
+
+`callback` 整段可省略。Relanox 默认使用 `https://connectors.api.openai.com`、HTTPS 投递和 10 秒超时。使用自定义接收端时，可在 `callback.allowedOrigins` 填写准确来源，它会替换默认列表；也可以单独覆盖 `callback.timeoutMs` 或 `callback.transport`。`loopback-http` 用于本地协议测试。
 
 保持订阅续期开启，默认有效期为一天。状态显示 `dot_no_active_subscription` 时重新连接或续订；来信已耗尽重试次数时，按[部署与备份](operations.md#查找并恢复卡住的消息)恢复。
 
