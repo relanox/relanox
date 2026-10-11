@@ -57,9 +57,9 @@ Routine Authorization 变量保存平台提供的原值，包括其前缀；MCP 
 }
 ```
 
-3. 重启 Relanox，让 dot 通过 OAuth 连接 `https://relay.example.com/agents/dot/mcp/agent-1`。如需选择注册方式，选择 **Dynamic Client Registration (DCR，动态客户端注册)**。自动发现后，在 Relanox 授权页面输入 `RELANOX_AGENT_1_MCP_TOKEN` 作为密码并允许访问。这个值不作为固定 Bearer access token 使用。
-4. 通过连接的 Events 功能开启 `relanox.message_available` 订阅。在连接中开启自动续订，使它持续接收新消息。
-5. 将聊天绑定的 `endpointId` 设为 `agent-1`，然后在该聊天发送消息。
+3. 重启 Relanox，按[连接 dot](../agents.md#连接-dot)在 ChatGPT 添加自定义 MCP 服务器，服务器 URL 为 `https://relay.example.com/agents/dot/mcp/agent-1`，身份验证选择 OAuth。在 Relanox 授权页输入 `RELANOX_AGENT_1_MCP_TOKEN` 的值；它是授权密码，不是固定 Bearer access token。
+
+4. 将聊天绑定的 `endpointId` 设为 `agent-1`，然后在该聊天发送消息。
 
 dot OAuth 要求公网 HTTPS `publicUrl`。Relanox 使用 PKCE S256，支持 ChatGPT OAuth 跳转地址 `https://chatgpt.com/connector_platform_oauth_redirect` 和 `https://chatgpt.com/connector/oauth/<id>`，它们与 Events 回调不同。access token 有效期一小时；refresh token 使用时轮换，授权总有效期为首次授权起 30 天。授权保存在配置的数据库中。重用旧 refresh token 会撤销对应授权；修改配置的口令并重启后，需要重新连接 dot。
 
@@ -69,7 +69,7 @@ dot 通过 MCP 订阅时提供回调 URL。Relanox 固定接受原生的 `https:
 
 回调、MCP 和 Grok Routine 请求的超时固定为 10 秒；MCP 和 Grok Routine 请求体限制为 1 MiB。dot 订阅最长保留 24 小时，签名密钥轮换后保留旧密钥签名 60 秒。
 
-保持订阅续期开启，默认有效期为一天。状态显示 `dot_no_active_subscription` 时重新连接或续订；来信已耗尽重试次数时，按[部署与备份](../operations.md#查找并恢复卡住的消息)恢复。
+Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默认有效期为一天。已检查的 ChatGPT 自定义 MCP 表单没有 Events 订阅或续订开关；自动订阅及续订尚未通过真实账号端到端验证。`dot_no_active_subscription` 表示 Relanox 没有有效订阅，即使 OAuth 已成功也可能出现。请检查插件连接和运行日志；来信已耗尽重试次数时，按[部署与备份](../operations.md#查找并恢复卡住的消息)恢复。
 
 ## MCP 自带回信说明
 
