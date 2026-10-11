@@ -36,7 +36,7 @@ async function databaseFixture() {
     await rm(value.directory, { recursive: true, force: true });
   });
   const database = await storage(value.filename);
-  await database.migrate();
+  await database.initialize();
   cleanups.push(async () => {
     await database.close();
   });
@@ -236,15 +236,38 @@ test("shutdown waits for the asynchronously launched first batch to settle in re
 
 test("contains a real first-scan SQLite lock failure and recovers readiness after unlock", async () => {
   const value = await databaseFixture();
-  const locker = await sqliteWriteLock(value.filename);
-  cleanups.push(locker.close);
-  const runtime = await startRuntime({
+  const peers = await nativePeers();
+  cleanups.push(peers.close);
+  vi.stubEnv("START_DING_SECRET", "secret");
+  const starting = startRuntime({
     ...value.config,
+    server: { ...value.config.server, startupTimeoutMs: 5000 },
     relay: {
       ...value.config.relay,
       storage: { plugin: "sqlite", config: { filename: value.filename, busyTimeoutMs: 1 } },
+      accounts: [
+        {
+          id: "slow",
+          channel: "dingtalk",
+          allowedSenders: ["staff"],
+          config: {
+            clientId: "app",
+            clientSecret: { env: "START_DING_SECRET" },
+            robotCode: "robot",
+            apiBase: peers.origin,
+            allowInsecureLoopback: true,
+            maxReconnectAttempts: 0,
+          },
+        },
+      ],
     },
   });
+  void starting.catch(() => {});
+  await deadline(peers.discovered, 3000);
+  const locker = await sqliteWriteLock(value.filename);
+  cleanups.push(locker.close);
+  peers.releaseDiscovery();
+  const runtime = await starting;
   cleanups.push(runtime.stop);
   expect((await fetch(`${runtime.managementUrl}/health/ready`)).status).toBe(503);
   await locker.close();

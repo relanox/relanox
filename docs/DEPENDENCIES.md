@@ -19,7 +19,7 @@
 | [standardwebhooks 1.1.1](https://www.npmjs.com/package/standardwebhooks/v/1.1.1)                                                   | MIT        | agent-dot：事件通知签名                                                 | key 编码、原始字节、时间戳和稳定事件 ID；不自行重写密码学协议                                           |
 | [ws 8.22.0](https://www.npmjs.com/package/ws/v/8.22.0)                                                                             | MIT        | 原生长连接渠道：WebSocket 连接与协议帧                                  | 强类型帧校验、心跳、认证、重连；不带入完整平台 runtime                                                  |
 | [jose 6.2.12](https://www.npmjs.com/package/jose/v/6.2.12)                                                                         | MIT        | Teams/Google Chat 等 JWT/JWKS 验证、服务凭据签名                        | 固定 issuer/audience/JWKS 信任边界；不接受消息指定认证目标                                              |
-| [commander 15.0.0](https://www.npmjs.com/package/commander/v/15.0.0)                                                               | MIT        | CLI：启动、校验、迁移、查看状态等命令                                   | 不增加交互式向导框架；Node 要求 >=22.12，Node 24 满足                                                   |
+| [commander 15.0.0](https://www.npmjs.com/package/commander/v/15.0.0)                                                               | MIT        | CLI：启动、校验、查看状态等命令                                         | 不增加交互式向导框架；Node 要求 >=22.12，Node 24 满足                                                   |
 | [pino 10.4.0](https://www.npmjs.com/package/pino/v/10.4.0)                                                                         | MIT        | observability-standard：结构化 JSON 日志                                | 脱敏、错误序列化、stdout 背压；不默认记录请求/响应或安装 transport 集合                                 |
 | [@prometheus-io/client 0.16.1](https://www.npmjs.com/package/@prometheus-io/client/v/0.16.1)                                       | Apache-2.0 | observability-standard：Prometheus Registry、计数/直方图/状态及进程指标 | 标签基数、有界桶、独立 Registry，禁用重复全局注册；[上游文档](https://github.com/prometheus/client_js)  |
 | [@opentelemetry/api 1.9.1](https://www.npmjs.com/package/@opentelemetry/api/v/1.9.1)                                               | Apache-2.0 | observability-standard：trace/context API                               | 保持单个兼容 API 实例；SDK 的 peer 范围需匹配                                                           |
@@ -54,7 +54,7 @@ MCP 使用[官方 v2 包划分](https://github.com/modelcontextprotocol/typescri
 
 - Telegram 首版只用官方 Bot API 的文字/Webhook 路径，采用 Node fetch，不引入 grammY/Telegraf；错误、限流、分片和来源验证仍必须实现。
 - 使用 Node 内建 crypto/randomUUID、AbortSignal、timer、AsyncLocalStorage，以及 JSON 配置/环境变量；不增加 axios、uuid、dotenv、cron 库或重试框架。重试依据数据库 due 状态。
-- SQLite/PostgreSQL 直接 SQL，不引入 Prisma/Drizzle/Kysely 和独立迁移框架；插件维护版本化迁移。
+- SQLite/PostgreSQL 直接 SQL，不引入 Prisma/Drizzle/Kysely 或迁移框架；插件在启动时幂等创建缺失的表和索引。
 - 不引入 `@opentelemetry/sdk-node`、auto-instrumentations、OTel logs/metrics exporters、Sentry 或 pino-pretty。前者 registry 元数据带入大量当前不需要的 exporter；采用窄 tracing 模块。
 - 不安装 Redis/BullMQ、Vercel/Cloudflare/D1 SDK，不恢复 Serverless 依赖。
 

@@ -36,7 +36,7 @@ Each task uses a fresh `.worktree/<task>` after prerequisites land on master. In
 - [x] T00: reconcile PRD/architecture/dependencies, final scope/test policy; docs commit and push master.
 - [x] T01: pnpm/TypeScript/Vitest workspace; SDK message/Host/Storage/Channel/Agent/Observability contracts; toolchain and lockfile.
 - [x] T02: validated config/secrets/bindings; scoped Host APIs; worker, retries, health, retention and explicit recovery; immutable targets.
-- [x] T03: SQLite schema/migrations/atomic operations; shared storage contract suite; restart and conflict behavior.
+- [x] T03: SQLite schema initialization/atomic operations; shared storage contract suite; restart and conflict behavior.
 - [x] T04: observability-standard, safe no-op/error isolation, logs/metrics/optional bounded traces; redaction/public contract tests.
 - [x] T05: PostgreSQL same storage contract; real temporary PostgreSQL tests.
 - [x] T06: dot Events subscription/challenge/signing/lifecycle and MCP tools; Grok text Webhook and MCP tools; typed SDK/protocol tests.
@@ -44,7 +44,7 @@ Each task uses a fresh `.worktree/<task>` after prerequisites land on master. In
 - [x] T08: WeCom, DingTalk, QQ native text receive/send; protocol auth, window/sequence semantics, reconnect and Vitest tests.
 - [x] T09: Teams, WhatsApp, Google Chat, LINE native text receive/send; JWT/signatures, delayed targets/windows and Vitest tests.
 - [x] T10: Matrix, Mattermost, Signal, IRC native text receive/send; lifecycle, identity and declared limitations; Vitest tests.
-- [x] T11: CLI assembly of all plugins; validate/migrate/run/status/doctor/requeue; lifecycle, health/metrics, config examples and CLI tests.
+- [x] T11: CLI assembly of all plugins; validate/run/status/doctor/requeue; lifecycle, health/metrics, config examples and CLI tests.
 - [x] T12: production core/storage HTTP/socket peer E2E: dispatch/claim/complete/outbound, endpoint isolation, restart and unknown-send recovery.
 - [x] T13: Docker/Compose, CI with PostgreSQL, user/developer/operator docs, dependency/license audit; full build/typecheck/lint/Vitest/E2E/deployment checks; push final master and clean worktrees.
 
@@ -72,9 +72,11 @@ Integration commits and check results will be recorded here as work completes.
 
 - T09 / T11 baseline: 5f93e5d / 17f9a31 integrated; 220 tests pass including real PostgreSQL and seven CLI command/lifecycle regressions. Eleven channels are implemented; CLI final assembly awaits T10. Format/lint/typecheck/build pass.
 
-- T12a: 0654997 integrates three real CLI/HTTP/MCP recovery E2E cases; these and seven CLI regressions pass together. T12 final gate still waits for all native channel assembly. Docker image migration/readiness/restart test is enabled in CI; no local Docker daemon is available.
+- T12a: 0654997 integrates three real CLI/HTTP/MCP recovery E2E cases; these and seven CLI regressions pass together. T12 final gate still waits for all native channel assembly. Docker image initialization/readiness/restart test is enabled in CI; no local Docker daemon is available.
 
 - T10/T11/T12 final integration: all 15 native channels plus dot/Grok are statically assembled. Build, formatting, strict lint, typecheck and 261 Vitest tests pass with real PostgreSQL/SQLite; one container test awaits Linux CI. Complete configuration validates 15 accounts and two agent endpoints without database creation.
-- T13 local audit: 56 production third-party packages have license/NOTICE coverage; pnpm audit --prod reports zero known vulnerabilities at this run. Compose configuration validates. Docker includes notices, non-root runtime and durable volume; CI runs migration/readiness/restart verification. Prometheus example alert rules use exported runtime metrics.
+- T13 local audit: 56 production third-party packages have license/NOTICE coverage; pnpm audit --prod reports zero known vulnerabilities at this run. Compose configuration validates. Docker includes notices, non-root runtime and durable volume; CI runs initialization/readiness/restart verification. Prometheus example alert rules use exported runtime metrics.
 
-- T13 complete: Linux CI [38081523870](https://github.com/relanox/relanox/actions/runs/38081523870) passed on b67104a: build, formatting, strict lint, typecheck, all 261 database/protocol/CLI tests, production image build, and the additional container migration/readiness/restart test. A Linux-only lock fixture issue was fixed with a real IPC-coordinated subprocess; runtime code was unchanged. All task worktrees/branches were removed and temporary PostgreSQL stopped. No live-account testing was performed.
+- T13 complete: Linux CI [38081523870](https://github.com/relanox/relanox/actions/runs/38081523870) passed on b67104a: build, formatting, strict lint, typecheck, all 261 database/protocol/CLI tests, production image build, and the additional container initialization/readiness/restart test. A Linux-only lock fixture issue was fixed with a real IPC-coordinated subprocess; runtime code was unchanged. All task worktrees/branches were removed and temporary PostgreSQL stopped. No live-account testing was performed.
+
+- Unreleased storage simplification: removed the database upgrade command, format metadata and version gates. Runtime initializes missing tables/indexes before health; offline doctor/status inspect the schema. Real CLI first-run/restart, repeat initialization and all existing lease/claim/state tombstone contracts pass. Build, format, strict lint, typecheck and 405 Vitest tests pass with real SQLite/PostgreSQL; the updated container first-start/restart case remains for Linux CI (one local skip).

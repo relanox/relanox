@@ -100,7 +100,7 @@ export async function fixture(
   });
   const storage = await openStorage(config.relay.storage);
   try {
-    await storage.migrate();
+    await storage.initialize();
   } finally {
     await storage.close();
   }

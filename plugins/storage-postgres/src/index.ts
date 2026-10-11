@@ -249,15 +249,14 @@ export function createPostgresStorage(
   const fence = (a: Lease | undefined, b: Lease, now: number) =>
     a !== undefined && equal(a, b) && a.expiresAt > now;
   const storage: Storage = {
-    async migrate() {
+    async initialize() {
       await transaction(async (client) => {
-        // DDL is explicitly requested, schema is a validated PostgreSQL identifier.
+        // Serialize concurrent startup; schema is a validated PostgreSQL identifier.
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
-          `relanox:migrate:${config.schema}`,
+          `relanox:initialize:${config.schema}`,
         ]);
         await client.query(`CREATE SCHEMA IF NOT EXISTS "${config.schema}"`);
         await client.query(`
-          CREATE TABLE IF NOT EXISTS migration_metadata(version INTEGER PRIMARY KEY);
           CREATE TABLE IF NOT EXISTS inbound(
             id TEXT COLLATE "C" PRIMARY KEY, channel TEXT NOT NULL, account TEXT NOT NULL,event TEXT NOT NULL,
             endpoint TEXT NOT NULL,accepted_at BIGINT NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,
@@ -273,29 +272,17 @@ export function createPostgresStorage(
           CREATE TABLE IF NOT EXISTS plugin_state(
             plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT COLLATE "C" NOT NULL,version INTEGER NOT NULL,
             expires_at BIGINT,record JSONB NOT NULL,PRIMARY KEY(plugin,owner,key));
-          INSERT INTO migration_metadata(version) VALUES(1),(2) ON CONFLICT DO NOTHING;
         `);
       });
     },
     async health() {
       try {
-        const r = (
-          await query<{ version: number | null }>(
-            pool,
-            "SELECT MAX(version) version FROM migration_metadata",
-          )
-        )[0];
         await pool.query("SELECT id,record,final_digest FROM inbound LIMIT 0");
         await pool.query("SELECT id,record FROM outbound LIMIT 0");
         await pool.query("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0");
-        return r?.version === 2 ? { ok: true } : { ok: false, errorCode: "migration_required" };
-      } catch (error) {
-        return {
-          ok: false,
-          errorCode: ["42P01", "42703"].includes(code(error) ?? "")
-            ? "migration_required"
-            : "storage_unavailable",
-        };
+        return { ok: true };
+      } catch {
+        return { ok: false, errorCode: "storage_unavailable" };
       }
     },
     async close() {

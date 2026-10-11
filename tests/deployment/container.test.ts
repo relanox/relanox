@@ -26,7 +26,7 @@ async function waitHealthy(name: string): Promise<void> {
 }
 
 test.skipIf(!image)(
-  "production image migrates explicitly and restarts with persistent SQLite",
+  "production image initializes automatically and restarts with persistent SQLite",
   async () => {
     if (!image) {
       throw new Error("container_image_required");
@@ -42,10 +42,6 @@ test.skipIf(!image)(
     ];
     await docker("volume", "create", volume);
     try {
-      await expect(
-        docker("run", "--rm", ...mounts, image, "run", "--config", "/config/relanox.json"),
-      ).rejects.toMatchObject({ code: 1 });
-      await docker("run", "--rm", ...mounts, image, "migrate", "--config", "/config/relanox.json");
       await docker(
         "run",
         "--detach",

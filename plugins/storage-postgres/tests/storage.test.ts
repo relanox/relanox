@@ -46,28 +46,20 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
     };
   });
 
-  it("requires explicit migration and retains fenced leases and processing claims across independent pools and restart", async () => {
+  it("initializes idempotently and retains fenced leases and processing claims across independent pools and restart", async () => {
     const schema = schemaName();
     let a = open(schema);
     const b = open(schema);
     try {
       expect(await a.health()).toEqual({
         ok: false,
-        errorCode: "migration_required",
+        errorCode: "storage_unavailable",
       });
-      await a.migrate();
-      await a.migrate();
+      await a.initialize();
+      await a.initialize();
       expect(await b.health()).toEqual({ ok: true });
       await a.acceptInbound(snapshot());
-      const legacy = new Pool({ connectionString: process.env.RELANOX_TEST_POSTGRES_URL });
-      try {
-        await legacy.query(`DELETE FROM "${schema}".migration_metadata WHERE version=2`);
-      } finally {
-        await legacy.end();
-      }
-      expect(await a.health()).toEqual({ ok: false, errorCode: "migration_required" });
-      await a.migrate();
-      expect(await a.health()).toEqual({ ok: true });
+      await a.initialize();
       expect((await a.getInbound("r1"))?.snapshot.text).toBe("question");
       const input = {
         now: 100,
@@ -84,6 +76,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       const oldLease = required(attempts.flat()[0]).lease;
       await a.close();
       a = open(schema);
+      await a.initialize();
       expect(await a.takeDue({ ...input, now: 110 })).toEqual([]);
       expect((await a.getInbound("r1"))?.dispatch).toMatchObject({
         status: "unknown",
@@ -121,6 +114,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       ).toMatchObject({ status: "claimed", replay: false });
       await a.close();
       a = open(schema);
+      await a.initialize();
       expect(
         await a.claimRequest({
           requestId: "r1",
@@ -148,7 +142,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
     const a = open(schema);
     const b = open(schema);
     try {
-      await a.migrate();
+      await a.initialize();
       const receipts = await Promise.all([
         a.acceptInbound(snapshot()),
         b.acceptInbound({ ...snapshot("other"), source: snapshot().source }),
@@ -234,7 +228,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
     const schema = schemaName();
     const s = open(schema);
     try {
-      await s.migrate();
+      await s.initialize();
       await s.acceptInbound(snapshot("a-head", 100, "blocked"));
       await s.claimRequest({
         requestId: "a-head",
@@ -380,7 +374,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
     const a = open(schema);
     const b = open(schema);
     try {
-      await a.migrate();
+      await a.initialize();
       await a.acceptInbound(snapshot("z-claimed", 100, "claimed"));
       await a.claimRequest({
         requestId: "z-claimed",
@@ -467,7 +461,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
     let a = open(schema);
     const b = open(schema);
     try {
-      await a.migrate();
+      await a.initialize();
       await a.acceptInbound(snapshot());
       await a.claimRequest({
         requestId: "r1",
@@ -503,6 +497,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       const unsent = required((await due(b, 112))[0]);
       await a.close();
       a = open(schema);
+      await a.initialize();
       expect(await a.getOutbound("d-r1")).toMatchObject({
         currentChunk: 1,
         attempts: 0,

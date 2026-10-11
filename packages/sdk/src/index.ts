@@ -357,7 +357,7 @@ export interface Storage {
     readonly before: EpochMs;
     readonly limit: number;
   }): Promise<{ readonly redacted: number }>;
-  migrate(): Promise<void>;
+  initialize(): Promise<void>;
   health(): Promise<Health>;
   close(): Promise<void>;
 }

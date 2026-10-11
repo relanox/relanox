@@ -27,7 +27,7 @@ export function validateApp(input: unknown): AppConfig {
 }
 export async function requireHealthy(storage: Storage): Promise<void> {
   if (!(await storage.health()).ok) {
-    throw new Error("storage_unavailable_or_unmigrated");
+    throw new Error("storage_unavailable");
   }
 }
 async function setupObservability(config: AppConfig): Promise<ObservabilityRuntime> {
@@ -51,6 +51,7 @@ export async function startRuntime(input: unknown) {
     const observe = safeObservability(observability.observe);
     const storage = await openStorage(config.relay.storage, observe);
     lifecycle.registerStorage(storage);
+    await storage.initialize();
     await requireHealthy(storage);
     const core = await createCore({ config: config.relay, storage, channels, agents, observe });
     core.setAccepting(false);

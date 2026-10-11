@@ -15,7 +15,7 @@ pnpm check
 RELANOX_TEST_POSTGRES_URL=postgresql://relanox:password@127.0.0.1:5432/relanox_test pnpm test
 ```
 
-For the image contract, first build `docker build -t relanox:test .`, then run Vitest with `RELANOX_TEST_CONTAINER_IMAGE=relanox:test`. It executes the final production image, explicit migration, readiness and restart. CI performs both commands. Local skips are not evidence that a database or image passed.
+For the image contract, first build `docker build -t relanox:test .`, then run Vitest with `RELANOX_TEST_CONTAINER_IMAGE=relanox:test`. It executes the final production image, automatic schema initialization, readiness and restart. CI performs both commands. Local skips are not evidence that a database or image passed.
 
 ## Boundaries
 

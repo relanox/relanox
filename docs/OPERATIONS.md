@@ -9,16 +9,13 @@ The Dockerfile builds the workspace and deploys only CLI production dependencies
 1. Copy `.env.example` to `.env` and `deploy/empty.example.json` to `deploy/relanox.json`.
 2. Replace the empty account, endpoint and binding arrays with your selected configuration from [CLI examples](CLI.md). The empty configuration only checks installation; it cannot relay messages. Set referenced credentials in `.env`.
 3. Run `docker compose build`, then `docker compose run --rm relanox validate --config /config/relanox.json`.
-4. Run `docker compose run --rm relanox migrate --config /config/relanox.json` explicitly.
-5. Run `docker compose up -d`; inspect `docker compose ps` and `docker compose logs --tail 100`.
+4. Run `docker compose up -d`; inspect `docker compose ps` and `docker compose logs --tail 100`.
 
 Compose publishes business HTTP on host `127.0.0.1:8787`. Terminate public HTTPS in your reverse proxy and forward the exact `/channels/<account>/...` and `/agents/<kind>/...` routes documented by the selected plugin. Long-connection plugins need outbound access. Do not add request bodies, Authorization headers or secret query parameters to proxy logs.
 
 The management listener stays on container `127.0.0.1:8788`; it is not published. The image health check requests `/health/ready`. If you change that port, override the health check as well. `/health/live` reports process acceptance, `/health/ready` also checks storage and worker freshness; individual channel connection state is reported separately through metrics, and `/metrics` exposes Prometheus metrics when standard observability is enabled. Scrape from the same network namespace, for example a monitoring sidecar sharing the service's network, or through an explicitly authenticated local proxy. Do not expose management endpoints publicly.
 
-An unmigrated database prevents startup. Startup does not perform migrations. Stop the running relay before upgrades, take a backup, rebuild, migrate explicitly, then start and verify readiness. Compose allows 20 seconds for shutdown against the CLI's default 15-second shutdown budget. Increase both together if needed. `docker compose down` preserves the named volume; `down --volumes` deletes it.
-
-The current database format is version 2. Migrating from version 1 preserves existing records and enables permanent version fences for deleted plugin state keys. Stop all older processes before migration; older binaries cannot use this format. To roll back the binary, restore the pre-upgrade database backup as well.
+Startup creates missing tables and indexes automatically, preserving existing work. Stop the running relay before replacing the binary, take a backup, rebuild, then start and verify readiness. Compose allows 20 seconds for shutdown against the CLI's default 15-second shutdown budget. Increase both together if needed. `docker compose down` preserves the named volume; `down --volumes` deletes it.
 
 ## Storage and recovery
 
@@ -34,4 +31,4 @@ An endpoint snapshot freezes the configured SecretRef name, not its resolved val
 
 Prometheus rule examples are in [deploy/prometheus-alerts.yml](../deploy/prometheus-alerts.yml). Adjust thresholds to the expected duration of your hosted agents and configure notification routing in your monitoring stack. Connection status is aggregated per channel plugin across its configured accounts; it is separate from service readiness. Monitor scrape availability (`up`) separately so a stopped process is distinguishable from stale or missing metrics. These examples do not install a monitoring service.
 
-CI tests real SQLite and PostgreSQL, documented HTTP/socket peers, and the final Docker image. The image test checks explicit migration, non-root execution, health and restart against a persistent volume. These checks do not validate live account permissions, public DNS/TLS, platform review requirements or production availability guarantees.
+CI tests real SQLite and PostgreSQL, documented HTTP/socket peers, and the final Docker image. The image test checks automatic schema initialization, non-root execution, health and restart against a persistent volume. These checks do not validate live account permissions, public DNS/TLS, platform review requirements or production availability guarantees.
