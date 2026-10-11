@@ -136,9 +136,11 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
             mediaId: uploadId,
             method: "PUT",
             metadata: {
-              kind: "file",
-              mimeType: "application/octet-stream",
-              fileName: "generated.bin",
+              kind: "video",
+              mimeType: "video/mp4",
+              fileName: "generated.mp4",
+              durationMs: 2500,
+              previewMediaId: image.id,
             },
           },
         })
@@ -151,7 +153,7 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
     expect(await (await put()).json()).toMatchObject({
       status: "stored",
       replay: false,
-      media: { id: uploadId, size: generated.length },
+      media: { id: uploadId, size: generated.length, durationMs: 2500, previewMediaId: image.id },
     });
     expect(await (await put()).json()).toMatchObject({ status: "stored", replay: true });
     const conflicting = await fx.core.fetch(
@@ -177,7 +179,10 @@ describe.each(["dot", "grok"] as const)("%s native MCP media", (agent) => {
     await fx.core.processDue();
     expect(fx.sent).toMatchObject([
       { chunk: { text: "done" } },
-      { media: { reference: { id: uploadId } } },
+      {
+        media: { reference: { id: uploadId, durationMs: 2500, previewMediaId: image.id } },
+        preview: { reference: { id: image.id }, data: new Uint8Array(png) },
+      },
       { media: { reference: { id: document.id } } },
     ]);
     const sentMedia = z
