@@ -1,11 +1,11 @@
 import { requestTimeoutMs } from './constants.js'
 import { downloadMedia, mediaBlob } from '@relanox/channel-media'
+import { renderHtml } from '@relanox/markdown'
 import type {
   ChannelHost,
   MediaUpload,
   SendInput,
-  SendResult,
-  SendReceipt
+  SendResult
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { MatrixConfig } from './config.js'
@@ -136,19 +136,12 @@ export async function messageContent(
   headers: Readonly<Record<string, string>>,
   signal: AbortSignal
 ): Promise<
-  | {
-      readonly status: 'sent'
-      readonly receipt: SendReceipt
-    }
-  | {
-      readonly status: 'retryable'
-      readonly errorCode: string
-      readonly retryAfterMs?: number
-    }
-  | { readonly status: 'rejected' | 'unknown'; readonly errorCode: string }
+  | SendResult
   | {
       msgtype: string
       body: string
+      format: 'org.matrix.custom.html'
+      formatted_body: string
       filename?: never
       url?: never
       info?: never
@@ -168,7 +161,12 @@ export async function messageContent(
     }
 > {
   if (!input.media) {
-    return { msgtype: 'm.text', body: input.chunk.text }
+    return {
+      msgtype: 'm.text',
+      body: input.chunk.text,
+      format: 'org.matrix.custom.html',
+      formatted_body: renderHtml(input.chunk.text)
+    }
   }
   const media = input.media
   const url = await upload(base, headers, media, signal)
