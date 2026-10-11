@@ -18,6 +18,8 @@ A channel integration receives platform events and sends replies. An agent integ
 
 Each configured account gets its own channel instance. Keep credentials out of message context, reply destinations and logs. If the platform needs connection state or sequence numbers, use the host's state store so that restarting does not lose them.
 
+Core supplies `host.boundChatIds` from this account's bindings. Connection channels can use it to subscribe to configured conversations; IRC uses it to join channels without a separate channel list. Use `host.publicUrl` for your deployment's public address.
+
 ## Extend an agent
 
 Authenticate requests before obtaining an agent host scoped to the allowed endpoint IDs. The agent can read attachments for an authorized input and send replies using that input's `replyTo`; it cannot provide an arbitrary destination.
@@ -27,6 +29,10 @@ A reply call uses `sendMessage({ replyTo, text, idempotencyKey?, attachments? })
 Attachments can refer to received media or contain newly generated media bytes. Respect the target channel's formats and limits. See [Media transfer](../media.md) and the exported SDK types for the supported attachment shapes.
 
 Register agent HTTP routes through the host beneath `/agents/<agentId>`. Keep endpoint credentials separate from the fields exposed in notifications and tool responses. dot and Grok already share MCP authentication and message tools in `packages/agent-mcp`; reuse those helpers when changing their integration.
+
+## Embed Core
+
+When calling `createCore` directly, `worker` accepts only `maxMediaBytes`, `maxTotalMediaBytes` and `maxAttachments`. Scheduling, retry, lease and request budgets use internal defaults. The CLI exposes the same attachment controls as top-level `mediaLimits`. In the CLI configuration, omit `relay.observability` to use standard logs and metrics, or provide an explicit observability configuration to override them.
 
 ## Check the integration
 

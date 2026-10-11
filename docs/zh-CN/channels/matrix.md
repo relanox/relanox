@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-在 Homeserver 创建专用账号/设备并取得 Access Token，保存到 `MATRIX_ACCESS_TOKEN`，记录完整用户 ID。邀请账号进入各房间并让其加入，授予发送消息和上传文件权限。
+在 Homeserver 创建专用账号/设备并取得 Access Token，保存到 `MATRIX_ACCESS_TOKEN`；Relanox 启动时会自动查询该账号的用户 ID。邀请账号进入各房间并让其加入，授予发送消息和上传文件权限。
 
 ## 添加配置
 
@@ -17,7 +17,6 @@
       "id": "matrix-main",
       "config": {
         "homeserver": "https://matrix.example.com",
-        "userId": "@relay:example.com",
         "accessToken": {
           "env": "MATRIX_ACCESS_TOKEN"
         }

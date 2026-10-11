@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-注册 Microsoft 应用和 Azure Bot，启用 Teams 渠道，并向所需用户或团队安装 Teams 应用。记录应用 ID、机器人 Activity ID 和租户 ID，将应用密钥保存到 `TEAMS_APP_SECRET`。请管理员确认所在云/区域的 Bot Connector 服务可信来源。单租户或特殊云机器人需设置与注册方式匹配的 `tokenUrl`。
+注册 Microsoft 应用和 Azure Bot，启用 Teams 渠道，并向所需用户或团队安装 Teams 应用。记录应用 ID、机器人 Activity ID 和租户 ID，将应用密钥保存到 `TEAMS_APP_SECRET`。请管理员确认所在区域的 Bot Connector 服务可信来源。单租户机器人将 `tokenUrl` 设为 `https://login.microsoftonline.com/<应用租户ID>/oauth2/v2.0/token`。应用租户可以与 `tenantId` 中允许接入的 Teams 租户不同。此渠道使用公有云 Bot Framework 认证。
 
 ## 添加配置
 

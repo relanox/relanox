@@ -4,7 +4,7 @@ Answer customers through a WhatsApp Business Cloud API phone number.
 
 ## Prepare your account
 
-Create a Meta app with WhatsApp Business Platform access and register a business phone number. Record the phone number ID and Business Account ID. Obtain an access token with `whatsapp_business_messaging` and access to that phone/business. Save the app secret and choose a verification token. Set `apiVersion` to a Graph API version supported by your app; `v25.0` below is an example.
+Create a Meta app with WhatsApp Business Platform access and register a business phone number. Record the phone number ID and Business Account ID. Obtain an access token with `whatsapp_business_messaging` and access to that phone/business. Save the app secret and choose a verification token. Relanox uses Graph API `v25.0`; the supported API version is managed by Relanox releases.
 
 ## Add the configuration
 
@@ -18,7 +18,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
       "config": {
         "phoneNumberId": "your_phone_number_id",
         "businessAccountId": "your_whatsapp_business_account_id",
-        "apiVersion": "v25.0",
         "appSecret": {
           "env": "WHATSAPP_APP_SECRET"
         },

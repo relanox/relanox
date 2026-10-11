@@ -30,29 +30,27 @@ function completedState(): ReturnType<typeof createState> {
 }
 
 describe('connection configurator production contracts', () => {
-  it('requires account identity even after sender and conversation IDs are supplied', () => {
+  it('requires the application ID even after sender and conversation IDs are supplied', () => {
     const state = createState()
     state.publicHost = 'relay.test.example'
 
-    const discord = state.channels.find(
-      (channel) => channel.channel === 'discord'
-    )
+    const slack = state.channels.find((channel) => channel.channel === 'slack')
 
-    if (!discord) {
-      throw new Error('Discord missing')
+    if (!slack) {
+      throw new Error('Slack missing')
     }
 
-    discord.enabled = true
-    discord.senderIds = '123456789012345678'
-    discord.chatId = '112233445566778899'
+    slack.enabled = true
+    slack.senderIds = 'U123ABC'
+    slack.chatId = 'C123ABC'
     expect(
       buildConfig(state).relay.accounts.find(
-        (account) => account.channel === 'discord'
-      )?.config.botUserId
+        (account) => account.channel === 'slack'
+      )?.config.appId
     ).toBe('')
     expect(validateDraft(state)).toContainEqual({
       code: 'fieldRequired',
-      target: 'discord.botUserId'
+      target: 'slack.appId'
     })
   })
 
@@ -115,6 +113,11 @@ describe('connection configurator production contracts', () => {
     ).not.toHaveProperty('audience')
     expect(config.publicUrl).toBe('https://relay.test.example:8443')
     expect(config).not.toHaveProperty('media')
+    expect(config.relay).not.toHaveProperty('observability')
+    expect(validateApp(config).relay.observability).toEqual({
+      plugin: 'standard',
+      config: {}
+    })
   })
 
   it('preserves explicit routing and credentials across rename, removal and type changes', () => {

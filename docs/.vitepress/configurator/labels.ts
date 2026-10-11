@@ -4,9 +4,7 @@ export const fieldLabels: Record<string, [string, string]> = {
     'Webhook secret environment variable',
     'Webhook 密钥环境变量'
   ],
-  botUserId: ['Bot user ID', '机器人用户 ID'],
   signingSecret: ['Signing secret environment variable', '签名密钥环境变量'],
-  teamId: ['Team ID', '工作区 ID'],
   appId: ['Application ID', '应用 ID'],
   appSecret: ['Application secret environment variable', '应用密钥环境变量'],
   verificationToken: [
@@ -15,13 +13,13 @@ export const fieldLabels: Record<string, [string, string]> = {
   ],
   encryptKey: ['Encryption key environment variable', '加密密钥环境变量'],
   tenantKey: ['Tenant key', '租户标识'],
-  botOpenId: ['Bot open ID', '机器人 open ID'],
   domain: ['Platform domain (feishu or lark)', '平台域（feishu 或 lark）'],
   botId: ['Bot ID', '机器人 ID'],
   secret: ['Bot secret environment variable', '机器人密钥环境变量'],
   clientId: ['Client ID', '客户端 ID'],
   clientSecret: ['Client secret environment variable', '客户端密钥环境变量'],
   robotCode: ['Robot code', '机器人代码'],
+  environment: ['QQ environment', 'QQ 环境'],
   allowProactive: ['Allow proactive messages', '允许主动消息'],
   tenantId: ['Tenant ID', '租户 ID'],
   trustedServiceOrigins: [
@@ -30,11 +28,9 @@ export const fieldLabels: Record<string, [string, string]> = {
   ],
   phoneNumberId: ['Phone number ID', '电话号码 ID'],
   businessAccountId: ['Business account ID', '企业账户 ID'],
-  apiVersion: ['API version', 'API 版本'],
   verifyToken: ['Verification token environment variable', '验证令牌环境变量'],
   accessToken: ['Access token environment variable', '访问令牌环境变量'],
   homeserver: ['Homeserver URL', 'Homeserver 地址'],
-  userId: ['Bot user ID', '机器人用户 ID'],
   serviceAccount: [
     'Service account JSON environment variable',
     '服务账号 JSON 环境变量'
@@ -44,7 +40,6 @@ export const fieldLabels: Record<string, [string, string]> = {
   token: ['Token environment variable', '令牌环境变量'],
   serviceUrl: ['Signal bridge URL', 'Signal 桥接地址'],
   account: ['Registered account phone number', '已注册账户电话号码'],
-  selfUuid: ['Registered account UUID', '已注册账户 UUID'],
   authorization: [
     'Authorization environment variable',
     'Authorization 环境变量'
@@ -52,7 +47,6 @@ export const fieldLabels: Record<string, [string, string]> = {
   server: ['IRC server hostname', 'IRC 服务器域名'],
   port: ['TLS port', 'TLS 端口'],
   nick: ['Bot nickname', '机器人昵称'],
-  channels: ['Joined channels (comma separated)', '加入频道（逗号分隔）'],
   'sasl.username': ['SASL account name', 'SASL 账户名'],
   'sasl.password': ['SASL password environment variable', 'SASL 密码环境变量']
 }
@@ -103,16 +97,16 @@ export const channelSetup: Record<string, [string, string]> = {
     '配置 Google Chat 应用及服务账号，将 HTTP 端点和认证受众设为生成的 Webhook 地址，使用 users/ 和 spaces/ 资源 ID。'
   ],
   line: [
-    'Create a Messaging API channel and enable webhook delivery. Use source user/group/room IDs and the bot destination user ID.',
-    '创建 Messaging API 渠道并启用 Webhook，使用 source 中的用户/群组/房间 ID 和机器人 destination 用户 ID。'
+    'Create a Messaging API channel and enable webhook delivery. Use source user/group/room IDs; the bot identity is discovered automatically.',
+    '创建 Messaging API 渠道并启用 Webhook，使用 source 中的用户/群组/房间 ID，机器人身份会自动查询。'
   ],
   mattermost: [
     'Create a dedicated bot with a token and join its target channel. Use Mattermost user and channel IDs.',
     '创建专用机器人和令牌并加入目标频道，使用 Mattermost 用户和频道 ID。'
   ],
   signal: [
-    'Prepare a registered Signal REST bridge account. Use sourceUuid for allowed senders and direct:<sender> or group:<groupId> for chats.',
-    '准备已注册的 Signal REST 桥接账户，允许发送者使用 sourceUuid，会话使用 direct:<发送者> 或 group:<群组 ID>。'
+    'Prepare a registered signal-cli daemon account. Use sourceUuid for allowed senders and direct:<sender> or group:<groupId> for chats.',
+    '准备已注册的 signal-cli 服务账号，允许发送者使用 sourceUuid，会话使用 direct:<发送者> 或 group:<群组 ID>。'
   ],
   irc: [
     'Connect a dedicated bot over TLS with SASL authentication. Allow senders as account:<name> and bind exact channel names or dm:<folded-nick>.',

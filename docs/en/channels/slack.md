@@ -4,7 +4,7 @@ Use a Slack app to talk to your agent in channels, direct messages and threads.
 
 ## Prepare your account
 
-Create and install a workspace app. Save its bot token as `SLACK_BOT_TOKEN` and signing secret as `SLACK_SIGNING_SECRET`. Record the app ID, workspace/team ID and bot user ID. Grant `chat:write`, the message-history scopes for the conversations you use, and `files:read` / `files:write` for files. Invite the app into the selected channels.
+Create and install a workspace app. Save its bot token as `SLACK_BOT_TOKEN` and signing secret as `SLACK_SIGNING_SECRET`. Record the app ID; Relanox discovers the workspace and bot user IDs from the bot token at startup. Grant `chat:write`, the message-history scopes for the conversations you use, and `files:read` / `files:write` for files. Invite the app into the selected channels.
 
 ## Add the configuration
 
@@ -18,15 +18,12 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
       "channel": "slack",
       "allowedSenders": ["U123ABC"],
       "config": {
-        "receiveMode": "http",
         "botToken": {
           "env": "SLACK_BOT_TOKEN"
         },
         "signingSecret": {
           "env": "SLACK_SIGNING_SECRET"
         },
-        "botUserId": "UBOT123",
-        "teamId": "T123ABC",
         "appId": "A123ABC"
       }
     }
@@ -48,7 +45,7 @@ Bindings match the exact chat and thread IDs. Include `threadId` when your test 
 
 ## Enable the connection
 
-For HTTP reception, set the Events request URL to `https://relay.example.com/channels/slack-main/events`. Subscribe to the applicable `message.channels`, `message.groups`, `message.im`, `message.mpim` or `app_mention` events. Start Relanox before Slack verifies the URL. Alternatively, enable Socket Mode, set `receiveMode` to `"socket"`, replace `signingSecret` with `appToken: {"env":"SLACK_APP_TOKEN"}`, and grant that app token `connections:write`; Relanox then connects automatically.
+For HTTP reception, set the Events request URL to `https://relay.example.com/channels/slack-main/events`. Subscribe to the applicable `message.channels`, `message.groups`, `message.im`, `message.mpim` or `app_mention` events. Start Relanox before Slack verifies the URL. Alternatively, enable Socket Mode, replace `signingSecret` with `appToken: {"env":"SLACK_APP_TOKEN"}`, and grant that app token `connections:write`; Relanox then connects automatically. Supply exactly one of `signingSecret` or `appToken`; Relanox selects the receive mode from that credential.
 
 ## Send your first message
 

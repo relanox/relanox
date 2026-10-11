@@ -4,7 +4,7 @@ Use a dedicated Matrix account in unencrypted rooms and threads.
 
 ## Prepare your account
 
-Create a dedicated account/device on your homeserver and obtain its access token. Save it as `MATRIX_ACCESS_TOKEN` and record its full user ID. Invite the account into each room and let it join. Give it permission to send messages and upload files.
+Create a dedicated account/device on your homeserver and obtain its access token. Save it as `MATRIX_ACCESS_TOKEN`; Relanox discovers the account’s user ID at startup. Invite the account into each room and let it join. Give it permission to send messages and upload files.
 
 ## Add the configuration
 
@@ -17,7 +17,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
       "id": "matrix-main",
       "config": {
         "homeserver": "https://matrix.example.com",
-        "userId": "@relay:example.com",
         "accessToken": {
           "env": "MATRIX_ACCESS_TOKEN"
         }

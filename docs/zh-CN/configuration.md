@@ -4,7 +4,7 @@ Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://gi
 
 首次配置可以使用[连接配置器](connect.md)：左侧选择渠道和 Agent，右侧实时更新配置。展开“连接信息”，填写域名、聊天 ID 和允许使用的用户，再复制或下载 JSON；接入教程会按你的选择生成。每个渠道先配置一个账号和一个聊天，更多聊天可按下文添加绑定。凭据保留为环境变量引用。
 
-默认监听地址和监控开关无需重复填写，生成器会省略这些默认值。不写 `server` 时，业务端口为 `127.0.0.1:8787`，管理端口为 `127.0.0.1:8788`；标准可观测性插件使用 `config: {}` 即可启用日志和指标。只在部署需要时添加覆盖值；容器中需要设置 `server.host: "0.0.0.0"`。
+默认监听地址和监控开关无需重复填写，生成器会省略这些默认值。不写 `server` 时，业务端口为 `127.0.0.1:8787`，管理端口为 `127.0.0.1:8788`；省略 `relay.observability` 即可启用标准日志和指标。只在部署需要时添加覆盖值；容器中需要设置 `server.host: "0.0.0.0"`。
 
 ## 公开地址只配置一次
 
@@ -103,28 +103,26 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 
 ## 设置端口和常用选项
 
-顶层可选的 `server` 对象控制 HTTP 监听和处理间隔：
+顶层可选的 `server` 对象控制 HTTP 监听以及启动、关闭的等待期限：
 
-| 选项                | 默认值      | 何时修改                                                    |
-| ------------------- | ----------- | ----------------------------------------------------------- |
-| `host`              | `127.0.0.1` | 容器中设为 `0.0.0.0`，使映射的业务端口可达                  |
-| `port`              | `8787`      | 更改反向代理连接的业务端口                                  |
-| `managementHost`    | `127.0.0.1` | 使用 IPv6 回环时设为 `::1`                                  |
-| `managementPort`    | `8788`      | 更改本地健康检查与指标端口                                  |
-| `workerIntervalMs`  | `1000`      | 更改两批消息处理之间的等待时间                              |
-| `workerStaleMs`     | `60000`     | 更改就绪检查允许多久没有成功批次；需大于 `workerIntervalMs` |
-| `startupTimeoutMs`  | `30000`     | 为平台连接初始化留出更多时间                                |
-| `shutdownTimeoutMs` | `15000`     | 为正常停机留出更多时间，同时增加服务管理器的停止超时        |
+| 选项                | 默认值      | 何时修改                                             |
+| ------------------- | ----------- | ---------------------------------------------------- |
+| `host`              | `127.0.0.1` | 容器中设为 `0.0.0.0`，使映射的业务端口可达           |
+| `port`              | `8787`      | 更改反向代理连接的业务端口                           |
+| `managementHost`    | `127.0.0.1` | 使用 IPv6 回环时设为 `::1`                           |
+| `managementPort`    | `8788`      | 更改本地健康检查与指标端口                           |
+| `startupTimeoutMs`  | `30000`     | 为渠道启动和 CLI 管理操作留出更多时间                |
+| `shutdownTimeoutMs` | `15000`     | 为正常停机留出更多时间，同时增加服务管理器的停止超时 |
 
 端口范围为 0–65535，部署时使用固定的非零端口。管理地址使用字面回环地址。通过 HTTPS 代理业务端口 8787，管理端口保留在本地。如果 MCP 客户端发送 Origin 头，将它的完整来源加入 `mcp.allowedOrigins`。它表示调用方来源，与服务公开地址不同；不发送该头的服务端客户端使用默认空列表即可。
 
-用 `relay.observability` 开启日志和指标：
+日志和指标默认开启。需要调整时再添加 `relay.observability`，例如只输出警告和错误日志：
 
 ```json
 {
   "observability": {
     "plugin": "standard",
-    "config": { "logs": true, "metrics": true, "processMetrics": true }
+    "config": { "level": "warn" }
   }
 }
 ```
@@ -141,7 +139,7 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 | --------------------------------------------------------------- | --------------------------------------------------- |
 | Agent 的 `mcp`                                                  | `maxBodyBytes`、`timeoutMs`                         |
 | dot                                                             | `callback`、`subscriptionTtlMs`、`rotationWindowMs` |
-| Grok                                                            | `timeoutMs`、`maxBodyBytes`                         |
+| Grok                                                            | `timeoutMs`、`maxBodyBytes`、`routineTransport`     |
 | Telegram、Slack、Discord、飞书、IRC、Matrix、Mattermost、Signal | `timeoutMs`                                         |
 | Slack、Discord                                                  | `reconnectDelayMs`                                  |
 | IRC、Matrix、Mattermost、Signal                                 | `reconnectMs`                                       |
@@ -153,7 +151,53 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 | Google Chat                                                     | `callerEmail`、`issuer`                             |
 | Microsoft Teams                                                 | `issuer`                                            |
 
+以下部署内部参数也改为固定默认值，请删除旧覆盖项：
+
+| 配置位置           | 删除字段                                                                    |
+| ------------------ | --------------------------------------------------------------------------- |
+| `server`           | `workerIntervalMs`、`workerStaleMs`                                         |
+| SQLite             | `busyTimeoutMs`                                                             |
+| PostgreSQL         | `connectionTimeoutMs`、`idleTimeoutMs`、`statementTimeoutMs`                |
+| 标准可观测性       | `processMetrics`、`logBufferBytes`、`lifecycleTimeoutMs`                    |
+| 可观测性 `tracing` | `maxQueueSize`、`maxExportBatchSize`、`scheduledDelayMs`、`exportTimeoutMs` |
+| IRC                | `channels`，自动从该账号聊天绑定取得要加入的频道                            |
+
 凭据、发送者白名单、可信来源和部署地址仍可配置。配置器自动使用平台原生地址，自建服务仍需填写地址。服务、数据库、监控和媒体容量等高级选项按部署需要设置即可。
+
+## 自动查询账号身份
+
+Relanox 启动时使用配置的凭据向 Slack、Discord、飞书/Lark、LINE、Matrix 和 Mattermost 查询所连接的账号。查询失败会导致启动失败，此时应检查凭据和平台连接。`validate` 仍然离线执行，不能验证凭据对应的账号身份。
+
+升级已有配置时，删除以下字段：
+
+| 渠道        | 删除                                 | 替代方式                                                                                  |
+| ----------- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Slack       | `botUserId`、`teamId`、`receiveMode` | 机器人 Token 确定账号；`signingSecret` 和 `appToken` 二选一，分别选择 HTTP 和 Socket Mode |
+| Discord     | `botUserId`                          | 机器人 Token 确定账号并自动查询 Gateway                                                   |
+| 飞书 / Lark | `botOpenId`                          | 应用凭据确定机器人；保留 `tenantKey`                                                      |
+| LINE        | `botUserId`                          | Access Token 确定官方账号                                                                 |
+| Matrix      | `userId`                             | Access Token 确定账号                                                                     |
+| Mattermost  | `botUserId`                          | Token 确定账号                                                                            |
+
+尚有排队回复时，应保持凭据属于原账号。应用 ID、允许发送者和会话绑定仍表达你的接入选择，需要填写。
+
+### 固定平台地址
+
+删除以下旧覆盖项。原生托管平台现在会自动使用对应协议地址：
+
+| 渠道                        | 删除                                                             |
+| --------------------------- | ---------------------------------------------------------------- |
+| Slack、Discord、飞书 / Lark | `apiBaseUrl`、`allowInsecureLoopback`                            |
+| Discord                     | `gatewayUrl`                                                     |
+| 钉钉                        | `apiBase`、`uploadBase`、`mediaOrigins`、`allowInsecureLoopback` |
+| 企业微信                    | `wsUrl`、`mediaOrigins`、`allowInsecureLoopback`                 |
+| QQ                          | `apiBase`、`mediaOrigins`、`allowInsecureLoopback`               |
+| WhatsApp                    | `apiBase`、`apiVersion`、`allowLoopback`                         |
+| Google Chat                 | `apiBase`、`tokenUrl`、`jwksUrl`、`allowLoopback`                |
+| LINE                        | `apiBase`、`contentApiBase`、`allowLoopback`                     |
+| Teams                       | `jwksUrl`、`allowLoopback`                                       |
+
+QQ 默认使用正式环境，需要沙箱时将 `environment` 设为 `"sandbox"`。WhatsApp 的 Graph API 版本由 Relanox 管理，目前为 `v25.0`。Telegram 本地 Bot API 地址，以及 Matrix、Mattermost 和 Signal 自托管地址仍可配置。Teams 保留用于单租户应用认证地址的 `tokenUrl`，以及服务、媒体和上传的可信来源。
 
 ## 使用 CLI
 

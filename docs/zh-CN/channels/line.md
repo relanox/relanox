@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-创建具有 Messaging API Channel 的官方账号，将 Channel Secret 和 Access Token 存入下方环境变量。通过机器人信息或回调的 `destination` 取得机器人用户 ID。将官方账号添加为好友，或邀请到目标群组/聊天室，并检查套餐推送消息额度。
+创建具有 Messaging API Channel 的官方账号，将 Channel Secret 和 Access Token 存入下方环境变量。Relanox 启动时会使用 Access Token 自动查询机器人身份。将官方账号添加为好友，或邀请到目标群组/聊天室，并检查套餐推送消息额度。
 
 ## 添加配置
 
@@ -16,7 +16,6 @@
     {
       "id": "line-main",
       "config": {
-        "botUserId": "U_your_bot_destination",
         "channelSecret": {
           "env": "LINE_CHANNEL_SECRET"
         },
@@ -40,7 +39,7 @@
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-`allowedSenders` 填事件中的 `source.userId`。私聊 `chatId` 填该用户 ID，群组填 `source.groupId`，聊天室填 `source.roomId`。示例是群组绑定。`botUserId` 必须等于该账号回调的 `destination`。
+`allowedSenders` 填事件中的 `source.userId`。私聊 `chatId` 填该用户 ID，群组填 `source.groupId`，聊天室填 `source.roomId`。示例是群组绑定。Relanox 会用自动查询的机器人身份校验回调的 `destination`。
 
 ## 启用连接
 
@@ -56,4 +55,4 @@
 
 ## 常见问题
 
-回调验证失败时，检查 Channel Secret 和机器人 destination ID。群消息缺失时，启用官方账号群组访问并确认它已加入。文字正常而媒体回复失败时，检查 HTTPS 媒体地址、预览图和时长；所有回复都需检查推送额度。
+回调验证失败时，检查 Channel Secret 和 Access Token 是否属于同一官方账号。群消息缺失时，启用官方账号群组访问并确认它已加入。文字正常而媒体回复失败时，检查 HTTPS 媒体地址、预览图和时长；所有回复都需检查推送额度。

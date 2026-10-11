@@ -22,7 +22,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
         "clientSecret": {
           "env": "QQ_CLIENT_SECRET"
         },
-        "apiBase": "https://api.bot.qq.com",
         "allowProactive": false
       }
     }
@@ -40,6 +39,8 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
 Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
 For private messages, both the allowed sender and binding `chatId` use `author.user_openid`. For groups, use `author.member_openid` in the sender allowlist and `group_openid` as `chatId`. Obtain these from robot message events; they are platform OpenIDs, separate from visible QQ numbers.
+
+QQ uses the production environment by default. For the sandbox, add `"environment": "sandbox"` to the account configuration. Relanox selects the native API and token endpoints automatically.
 
 ## Enable the connection
 

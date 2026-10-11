@@ -4,7 +4,7 @@ Talk to your agent through an installed Teams bot in personal chats, groups or c
 
 ## Prepare your account
 
-Register a Microsoft application and Azure Bot, enable its Teams channel, and install the Teams app for the intended users/teams. Record the application ID, bot activity ID and tenant ID; save the app secret as `TEAMS_APP_SECRET`. Ask your administrator for the exact trusted Bot Connector service origins for your cloud/region. For a single-tenant or sovereign bot, configure the appropriate `tokenUrl` for that registration.
+Register a Microsoft application and Azure Bot, enable its Teams channel, and install the Teams app for the intended users/teams. Record the application ID, bot activity ID and tenant ID; save the app secret as `TEAMS_APP_SECRET`. Ask your administrator for the exact trusted Bot Connector service origins for your region. For a single-tenant bot, set `tokenUrl` to `https://login.microsoftonline.com/<application-tenant-id>/oauth2/v2.0/token`. This application tenant may differ from the allowed Teams tenant in `tenantId`. The channel uses public-cloud Bot Framework authentication.
 
 ## Add the configuration
 

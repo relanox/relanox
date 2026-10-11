@@ -4,17 +4,14 @@ Relanox writes structured JSON logs and can expose Prometheus metrics. Use logs 
 
 ## Enable logs and metrics
 
-Put this `observability` section inside `relay` in your configuration file:
+Logs and metrics, including process metrics, are enabled by default. Add `observability` inside `relay` only when you need an override. For example, enable debug logging:
 
 ```json
 {
   "observability": {
     "plugin": "standard",
     "config": {
-      "logs": true,
-      "level": "info",
-      "metrics": true,
-      "processMetrics": true
+      "level": "debug"
     }
   }
 }

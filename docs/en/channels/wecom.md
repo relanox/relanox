@@ -21,8 +21,7 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
         "botId": "intelligent-robot-id",
         "secret": {
           "env": "WECOM_BOT_SECRET"
-        },
-        "wsUrl": "wss://openws.work.weixin.qq.com"
+        }
       }
     }
   ],
@@ -42,7 +41,7 @@ Use the message’s `from.userid` for `allowedSenders`. A direct-chat binding us
 
 ## Enable the connection
 
-Start Relanox to connect automatically to `wss://openws.work.weixin.qq.com`. For a private enterprise deployment, replace `wsUrl` with the secure address supplied by your administrator. Keep the process running.
+Start Relanox to connect automatically to `wss://openws.work.weixin.qq.com`. Keep the process running.
 
 ## Send your first message
 

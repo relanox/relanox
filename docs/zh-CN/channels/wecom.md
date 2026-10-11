@@ -21,8 +21,7 @@
         "botId": "intelligent-robot-id",
         "secret": {
           "env": "WECOM_BOT_SECRET"
-        },
-        "wsUrl": "wss://openws.work.weixin.qq.com"
+        }
       }
     }
   ],
@@ -42,7 +41,7 @@
 
 ## 启用连接
 
-启动 Relanox 后会自动连接 `wss://openws.work.weixin.qq.com`。私有企业部署使用管理员提供的安全连接地址替换 `wsUrl`。保持进程运行。
+启动 Relanox 后会自动连接 `wss://openws.work.weixin.qq.com`。保持进程运行。
 
 ## 发送第一条消息
 

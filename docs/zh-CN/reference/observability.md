@@ -4,17 +4,14 @@ Relanox 输出 JSON 日志，并可提供 Prometheus 指标。日志帮助定位
 
 ## 开启日志和指标
 
-在配置文件的 `relay` 中放入以下 `observability` 部分：
+日志和指标默认开启，指标中包含进程指标。需要覆盖默认行为时，再在 `relay` 中添加 `observability`，例如启用调试日志：
 
 ```json
 {
   "observability": {
     "plugin": "standard",
     "config": {
-      "logs": true,
-      "level": "info",
-      "metrics": true,
-      "processMetrics": true
+      "level": "debug"
     }
   }
 }

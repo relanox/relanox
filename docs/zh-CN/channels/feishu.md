@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-创建企业自建应用，启用机器人能力，授予接收消息、发送消息和资源访问权限。记录 App ID、tenant key 和机器人 open ID。将应用密钥、事件 Verification Token 和 Encrypt Key 存入下方环境变量。Lark 用户将 `domain` 改为 `"lark"`。
+创建企业自建应用，启用机器人能力，授予接收消息、发送消息和资源访问权限。记录 App ID 和 tenant key；Relanox 启动时会自动查询机器人 open ID。将应用密钥、事件 Verification Token 和 Encrypt Key 存入下方环境变量。Lark 用户将 `domain` 改为 `"lark"`。
 
 ## 添加配置
 
@@ -29,7 +29,6 @@
           "env": "FEISHU_ENCRYPT_KEY"
         },
         "tenantKey": "example-tenant",
-        "botOpenId": "ou_example_bot",
         "domain": "feishu"
       }
     }
