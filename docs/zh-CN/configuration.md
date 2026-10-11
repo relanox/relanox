@@ -2,6 +2,8 @@
 
 Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://github.com/relanox/relanox/blob/master/examples/relanox.sqlite.json)，再换成自己的账号和 Agent 设置。修改后重启服务，让新配置生效。
 
+首次配置可以使用[连接配置器](connect.md)：左侧选择渠道和 Agent，右侧实时更新配置。展开“连接信息”，填写域名、聊天 ID 和允许使用的用户，再复制或下载 JSON；接入教程会按你的选择生成。每个渠道先配置一个账号和一个聊天，更多聊天可按下文添加绑定。凭据保留为环境变量引用。
+
 ## 决定谁可以和哪个 Agent 聊天
 
 三个列表描述你的连接：

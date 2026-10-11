@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.docs.json",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json --noEmit && node scripts/check-docs.mts -p tsconfig.docs.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint --deny-warnings --report-unused-disable-directives-severity error .",
@@ -29,9 +29,12 @@
     "prettier-config-standard": "7.0.0",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
+    "typescript-vue": "npm:typescript@6.0.3",
     "vite": "8.3.4",
     "vitepress": "1.6.4",
     "vitest": "5.0.3",
+    "vue": "3.5.43",
+    "vue-tsc": "3.3.12",
     "zod": "4.6.5"
   },
   "engines": {

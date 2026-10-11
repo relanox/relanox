@@ -2,6 +2,8 @@
 
 Relanox reads one JSON file. Copy [the SQLite example](https://github.com/relanox/relanox/blob/master/examples/relanox.sqlite.json), then edit it for your accounts and agents. Restart the service after editing to apply the settings.
 
+For a new setup, use the [connection configurator](connect.md): choose channels and Agents on the left and see the configuration update on the right. Expand connection details to enter your hostname, chat IDs and permitted users, then copy or download the JSON. The setup guide follows your selections. Each channel starts with one account and one conversation; add further conversations using bindings below. Credentials stay as environment variable references.
+
 ## Choose who can talk to which agent
 
 Three lists describe your connections:

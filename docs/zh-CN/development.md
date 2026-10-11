@@ -70,6 +70,8 @@ pnpm docs:preview
 
 提交文档修改之前运行 `pnpm docs:build`。公开站点为 [relanox.github.io](https://relanox.github.io/)。部署仓库每 30 分钟检查源更新；维护者可以触发其 Documentation 工作流立即更新。
 
+连接配置器是客户端 Vue 组件。`pnpm typecheck` 使用 `vue-tsc` 与固定版本的 `typescript-vue` 编译器别名检查模板；Vue 检查器依赖的 JavaScript 编译器 API 已不再由 TypeScript 7 导出。运行时包仍使用 TypeScript 7。配置器测试将生成的 JSON 交给生产配置校验器检查，不连接真实平台账号。
+
 ## 提交与审核
 
 每次提交前查看 `git log --oneline -20`，遵循近期提交风格。提交前运行格式化、lint、类型检查和相关 Vitest 测试；修改文档时还要构建文档。暂存一组完整且集中相关的修改，并通过仓库的提交前钩子。不要提交凭据、参考仓库、工作目录或构建输出。

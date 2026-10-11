@@ -34,6 +34,7 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
 
   return {
     nav: [
+      page(label('Configurator', '连接配置器'), 'connect'),
       page(label('Get started', '开始使用'), 'getting-started'),
       page(label('Choose a channel', '选择渠道'), 'channels/'),
       page(label('Manage Relanox', '日常管理'), 'operations')
@@ -43,6 +44,7 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
         text: label('Get started', '开始使用'),
         items: [
           page(label('Quick start', '快速开始'), 'getting-started'),
+          page(label('Connection configurator', '连接配置器'), 'connect'),
           page(label('How it works', '消息如何到达 Agent'), 'architecture'),
           page(label('Connect an Agent', '连接 Agent'), 'agents'),
           page(label('Change settings', '修改配置'), 'configuration'),

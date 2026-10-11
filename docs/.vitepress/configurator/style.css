@@ -1,0 +1,539 @@
+.connection-app {
+  --connection-accent: #2463eb;
+  --connection-border: #e5e9f0;
+  --connection-muted: #738095;
+  color: #182335;
+  background: #fff;
+  min-height: 100vh;
+  font-family: var(--vp-font-family-base);
+  font-size: 18px;
+  line-height: 1.6;
+}
+.connection-app * {
+  box-sizing: border-box;
+}
+.connection-header {
+  height: 65px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--connection-border);
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+.connection-brand {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.7px;
+}
+.connection-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  border-left: 1px solid var(--connection-border);
+  padding-left: 26px;
+  color: #586577;
+}
+.connection-header nav {
+  margin-left: auto;
+  display: flex;
+  gap: 24px;
+  font-size: 14px;
+  color: var(--connection-accent);
+}
+.connection-workspace {
+  display: grid;
+  grid-template-columns: 42.5% 57.5%;
+  align-items: start;
+}
+.connection-inputs {
+  padding: 40px 32px;
+  min-width: 0;
+}
+.connection-selectors {
+  display: grid;
+  grid-template-columns: 40% minmax(0, 1fr);
+  gap: 32px;
+}
+.connection-app h2 {
+  margin: 0 0 22px;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.connection-channels {
+  border-right: 1px solid var(--connection-border);
+  padding-right: 20px;
+}
+.channel-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.connection-app input[type='checkbox'] {
+  accent-color: var(--connection-accent);
+  height: 21px;
+  width: 21px;
+  flex: 0 0 21px;
+  cursor: pointer;
+}
+.connection-app input:not([type='checkbox']),
+.connection-app select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cfd6e0;
+  border-radius: 5px;
+  padding: 9px 11px;
+  min-height: 46px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
+}
+.connection-app select {
+  appearance: auto;
+  padding-right: 24px;
+}
+.connection-app input::placeholder {
+  color: #8590a2;
+}
+.connection-app
+  :is(button, a, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--connection-accent);
+  outline-offset: 3px;
+}
+.agent-fields {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 20px;
+}
+.agent-fields > label {
+  margin-top: 9px;
+}
+.agent-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.connection-link {
+  color: var(--connection-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  cursor: pointer;
+}
+.connection-link:hover,
+.connection-header a:hover {
+  text-decoration: underline;
+}
+.connection-link.remove-agent {
+  font-size: 12px;
+  color: var(--connection-muted);
+}
+.more-channels {
+  margin-top: 10px;
+  color: inherit;
+  font-size: 14px;
+}
+.add-agent {
+  margin-top: 1px;
+}
+.connection-mapping {
+  border-top: 1px solid var(--connection-border);
+  margin-top: 36px;
+  padding-top: 25px;
+}
+.mapping-row {
+  display: grid;
+  grid-template-columns: 32% 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 23px;
+  margin-bottom: 16px;
+}
+.mapping-row > span {
+  color: var(--connection-muted);
+}
+.connection-muted,
+.field-hint {
+  color: var(--connection-muted);
+}
+.draft-issues {
+  font-size: 12px;
+  color: #8b5b13;
+  list-style: disc;
+  padding-left: 16px;
+  margin: 0 0 14px;
+}
+.connection-details {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--connection-border);
+}
+.connection-details summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.connection-details summary span {
+  font-size: 12px;
+  margin-left: 12px;
+}
+.connection-detail-fields {
+  display: grid;
+  gap: 8px;
+  padding-top: 20px;
+}
+.connection-detail-fields > label:not(:first-child) {
+  margin-top: 10px;
+}
+.field-hint {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 6px;
+}
+.field-guide {
+  font-size: 12px;
+  justify-self: start;
+}
+.extra-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.connection-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #cfd6e0;
+  border-radius: 5px;
+  padding: 7px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.connection-button:hover {
+  background: #f4f7fb;
+  border-color: #a8b5c8;
+}
+.tutorial-button {
+  margin-top: 26px;
+  color: var(--connection-accent);
+  border-color: #aec7fa;
+}
+.connection-preview {
+  position: sticky;
+  top: 0;
+  height: calc(100vh - 65px);
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--connection-border);
+  min-width: 0;
+}
+.preview-toolbar {
+  height: 65px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  border-bottom: 1px solid var(--connection-border);
+  flex-shrink: 0;
+}
+.preview-toolbar strong {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  font-size: 17px;
+  border-bottom: 2px solid var(--connection-accent);
+}
+.live-label {
+  color: var(--connection-muted);
+  font-size: 12px;
+}
+.preview-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+.preview-code {
+  flex: 1;
+  overflow: auto;
+  padding: 14px 0 20px;
+  background: #fcfdff;
+  min-height: 0;
+}
+.preview-code pre {
+  margin: 0;
+  font: 17px/1.6 var(--vp-font-family-mono);
+  width: max-content;
+  min-width: 100%;
+}
+.code-line {
+  display: flex;
+  padding-right: 24px;
+  min-height: 27.2px;
+}
+.line-number {
+  display: inline-block;
+  flex: 0 0 56px;
+  width: 56px;
+  text-align: right;
+  padding-right: 18px;
+  margin-right: 15px;
+  color: #929db0;
+  user-select: none;
+  border-right: 1px solid #edf0f5;
+  font-size: 12px;
+}
+.json-key {
+  color: #b32737;
+}
+.json-string {
+  color: #175bc1;
+}
+.json-literal {
+  color: #7957a8;
+}
+.preview-footer {
+  border-top: 1px solid var(--connection-border);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--connection-muted);
+  font-size: 12px;
+}
+.preview-footer p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--connection-accent);
+}
+.draft-label {
+  color: #8b5b13;
+  cursor: pointer;
+  margin-left: auto;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.connection-tutorial {
+  width: min(800px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  margin: auto;
+  border: 1px solid var(--connection-border);
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+}
+.connection-tutorial::backdrop {
+  background: rgba(19, 29, 47, 0.35);
+}
+.connection-tutorial > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--connection-border);
+  gap: 16px;
+}
+.connection-tutorial h2 {
+  margin: 0;
+}
+.tutorial-body {
+  padding: 24px 28px;
+}
+.tutorial-notice {
+  color: #8b5b13;
+  margin: 0 0 20px;
+}
+.tutorial-steps {
+  list-style: decimal;
+  padding-left: 22px;
+}
+.tutorial-steps > li {
+  padding-left: 6px;
+  margin-bottom: 28px;
+}
+.tutorial-steps h3 {
+  font-size: 16px;
+  font-weight: 650;
+  margin: 0 0 12px;
+}
+.tutorial-steps p {
+  margin: 10px 0;
+}
+.tutorial-steps a {
+  color: var(--connection-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.tutorial-steps code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.tutorial-steps pre {
+  padding: 12px;
+  overflow: auto;
+  background: #f4f6fa;
+  border-radius: 4px;
+}
+.tutorial-steps .vpi-arrow-right {
+  display: inline-block;
+  vertical-align: middle;
+}
+.environment-list {
+  list-style: disc;
+  padding-left: 18px;
+}
+.tutorial-agent {
+  border-left: 2px solid var(--connection-border);
+  padding-left: 14px;
+  margin-bottom: 20px;
+}
+.connection-url {
+  display: block;
+}
+.dark .connection-app {
+  --connection-border: #343a46;
+  --connection-muted: #a0aabd;
+  --connection-accent: #87afff;
+  color: #e3e8f0;
+  background: #1b1e25;
+}
+.dark .connection-header h1 {
+  color: #b9c2d1;
+}
+.dark
+  .connection-app
+  :is(
+    input:not([type='checkbox']),
+    select,
+    .connection-button,
+    .connection-tutorial,
+    .connection-tutorial > header
+  ) {
+  background: #222630;
+  border-color: #424b5c;
+  color: inherit;
+}
+.dark .preview-code {
+  background: #191d25;
+}
+.dark .line-number {
+  border-color: #303641;
+}
+.dark .json-key {
+  color: #efa0a9;
+}
+.dark .json-string {
+  color: #97baf7;
+}
+.dark .json-literal {
+  color: #c6a6f3;
+}
+.dark :is(.draft-label, .tutorial-notice, .draft-issues) {
+  color: #e6be77;
+}
+.dark .tutorial-steps pre {
+  background: #161a21;
+}
+@media (min-width: 1700px) {
+  .connection-workspace {
+    grid-template-columns: minmax(580px, 38%) 1fr;
+  }
+}
+@media (max-width: 1100px) {
+  .connection-inputs {
+    padding: 28px 22px;
+  }
+  .connection-selectors {
+    gap: 20px;
+    grid-template-columns: 43% minmax(0, 1fr);
+  }
+  .connection-channels {
+    padding-right: 14px;
+  }
+  .preview-toolbar {
+    padding: 0 16px;
+    gap: 12px;
+  }
+  .live-label {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .connection-header {
+    height: 58px;
+    padding: 0 18px;
+    gap: 14px;
+  }
+  .connection-brand {
+    font-size: 21px;
+  }
+  .connection-header h1 {
+    font-size: 13px;
+    padding-left: 14px;
+  }
+  .connection-header nav {
+    gap: 12px;
+    font-size: 12px;
+  }
+  .connection-workspace {
+    grid-template-columns: 1fr;
+  }
+  .connection-inputs {
+    padding: 25px 20px;
+  }
+  .connection-selectors {
+    grid-template-columns: 42% minmax(0, 1fr);
+    gap: 24px;
+  }
+  .connection-app h2 {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  .channel-choice {
+    font-size: 14px;
+    min-height: 40px;
+    gap: 9px;
+  }
+  .connection-preview {
+    position: relative;
+    height: 65vh;
+    min-height: 370px;
+    border-left: 0;
+    border-top: 1px solid var(--connection-border);
+  }
+  .preview-toolbar {
+    height: 58px;
+  }
+  .connection-mapping {
+    margin-top: 25px;
+    padding-top: 20px;
+  }
+  .preview-footer {
+    padding: 10px 16px;
+  }
+  .preview-code pre {
+    font-size: 12px;
+  }
+  .line-number {
+    flex-basis: 38px;
+    width: 38px;
+    padding-right: 10px;
+    margin-right: 10px;
+  }
+  .connection-tutorial > header,
+  .tutorial-body {
+    padding: 18px;
+  }
+}

@@ -10,8 +10,8 @@ hero:
       text: Get started
       link: /en/getting-started
     - theme: alt
-      text: Choose a chat app
-      link: /en/channels/
+      text: Configure connections
+      link: /en/connect
 features:
   - title: Stay in your chat
     details: Talk to your Agent through Telegram, Slack, Discord and 12 other channels. Replies return to the same conversation.

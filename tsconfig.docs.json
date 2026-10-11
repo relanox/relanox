@@ -7,6 +7,6 @@
     "moduleResolution": "Bundler",
     "types": ["node", "vite/client"]
   },
-  "include": ["docs/.vitepress/**/*.ts"],
+  "include": ["docs/.vitepress/**/*.ts", "docs/.vitepress/**/*.vue"],
   "exclude": ["docs/.vitepress/cache", "docs/.vitepress/dist"]
 }
