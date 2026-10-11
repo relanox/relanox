@@ -36,3 +36,5 @@ SSE `/api/v1/events?account=<account>` 持久接收后保存 ID，重连携带 L
 输出通过原生 send attachments 传递包含 MIME、文件名和完整字节的 RFC 2397 data URI。图片、音频、视频和文件使用同一原生附件接口，该接口没有独立时长或预览字段。媒体完整缓冲并持久保存，不支持流式传输；仍受 Signal 原生上限和 daemon 外部附件保留策略限制。本地 SSE、JSON-RPC、SQLite 和 MCP 测试验证字节收发与群组目标，不证明真实账号兼容。
 
 协议来源：[signal-cli 手册](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli.1.adoc#getattachment)、[JSON-RPC 手册](https://github.com/AsamK/signal-cli/blob/master/man/signal-cli-jsonrpc.5.adoc)。
+
+[媒体传输](../media.md)

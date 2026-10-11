@@ -44,3 +44,5 @@
 媒体也受 24 小时客服窗口限制。创建消息前的上传失败可安全重试；消息创建结果不明确时保留 unknown。媒体完整缓冲并持久保存，不支持流式传输。本地签名 HTTP、SQLite、MCP 和 multipart 测试验证字节收发，不证明真实账号兼容。
 
 协议来源：[WhatsApp Business Platform 媒体](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media)。
+
+[媒体传输](../media.md)

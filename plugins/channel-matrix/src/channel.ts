@@ -5,7 +5,7 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
-import { messageContent, receiveMedia } from "./media.js";
+import { mediaCaption, messageContent, receiveMedia } from "./media.js";
 import type { z } from "zod";
 import { validateConfig, platformIdSchema, validateBaseUrl } from "./config.js";
 import type { MatrixConfig } from "./config.js";
@@ -84,7 +84,7 @@ export function createMatrixChannel(
     await ingest(host, {
       source: { channel: "matrix", accountId: account.id, eventId: event.event_id },
       senderId: event.sender,
-      text: parsed.success ? parsed.data.body : "",
+      text: parsed.success ? parsed.data.body : mediaCaption(event.content),
       ...(attachments.length > 0 ? { attachments } : {}),
       receivedAt: event.origin_server_ts ?? Date.now(),
       target: {
@@ -204,6 +204,9 @@ export function createMatrixChannel(
     try {
       const relation = outboundRelation(input.target);
       const content = await messageContent(input, base, headers(), signal);
+      if ("status" in content) {
+        return content;
+      }
       const response = await fetch(
         `${base}/_matrix/client/v3/rooms/${room}/send/m.room.message/${encodeURIComponent(input.chunk.idempotencyKey)}`,
         {

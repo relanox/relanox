@@ -37,3 +37,7 @@ Images, audio, video and files are downloaded through the authenticated `/_matri
 Outgoing assets use `POST /_matrix/media/v3/upload` and native `m.image`, `m.audio`, `m.video` or `m.file` room events. Filenames, MIME types, sizes and optional duration are preserved; an explicit request-owned image preview becomes `thumbnail_url` and `thumbnail_info`. Core sends completed assets in order after text. Upload or send ambiguity follows the existing unknown-send recovery policy. Media is buffered and durably stored; streaming is unsupported. Homeserver upload limits can be lower than the core limit. Local HTTP/SQLite/MCP tests verify these protocol contracts, not compatibility with a live account.
 
 Protocol source: [Matrix Client-Server API](https://spec.matrix.org/latest/client-server-api/).
+
+Media uploads finish before the recipient message is submitted. Upload transport errors, invalid upload responses and server failures are retryable; explicit client rejection remains rejected and rate limits honor retry delay. The subsequent message send retains its normal ambiguity handling. When a native media event supplies a separate `filename`, a different `body` is preserved as its caption alongside the stored attachment.
+
+[Media transfer](../media.md)

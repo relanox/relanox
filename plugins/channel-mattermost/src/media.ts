@@ -63,23 +63,30 @@ export async function uploadFile(
   const form = new FormData();
   form.set("channel_id", input.target.chatId);
   form.set("files", mediaBlob(input.media), input.media.reference.fileName);
-  const response = await fetch(`${base}/api/v4/files`, {
-    method: "POST",
-    body: form,
-    headers: { Authorization: authorization },
-    redirect: "error",
-    signal,
-  });
-  if (!response.ok) {
-    await response.body?.cancel();
-    return httpFailure(response);
+  try {
+    const response = await fetch(`${base}/api/v4/files`, {
+      method: "POST",
+      body: form,
+      headers: { Authorization: authorization },
+      redirect: "error",
+      signal,
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      const result = httpFailure(response);
+      return result.status === "unknown"
+        ? { status: "retryable", errorCode: "media_upload_failed" }
+        : result;
+    }
+    const uploaded = z
+      .object({ file_infos: z.array(z.object({ id: z.string().min(1).max(1024) })).length(1) })
+      .parse(await readJson(response));
+    const file = uploaded.file_infos[0];
+    if (!file) {
+      throw new Error("media_upload_failed");
+    }
+    return { fileId: file.id };
+  } catch {
+    return { status: "retryable", errorCode: "media_upload_failed" };
   }
-  const uploaded = z
-    .object({ file_infos: z.array(z.object({ id: z.string().min(1).max(1024) })).length(1) })
-    .parse(await readJson(response));
-  const file = uploaded.file_infos[0];
-  if (!file) {
-    throw new Error("media_upload_failed");
-  }
-  return { fileId: file.id };
 }

@@ -33,3 +33,7 @@ The plugin limits text chunks to 400 UTF-8 bytes and targets to 90 bytes, preser
 `timeoutMs` defaults to 10,000 and `reconnectMs` to 1,000. TLS is on by default, with normal certificate verification. Plain TCP requires both a loopback server and `allowInsecureLocalhost:true`; there is no option to disable remote certificate checks.
 
 Targets freeze the server, port and TLS mode together with the recipient. Reconfiguring the connection does not redirect old results to another network; a mismatch rejects the send.
+
+IRC has no standardized native binary attachment transport. Media receive/send capabilities are empty: images, audio, video and files are rejected. DCC transfer and downloading arbitrary URLs are outside this adapter.
+
+[Media transfer](../media.md)

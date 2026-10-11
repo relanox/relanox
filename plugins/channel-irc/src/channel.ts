@@ -355,6 +355,7 @@ export function createIrcChannel(
       maxTextLength: 400,
       lengthUnit: "utf8",
       idempotentSend: false,
+      media: { receive: [], send: [] },
     },
     validateConfig,
     async setup(host, account, config) {
