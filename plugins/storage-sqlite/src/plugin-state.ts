@@ -1,6 +1,7 @@
+import { decodeDurableRecord } from './record-codec.js'
 import type { Storage, StateEntry } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
-import { encodeDurableRecord, decodeDurableRecord } from './record-codec.js'
+import { encodeDurableRecord } from '@relanox/storage-support'
 
 export function createStateOperations(
   context: Pick<DatabaseContext, 'db' | 'transaction'>

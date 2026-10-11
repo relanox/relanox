@@ -1,7 +1,8 @@
+import { decodeDurableRecord } from './record-codec.js'
 import type { InboundRecord, OutboundRecord } from '@relanox/sdk'
 import Database from 'better-sqlite3'
 import type { SqliteConfig } from './config.js'
-import { encodeDurableRecord, decodeDurableRecord } from './record-codec.js'
+import { encodeDurableRecord } from '@relanox/storage-support'
 
 /** Owns the connection and atomic transaction boundary for every storage operation. */
 export function openDatabase(config: SqliteConfig): DatabaseContext {

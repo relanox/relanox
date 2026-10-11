@@ -1,31 +1,13 @@
+import {
+  encodeDurableRecord,
+  validMedia,
+  withinMediaBudget,
+  mediaDigest,
+  isRequestInScope
+} from '@relanox/storage-support'
 import type { MediaStorage, StoredMedia, MediaReference } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
-import { createHash } from 'node:crypto'
-import { encodeDurableRecord } from './record-codec.js'
-import { validMedia, withinMediaBudget } from './media-contracts.js'
-import { isRequestInScope } from './record-contracts.js'
 import type { Pool, PoolClient } from 'pg'
-
-const digest = (media: StoredMedia): string =>
-  createHash('sha256')
-    .update(
-      encodeDurableRecord([
-        media.reference.id,
-        media.reference.kind,
-        media.reference.mimeType,
-        media.reference.fileName,
-        media.reference.size,
-        media.reference.sha256,
-        ...(media.reference.durationMs === undefined &&
-        media.reference.previewMediaId === undefined
-          ? []
-          : [
-              media.reference.durationMs ?? null,
-              media.reference.previewMediaId ?? null
-            ])
-      ])
-    )
-    .digest('hex')
 
 export async function readMedia(
   context: DatabaseContext,
@@ -60,7 +42,7 @@ export async function insertIncomingMedia(
         requestId,
         encodeDurableRecord(asset.reference),
         Buffer.from(asset.data),
-        digest(asset)
+        mediaDigest(asset)
       ]
     )
   }
@@ -97,7 +79,7 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
 
         if (existing) {
           return existing.request_id === input.requestId &&
-            existing.digest === digest(input.media)
+            existing.digest === mediaDigest(input.media)
             ? { status: 'stored', media: input.media.reference, replay: true }
             : { status: 'conflict' }
         }
@@ -125,7 +107,7 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
             input.requestId,
             encodeDurableRecord(input.media.reference),
             Buffer.from(input.media.data),
-            digest(input.media)
+            mediaDigest(input.media)
           ]
         )
 

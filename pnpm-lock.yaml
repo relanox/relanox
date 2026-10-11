@@ -329,6 +329,12 @@ importers:
 
   packages/sdk: {}
 
+  packages/storage-support:
+    dependencies:
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+
   plugins/agent-dot:
     dependencies:
       '@modelcontextprotocol/server':
@@ -715,6 +721,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/storage-support':
+        specifier: workspace:*
+        version: link:../../packages/storage-support
       pg:
         specifier: 8.23.1
         version: 8.23.1
@@ -731,6 +740,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/storage-support':
+        specifier: workspace:*
+        version: link:../../packages/storage-support
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3

@@ -1,6 +1,6 @@
+import { decodeDurableRecord } from './record-codec.js'
 import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
-import { decodeDurableRecord } from './record-codec.js'
 
 export function createInspectionOperations(
   context: Pick<

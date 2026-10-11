@@ -5,7 +5,7 @@ import type {
   InboundSnapshot,
   MediaStorage
 } from '@relanox/sdk'
-import { equalDurableValues } from './record-codec.js'
+import { encodeDurableRecord, equalDurableValues } from './record-codec.js'
 
 export function validMedia(media: StoredMedia): boolean {
   const ref = media.reference
@@ -64,3 +64,24 @@ export function withinMediaBudget(
     bytes + input.media.data.byteLength <= maxTotalBytes
   )
 }
+
+export const mediaDigest = (media: StoredMedia): string =>
+  createHash('sha256')
+    .update(
+      encodeDurableRecord([
+        media.reference.id,
+        media.reference.kind,
+        media.reference.mimeType,
+        media.reference.fileName,
+        media.reference.size,
+        media.reference.sha256,
+        ...(media.reference.durationMs === undefined &&
+        media.reference.previewMediaId === undefined
+          ? []
+          : [
+              media.reference.durationMs ?? null,
+              media.reference.previewMediaId ?? null
+            ])
+      ])
+    )
+    .digest('hex')
