@@ -8,24 +8,6 @@ export function createLifecycle(
   return {
     async initialize() {
       transaction(() => {
-        const columns = db.prepare('PRAGMA table_info(inbound)').all() as {
-          name: string
-        }[]
-
-        if (columns.some((column) => column.name === 'final_id')) {
-          const count = db
-            .prepare('SELECT COUNT(*) count FROM inbound')
-            .get() as { count: number }
-
-          if (count.count > 0) {
-            throw new Error(
-              'Legacy request lifecycle schema contains durable messages. Back up the database and export or finish its queued work with the previous Relanox version before using a new empty database; automatic conversion is unavailable.'
-            )
-          }
-          db.exec(
-            'DROP TABLE IF EXISTS outbound; DROP TABLE IF EXISTS media; DROP TABLE inbound'
-          )
-        }
         db.exec(
           `
           CREATE TABLE IF NOT EXISTS inbound(

@@ -15,7 +15,7 @@ Compose 将业务 HTTP 发布到宿主 `127.0.0.1:8787`。反向代理提供公�
 
 管理 listener 保持容器 `127.0.0.1:8788`，不发布端口。镜像健康检查请求 `/health/ready`；修改端口时同步修改 healthcheck。`/health/live` 表达进程接收状态，`/health/ready` 还检查存储与工作循环新鲜度，渠道连接单独通过指标表达；启用 standard 观测时 `/metrics` 提供 Prometheus 指标。在同一网络命名空间抓取，例如共享服务网络的 sidecar，或通过显式鉴权的本地代理。管理端点不要公开。
 
-启动自动创建消息模型表和索引。非空旧任务数据库会拒绝启动：停止旧进程，备份并导出未完成工作，再为消息模型选择新数据库/schema；不会静默重解释旧任务。更新时停止网关、备份、重建、启动并检查就绪。Compose 允许 20 秒关闭，对应 CLI 默认 15 秒预算；需要更多时间时一起增大。`docker compose down` 保留命名 volume；`down --volumes` 会删除数据。
+启动自动创建消息模型表和索引。更新时停止网关、备份、重建、启动并检查就绪。Compose 允许 20 秒关闭，对应 CLI 默认 15 秒预算；需要更多时间时一起增大。`docker compose down` 保留命名 volume；`down --volumes` 会删除数据。
 
 ## 备份与恢复
 

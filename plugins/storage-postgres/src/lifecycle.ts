@@ -15,25 +15,6 @@ export function createLifecycle(
         )
         await client.query(`CREATE SCHEMA IF NOT EXISTS "${config.schema}"`)
 
-        const legacy = await client.query<{ count: string }>(
-          "SELECT COUNT(*) count FROM information_schema.columns WHERE table_schema=$1 AND table_name='inbound' AND column_name='final_id'",
-          [config.schema]
-        )
-
-        if (Number(legacy.rows[0]?.count) > 0) {
-          const count = await client.query<{ count: string }>(
-            'SELECT COUNT(*) count FROM inbound'
-          )
-
-          if (Number(count.rows[0]?.count) > 0) {
-            throw new Error(
-              'Legacy request lifecycle schema contains durable messages. Back up the database and export or finish its queued work with the previous Relanox version before using a new empty schema; automatic conversion is unavailable.'
-            )
-          }
-          await client.query(
-            'DROP TABLE IF EXISTS outbound; DROP TABLE IF EXISTS media; DROP TABLE inbound'
-          )
-        }
         await client.query(`
           CREATE TABLE IF NOT EXISTS inbound(
             id TEXT COLLATE "C" PRIMARY KEY, channel TEXT NOT NULL, account TEXT NOT NULL,event TEXT NOT NULL,

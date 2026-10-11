@@ -28,7 +28,7 @@ Plugin validateConfig throws on invalid unknown input; no Zod type leaks into SD
 - State CAS expectedVersion=null creates only; successful writes increment monotonically from 1 across deletion/recreation. Exact-version deletion keeps an invisible version fence. Namespace pluginId/ownerId/key is unique. Ordered lists combine prefix/expiry filters; expiry includes expiresAt <= bound. Values are serialized snapshots.
 - Admin lists use the relevant dispatchStatus/deliveryStatus, optional endpoint scope and exclusive afterId pagination by ID. `getStats` aggregates pending **due notifications**, undelivered pending/rejected/unknown deliveries and unknown notification/delivery effects. No claimed count exists; oldestPendingAt is absent when no notification is due.
 - Cleanup redacts eligible old message content and removes eligible media while retaining source deduplication and message equality information for replay/conflict. It protects due/unknown notifications and every undelivered outbound message. Empty text/context with redactedAt is a tombstone; it cannot accept new replies.
-- `initialize` creates the current schema idempotently. A nonempty legacy task schema refuses startup with backup/export guidance instead of silently interpreting existing work. `health` checks required tables/connectivity without initialization; `close` releases resources, and durability never depends on it.
+- `initialize` creates the current schema idempotently. `health` checks required tables/connectivity without initialization; `close` releases resources, and durability never depends on it.
 
 Storage returns typed business outcome unions; driver/I/O failures reject so ingress must not ACK. Version and lease fences protect local state, not exactly-once external effects.
 

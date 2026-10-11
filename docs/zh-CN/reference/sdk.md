@@ -28,7 +28,7 @@ validateConfig 对非法 unknown 抛错，SDK 不泄露 Zod 类型。HTTP 使用
 - State CAS 的 expectedVersion=null 仅创建；版本从 1 开始并跨删除重建单调增长。准确版本删除保留不可见 version fence。pluginId/ownerId/key 唯一，列表按 key 排序并组合 prefix/expiry，过期条件为 expiresAt <= bound。状态值为序列化快照。
 - 管理列表使用对应 dispatchStatus/deliveryStatus、可选 endpoint 范围和按 ID 的排他 afterId 游标。`getStats` 聚合 pending **到期通知**、pending/rejected/unknown 未送达消息与 unknown 通知/发送效果；没有 claimed 统计，无到期通知时省略 oldestPendingAt。
 - cleanup 脱敏符合条件的旧内容、删除符合条件的媒体，保留 source 去重与消息相等摘要。保护 due/unknown 通知与全部未送达 outbound。redactedAt 标记空 text/context tombstone，已脱敏输入不能接纳新回复。
-- `initialize` 幂等创建当前 schema。非空旧任务 schema 拒绝启动并提示备份/导出，不会静默解释旧工作。`health` 只检查表与连接，`close` 释放资源，正确性不依赖关闭时刷新。
+- `initialize` 幂等创建当前 schema。`health` 只检查表与连接，`close` 释放资源，正确性不依赖关闭时刷新。
 
 Storage 返回有类型的业务 outcome union；驱动/I/O 错误 reject，入站不能 ACK。版本与 lease fence 保护本地状态，不保证外部效果恰好一次。
 

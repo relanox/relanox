@@ -15,7 +15,7 @@ Compose publishes business HTTP on host `127.0.0.1:8787`. Terminate public HTTPS
 
 The management listener stays on container `127.0.0.1:8788`; it is not published. The image health check requests `/health/ready`. If you change that port, override the health check as well. `/health/live` reports process acceptance, `/health/ready` also checks storage health and worker freshness; individual channel connection state is reported separately through metrics, and `/metrics` exposes Prometheus metrics when standard observability is enabled. Scrape from the same network namespace, for example a monitoring sidecar sharing the service's network, or through an explicitly authenticated local proxy. Do not expose management endpoints publicly.
 
-Startup creates the message schema automatically. A nonempty legacy task database is refused: stop the old process, back up and export its unfinished work, and select a new database/schema for the message design. No silent reinterpretation of old tasks occurs. Stop the running relay before replacing the binary, take a backup, rebuild, then start and verify readiness. Compose allows 20 seconds for shutdown against the CLI's default 15-second shutdown budget. Increase both together if needed. `docker compose down` preserves the named volume; `down --volumes` deletes it.
+Startup creates the message schema automatically. Stop the running relay before replacing the binary, take a backup, rebuild, then start and verify readiness. Compose allows 20 seconds for shutdown against the CLI's default 15-second shutdown budget. Increase both together if needed. `docker compose down` preserves the named volume; `down --volumes` deletes it.
 
 ## Storage and recovery
 
