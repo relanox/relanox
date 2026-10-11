@@ -18,6 +18,7 @@ import {
   unsubscribeParams
 } from './protocol.js'
 import type { SubscriptionStore } from './subscriptions.js'
+import { mountOAuth } from './oauth/index.js'
 
 export function createEventsHandler(
   agentHost: AgentHost,
@@ -32,6 +33,11 @@ export function createEventsHandler(
     throw new Error('public_url_required')
   }
   const publicUrl = agentHost.publicUrl
+
+  const authenticate =
+    config.mcp.auth === 'oauth'
+      ? mountOAuth(agentHost, endpoint.id, config)
+      : undefined
 
   const scopedHost = agentHost.forPrincipal({
     subject: endpoint.id,
@@ -113,15 +119,15 @@ export function createEventsHandler(
   )
 
   const fetch = async (request: Request): Promise<Response> => {
-    const checked = await guard(request, config.mcp, publicUrl)
+    const checked = await guard(request, config.mcp, publicUrl, authenticate)
     if (checked instanceof Response) {
       return checked
     }
 
     const response = await handler.fetch(checked)
 
-    // SDK 2.3.1's MCP 2026 schema predates Events and strips this draft capability.
-    // Preserve its negotiation/validation, augment only the successful discovery wire result.
+    // SDK 2.3.1 strips draft Events and OpenAI tool auth metadata from its wire schemas.
+    // Preserve SDK negotiation/validation, augment only successful discovery results.
     if (
       response.headers.get('content-type')?.includes('application/json') ===
       true
@@ -130,14 +136,33 @@ export function createEventsHandler(
         result?: {
           supportedVersions?: string[]
           capabilities?: Record<string, unknown>
+          tools?: {
+            _meta?: Record<string, unknown>
+            securitySchemes?: unknown
+          }[]
         }
       }
 
+      let changed = false
       if (
         body.result?.supportedVersions?.includes('2026-07-28') === true &&
         body.result.capabilities
       ) {
         body.result.capabilities.events = {}
+        changed = true
+      }
+      if (authenticate && body.result?.tools) {
+        const securitySchemes = [{ type: 'oauth2', scopes: ['relanox'] }]
+        for (const tool of body.result.tools) {
+          const { _meta: metadata } = tool
+          Object.assign(tool, {
+            securitySchemes,
+            _meta: { ...metadata, securitySchemes }
+          })
+        }
+        changed = true
+      }
+      if (changed) {
         const headers = new Headers(response.headers)
         headers.delete('content-length')
         return Response.json(body, { status: response.status, headers })

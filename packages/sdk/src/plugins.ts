@@ -37,6 +37,7 @@ export type CommonHost = {
   readonly publicUrl?: string
   readonly observe: Observability
   readonly state: StateStore
+  /** Routes are plugin-scoped; OAuth well-known routes place the namespace after the metadata name (RFC 8414/9728). */
   mountHttp(
     path: string,
     handler: HttpHandler,

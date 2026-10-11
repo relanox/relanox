@@ -55,14 +55,26 @@ export function createCommonHostFactory(
           )
       },
       mountHttp(path, handler, options) {
+        // RFC 8414/9728 insert the well-known component before the resource path.
+        // Keep discovery routes in the plugin's namespace, just like ordinary routes.
+        const discovery =
+          /^\/\.well-known\/(?<name>oauth-authorization-server|oauth-protected-resource)(?<path>\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*)$/u.exec(
+            path
+          )
+
         if (
-          !path.startsWith('/') ||
-          /[?#\\]|\.\.|\/\//u.test(path) ||
-          !/^\/[A-Za-z0-9/_-]*\*?$/u.test(path)
+          !discovery &&
+          (!path.startsWith('/') ||
+            /[?#\\]|\.\.|\/\//u.test(path) ||
+            !/^\/[A-Za-z0-9/_-]*\*?$/u.test(path))
         ) {
           throw new CoreError('invalid_route_path')
         }
-        const route = prefix + (path === '/' ? '' : path)
+
+        const route = discovery?.groups
+          ? `/.well-known/${discovery.groups.name}${prefix}${discovery.groups.path}`
+          : prefix + (path === '/' ? '' : path)
+
         if (routes.has(route)) {
           throw new CoreError('duplicate_route')
         }
