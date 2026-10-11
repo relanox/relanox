@@ -15,7 +15,7 @@ import type {
 import type { StateStore } from "./state.js";
 import type { Storage } from "./storage.js";
 import type { Observability } from "./observability.js";
-import type { AgentMediaHost, MediaKind } from "./media.js";
+import type { AgentMediaHost, ChannelMediaHost, MediaKind } from "./media.js";
 
 export type HttpHandler = (request: Request) => Promise<Response>;
 export interface HttpRouteOptions {
@@ -32,6 +32,7 @@ export interface CommonHost {
 /** Core binds this host to a single validated account; plugins cannot choose the account scope. */
 export interface ChannelHost extends CommonHost {
   readonly maxMediaBytes?: number;
+  readonly media?: ChannelMediaHost;
   ingest(input: IngestInput): Promise<IngestReceipt>;
 }
 export interface AgentPrincipal {

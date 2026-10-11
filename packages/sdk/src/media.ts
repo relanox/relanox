@@ -59,3 +59,8 @@ export interface AgentMediaHost {
     readonly media: MediaUpload;
   }): Promise<MediaWriteResult>;
 }
+
+/** Short-lived download URLs for native platforms that fetch outbound bytes themselves. */
+export interface ChannelMediaHost {
+  publish(input: { readonly requestId: string; readonly mediaId: string }): Promise<string>;
+}
