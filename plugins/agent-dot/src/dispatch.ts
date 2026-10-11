@@ -1,0 +1,96 @@
+import type { AgentHost, AgentPlugin, DispatchResult } from "@relanox/sdk";
+import { CallbackError, callbackUrl, postCallback } from "./callback.js";
+import { configSchema } from "./config.js";
+import type { DotConfig } from "./config.js";
+import { name, subscriptionSchema } from "./protocol.js";
+import { signedHeaders } from "./subscriptions.js";
+import type { createSubscriptions } from "./subscriptions.js";
+
+export function createDispatch(
+  host: AgentHost,
+  configured: ReadonlyMap<string, DotConfig>,
+  subscriptionStore: ReturnType<typeof createSubscriptions>,
+): AgentPlugin<DotConfig>["dispatch"] {
+  return async ({ request, signal }): Promise<DispatchResult> => {
+    const config = configSchema.parse(request.endpoint.config);
+    const currentConfig = configured.get(request.endpoint.id);
+    if (!currentConfig) {
+      return { status: "rejected", errorCode: "dot_endpoint_revoked" };
+    }
+    const now = Date.now();
+    const subscriptions = (await subscriptionStore.activeEntries(request.endpoint.id))
+      .map((entry) => ({ entry, sub: subscriptionSchema.parse(entry.value) }))
+      .filter(
+        ({ sub }) =>
+          sub.owner === request.endpoint.id &&
+          sub.endpointId === request.endpoint.id &&
+          sub.expiresAt > now,
+      );
+    if (subscriptions.length === 0) {
+      return { status: "retryable", errorCode: "dot_no_active_subscription" };
+    }
+    const eventId = `evt_${request.requestId}`;
+    const body = JSON.stringify({
+      eventId,
+      name,
+      timestamp: new Date(request.acceptedAt).toISOString(),
+      data: { requestId: request.requestId },
+      cursor: null,
+    });
+    if (Buffer.byteLength(body) > 262_144) {
+      return { status: "rejected", errorCode: "dot_event_too_large" };
+    }
+    let outcome: DispatchResult = { status: "accepted" };
+    const priority = { accepted: 0, rejected: 1, retryable: 2, unknown: 3 };
+    const merge = (next: DispatchResult) => {
+      if (priority[next.status] > priority[outcome.status]) {
+        outcome = next;
+      }
+    };
+    for (const { sub, entry } of subscriptions) {
+      try {
+        // Recheck current deployment authorization after restart/config change.
+        callbackUrl(sub.url, currentConfig.callback);
+        const response = await postCallback(
+          sub.url,
+          config.callback,
+          body,
+          signedHeaders(sub, body, eventId),
+          signal,
+          "headers",
+        );
+        if (response.status >= 200 && response.status < 300) {
+          continue;
+        }
+        if (response.status === 408) {
+          merge({ status: "unknown", errorCode: "dot_callback_http_408" });
+        } else if (
+          response.status === 410 ||
+          response.status === 413 ||
+          (response.status >= 300 && response.status < 500 && response.status !== 429)
+        ) {
+          if (response.status === 410) {
+            // Cannot delete a concurrently refreshed subscription.
+            await host.state.delete(entry.key, entry.version);
+          }
+          merge({
+            status: "rejected",
+            errorCode: `dot_callback_http_${response.status}`,
+          });
+        } else {
+          merge({
+            status: "retryable",
+            errorCode: `dot_callback_http_${response.status}`,
+          });
+        }
+      } catch (error) {
+        merge(
+          error instanceof CallbackError && error.reason === "forbidden_destination"
+            ? { status: "rejected", errorCode: "dot_callback_forbidden" }
+            : { status: "unknown", errorCode: "dot_callback_uncertain" },
+        );
+      }
+    }
+    return outcome;
+  };
+}
