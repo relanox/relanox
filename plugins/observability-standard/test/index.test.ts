@@ -45,6 +45,76 @@ afterEach(async () => {
 });
 
 describe("jSON log boundary", () => {
+  it.each([
+    ["channel_policy_rejection", "sender_not_allowed", "inbound.rejected", "authorization"],
+    ["channel_input_discarded", "unbound_conversation", "inbound.rejected", "authorization"],
+    ["channel_unsupported_input", "unsupported_message_type", "inbound.rejected", "unsupported"],
+    ["channel_unsupported_sender", "missing_staff_id", "inbound.rejected", "invalid_input"],
+    ["channel_event_ignored", "unsupported_or_self_text", "inbound.rejected", "unsupported"],
+    ["channel_invalid_frame", "invalid_frame", "inbound.rejected", "invalid_input"],
+    ["channel_connection_replaced", "bot_connection_replaced", "connection.changed", "conflict"],
+    ["operation.failed", "encrypted_unsupported", "operation.failed", "unsupported"],
+    ["operation.failed", "authentication_timeout", "operation.failed", "timeout"],
+    ["operation.failed", "connection_failed", "operation.failed", "network"],
+  ])("normalizes native %s / %s diagnostics", async (event, code, expectedEvent, expectedCode) => {
+    const output = new PassThrough();
+    let text = "";
+    output.on("data", (chunk: Buffer) => {
+      text += chunk.toString();
+    });
+    const value = await runtime({ logs: true }, output);
+    value.observe.log("warn", event, { operation: "receive", errorCode: code });
+    value.observe.log("warn", "channel_SECRET", {
+      operation: "receive_SECRET",
+      errorCode: "unsupported_SECRET",
+    });
+    await value.flush(signal());
+    const lines = text
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines[0]).toMatchObject({
+      event: expectedEvent,
+      operation: "ingest",
+      errorCode: expectedCode,
+    });
+    expect(lines[1]).toMatchObject({ event: "operation.failed" });
+    expect(lines[1]).not.toHaveProperty("operation");
+    expect(lines[1]).not.toHaveProperty("errorCode");
+    expect(text).not.toContain("SECRET");
+  });
+
+  it.each(["flush", "shutdown"] as const)(
+    "%s waits for accepted asynchronous collector writes below the high-water mark",
+    async (operation) => {
+      let release: (() => void) | undefined;
+      const output = new Writable({
+        write(_chunk, _encoding, callback) {
+          release = callback;
+        },
+      });
+      const value = await runtime({ logs: true }, output);
+      value.observe.log("info", "shutdown.completed", { plugin: "core" });
+      let finished = false;
+      const completion = value[operation](signal()).then(() => {
+        finished = true;
+        return finished;
+      });
+      try {
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+        expect(finished).toBe(false);
+      } finally {
+        release?.();
+        await completion;
+      }
+      expect(finished).toBe(true);
+      expect(output.writableFinished).toBe(false);
+      output.end();
+    },
+  );
+
   it("keeps safe correlation fields and excludes arbitrary payloads and error strings", async () => {
     const output = new PassThrough();
     let text = "";
