@@ -11,6 +11,7 @@ import type { CoreOptions } from "../types.js";
 import type { WorkerConfig } from "./options.js";
 import { jsonSnapshot } from "../json.js";
 import { validateDispatchOutcome, validateSendOutcome } from "./outcomes.js";
+import { sendChunk } from "./media.js";
 import { retryDelay, retryBudgetExhausted } from "./retry.js";
 
 /** Owns one-at-a-time leases, plugin deadlines, retry settlement, and worker readiness. */
@@ -124,23 +125,19 @@ export function createWorker(
       };
     }
     const record = work.record;
-    const chunk = record.chunks[record.currentChunk];
     const outcome = applyRetryBudget(
       record.attempts >= worker.maxAttempts
         ? { status: "rejected" as const, errorCode: "retry_budget_exhausted" }
         : await invoke(
             "send",
             (signal) =>
-              chunk
-                ? options.channels.get(record.target.accountId)?.send({
-                    deliveryId: record.deliveryId,
-                    requestId: record.requestId,
-                    target: jsonSnapshot(record.target),
-                    chunk: jsonSnapshot(chunk),
-                    chunkIndex: record.currentChunk,
-                    signal,
-                  })
-                : Promise.resolve({ status: "rejected", errorCode: "invalid_chunk_index" }),
+              sendChunk(
+                storage,
+                options.channels.get(record.target.accountId),
+                record,
+                worker.maxMediaBytes,
+                signal,
+              ),
             validateSendOutcome,
             record.trace,
           ),

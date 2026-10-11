@@ -1,4 +1,4 @@
-import type { RelanoxConfig, Observability } from "@relanox/sdk";
+import type { RelanoxConfig, Observability, HttpRouteOptions } from "@relanox/sdk";
 import type { CoreOptions } from "../types.js";
 import type { WorkerConfig } from "../worker/options.js";
 import { CoreError } from "../errors.js";
@@ -15,6 +15,7 @@ interface HostSetupOptions {
   readonly worker: WorkerConfig;
   readonly observe: Observability;
   readonly app: Hono;
+  readonly httpRoutes: Map<string, HttpRouteOptions>;
   readonly connections: Map<string, "connected" | "disconnected" | "degraded">;
   isAccepting(this: void): boolean;
 }
@@ -26,11 +27,19 @@ export async function setupPluginHosts({
   worker,
   observe,
   app,
+  httpRoutes,
   isAccepting,
   connections,
 }: HostSetupOptions): Promise<void> {
   const storage = options.storage;
-  const common = createCommonHostFactory(storage, observe, app, isAccepting, connections);
+  const common = createCommonHostFactory(
+    storage,
+    observe,
+    app,
+    isAccepting,
+    connections,
+    httpRoutes,
+  );
   const { accountValidated, endpoints, bindings } = validatePluginConfigurations(options, config);
 
   // Populate every connection before setup callbacks can report aggregate plugin health.

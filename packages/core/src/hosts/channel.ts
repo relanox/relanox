@@ -13,6 +13,7 @@ import { bindingKey } from "../config/relations.js";
 import { CoreError } from "../errors.js";
 import { jsonSnapshot } from "../json.js";
 import { ingestSchema, boundedText } from "../validation.js";
+import { inboundMedia } from "../media.js";
 import { createOperationTracer } from "./tracing.js";
 
 interface ChannelHostOptions {
@@ -40,16 +41,14 @@ export function createChannelHost({
   const traced = createOperationTracer(observe);
   return {
     ...common,
+    maxMediaBytes: worker.maxMediaBytes,
     async ingest(input: IngestInput) {
       const { attachments, ...message } = input;
-      if (attachments !== undefined) {
-        throw new CoreError("media_not_supported");
-      }
       if (!isAccepting()) {
         throw new CoreError("not_accepting");
       }
-      ingestSchema.parse(input);
-      boundedText(input.text, worker.maxTextBytes);
+      ingestSchema.parse(message);
+      boundedText(input.text, worker.maxTextBytes, !attachments?.length);
       if (
         input.source.accountId !== account.id ||
         input.target.accountId !== account.id ||
@@ -80,17 +79,25 @@ export function createChannelHost({
       if (!endpoint) {
         throw new CoreError("unbound_endpoint");
       }
+      const media = inboundMedia(
+        attachments,
+        worker.maxMediaBytes,
+        worker.maxAttachments,
+        Boolean(storage.media),
+      );
       const receipt = await traced(
         "ingest",
         (trace) =>
           storage.acceptInbound(
             jsonSnapshot({
               ...message,
+              ...(media.length > 0 ? { attachments: media.map((item) => item.reference) } : {}),
               ...(trace ? { trace } : {}),
               requestId: crypto.randomUUID(),
               endpoint,
               acceptedAt: Date.now(),
             }),
+            media,
           ),
         input.trace,
       );

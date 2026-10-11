@@ -1,4 +1,10 @@
-import type { CommonHost, StateNamespace, Storage, Observability } from "@relanox/sdk";
+import type {
+  CommonHost,
+  StateNamespace,
+  Storage,
+  Observability,
+  HttpRouteOptions,
+} from "@relanox/sdk";
 import type { Hono } from "hono";
 import { z } from "zod";
 import { CoreError } from "../errors.js";
@@ -12,6 +18,7 @@ export function createCommonHostFactory(
   app: Hono,
   isAccepting: () => boolean,
   connections: Map<string, "connected" | "disconnected" | "degraded">,
+  httpRoutes: Map<string, HttpRouteOptions>,
 ) {
   const routes = new Set<string>();
   const componentPlugins = new Map<string, string>();
@@ -35,7 +42,7 @@ export function createCommonHostFactory(
             z.number().int().positive().parse(version),
           ),
       },
-      mountHttp(path, handler) {
+      mountHttp(path, handler, options) {
         if (
           !path.startsWith("/") ||
           /[?#\\]|\.\.|\/\//u.test(path) ||
@@ -48,6 +55,10 @@ export function createCommonHostFactory(
           throw new CoreError("duplicate_route");
         }
         routes.add(route);
+        if (options) {
+          z.number().int().min(1).max(209_715_200).parse(options.maxBodyBytes);
+          httpRoutes.set(route, options);
+        }
         app.all(route, async (context) => {
           if (!isAccepting()) {
             return context.json({ error: "not_accepting" }, 503);

@@ -9,7 +9,7 @@ export const ingestSchema = z.strictObject({
     eventId: textId,
   }),
   senderId: textId,
-  text: z.string().min(1),
+  text: z.string(),
   target: z.strictObject({
     channel: textId,
     accountId: textId,

@@ -6,7 +6,7 @@ import { safeObservability } from "./observe.js";
 import { createAdministration } from "./administration.js";
 import { workerSchema } from "./worker/options.js";
 import { createWorker } from "./worker/runtime.js";
-import { createHttpHandler } from "./http.js";
+import { createHttpHandler, createHttpRoutes } from "./http.js";
 import { setupPluginHosts } from "./hosts/setup.js";
 
 /** Composes the relay; listeners, timers, and plugin lifecycle belong to the CLI. */
@@ -16,6 +16,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   const observe = safeObservability(options.observe);
   const workerOptions = workerSchema.parse(options.worker ?? {});
   const app = new Hono();
+  const httpRoutes = createHttpRoutes();
   const connections = new Map<string, "connected" | "disconnected" | "degraded">();
   let accepting = true;
   const isAccepting = () => accepting;
@@ -25,6 +26,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
     worker: workerOptions,
     observe,
     app,
+    httpRoutes,
     isAccepting,
     connections,
   });
@@ -33,7 +35,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   const administration = createAdministration(storage, connections);
   return {
     config: jsonSnapshot(config),
-    fetch: createHttpHandler(app, workerOptions, observe),
+    fetch: createHttpHandler(app, workerOptions, observe, httpRoutes),
     processDue: () => worker.processDue(),
     ...administration,
     async readiness() {
