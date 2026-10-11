@@ -87,6 +87,18 @@ const requestSchema = z.strictObject({
   requestId: id,
   text: z.string(),
   context: z.json(),
+  attachments: z
+    .array(
+      z.strictObject({
+        id,
+        kind: z.enum(["image", "audio", "video", "file"]),
+        mimeType: z.string(),
+        fileName: z.string(),
+        size: z.number().int().nonnegative(),
+        sha256: z.string(),
+      }),
+    )
+    .optional(),
   source: z.strictObject({ channel: z.string(), eventId: id }),
 });
 function envelope(value: Record<string, unknown>, isError = false): CallToolResult {
@@ -146,12 +158,13 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
     "relanox_complete",
     {
       description:
-        "Commit the final text and enqueue the original reply. Reuse resultId and text when retrying.",
+        "Commit final text and ordered attachment IDs to the original reply. Upload generated files through relanox_media_transfer first. Reuse resultId, text and attachment order when retrying.",
       inputSchema: z.strictObject({
         requestId: id,
         claimToken: id,
         resultId: id,
-        text: z.string().min(1).max(1_048_576),
+        text: z.string().max(1_048_576),
+        attachments: z.array(id).max(100).optional(),
       }),
       outputSchema: z.union([
         z.strictObject({
@@ -166,7 +179,11 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
       annotations: annotations(false),
     },
     async (input) => {
-      const result = await host.complete(input);
+      const { attachments, ...completion } = input;
+      const result = await host.complete({
+        ...completion,
+        ...(attachments ? { attachments } : {}),
+      });
       return envelope(result, result.status !== "completed");
     },
   );
