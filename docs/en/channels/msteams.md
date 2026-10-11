@@ -8,15 +8,14 @@ Register a Microsoft application and Azure Bot, enable its Teams channel, and in
 
 ## Fill in the configurator
 
-Open the [connection configurator](../configuration.md), select **Microsoft Teams**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
+Open the [connection configurator](../connect.md), select **Microsoft Teams**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-| Configurator field                        | What to enter                                      |
-| ----------------------------------------- | -------------------------------------------------- |
-| Application ID                            | Replace example: `microsoft_application_id`        |
-| Bot ID                                    | Replace example: `28:bot_activity_recipient_id`    |
-| Tenant ID                                 | Replace example: `allowed_teams_tenant_id`         |
-| Application secret environment variable   | Variable name: `TEAMS_APP_SECRET`                  |
-| Trusted service origins (comma separated) | Replace example: `https://smba.trafficmanager.net` |
+| Configurator field                        | What to enter                                                                     |
+| ----------------------------------------- | --------------------------------------------------------------------------------- |
+| Application ID                            | The application id obtained during account preparation                            |
+| Bot ID                                    | The bot id obtained during account preparation                                    |
+| Tenant ID                                 | The tenant id obtained during account preparation                                 |
+| Trusted service origins (comma separated) | The trusted service origins (comma separated) obtained during account preparation |
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#msteams).
 

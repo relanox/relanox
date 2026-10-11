@@ -8,16 +8,13 @@ Create an internal application, enable its bot capability and grant message rece
 
 ## Fill in the configurator
 
-Open the [connection configurator](../configuration.md), select **Feishu / Lark**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
+Open the [connection configurator](../connect.md), select **Feishu / Lark**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-| Configurator field                      | What to enter                              |
-| --------------------------------------- | ------------------------------------------ |
-| Application ID                          | Replace example: `cli_example`             |
-| Application secret environment variable | Variable name: `FEISHU_APP_SECRET`         |
-| Verification token environment variable | Variable name: `FEISHU_VERIFICATION_TOKEN` |
-| Encryption key environment variable     | Variable name: `FEISHU_ENCRYPT_KEY`        |
-| Tenant key                              | Replace example: `example-tenant`          |
-| Platform domain (feishu or lark)        | Initial value: `feishu`                    |
+| Configurator field               | What to enter                                          |
+| -------------------------------- | ------------------------------------------------------ |
+| Application ID                   | The application id obtained during account preparation |
+| Tenant key                       | The tenant key obtained during account preparation     |
+| Platform domain (feishu or lark) | Initial value: `feishu`                                |
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#feishu).
 
