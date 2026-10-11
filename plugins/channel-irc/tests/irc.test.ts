@@ -17,6 +17,12 @@ async function tcpPeer(onLine: (line: string, socket: Socket) => void) {
   const sockets: Socket[] = [];
   const server = createServer((socket) => {
     sockets.push(socket);
+    // A peer reset is expected when the reconnect and shutdown cases close a live connection.
+    socket.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code !== "ECONNRESET") {
+        throw error;
+      }
+    });
     socket.setEncoding("utf8");
     let buffer = "";
     socket.on("data", (data: string) => {
