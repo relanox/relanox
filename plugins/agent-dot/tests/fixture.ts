@@ -12,6 +12,7 @@ import type {
   ChannelPlugin,
   EndpointConfig,
   Json,
+  MediaUpload,
 } from "@relanox/sdk";
 import { createSqliteStorage } from "@relanox/storage-sqlite";
 
@@ -113,6 +114,10 @@ export async function fixture(
       maxTextLength: 4000,
       lengthUnit: "codepoint",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig: () => ({}),
     async setup(host) {
@@ -164,7 +169,12 @@ export async function fixture(
     get agent() {
       return currentPlugin;
     },
-    async ingest(endpoint = 0, text = "中文\nsecond line", event = "event-1") {
+    async ingest(
+      endpoint = 0,
+      text = "中文\nsecond line",
+      event = "event-1",
+      attachments?: readonly MediaUpload[],
+    ) {
       if (!channelHost) {
         throw new Error("channel_not_setup");
       }
@@ -181,6 +191,7 @@ export async function fixture(
         },
         receivedAt: Date.now(),
         context: { thread: "protocol-context" },
+        ...(attachments ? { attachments } : {}),
       });
     },
     async client(token = "secret-0", endpoint = 0, modern = agent === "dot") {

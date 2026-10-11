@@ -45,6 +45,29 @@ async function setup(status = 200, headers: Record<string, string> = {}, timeout
   return { receiver, plugin, fx };
 }
 describe("grok configured Routine and scoped MCP", () => {
+  it("includes stored media metadata in the hosted Routine without serializing binary bytes", async () => {
+    const { fx, receiver } = await setup();
+    await fx.ingest(0, "inspect the image", "routine-media", [
+      {
+        kind: "image",
+        mimeType: "image/png",
+        fileName: "routine.png",
+        data: new Uint8Array([137, 80, 78, 71]),
+      },
+    ]);
+    await fx.core.processDue();
+    const outer = z
+      .looseObject({ content: z.string() })
+      .parse(parseWire(receiver.traffic[0]?.body ?? ""));
+    expect(parseWire(outer.content)).toMatchObject({
+      attachments: [{ kind: "image", mimeType: "image/png", fileName: "routine.png", size: 4 }],
+    });
+    const payload = z
+      .looseObject({ attachments: z.array(z.record(z.string(), z.unknown())) })
+      .parse(parseWire(outer.content));
+    expect(payload.attachments[0]).not.toHaveProperty("data");
+  });
+
   it("rejects an already-aborted request without waiting for its stalled body", async () => {
     const controller = new AbortController();
     controller.abort();
