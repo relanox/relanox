@@ -20,7 +20,7 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-打开[连接配置器](connect.md)，填写公开 HTTPS 地址，添加 Grok Agent，启用 Telegram。填写允许使用的 Telegram 用户 ID 和私人聊天 ID，为这个聊天选择刚添加的 Grok Agent。保留生成的环境变量名称，将下载的 `relanox.json` 放在仓库根目录。
+打开[连接配置器](connect.md)，填写公开 HTTPS 地址，将默认 Agent 从 dot 切换为 Grok，启用 Telegram。填写允许使用的 Telegram 用户 ID 和私人聊天 ID，为这个聊天选择这个 Grok Agent。保留生成的环境变量名称，将下载的 `relanox.json` 放在仓库根目录。
 
 打开**你的接入教程**，关闭或刷新页面前保存生成的 MCP 密码。如果仍有草稿提示，先补全对应信息。教程会列出此次配置需要的变量和连接地址。使用仓库示例手动配置的方法见[配置参考](reference/configuration.md)。
 
