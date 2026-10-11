@@ -1,7 +1,13 @@
 import type { AgentId, InboundRecord, Storage, AgentMediaHost, StoredMedia } from "@relanox/sdk";
 import { CoreError } from "../errors.js";
 import { textId } from "../validation.js";
-import { mediaId, storeUpload, verifiedMedia, validateMediaCount } from "../media.js";
+import {
+  mediaId,
+  storeUpload,
+  verifiedMedia,
+  validateMediaCount,
+  validateMediaTotal,
+} from "../media.js";
 import type { WorkerConfig } from "../worker/options.js";
 
 export function authorizedRequest(
@@ -55,6 +61,8 @@ export function createAgentMedia(
         endpointIds: scope,
         claimToken: input.claimToken,
         media,
+        maxCount: worker.maxAttachments * 2,
+        maxTotalBytes: worker.maxTotalMediaBytes * 2,
       });
     },
   };
@@ -78,5 +86,6 @@ export async function completionMedia(
     }
     media.push(verifiedMedia(stored, stored.reference, worker.maxMediaBytes));
   }
+  validateMediaTotal(media, worker.maxTotalMediaBytes);
   return media;
 }

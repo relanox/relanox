@@ -21,6 +21,7 @@ export interface WorkerOptions {
   readonly notificationIntervalMs?: number;
   readonly maxTextBytes?: number;
   readonly maxMediaBytes?: number;
+  readonly maxTotalMediaBytes?: number;
   readonly maxAttachments?: number;
   readonly maxContextBytes?: number;
   readonly maxHttpBodyBytes?: number;
