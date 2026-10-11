@@ -14,18 +14,21 @@ export interface StandardConfig {
     readonly exportTimeoutMs: number;
   };
 }
-function object(value: unknown): Record<string, unknown> {
+function readConfigObject(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("invalid observability configuration");
   }
   return value as Record<string, unknown>;
 }
-function keys(value: Record<string, unknown>, allowed: readonly string[]): void {
+function rejectUnknownConfigFields(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): void {
   if (Object.keys(value).some((key) => !allowed.includes(key))) {
     throw new Error("unknown observability configuration field");
   }
 }
-function number(
+function readNumericConfig(
   value: unknown,
   fallback: number,
   min: number,
@@ -44,7 +47,7 @@ function number(
   }
   return result;
 }
-function boolean(value: unknown, fallback: boolean): boolean {
+function readBooleanConfig(value: unknown, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
   }
@@ -54,8 +57,8 @@ function boolean(value: unknown, fallback: boolean): boolean {
   return value;
 }
 export function validateStandardConfig(input: unknown): StandardConfig {
-  const raw = object(input);
-  keys(raw, [
+  const raw = readConfigObject(input);
+  rejectUnknownConfigFields(raw, [
     "logs",
     "level",
     "metrics",
@@ -70,8 +73,8 @@ export function validateStandardConfig(input: unknown): StandardConfig {
   }
   let tracing: StandardConfig["tracing"];
   if (raw.tracing !== undefined) {
-    const value = object(raw.tracing);
-    keys(value, [
+    const value = readConfigObject(raw.tracing);
+    rejectUnknownConfigFields(value, [
       "endpoint",
       "sampleRatio",
       "maxQueueSize",
@@ -92,28 +95,28 @@ export function validateStandardConfig(input: unknown): StandardConfig {
     ) {
       throw new Error("invalid tracing endpoint");
     }
-    const maxQueueSize = number(value.maxQueueSize, 512, 1, 4096);
+    const maxQueueSize = readNumericConfig(value.maxQueueSize, 512, 1, 4096);
     tracing = {
       endpoint: url.href,
-      sampleRatio: number(value.sampleRatio, 0.1, 0, 1, false),
+      sampleRatio: readNumericConfig(value.sampleRatio, 0.1, 0, 1, false),
       maxQueueSize,
-      maxExportBatchSize: number(
+      maxExportBatchSize: readNumericConfig(
         value.maxExportBatchSize,
         Math.min(128, maxQueueSize),
         1,
         maxQueueSize,
       ),
-      scheduledDelayMs: number(value.scheduledDelayMs, 1000, 100, 10_000),
-      exportTimeoutMs: number(value.exportTimeoutMs, 2000, 100, 10_000),
+      scheduledDelayMs: readNumericConfig(value.scheduledDelayMs, 1000, 100, 10_000),
+      exportTimeoutMs: readNumericConfig(value.exportTimeoutMs, 2000, 100, 10_000),
     };
   }
   return {
-    logs: boolean(raw.logs, true),
+    logs: readBooleanConfig(raw.logs, true),
     level,
-    metrics: boolean(raw.metrics, true),
-    processMetrics: boolean(raw.processMetrics, true),
-    logBufferBytes: number(raw.logBufferBytes, 65_536, 1024, 1_048_576),
-    lifecycleTimeoutMs: number(raw.lifecycleTimeoutMs, 3000, 100, 10_000),
+    metrics: readBooleanConfig(raw.metrics, true),
+    processMetrics: readBooleanConfig(raw.processMetrics, true),
+    logBufferBytes: readNumericConfig(raw.logBufferBytes, 65_536, 1024, 1_048_576),
+    lifecycleTimeoutMs: readNumericConfig(raw.lifecycleTimeoutMs, 3000, 100, 10_000),
     ...(tracing ? { tracing } : {}),
   };
 }

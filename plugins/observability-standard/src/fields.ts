@@ -1,5 +1,5 @@
 import type { LogFields, MetricLabels } from "@relanox/sdk";
-import { nativeField } from "./diagnostics.js";
+import { normalizeNativeDiagnosticField } from "./diagnostics.js";
 
 const channels = [
   "telegram",
@@ -129,7 +129,10 @@ export const metricDefinitions = {
   relanox_connection_status: "gauge",
   relanox_storage_stats_stale: "gauge",
 } as const;
-export function member(value: unknown, values: readonly string[]): string | undefined {
+export function allowedVocabularyValue(
+  value: unknown,
+  values: readonly string[],
+): string | undefined {
   return typeof value === "string" && values.includes(value) ? value : undefined;
 }
 export function safeFields(fields: LogFields = {}): Record<string, string> {
@@ -151,7 +154,10 @@ export function safeFields(fields: LogFields = {}): Record<string, string> {
     outcome: outcomes,
     operation: operations,
   })) {
-    const value = member(nativeField(key, fields[key as keyof LogFields]), values);
+    const value = allowedVocabularyValue(
+      normalizeNativeDiagnosticField(key, fields[key as keyof LogFields]),
+      values,
+    );
     if (value) {
       safe[key] = value;
     }
@@ -181,7 +187,7 @@ export function safeLabels(labels: MetricLabels = {}): Record<string, string> | 
   }
   for (const key of labelNames) {
     const value = labels[key as keyof MetricLabels];
-    if (value !== undefined && !member(value, vocabulary[key] ?? [])) {
+    if (value !== undefined && !allowedVocabularyValue(value, vocabulary[key] ?? [])) {
       return undefined;
     }
     safe[key] = value ?? "none";

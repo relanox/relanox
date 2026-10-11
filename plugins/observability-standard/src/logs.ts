@@ -3,7 +3,7 @@ import pino from "pino";
 import type { Observability } from "@relanox/sdk";
 import type { StandardConfig } from "./config.js";
 import { nativeEvents } from "./diagnostics.js";
-import { events, member, safeFields } from "./fields.js";
+import { events, allowedVocabularyValue, safeFields } from "./fields.js";
 
 export class BoundedLogWriter {
   private queue: string[] = [];
@@ -104,7 +104,15 @@ export class BoundedLogWriter {
   }
 }
 
-export function createLogs(config: StandardConfig, destination: Writable, dropped: () => void) {
+export interface LogRuntime {
+  readonly writer: BoundedLogWriter;
+  readonly log: Observability["log"];
+}
+export function createLogs(
+  config: StandardConfig,
+  destination: Writable,
+  dropped: () => void,
+): LogRuntime {
   const writer = new BoundedLogWriter(destination, config.logBufferBytes, dropped);
   const logger = pino(
     {
@@ -120,11 +128,11 @@ export function createLogs(config: StandardConfig, destination: Writable, droppe
   );
 
   const log: Observability["log"] = (level, event, fields) => {
-    if (!config.logs || !member(level, ["debug", "info", "warn", "error"])) {
+    if (!config.logs || !allowedVocabularyValue(level, ["debug", "info", "warn", "error"])) {
       return;
     }
     logger[level]({
-      event: member(nativeEvents.get(event) ?? event, events) ?? "operation.failed",
+      event: allowedVocabularyValue(nativeEvents.get(event) ?? event, events) ?? "operation.failed",
       ...safeFields(fields),
     });
   };

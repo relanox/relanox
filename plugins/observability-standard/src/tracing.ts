@@ -5,14 +5,18 @@ import { BatchSpanProcessor, TraceIdRatioBasedSampler } from "@opentelemetry/sdk
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import type { Observability, Span, TraceContext } from "@relanox/sdk";
 import type { StandardConfig } from "./config.js";
-import { member, operations, safeFields } from "./fields.js";
+import { allowedVocabularyValue, operations, safeFields } from "./fields.js";
 
+export interface TracingRuntime {
+  readonly provider: NodeTracerProvider | undefined;
+  readonly span: Observability["span"];
+}
 export function createTracing(
   config: StandardConfig,
   isClosed: () => boolean,
   isolate: (operation: () => void, signal: string) => void,
   dropped: () => void,
-) {
+): TracingRuntime {
   // Do not register a global provider/context manager: instances and other applications remain independent.
   const provider = config.tracing
     ? new NodeTracerProvider({
@@ -48,7 +52,7 @@ export function createTracing(
   const tracer = provider?.getTracer("relanox-observability", "0.1.0");
   const observe: Pick<Observability, "span"> = {
     span(name, fields, parent): Span {
-      if (isClosed() || !tracer || !member(name, operations)) {
+      if (isClosed() || !tracer || !allowedVocabularyValue(name, operations)) {
         return { end() {} };
       }
       try {
