@@ -17,7 +17,12 @@ export function matchesInitialResult(
     outbound.attempts === 0 &&
     outbound.lease === undefined &&
     outbound.chunks.length > 0 &&
-    outbound.chunks.map((chunk) => chunk.text).join("") === input.result.text
+    outbound.chunks.map((chunk) => chunk.text).join("") === input.result.text &&
+    outbound.chunks.every((chunk) => chunk.media === undefined || chunk.text === "") &&
+    equalDurableValues(
+      outbound.chunks.flatMap((chunk) => (chunk.media ? [chunk.media] : [])),
+      input.result.attachments ?? [],
+    )
   );
 }
 export const isRequestInScope = (

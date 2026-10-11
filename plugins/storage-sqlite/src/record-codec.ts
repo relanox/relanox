@@ -1,3 +1,4 @@
+import type { FinalResult } from "@relanox/sdk";
 import { createHash } from "node:crypto";
 
 export const encodeDurableRecord = (value: unknown): string => {
@@ -25,8 +26,24 @@ export const encodeDurableRecord = (value: unknown): string => {
   return JSON.stringify(value);
 };
 export const decodeDurableRecord = <T>(value: unknown): T => JSON.parse(String(value)) as T;
-export const resultDigest = (text: string): string =>
-  createHash("sha256").update(text).digest("hex");
+export const resultDigest = (result: FinalResult): string =>
+  createHash("sha256")
+    .update(
+      result.attachments?.length
+        ? encodeDurableRecord([
+            result.text,
+            result.attachments.map((ref) => [
+              ref.id,
+              ref.kind,
+              ref.mimeType,
+              ref.fileName,
+              ref.size,
+              ref.sha256,
+            ]),
+          ])
+        : result.text,
+    )
+    .digest("hex");
 export const equalDurableValues = (a: unknown, b: unknown): boolean => {
   const canonical = (value: unknown): unknown => {
     if (Array.isArray(value)) {
