@@ -35,9 +35,32 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
 }
 ```
 
-Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
+## Discover user and group IDs
 
-Use the message’s `from.userid` for `allowedSenders`. A direct-chat binding uses that member’s userid as `chatId`; a group binding uses the callback `chatid`. Obtain these values from your robot’s authenticated message events rather than display names.
+For first-time setup, save a draft `relanox.json` containing your WeCom entry in `relay.accounts`, with the real `botId` and secret environment reference. You can leave `allowedSenders` empty and bindings unfinished during discovery. Set `WECOM_BOT_SECRET` in the terminal environment. Agent credentials and database setup are not needed for this command.
+
+Stop any service using the same robot before discovery: WeCom replaces its previous connection when another process connects. Run:
+
+```sh
+relanox discover --config relanox.json --account wecom-main --timeout 120
+```
+
+Wait for the terminal's `discovery_connected` event, then send a message directly to the robot, or mention it in the target group. The terminal prints a JSON line for each distinct conversation and sender:
+
+```json
+{
+  "ok": true,
+  "event": "conversation",
+  "accountId": "wecom-main",
+  "channel": "wecom",
+  "chatId": "group-chatid",
+  "senderId": "staff-userid"
+}
+```
+
+Copy `senderId` into `allowedSenders` and `chatId` into the binding. A direct chat uses the member userid; a group uses the authenticated callback's `chatid`. Ask each intended member to send a message if you need their userid. Use these IDs rather than display names.
+
+Discovery supports WeCom only. It stops after 120 seconds by default; `--timeout` accepts 1–600 seconds, and Ctrl+C stops it early. It prints only account, conversation and sender IDs, with no message text, media URLs or credentials. It does not download attachments, save messages or dispatch to an Agent. The normal service still requires configured bindings and sender allowlists. Finish the configuration, run `relanox validate --config relanox.json`, then start the service again.
 
 ## Enable the connection
 
@@ -54,3 +77,5 @@ Send images, videos, files or mixed text/image messages. Voice input supplies it
 ## Troubleshooting
 
 For a replaced connection, stop the other process using the same bot, then restart this instance. For missing group questions, check bot membership and mention it. If credentials changed, update the environment of the running service and restart it.
+
+If discovery prints no conversation, verify the Bot ID and secret, check member access and group membership, then send another message while discovery is running. A discovery timeout alone does not confirm successful platform authentication.
