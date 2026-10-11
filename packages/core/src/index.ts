@@ -368,12 +368,14 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
           agentEndpoints.some((e) => e.id === id),
         );
         return {
-          listPending: (count) => storage.listPending({ endpointIds: scope, limit: limit(count) }),
+          listPending: (count) =>
+            storage.listPending({ agent, endpointIds: scope, limit: limit(count) }),
           claim: (requestId, claimKey) =>
             traced("claim", () =>
               storage.claimRequest({
                 requestId: textId.parse(requestId),
                 endpointIds: scope,
+                agent,
                 claimKey: textId.parse(claimKey),
                 claimToken: crypto.randomUUID(),
                 now: Date.now(),
@@ -385,7 +387,11 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
             textId.parse(input.resultId);
             boundedText(input.text);
             const request = await storage.getInbound(input.requestId);
-            if (!request || !scope.includes(request.snapshot.endpoint.id)) {
+            if (
+              !request ||
+              !scope.includes(request.snapshot.endpoint.id) ||
+              request.snapshot.endpoint.agent !== agent
+            ) {
               return { status: "not_found" };
             }
             const channelPlugin = options.channels.get(request.snapshot.target.accountId);
@@ -409,6 +415,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
                 storage.completeAndEnqueue({
                   requestId: input.requestId,
                   endpointIds: scope,
+                  agent,
                   claimToken: input.claimToken,
                   result: {
                     resultId: input.resultId,
@@ -452,6 +459,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
               storage.fail({
                 requestId: textId.parse(input.requestId),
                 endpointIds: scope,
+                agent,
                 claimToken: textId.parse(input.claimToken),
                 errorCode: z
                   .string()

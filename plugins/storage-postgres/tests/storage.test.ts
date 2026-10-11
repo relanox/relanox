@@ -112,6 +112,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       expect(
         await b.claimRequest({
           requestId: "r1",
+          agent: "grok",
           endpointIds: ["ep"],
           claimKey: "attempt",
           claimToken: "durable",
@@ -123,6 +124,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       expect(
         await a.claimRequest({
           requestId: "r1",
+          agent: "grok",
           endpointIds: ["ep"],
           claimKey: "attempt",
           claimToken: "new",
@@ -158,6 +160,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       const claim = (s: Storage, id: string, token: string) =>
         s.claimRequest({
           requestId: id,
+          agent: "grok",
           endpointIds: ["ep", "independent"],
           claimKey: token,
           claimToken: token,
@@ -174,10 +177,12 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       const finals = await Promise.all([
         a.completeAndEnqueue({
           ...completion(firstId, "first", sharedFinal),
+          agent: "grok",
           endpointIds: ["ep"],
         }),
         b.completeAndEnqueue({
           ...completion("r3", "third", sharedFinal),
+          agent: "grok",
           endpointIds: ["independent"],
         }),
       ]);
@@ -233,6 +238,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       await s.acceptInbound(snapshot("a-head", 100, "blocked"));
       await s.claimRequest({
         requestId: "a-head",
+        agent: "grok",
         endpointIds: ["blocked"],
         claimKey: "head",
         claimToken: "head",
@@ -270,7 +276,9 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
         ).map((r) => r.snapshot.requestId),
       ).toEqual(["a-next2"]);
       expect(
-        (await s.listPending({ endpointIds: ["pull"], limit: 1 })).map((r) => r.requestId),
+        (await s.listPending({ agent: "grok", endpointIds: ["pull"], limit: 1 })).map(
+          (r) => r.requestId,
+        ),
       ).toEqual(["b-pull"]);
       const ns = { pluginId: "dot", ownerId: "a" };
       for (const [key, expiry] of [
@@ -297,6 +305,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       ).toEqual(["sub%_1"]);
       await s.claimRequest({
         requestId: "c-due",
+        agent: "grok",
         endpointIds: ["ep"],
         claimKey: "final",
         claimToken: "final",
@@ -341,6 +350,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       }
       await s.fail({
         requestId: "a-head",
+        agent: "grok",
         endpointIds: ["blocked"],
         claimToken: "head",
         errorCode: "remote_failure",
@@ -374,6 +384,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       await a.acceptInbound(snapshot("z-claimed", 100, "claimed"));
       await a.claimRequest({
         requestId: "z-claimed",
+        agent: "grok",
         endpointIds: ["claimed"],
         claimKey: "old",
         claimToken: "old",
@@ -383,6 +394,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       expect(
         await b.claimRequest({
           requestId: "a-new",
+          agent: "grok",
           endpointIds: ["claimed"],
           claimKey: "new",
           claimToken: "new",
@@ -426,6 +438,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       expect(
         await b.claimRequest({
           requestId: "a-dispatch",
+          agent: "grok",
           endpointIds: ["dispatch"],
           claimKey: "new",
           claimToken: "new",
@@ -435,6 +448,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       expect(
         await a.claimRequest({
           requestId: "z-dispatch",
+          agent: "grok",
           endpointIds: ["dispatch"],
           claimKey: "original",
           claimToken: "original",
@@ -457,6 +471,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       await a.acceptInbound(snapshot());
       await a.claimRequest({
         requestId: "r1",
+        agent: "grok",
         endpointIds: ["ep"],
         claimKey: "claim",
         claimToken: "token",

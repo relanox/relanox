@@ -97,7 +97,11 @@ test("accepts native text during another channel's initialization while manageme
       .poll(async () => (await value.database.getStats()).pending, { timeout: 1000 })
       .toBe(1);
     expect(peers.fastClosed).toBe(false);
-    const [request] = await value.database.listPending({ endpointIds: ["agent"], limit: 10 });
+    const [request] = await value.database.listPending({
+      agent: "grok",
+      endpointIds: ["agent"],
+      limit: 10,
+    });
     expect(request).toMatchObject({
       text: "message during startup",
       source: { channel: "wecom", accountId: "fast", eventId: "startup-event" },

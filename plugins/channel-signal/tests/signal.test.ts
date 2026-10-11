@@ -124,7 +124,9 @@ it.each([
     await waitFor(async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1);
     await plugin.stop?.();
     await fixture.runtime.processDue();
-    const pending = (await fixture.storage.listPending({ endpointIds: ["worker"], limit: 10 }))[0];
+    const pending = (
+      await fixture.storage.listPending({ agent: "grok", endpointIds: ["worker"], limit: 10 })
+    )[0];
     if (!pending) {
       throw new Error("Missing group request");
     }
@@ -213,7 +215,11 @@ it("ingests SSE envelopes and independently sends direct and group replies throu
   });
   await fixture.runtime.processDue();
   expect(dispatches).toHaveLength(1);
-  for (const request of await fixture.storage.listPending({ endpointIds: ["worker"], limit: 10 })) {
+  for (const request of await fixture.storage.listPending({
+    agent: "grok",
+    endpointIds: ["worker"],
+    limit: 10,
+  })) {
     const result = await fixture.complete(request.requestId);
     await fixture.runtime.processDue();
     expect((await fixture.storage.getOutbound(result.deliveryId))?.status).toBe("sent");

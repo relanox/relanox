@@ -339,6 +339,7 @@ it("binds accounts, intersects principals, preserves snapshots and isolates rout
   });
   await scope.listPending(10);
   expect(listPending).toHaveBeenCalledWith({
+    agent: "grok",
     endpointIds: ["first"],
     limit: 10,
   });
@@ -359,6 +360,7 @@ it("binds accounts, intersects principals, preserves snapshots and isolates rout
   });
   const input = complete.mock.calls[0]?.[0];
   expect(input?.endpointIds).toEqual(["first"]);
+  expect(input?.agent).toBe("grok");
   expect(input?.outbound.target).toEqual(incoming.target);
   expect(input?.outbound.chunks.map((c) => c.text)).toEqual(["a😀中", "b😀"]);
   expect(input?.outbound.chunks.map((c) => c.idempotencyKey)).toEqual([
@@ -395,6 +397,44 @@ it("binds accounts, intersects principals, preserves snapshots and isolates rout
   expect((await runtime.fetch(new Request("https://relay.test/channels/bot/webhook"))).status).toBe(
     503,
   );
+});
+
+it("binds mutations to the principal agent and rejects a reused endpoint's foreign snapshot", async () => {
+  const p = plugins();
+  const claimRequest = vi.fn<Storage["claimRequest"]>().mockResolvedValue({ status: "not_found" });
+  const fail = vi.fn<Storage["fail"]>().mockResolvedValue({ status: "not_found" });
+  await createCore({
+    config,
+    channels: p.channels,
+    agents: p.agents,
+    storage: recordingStorage({
+      claimRequest,
+      fail,
+      getInbound: async () => ({
+        snapshot: { ...snapshot, endpoint: { ...snapshot.endpoint, agent: "dot" } },
+        status: "claimed",
+        version: 2,
+        dispatch: { status: "accepted", attempts: 1, dueAt: 1 },
+      }),
+    }),
+  });
+  const host = p.agentHost.forPrincipal({ subject: "verified", endpointIds: ["first"] });
+  await host.claim("req", "key");
+  expect(claimRequest).toHaveBeenCalledWith(
+    expect.objectContaining({ requestId: "req", endpointIds: ["first"], agent: "grok" }),
+  );
+  await host.fail({ requestId: "req", claimToken: "token", errorCode: "failed" });
+  expect(fail).toHaveBeenCalledWith(
+    expect.objectContaining({ requestId: "req", endpointIds: ["first"], agent: "grok" }),
+  );
+  expect(
+    await host.complete({
+      requestId: "req",
+      claimToken: "token",
+      resultId: "final",
+      text: "answer",
+    }),
+  ).toEqual({ status: "not_found" });
 });
 
 it("validates every endpoint before registering any traffic and keeps setup config separate", async () => {
