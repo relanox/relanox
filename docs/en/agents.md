@@ -2,7 +2,7 @@
 
 Implemented by `@relanox/agent-dot` and `@relanox/agent-grok`, exported as `createDotAgentPlugin()` and `createGrokAgentPlugin()`. Both depend on SDK only for Relanox host contracts. Configure one instance per agent kind in the core agents map. Core validates every endpoint configuration before setup, supplies original endpoint snapshots plus `{}` to setup, and freezes endpoint SecretRefs at message acceptance. Plugins parse endpoint configs during setup and again during dispatch. Runtime credentials are resolved from environment at use, so rotating an environment value does not require rewriting persisted tasks.
 
-dot/Grok live-account support remains experimental; account installation, Bot comprehension of Routine content, approval rules and unattended execution have not been validated.
+Account setup and remote Agent instructions are deployment prerequisites; transport receipt does not establish successful remote execution.
 
 ## Configuration and HTTP routes
 
@@ -66,7 +66,7 @@ For an operator-controlled receiver on the same host, dot `callback.transport: "
 
 ## MCP tools
 
-MCP uses `@modelcontextprotocol/server@2.3.1` and `createMcpHandler(factory)`, with a fresh server per HTTP request. dot rejects the legacy era and requires `2026-07-28`. Grok uses the SDK's default stateless legacy compatibility and modern negotiation on the same route. No handcrafted initialize/session/version compatibility layer is present. All tool inputs and outputs are strict schemas. JSON/tool validation failures follow the SDK's own protocol/error envelope; durable business failures have `isError: true` with `structuredContent.status` and a text JSON mirror.
+MCP uses `@modelcontextprotocol/server` and `createMcpHandler(factory)`, with a fresh server per HTTP request. dot rejects the legacy era and requires `2026-07-28`. Grok uses the SDK's default stateless legacy compatibility and modern negotiation on the same route. No handcrafted initialize/session/version compatibility layer is present. All tool inputs and outputs are strict schemas. JSON/tool validation failures follow the SDK's own protocol/error envelope; durable business failures have `isError: true` with `structuredContent.status` and a text JSON mirror.
 
 | Tool                   | Inputs                                        | Success                                        |
 | ---------------------- | --------------------------------------------- | ---------------------------------------------- |
@@ -81,7 +81,7 @@ Remote fixed instructions: claim before work or side effects; create an independ
 
 ## dot Events
 
-The event name is `relanox.message_available`. Because the authenticated route already fixes the endpoint, subscription arguments are a strict empty object. Events methods accept MCP request `_meta` for progress and vendor metadata without using it for authorization or subscription identity. `events/list` returns the event's description, `delivery:["webhook"]`, empty input schema and `{requestId:string}` payload schema. Discovery advertises **top-level** `capabilities.events` alongside tools. The installed SDK's current MCP 2026 schema omits the draft Events capability and strips it; a narrow successful-discovery response augmentation preserves the capability on the wire while keeping SDK negotiation, headers and version validation intact.
+The event name is `relanox.message_available`. Because the authenticated route already fixes the endpoint, subscription arguments are a strict empty object. Events methods accept MCP request `_meta` for progress and vendor metadata without using it for authorization or subscription identity. `events/list` returns the event's description, `delivery:["webhook"]`, empty input schema and `{requestId:string}` payload schema. Discovery advertises **top-level** `capabilities.events` alongside tools. Discovery responses retain this capability while using the SDK for negotiation, headers and protocol version validation.
 
 `events/subscribe` accepts `{name,arguments:{},delivery:{mode:"webhook",url,secret},cursor?,ttlMs?}`. Only null/absent cursor is accepted: this event does not offer replay. The response is `{id,refreshBefore,cursor:null,truncated:false}`. Canonical JSON of authenticated endpoint owner, normalized URL, event name and arguments produces deterministic IDs. State is stored in SDK StateStore, including owner/endpoint, callback, signing key, granted expiry and bounded verification/rotation metadata. The normal lifetime is one day; configuration caps it at seven days. Requested durations grant no more than the configured cap. A minimum 1000 ms duration applies. `ttlMs:null` requests perpetual delivery but this implementation grants a finite configured lifetime; refreshBefore is always the actual expiry.
 
