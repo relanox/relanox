@@ -2,6 +2,7 @@
 import { nextTick, useTemplateRef } from 'vue'
 import { useConfigurator } from './use-configurator.js'
 import ConfiguratorTutorial from './configurator-tutorial.vue'
+import PlatformLogo from './platform-logo.vue'
 
 const {
   text,
@@ -95,6 +96,7 @@ async function showDetails(): Promise<void> {
                   class="channel-choice"
                 >
                   <input v-model="channel.enabled" type="checkbox" />
+                  <PlatformLogo :platform="channel.channel" />
                   <span>{{ channelName(channel.channel) }}</span>
                 </label>
               </div>
@@ -147,16 +149,19 @@ async function showDetails(): Promise<void> {
                 <label :for="`${agent.id}-type`">{{
                   text('Type', '类型')
                 }}</label>
-                <select
-                  :id="`${agent.id}-type`"
-                  v-model="agent.type"
-                  :aria-label="
-                    text(`Agent ${index + 1} type`, `Agent ${index + 1} 类型`)
-                  "
-                >
-                  <option value="dot">dot</option>
-                  <option value="grok">Grok</option>
-                </select>
+                <div class="agent-type-select platform-select">
+                  <PlatformLogo :platform="agent.type" />
+                  <select
+                    :id="`${agent.id}-type`"
+                    v-model="agent.type"
+                    :aria-label="
+                      text(`Agent ${index + 1} type`, `Agent ${index + 1} 类型`)
+                    "
+                  >
+                    <option value="dot">dot</option>
+                    <option value="grok">Grok</option>
+                  </select>
+                </div>
               </div>
               <button class="connection-link add-agent" @click="appendAgent">
                 <span class="vpi-plus" aria-hidden="true" />{{
@@ -176,9 +181,10 @@ async function showDetails(): Promise<void> {
               :key="channel.channel"
               class="mapping-row"
             >
-              <label :for="`${channel.channel}-target`">{{
-                channelName(channel.channel)
-              }}</label>
+              <label :for="`${channel.channel}-target`" class="platform-label">
+                <PlatformLogo :platform="channel.channel" />
+                <span>{{ channelName(channel.channel) }}</span>
+              </label>
               <span class="vpi-arrow-right" aria-hidden="true" />
               <select
                 :id="`${channel.channel}-target`"
@@ -263,15 +269,18 @@ async function showDetails(): Promise<void> {
                 <label for="details-channel">{{
                   text('Channel to configure', '配置渠道')
                 }}</label>
-                <select id="details-channel" v-model="selectedDetails">
-                  <option
-                    v-for="channel in selected"
-                    :key="channel.channel"
-                    :value="channel.channel"
-                  >
-                    {{ channelName(channel.channel) }}
-                  </option>
-                </select>
+                <div class="platform-select">
+                  <PlatformLogo :platform="activeChannel.channel" />
+                  <select id="details-channel" v-model="selectedDetails">
+                    <option
+                      v-for="channel in selected"
+                      :key="channel.channel"
+                      :value="channel.channel"
+                    >
+                      {{ channelName(channel.channel) }}
+                    </option>
+                  </select>
+                </div>
                 <a
                   class="connection-link field-guide"
                   :href="link(`channels/${activeChannel.channel}.html`)"
