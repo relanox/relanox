@@ -6,44 +6,23 @@
 
 在 Google Cloud 项目启用 Chat API，配置 Chat 应用并创建其服务账号。将完整服务账号 JSON 保存到 `GOOGLE_CHAT_SERVICE_ACCOUNT_JSON`。使用 `chat.bot` 权限的应用认证。按照组织策略开放应用，并将它加入目标空间。
 
-## 添加配置
+## 在配置器中填写
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
+打开[连接配置器](../configuration.md)，选择 **Google Chat**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-```json
-{
-  "accounts": [
-    {
-      "id": "googlechat-main",
-      "config": {
-        "serviceAccount": {
-          "env": "GOOGLE_CHAT_SERVICE_ACCOUNT_JSON"
-        }
-      },
-      "channel": "googlechat",
-      "allowedSenders": ["users/123456789"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "googlechat-main",
-      "chatId": "spaces/AAAAExample",
-      "endpointId": "my-agent",
-      "threadId": "spaces/AAAAExample/threads/BBBBExample"
-    }
-  ]
-}
-```
+| 配置器字段             | 填写内容                                   |
+| ---------------------- | ------------------------------------------ |
+| 服务账号 JSON 环境变量 | 变量名：`GOOGLE_CHAT_SERVICE_ACCOUNT_JSON` |
+
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#googlechat)。
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-从消息事件取得发送者资源名（`users/<id>`）填入 `allowedSenders`、空间名（`spaces/<id>`）填入 `chatId`、消息串名（`spaces/<id>/threads/<id>`）填入指定的 `threadId`。复制完整资源名。示例绑定一个精确的空间/消息串组合。收到的消息含消息串时，其完整名称必须与 `threadId` 一致。需要使用其他消息串时，分别添加对应绑定。
-
-会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
+从消息事件取得发送者资源名（`users/<id>`）填入 「允许使用的用户 ID」、空间名（`spaces/<id>`）填入 「聊天 ID」、消息串名（`spaces/<id>/threads/<id>`）填入指定的 「话题 / 线程 ID」。复制完整资源名。收到的消息含消息串时，其完整名称必须与 「话题 / 线程 ID」一致。需要使用其他消息串时，分别添加对应绑定。
 
 ## 启用连接
 
-将顶层 `publicUrl` 设为 `https://relay.example.com`。在 Google Chat 控制台将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`，认证 audience 模式选择 **HTTP endpoint URL**。Relanox 会从 `publicUrl` 和账号 ID 自动推导预期 audience；如果修改了账号名，请同步替换端点路径中的 `googlechat-main`。发送应用交互前启动 Relanox。Relanox 验证调用者邮箱为 `chat@system.gserviceaccount.com`。
+在配置器中将公网地址填为 `https://relay.example.com`。在 Google Chat 控制台将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`，认证 audience 模式选择 **HTTP endpoint URL**。如果修改了账号名，请同步替换端点路径中的 `googlechat-main`。发送应用交互前启动 Relanox。
 
 ## 发送第一条消息
 
@@ -51,8 +30,8 @@
 
 ## 图片和文件
 
-提问时可直接上传附件到 Chat。接收生成媒体需按[媒体](../media.md)配置 `publicUrl`。图片回复显示为卡片，音频、视频和文件显示为带名称的下载按钮。公网媒体地址需让收件者访问，并供 Google 获取图片。
+提问时可直接上传附件到 Chat。接收生成媒体需按[媒体](../media.md)配置 公网地址。图片回复显示为卡片，音频、视频和文件显示为带名称的下载按钮。公网媒体地址需让收件者访问，并供 Google 获取图片。
 
 ## 常见问题
 
-认证错误时，检查控制台是否选择 HTTP endpoint URL audience 模式，并核对端点为 `publicUrl` 加 `/channels/<账号 ID>/webhook`。发送失败时，检查服务账号 JSON、Chat API 和应用是否在空间内。图片或下载不可用时，检查公网媒体地址。需要 Agent 读取文件内容时，将文件直接上传到 Chat。
+认证错误时，检查控制台是否选择 HTTP endpoint URL audience 模式，并核对端点为 公网地址 加 `/channels/<账号 ID>/webhook`。发送失败时，检查服务账号 JSON、Chat API 和应用是否在空间内。图片或下载不可用时，检查公网媒体地址。需要 Agent 读取文件内容时，将文件直接上传到 Chat。

@@ -6,45 +6,27 @@
 
 在 QQ 机器人平台创建并启用机器人，记录 App ID，将 Client Secret 存入环境变量，并获得 `GROUP_AND_C2C_EVENT` 权限。根据应用的测试或发布状态，向对应用户和群组开放机器人。
 
-## 添加配置
+## 在配置器中填写
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
+打开[连接配置器](../configuration.md)，选择 **QQ 机器人**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-```json
-{
-  "accounts": [
-    {
-      "id": "qq-main",
-      "channel": "qq",
-      "allowedSenders": ["user-openid", "group-member-openid"],
-      "config": {
-        "appId": "123456789",
-        "clientSecret": {
-          "env": "QQ_CLIENT_SECRET"
-        },
-        "allowProactive": false
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "qq-main",
-      "chatId": "user-openid",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| 配置器字段         | 填写内容                   |
+| ------------------ | -------------------------- |
+| 应用 ID            | 替换示例：`123456789`      |
+| 客户端密钥环境变量 | 变量名：`QQ_CLIENT_SECRET` |
+| 允许主动消息       | 初始值：`false`            |
+
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#qq)。
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-私聊的允许发送者和绑定 `chatId` 均使用 `author.user_openid`。群聊允许发送者使用 `author.member_openid`，`chatId` 使用 `group_openid`。从机器人消息事件取得这些值；它们是平台 OpenID，与显示的 QQ 号码不同。
+私聊的允许发送者和绑定 「聊天 ID」均使用 `author.user_openid`。群聊允许发送者使用 `author.member_openid`，「聊天 ID」使用 `group_openid`。从机器人消息事件取得这些值；它们是平台 OpenID，与显示的 QQ 号码不同。
 
-QQ 默认使用正式环境。需要沙箱时，在账号配置中加入 `"environment": "sandbox"`。Relanox 会自动选择原生 API 和令牌地址。
+QQ 默认使用正式环境；测试账号在配置器的 QQ 环境选择 sandbox。
 
 ## 启用连接
 
-Relanox 启动后会自动通过 WebSocket 连接，保持进程运行及访问 QQ API 和网关的出站网络。示例用于回复收到的消息，接入时保持 `allowProactive` 为 false。
+Relanox 启动后会自动通过 WebSocket 连接，保持进程运行及访问 QQ API 和网关的出站网络。接入时保持「允许主动消息」关闭。
 
 ## 发送第一条消息
 
@@ -56,4 +38,4 @@ Relanox 启动后会自动通过 WebSocket 连接，保持进程运行及访问 
 
 ## 常见问题
 
-网关拒绝连接时，检查机器人发布状态、应用凭据及事件权限。群消息缺失时，@ 机器人并核对群组/成员 OpenID。回答延迟超过回复窗口时，发送新问题。取得平台主动消息权限且用户或群组允许接收后，才启用 `allowProactive:true`。
+网关拒绝连接时，检查机器人发布状态、应用凭据及事件权限。群消息缺失时，@ 机器人并核对群组/成员 OpenID。回答延迟超过回复窗口时，发送新问题。取得平台主动消息权限且用户或群组允许接收后，才启用 「允许主动消息」。

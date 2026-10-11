@@ -4,39 +4,19 @@ Use a Discord bot in direct messages, server channels and threads.
 
 ## Prepare your account
 
-Create an application and bot in the Discord developer portal. Save its token as `DISCORD_BOT_TOKEN`; Relanox discovers the bot identity and Gateway address at startup. Enable Message Content Intent. Invite the bot with permission to view channels, send messages, access the intended threads and attach files.
+Create an application and bot in the Discord developer portal. Save its token as `DISCORD_BOT_TOKEN`; enable Message Content Intent. Invite the bot with permission to view channels, send messages, access the intended threads and attach files.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **Discord**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "discord-main",
-      "channel": "discord",
-      "allowedSenders": ["123456789012345678"],
-      "config": {
-        "botToken": {
-          "env": "DISCORD_BOT_TOKEN"
-        }
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "discord-main",
-      "chatId": "112233445566778899",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field             | What to enter                      |
+| ------------------------------ | ---------------------------------- |
+| Bot token environment variable | Variable name: `DISCORD_BOT_TOKEN` |
 
-Enable Developer Mode in Discord, then use Copy ID on the sender and channel. `allowedSenders` contains user IDs. An ordinary channel binding uses its channel ID; a thread uses its parent channel as `chatId` and the thread channel ID as `threadId`. For a DM, use the DM channel ID.
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#discord).
 
-Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
+Enable Developer Mode in Discord, then use Copy ID on the sender and channel. **Allowed user IDs** contains user IDs. An ordinary channel binding uses its channel ID; a thread uses its parent channel as **Chat ID** and the thread channel ID as **Thread ID**. For a DM, use the DM channel ID.
 
 ## Enable the connection
 

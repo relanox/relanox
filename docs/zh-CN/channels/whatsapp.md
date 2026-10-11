@@ -4,47 +4,25 @@
 
 ## 准备账号
 
-创建具有 WhatsApp Business Platform 权限的 Meta 应用，注册企业电话号码。记录电话号码 ID 和 Business Account ID。取得具备 `whatsapp_business_messaging` 且可访问该号码/企业的 Access Token。保存应用密钥，并选择回调验证 Token。Relanox 使用 Graph API `v25.0`，支持的 API 版本由 Relanox 版本统一管理。
+创建具有 WhatsApp Business Platform 权限的 Meta 应用，注册企业电话号码。记录电话号码 ID 和 Business Account ID。取得具备 `whatsapp_business_messaging` 且可访问该号码/企业的 Access Token。保存应用密钥，并选择回调验证 Token。
 
-## 添加配置
+## 在配置器中填写
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
+打开[连接配置器](../configuration.md)，选择 **WhatsApp**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-```json
-{
-  "accounts": [
-    {
-      "id": "whatsapp-main",
-      "config": {
-        "phoneNumberId": "your_phone_number_id",
-        "businessAccountId": "your_whatsapp_business_account_id",
-        "appSecret": {
-          "env": "WHATSAPP_APP_SECRET"
-        },
-        "verifyToken": {
-          "env": "WHATSAPP_VERIFY_TOKEN"
-        },
-        "accessToken": {
-          "env": "WHATSAPP_ACCESS_TOKEN"
-        }
-      },
-      "channel": "whatsapp",
-      "allowedSenders": ["15551234567"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "whatsapp-main",
-      "chatId": "15551234567",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| 配置器字段       | 填写内容                                      |
+| ---------------- | --------------------------------------------- |
+| 电话号码 ID      | 替换示例：`your_phone_number_id`              |
+| 企业账户 ID      | 替换示例：`your_whatsapp_business_account_id` |
+| 应用密钥环境变量 | 变量名：`WHATSAPP_APP_SECRET`                 |
+| 验证令牌环境变量 | 变量名：`WHATSAPP_VERIFY_TOKEN`               |
+| 访问令牌环境变量 | 变量名：`WHATSAPP_ACCESS_TOKEN`               |
+
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#whatsapp)。
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-将收到消息的 `from` 值同时填入 `allowedSenders` 和 `chatId`，如 `15551234567`，按企业消息事件原样复制数字。`phoneNumberId` 填平台电话号码 ID，而非显示的电话号码。
+将收到消息的 `from` 值同时填入 「允许使用的用户 ID」和 「聊天 ID」，如 `15551234567`，按企业消息事件原样复制数字。`phoneNumberId` 填平台电话号码 ID，而非显示的电话号码。
 
 ## 启用连接
 

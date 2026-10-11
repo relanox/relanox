@@ -4,40 +4,20 @@
 
 ## 准备账号
 
-创建机器人账号和 Access Token，将 Token 保存到 `MATTERMOST_TOKEN`；Relanox 启动时会自动查询机器人用户 ID。把机器人加入目标频道并授予读取和发帖权限。附件还需 `upload_file` 和 `read_channel` 权限。
+创建机器人账号和 Access Token，将 Token 保存到 `MATTERMOST_TOKEN`；把机器人加入目标频道并授予读取和发帖权限。附件还需 `upload_file` 和 `read_channel` 权限。
 
-## 添加配置
+## 在配置器中填写
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
+打开[连接配置器](../configuration.md)，选择 **Mattermost**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-```json
-{
-  "accounts": [
-    {
-      "id": "mattermost-main",
-      "config": {
-        "serverUrl": "https://mattermost.example.com",
-        "token": {
-          "env": "MATTERMOST_TOKEN"
-        }
-      },
-      "channel": "mattermost",
-      "allowedSenders": ["dedicated_sender_id"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "mattermost-main",
-      "chatId": "dedicated_channel_id",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| 配置器字段   | 填写内容                                   |
+| ------------ | ------------------------------------------ |
+| 服务器地址   | 替换示例：`https://mattermost.example.com` |
+| 令牌环境变量 | 变量名：`MATTERMOST_TOKEN`                 |
 
-`allowedSenders` 填 Mattermost 用户 ID，`chatId` 填频道 ID。机器人 Token 可调用 `GET /api/v4/users/username/<username>` 取得发送者 ID，`GET /api/v4/teams/name/<team>/channels/name/<channel>` 取得频道 ID；消息事件也包含 `user_id` 和 `channel_id`。指定消息串时，`threadId` 填根帖 ID。
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#mattermost)。
 
-会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
+「允许使用的用户 ID」填 Mattermost 用户 ID，「聊天 ID」填频道 ID。机器人 Token 可调用 `GET /api/v4/users/username/<username>` 取得发送者 ID，`GET /api/v4/teams/name/<team>/channels/name/<channel>` 取得频道 ID；消息事件也包含 `user_id` 和 `channel_id`。指定消息串时，「话题 / 线程 ID」填根帖 ID。
 
 ## 启用连接
 

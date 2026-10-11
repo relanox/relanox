@@ -6,39 +6,21 @@
 
 创建应用机器人，记录 Client ID 和 Robot Code，将应用密钥保存到 `DINGTALK_APP_SECRET`。启用 Stream 接收方式，授予机器人单聊/群聊独立发送消息及媒体下载/上传权限。将它加入目标群组，并开放给所需员工。
 
-## 添加配置
+## 在配置器中填写
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
+打开[连接配置器](../configuration.md)，选择 **钉钉**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-```json
-{
-  "accounts": [
-    {
-      "id": "dingtalk-main",
-      "channel": "dingtalk",
-      "allowedSenders": ["$:LWCP_v1:opaque-platform-sender-id"],
-      "config": {
-        "clientId": "application-client-id",
-        "clientSecret": {
-          "env": "DINGTALK_APP_SECRET"
-        },
-        "robotCode": "application-robot-code"
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "dingtalk-main",
-      "chatId": "staff-user-id",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| 配置器字段         | 填写内容                           |
+| ------------------ | ---------------------------------- |
+| 客户端 ID          | 替换示例：`application-client-id`  |
+| 客户端密钥环境变量 | 变量名：`DINGTALK_APP_SECRET`      |
+| 机器人代码         | 替换示例：`application-robot-code` |
+
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#dingtalk)。
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-允许发送者使用回调中的不透明 `senderId`，包括前缀。私聊 `chatId` 使用 `senderStaffId`，群聊使用 `conversationId`（开放会话 ID）。从应用机器人的消息事件取得这些值。发送者 ID 和私聊 ID 用途不同，请分别复制对应字段。
+允许发送者使用回调中的不透明 `senderId`，包括前缀。私聊 「聊天 ID」使用 `senderStaffId`，群聊使用 `conversationId`（开放会话 ID）。从应用机器人的消息事件取得这些值。发送者 ID 和私聊 ID 用途不同，请分别复制对应字段。
 
 ## 启用连接
 

@@ -6,7 +6,16 @@ Talk to your agent in a Telegram bot chat, group or forum topic.
 
 Create a bot with @BotFather and save its token as `TELEGRAM_BOT_TOKEN`. Choose a webhook secret using letters, digits, `_` and `-`, and save it as `TELEGRAM_WEBHOOK_SECRET`. Add the bot to your group if you want group conversations. Arrange a public HTTPS address for Relanox.
 
-## Add the configuration
+## Fill in the configurator
+
+Open the [connection configurator](../configuration.md), select **Telegram**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
+
+| Configurator field                  | What to enter                            |
+| ----------------------------------- | ---------------------------------------- |
+| Bot token environment variable      | Variable name: `TELEGRAM_BOT_TOKEN`      |
+| Webhook secret environment variable | Variable name: `TELEGRAM_WEBHOOK_SECRET` |
+
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#telegram).
 
 Before registering the webhook, send the bot a private “Hello”, then run this in PowerShell with `TELEGRAM_BOT_TOKEN` already set. Inspect `result[].message.from.id` and `result[].message.chat.id` in the output. For a group/topic ID, send a test message there and inspect its update too. A newly created bot is easiest for this step; an existing bot needs its current webhook removed before `getUpdates` works. Coordinate that change with its owner.
 
@@ -15,38 +24,7 @@ Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdate
   ConvertTo-Json -Depth 12
 ```
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
-
-```json
-{
-  "accounts": [
-    {
-      "id": "telegram-main",
-      "channel": "telegram",
-      "allowedSenders": ["123456789"],
-      "config": {
-        "botToken": {
-          "env": "TELEGRAM_BOT_TOKEN"
-        },
-        "webhookSecret": {
-          "env": "TELEGRAM_WEBHOOK_SECRET"
-        }
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "telegram-main",
-      "chatId": "123456789",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
-
-Use the decimal `from.id` as the allowed sender and `chat.id` as the binding chat ID. These fields are available in a bot message update. A private chat normally uses your user ID as its chat ID. Groups can have negative chat IDs: preserve the minus sign. For a forum topic, add its `message_thread_id` as the binding `threadId`, also as a string.
-
-Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
+Use the decimal `from.id` as the allowed sender and `chat.id` as the binding chat ID. These fields are available in a bot message update. A private chat normally uses your user ID as its chat ID. Groups can have negative chat IDs: preserve the minus sign. For a forum topic, add its `message_thread_id` as the binding **Thread ID**, also as a string.
 
 ## Enable the connection
 

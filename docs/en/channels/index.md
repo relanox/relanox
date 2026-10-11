@@ -27,3 +27,5 @@ For a first installation, you can follow the Telegram example in the [quick star
 In your [settings](../configuration.md), choose the allowed users, conversations or groups and the Agent that receives their messages. Complete the [Agent setup](../agents.md) for dot or Grok Bot, then send a message in the chosen conversation and check its reply.
 
 Each platform handles pictures and files in its own way. Read the file section in your channel guide, then use [Send pictures and files](../media.md) to configure download addresses and sizes as needed.
+
+For manual configuration and protocol parameters, see the [channel technical reference](../reference/channels.md).

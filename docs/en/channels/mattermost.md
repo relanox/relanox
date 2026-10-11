@@ -4,40 +4,20 @@ Use a dedicated Mattermost bot in channels and threads on your server.
 
 ## Prepare your account
 
-Create a bot account and access token. Save the token as `MATTERMOST_TOKEN`; Relanox discovers its user ID at startup. Add the bot to the intended channels with read/post permissions. For attachments it also needs `upload_file` and `read_channel` permissions.
+Create a bot account and access token. Save the token as `MATTERMOST_TOKEN`; Add the bot to the intended channels with read/post permissions. For attachments it also needs `upload_file` and `read_channel` permissions.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **Mattermost**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "mattermost-main",
-      "config": {
-        "serverUrl": "https://mattermost.example.com",
-        "token": {
-          "env": "MATTERMOST_TOKEN"
-        }
-      },
-      "channel": "mattermost",
-      "allowedSenders": ["dedicated_sender_id"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "mattermost-main",
-      "chatId": "dedicated_channel_id",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field         | What to enter                                     |
+| -------------------------- | ------------------------------------------------- |
+| Server URL                 | Replace example: `https://mattermost.example.com` |
+| Token environment variable | Variable name: `MATTERMOST_TOKEN`                 |
 
-Use Mattermost user IDs in `allowedSenders` and channel IDs in `chatId`. The bot token can call `GET /api/v4/users/username/<username>` for a sender ID, and `GET /api/v4/teams/name/<team>/channels/name/<channel>` for a channel ID. A message event also contains `user_id` and `channel_id`. For a specific thread, set `threadId` to the root post ID.
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#mattermost).
 
-Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
+Use Mattermost user IDs in **Allowed user IDs** and channel IDs in **Chat ID**. The bot token can call `GET /api/v4/users/username/<username>` for a sender ID, and `GET /api/v4/teams/name/<team>/channels/name/<channel>` for a channel ID. A message event also contains `user_id` and `channel_id`. For a specific thread, set **Thread ID** to the root post ID.
 
 ## Enable the connection
 

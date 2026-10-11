@@ -6,43 +6,23 @@
 
 注册 Microsoft 应用和 Azure Bot，启用 Teams 渠道，并向所需用户或团队安装 Teams 应用。记录应用 ID、机器人 Activity ID 和租户 ID，将应用密钥保存到 `TEAMS_APP_SECRET`。请管理员确认所在区域的 Bot Connector 服务可信来源。单租户机器人将 `tokenUrl` 设为 `https://login.microsoftonline.com/<应用租户ID>/oauth2/v2.0/token`。应用租户可以与 `tenantId` 中允许接入的 Teams 租户不同。此渠道使用公有云 Bot Framework 认证。
 
-## 添加配置
+## 在配置器中填写
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
+打开[连接配置器](../configuration.md)，选择 **Microsoft Teams**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-```json
-{
-  "accounts": [
-    {
-      "id": "msteams-main",
-      "config": {
-        "appId": "microsoft_application_id",
-        "botId": "28:bot_activity_recipient_id",
-        "tenantId": "allowed_teams_tenant_id",
-        "appSecret": {
-          "env": "TEAMS_APP_SECRET"
-        },
-        "trustedServiceOrigins": ["https://smba.trafficmanager.net"]
-      },
-      "channel": "msteams",
-      "allowedSenders": ["29:teams-user-id"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "msteams-main",
-      "chatId": "teams-conversation-id",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| 配置器字段             | 填写内容                                    |
+| ---------------------- | ------------------------------------------- |
+| 应用 ID                | 替换示例：`microsoft_application_id`        |
+| 机器人 ID              | 替换示例：`28:bot_activity_recipient_id`    |
+| 租户 ID                | 替换示例：`allowed_teams_tenant_id`         |
+| 应用密钥环境变量       | 变量名：`TEAMS_APP_SECRET`                  |
+| 可信服务源（逗号分隔） | 替换示例：`https://smba.trafficmanager.net` |
+
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#msteams)。
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-从 Teams 消息 Activity 取得 ID：`from.id` 为允许发送者，`conversation.id` 为绑定会话 ID，`recipient.id` 为配置的机器人 ID。`tenantId` 填 Activity 对应租户 ID。绑定回复链时，使用其中的 `replyToId` 作为 `threadId`。
-
-会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
+从 Teams 消息 Activity 取得 ID：`from.id` 为允许发送者，`conversation.id` 为绑定会话 ID，`recipient.id` 为配置的机器人 ID。`tenantId` 填 Activity 对应租户 ID。绑定回复链时，使用其中的 `replyToId` 作为 「话题 / 线程 ID」。
 
 ## 启用连接
 

@@ -4,50 +4,26 @@
 
 ## 准备账号
 
-创建企业自建应用，启用机器人能力，授予接收消息、发送消息和资源访问权限。记录 App ID 和 tenant key；Relanox 启动时会自动查询机器人 open ID。将应用密钥、事件 Verification Token 和 Encrypt Key 存入下方环境变量。Lark 用户将 `domain` 改为 `"lark"`。
+创建企业自建应用，启用机器人能力，授予接收消息、发送消息和资源访问权限。记录 App ID 和 tenant key；将应用密钥、事件 Verification Token 和 Encrypt Key 存入下方环境变量。Lark 用户在「平台域」选择 lark。
 
-## 添加配置
+## 在配置器中填写
 
-将下方条目加入现有配置的 `relay.accounts` 和 `relay.bindings`。这是配置片段，需要合并进完整配置文件。将示例 ID 和 `my-agent` 替换为你的实际 ID 与[已配置 Agent 连接](../agents.md)。在启动 Relanox 的环境中设置所引用的全部环境变量，保存后重启。完整文件写法见[配置](../configuration.md)。
+打开[连接配置器](../configuration.md)，选择 **飞书 / Lark**，填写上一步取得的账号信息与密钥环境变量名。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-```json
-{
-  "accounts": [
-    {
-      "id": "feishu-main",
-      "channel": "feishu",
-      "allowedSenders": ["ou_example_user"],
-      "config": {
-        "appId": "cli_example",
-        "appSecret": {
-          "env": "FEISHU_APP_SECRET"
-        },
-        "verificationToken": {
-          "env": "FEISHU_VERIFICATION_TOKEN"
-        },
-        "encryptKey": {
-          "env": "FEISHU_ENCRYPT_KEY"
-        },
-        "tenantKey": "example-tenant",
-        "domain": "feishu"
-      }
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "feishu-main",
-      "chatId": "oc_example_chat",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| 配置器字段               | 填写内容                            |
+| ------------------------ | ----------------------------------- |
+| 应用 ID                  | 替换示例：`cli_example`             |
+| 应用密钥环境变量         | 变量名：`FEISHU_APP_SECRET`         |
+| 验证令牌环境变量         | 变量名：`FEISHU_VERIFICATION_TOKEN` |
+| 加密密钥环境变量         | 变量名：`FEISHU_ENCRYPT_KEY`        |
+| 租户标识                 | 替换示例：`example-tenant`          |
+| 平台域（feishu 或 lark） | 初始值：`feishu`                    |
+
+下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#feishu)。
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-消息事件的发送者 `open_id` 填入 `allowedSenders`，`message.chat_id` 填入 `chatId`。事件头中可取得 `tenant_key`，机器人身份可通过机器人信息 API 取得。消息串绑定使用 `message.thread_id`；事件以 `root_id` 标识消息串时使用该值。
-
-会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
+消息事件的发送者 `open_id` 填入 「允许使用的用户 ID」，`message.chat_id` 填入 「聊天 ID」。事件头中可取得 `tenant_key`，机器人身份可通过机器人信息 API 取得。消息串绑定使用 `message.thread_id`；事件以 `root_id` 标识消息串时使用该值。
 
 ## 启用连接
 
@@ -59,7 +35,7 @@
 
 ## 图片和文件
 
-提问时可发送图片、音频、视频、文件或富文本消息。授予资源下载和上传权限，如 `im:resource` 或适用的上传权限。回复图片上传上限为 10 MiB，其他上传为 30 MiB，同时受 Relanox 限制。生成的音频需为 Opus/Ogg 并带时长，视频需为 MP4 并带时长。
+提问时可发送图片、音频、视频、文件或富文本消息。授予资源下载和上传权限，如 `im:resource` 或适用的上传权限。回复图片上传上限为 10 MiB，其他上传为 30 MiB，同时受 Relanox 限制。
 
 ## 常见问题
 

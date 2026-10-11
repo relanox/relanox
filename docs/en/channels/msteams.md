@@ -4,45 +4,25 @@ Talk to your agent through an installed Teams bot in personal chats, groups or c
 
 ## Prepare your account
 
-Register a Microsoft application and Azure Bot, enable its Teams channel, and install the Teams app for the intended users/teams. Record the application ID, bot activity ID and tenant ID; save the app secret as `TEAMS_APP_SECRET`. Ask your administrator for the exact trusted Bot Connector service origins for your region. For a single-tenant bot, set `tokenUrl` to `https://login.microsoftonline.com/<application-tenant-id>/oauth2/v2.0/token`. This application tenant may differ from the allowed Teams tenant in `tenantId`. The channel uses public-cloud Bot Framework authentication.
+Register a Microsoft application and Azure Bot, enable its Teams channel, and install the Teams app for the intended users/teams. Record the application ID, bot activity ID and tenant ID; save the app secret as `TEAMS_APP_SECRET`. Ask your administrator for the exact trusted Bot Connector service origins for your region.
 
-## Add the configuration
+## Fill in the configurator
 
-Add the entries below to `relay.accounts` and `relay.bindings` in your existing configuration. This is a fragment, not a complete configuration file. Replace the sample IDs and `my-agent` with your [configured agent connection](../agents.md). Set every referenced environment variable in the environment that starts Relanox, then restart after saving. See [Configuration](../configuration.md) for the complete file.
+Open the [connection configurator](../configuration.md), select **Microsoft Teams**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-```json
-{
-  "accounts": [
-    {
-      "id": "msteams-main",
-      "config": {
-        "appId": "microsoft_application_id",
-        "botId": "28:bot_activity_recipient_id",
-        "tenantId": "allowed_teams_tenant_id",
-        "appSecret": {
-          "env": "TEAMS_APP_SECRET"
-        },
-        "trustedServiceOrigins": ["https://smba.trafficmanager.net"]
-      },
-      "channel": "msteams",
-      "allowedSenders": ["29:teams-user-id"]
-    }
-  ],
-  "bindings": [
-    {
-      "accountId": "msteams-main",
-      "chatId": "teams-conversation-id",
-      "endpointId": "my-agent"
-    }
-  ]
-}
-```
+| Configurator field                        | What to enter                                      |
+| ----------------------------------------- | -------------------------------------------------- |
+| Application ID                            | Replace example: `microsoft_application_id`        |
+| Bot ID                                    | Replace example: `28:bot_activity_recipient_id`    |
+| Tenant ID                                 | Replace example: `allowed_teams_tenant_id`         |
+| Application secret environment variable   | Variable name: `TEAMS_APP_SECRET`                  |
+| Trusted service origins (comma separated) | Replace example: `https://smba.trafficmanager.net` |
+
+Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#msteams).
 
 Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-Read IDs from a Teams message activity: `from.id` is the allowed sender, `conversation.id` is the binding chat ID, and `recipient.id` is the configured bot ID. Use the activity’s tenant ID for `tenantId`. A binding for a reply chain uses `replyToId` as `threadId` when present.
-
-Bindings match the exact chat and thread IDs. Include `threadId` when your test message has one; omitting it selects messages without a thread ID.
+Read IDs from a Teams message activity: `from.id` is the allowed sender, `conversation.id` is the binding chat ID, and `recipient.id` is the configured bot ID. Use the activity’s tenant ID for `tenantId`. A binding for a reply chain uses `replyToId` as **Thread ID** when present.
 
 ## Enable the connection
 
