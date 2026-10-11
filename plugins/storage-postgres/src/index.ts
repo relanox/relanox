@@ -830,7 +830,7 @@ export function createPostgresStorage(
         SELECT COUNT(*) FILTER(WHERE status='pending') pending,COUNT(*) FILTER(WHERE status='claimed') claimed,
           MIN(accepted_at) FILTER(WHERE status='pending') oldest,
           (SELECT COUNT(*) FROM outbound WHERE status!='sent') undelivered,
-          COUNT(*) FILTER(WHERE record#>>'{dispatch,status}'='unknown')+(SELECT COUNT(*) FROM outbound WHERE status='unknown') unknown FROM inbound`,
+          COUNT(*) FILTER(WHERE status='pending' AND record#>>'{dispatch,status}'='unknown')+(SELECT COUNT(*) FROM outbound WHERE status='unknown') unknown FROM inbound`,
         )
       )[0];
       if (!row) {

@@ -641,7 +641,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
         .get() as { undelivered: number | null; unknown: number | null };
       const c = db
         .prepare(
-          "SELECT COUNT(*) count FROM inbound WHERE json_extract(record,'$.dispatch.status')='unknown'",
+          "SELECT COUNT(*) count FROM inbound WHERE status='pending' AND json_extract(record,'$.dispatch.status')='unknown'",
         )
         .get() as { count: number };
       return {

@@ -395,6 +395,34 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       });
     });
 
+    it("clears unknown notification counts after claim while preserving uncertain deliveries", async () => {
+      await s.acceptInbound(snapshot());
+      const dispatch = required((await due(100))[0]);
+      await s.settleAttempt({
+        kind: "dispatch",
+        id: "r1",
+        lease: dispatch.lease,
+        outcome: { status: "unknown", errorCode: "connection_lost" },
+        now: 101,
+        nextDueAt: 101,
+      });
+      expect((await s.getStats()).unknown).toBe(1);
+      expect(await claim()).toMatchObject({ status: "claimed" });
+      expect((await s.getStats()).unknown).toBe(0);
+      expect(await s.completeAndEnqueue(completion())).toMatchObject({ status: "completed" });
+      expect((await s.getStats()).unknown).toBe(0);
+      const send = required((await due(110))[0]);
+      await s.settleAttempt({
+        kind: "send",
+        id: "d-r1",
+        lease: send.lease,
+        outcome: { status: "unknown", errorCode: "connection_lost" },
+        now: 111,
+        nextDueAt: 111,
+      });
+      expect((await s.getStats()).unknown).toBe(1);
+    });
+
     it("uses namespaced state CAS and database admin aggregates", async () => {
       const ns = { pluginId: "dot", ownerId: "a" };
       expect(
