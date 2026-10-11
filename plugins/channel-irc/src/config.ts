@@ -23,7 +23,6 @@ const configSchema = z.strictObject({
   tls: z.boolean().default(true),
   allowInsecureLocalhost: z.boolean().default(false),
   nick: nicknameSchema,
-  channels: z.array(channelSchema).max(100).default([]),
   password: secretRefSchema.optional(),
   sasl: z
     .strictObject({

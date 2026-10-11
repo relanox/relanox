@@ -69,7 +69,6 @@ function config(port: number): {
   tls: boolean
   allowInsecureLocalhost: boolean
   nick: string
-  channels: string[]
   sasl: { username: string; password: { env: string } }
 } {
   return {
@@ -78,7 +77,6 @@ function config(port: number): {
     tls: false,
     allowInsecureLocalhost: true,
     nick: 'relay',
-    channels: ['#room'],
     sasl: { username: 'relay', password: { env: 'IRC_SASL' } }
   }
 }
@@ -176,6 +174,9 @@ it('negotiates SASL and tags, ingests channel/private text and independently wri
   )
   expect(tcp.lines).toContain('NICK relay')
   expect(tcp.lines).toContain('USER relay 0 * :Relanox')
+  expect(tcp.lines.filter((line) => line.startsWith('JOIN '))).toEqual([
+    'JOIN #room'
+  ])
 
   const sasl = tcp.lines.find(
     (line) => line.startsWith('AUTHENTICATE ') && line !== 'AUTHENTICATE PLAIN'
@@ -434,5 +435,8 @@ it('allows explicit nickname fallback with a diagnostic and keeps secure default
   ).toThrow('tls_required')
   expect(() =>
     plugin.validateConfig({ ...config(tcp.port), nick: 'relay\r\nJOIN #evil' })
+  ).toThrow()
+  expect(() =>
+    plugin.validateConfig({ ...config(tcp.port), channels: ['#room'] })
   ).toThrow()
 })

@@ -50,6 +50,8 @@ export type CommonHost = {
 
 /** Core binds this host to a single validated account; plugins cannot choose the account scope. */
 export type ChannelHost = {
+  /** Configured conversation IDs for this account, used by connection channels to subscribe. */
+  readonly boundChatIds?: readonly string[]
   readonly maxMediaBytes?: number
   readonly media?: ChannelMediaHost
   ingest(input: IngestInput): Promise<IngestReceipt>

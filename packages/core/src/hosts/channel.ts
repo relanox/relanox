@@ -47,6 +47,13 @@ export function createChannelHost({
   const traced = createOperationTracer(observe)
   return {
     ...common,
+    boundChatIds: Object.freeze([
+      ...new Set(
+        [...bindings.values()]
+          .filter((binding) => binding.accountId === account.id)
+          .map((binding) => binding.chatId)
+      )
+    ]),
     ...(mediaPublisher ? { media: mediaPublisher } : {}),
     maxMediaBytes: worker.maxMediaBytes,
     async ingest(input: IngestInput) {
