@@ -22,8 +22,8 @@ export function createDotAgentPlugin(): AgentPlugin<DotConfig> {
       const configured = new Map(
         endpoints.map((endpoint) => [endpoint.id, configSchema.parse(endpoint.config)]),
       );
-      const subscriptions = createSubscriptions(agentHost);
-      dispatch = createDispatch(agentHost, configured, subscriptions);
+      const subscriptions = createSubscriptions(agentHost.state);
+      dispatch = createDispatch(agentHost.state, configured, subscriptions);
       for (const endpoint of endpoints) {
         const config = configured.get(endpoint.id);
         if (!config) {

@@ -5,13 +5,13 @@ import { z } from "zod";
 import type { DotConfig } from "./config.js";
 import { guard, registerTools } from "./mcp.js";
 import { args, name, requestMetadata, subscribeParams, unsubscribeParams } from "./protocol.js";
-import type { createSubscriptions } from "./subscriptions.js";
+import type { SubscriptionStore } from "./subscriptions.js";
 
 export function createEventsHandler(
   agentHost: AgentHost,
   endpoint: EndpointConfig,
   config: DotConfig,
-  subscriptions: ReturnType<typeof createSubscriptions>,
+  subscriptions: SubscriptionStore,
 ) {
   const handler = createMcpHandler(
     () => {
