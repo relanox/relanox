@@ -21,3 +21,9 @@ Independent output uses `POST /v2/bot/message/push` with the current environment
 Optional `apiBase` (default `https://api.line.me`) supports an explicitly authorized gateway. `allowLoopback:true` permits HTTP only for loopback peers; HTTPS and redirect rejection remain the default. Configuration is strict and credentials require `{env}` references.
 
 Verified protocol sources: [signature verification](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/), [Messaging API reference](https://developers.line.biz/en/reference/messaging-api/), [finite retry-key window](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/). Local Vitest tests use HTTP peers, real core/SQLite, signed webhook bytes and restart recovery; they do not validate a live LINE account.
+
+## Frozen sender identity and configuration changes
+
+Accepted targets now preserve the canonical API base URL (including any proxy path) and stable nonsecret bot/application identity. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported. Telegram derives the bot ID from the public numeric token prefix; other channels use their configured bot/application IDs, so operators must keep those IDs accurate when replacing credentials.
+
+Upgrade boundary: older persisted targets without these identity fields are refused as `invalid_target`; requeue alone cannot add missing historical evidence. Drain pending work with the original version before upgrading, or retain the result for manual delivery under the verified original account. For new targets rejected after a configuration change, restore the matching original identity/API base before explicit recovery. The plugin never fills missing historical identity from current settings.

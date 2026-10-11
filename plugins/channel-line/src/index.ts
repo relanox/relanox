@@ -47,6 +47,8 @@ const webhookSchema = z.object({ destination: identifier, events: z.array(eventS
 const targetSchema = z.strictObject({
   destination: identifier,
   sourceType: z.enum(["user", "group", "room"]),
+  botId: identifier,
+  apiBaseUrl: z.string(),
 });
 const retrySchema = z.strictObject({
   retryKey: z.uuid(),
@@ -95,7 +97,12 @@ async function receiveEvent(
       accountId: account.id,
       chatId: destination,
       replyToId: message.id,
-      data: { destination, sourceType: source.type },
+      data: {
+        destination,
+        sourceType: source.type,
+        botId: config.botUserId,
+        apiBaseUrl: new URL(config.apiBase).toString().replace(/\/$/u, ""),
+      },
     },
   });
 }
@@ -129,10 +136,16 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       return { status: "rejected", errorCode: "invalid_target" };
     }
     const { host, config } = runtime;
-    const target = targetSchema.parse(input.target.data);
-    if (target.destination !== input.target.chatId) {
+    const parsed = targetSchema.safeParse(input.target.data);
+    if (
+      !parsed.success ||
+      parsed.data.destination !== input.target.chatId ||
+      parsed.data.botId !== config.botUserId ||
+      parsed.data.apiBaseUrl !== new URL(config.apiBase).toString().replace(/\/$/u, "")
+    ) {
       return { status: "rejected", errorCode: "invalid_target" };
     }
+    const target = parsed.data;
     const retry = await retryIdentity(host, input.chunk.idempotencyKey);
     if (Date.now() - retry.startedAt >= 86_400_000) {
       return { status: "unknown", errorCode: "retry_key_expired" };
@@ -183,8 +196,8 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
     },
     validateConfig(value) {
       const config = configSchema.parse(value);
-      endpoint(config.apiBase, config.allowLoopback);
-      return config;
+      const apiBase = endpoint(config.apiBase, config.allowLoopback).toString().replace(/\/$/u, "");
+      return { ...config, apiBase };
     },
     async setup(host, account, config) {
       runtime = { host, account, config };

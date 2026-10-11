@@ -30,6 +30,7 @@ const configSchema = z.strictObject({
   ...transportOptions,
 });
 export type DiscordConfig = z.infer<typeof configSchema>;
+const targetSchema = z.object({ botId: id, apiBaseUrl: z.string() });
 const packetSchema = z.looseObject({
   op: z.number().int(),
   d: z.unknown().optional(),
@@ -41,6 +42,8 @@ const sessionSchema = z.object({
   resume_gateway_url: z.string(),
   seq: z.number().int(),
   botId: id,
+  apiBaseUrl: z.string(),
+  gatewayUrl: z.string(),
 });
 const readySchema = z.looseObject({
   session_id: id,
@@ -69,6 +72,10 @@ export function createDiscordChannel(
   let socket: WebSocket | undefined;
   let session: Session | undefined;
   let fatal = false;
+  const identity = () => ({
+    botId: config.botUserId,
+    apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, ""),
+  });
   async function persist() {
     if (!session) {
       return;
@@ -276,6 +283,8 @@ export function createDiscordChannel(
               resume_gateway_url: ready.resume_gateway_url,
               seq: packet.s as number,
               botId: ready.user.id,
+              apiBaseUrl: identity().apiBaseUrl,
+              gatewayUrl: new URL(config.gatewayUrl).toString(),
             };
             host.connection("connected");
           } else if (packet.t === "RESUMED") {
@@ -303,7 +312,7 @@ export function createDiscordChannel(
                   accountId: account.id,
                   ...target,
                   replyToId: message.id,
-                  data: null,
+                  data: identity(),
                 },
                 context: message.guild_id ? { guildId: message.guild_id } : {},
                 receivedAt: Date.now(),
@@ -341,7 +350,13 @@ export function createDiscordChannel(
   async function run(signal: AbortSignal) {
     const saved = await host.state.get("gateway-session");
     const parsed = sessionSchema.safeParse(saved?.value);
-    if (parsed.success && parsed.data.botId === config.botUserId) {
+    session = undefined;
+    if (
+      parsed.success &&
+      parsed.data.botId === config.botUserId &&
+      parsed.data.apiBaseUrl === identity().apiBaseUrl &&
+      parsed.data.gatewayUrl === new URL(config.gatewayUrl).toString()
+    ) {
       session = parsed.data;
     }
     let failures = 0;
@@ -406,7 +421,12 @@ export function createDiscordChannel(
       task = undefined;
     },
     async send(input) {
+      const data = targetSchema.safeParse(input.target.data);
+      const current = identity();
       if (
+        !data.success ||
+        data.data.botId !== current.botId ||
+        data.data.apiBaseUrl !== current.apiBaseUrl ||
         input.target.channel !== "discord" ||
         input.target.accountId !== account.id ||
         !/^\d+$/u.test(input.target.chatId) ||

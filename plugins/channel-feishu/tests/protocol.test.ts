@@ -5,6 +5,7 @@ import { peer, recorder, sendInput } from "./peer.js";
 
 const environment = {
   APPSECRET: "app-secret",
+  ROTATED: "rotated-secret",
   ENCRYPT: "encrypt-key",
   VERIFY: "verification-token",
 };
@@ -20,7 +21,12 @@ const target = {
   chatId: "oc_chat",
   threadId: "omt_thread",
   replyToId: "om_message",
-  data: { tenantKey: "tenant-1" },
+  data: {
+    tenantKey: "tenant-1",
+    appId: "cli_app",
+    botId: "ou_bot",
+    apiBaseUrl: "https://open.feishu.cn",
+  },
 };
 const event = {
   schema: "2.0",
@@ -57,6 +63,7 @@ afterEach(async () => {
 async function setup(
   apiBaseUrl = "https://open.feishu.cn",
   onIngest?: Parameters<typeof recorder>[0],
+  overrides: Record<string, unknown> = {},
 ) {
   const plugin = createFeishuChannel(environment);
   const recorded = recorder(onIngest);
@@ -72,11 +79,13 @@ async function setup(
       botOpenId: "ou_bot",
       apiBaseUrl,
       allowInsecureLoopback: true,
+      ...overrides,
     }),
   );
   return {
     plugin,
     ...recorded,
+    target: { ...target, data: { ...target.data, apiBaseUrl } },
     handler: recorded.handlers.get("/events") as NonNullable<
       ReturnType<typeof recorded.handlers.get>
     >,
@@ -125,6 +134,52 @@ describe("feishu native HTTP protocol", () => {
     },
   );
 
+  it.each(["identity", "server", "legacy"])(
+    "refuses a frozen target after %s changes",
+    async (change) => {
+      const remote = await peer((input) => ({
+        body: input.path.includes("tenant_access_token")
+          ? { code: 0, tenant_access_token: "tenant-token", expire: 7200 }
+          : { code: 0, data: { message_id: "om_sent" } },
+      }));
+      cleanup.push(remote.close);
+      const initial = await setup(remote.url);
+      await initial.handler(request(event));
+      const frozen = initial.received[0]?.target;
+      if (!frozen) {
+        throw new Error("Missing accepted reply target");
+      }
+      const nextBase = change === "server" ? `${remote.url}/different` : remote.url;
+      const restarted = await setup(
+        nextBase,
+        undefined,
+        change === "identity" ? { appId: "cli_other" } : {},
+      );
+      expect(
+        await restarted.plugin.send(
+          sendInput(change === "legacy" ? { ...frozen, data: { tenantKey: "tenant-1" } } : frozen),
+        ),
+      ).toEqual({
+        status: "rejected",
+        errorCode: "invalid_target",
+      });
+      expect(remote.requests).toEqual([]);
+    },
+  );
+
+  it("keeps same-identity credential rotation and canonical URL spelling deliverable", async () => {
+    const remote = await peer((input) => ({
+      body: input.path.includes("tenant_access_token")
+        ? { code: 0, tenant_access_token: "tenant-token", expire: 7200 }
+        : { code: 0, data: { message_id: "om_sent" } },
+    }));
+    cleanup.push(remote.close);
+    const initial = await setup(remote.url);
+    const restarted = await setup(`${remote.url}/`, undefined, { appSecret: { env: "ROTATED" } });
+    expect((await restarted.plugin.send(sendInput(initial.target))).status).toBe("sent");
+    expect(remote.requests).toHaveLength(2);
+  });
+
   it("bounds event bodies and keeps canceled token acquisition retryable", async () => {
     const remote = await peer(() => ({
       body: { code: 0, tenant_access_token: "tenant-token", expire: 7200 },
@@ -143,7 +198,7 @@ describe("feishu native HTTP protocol", () => {
     expect(test.received).toEqual([]);
     const controller = new AbortController();
     controller.abort();
-    expect(await test.plugin.send(sendInput(target, controller.signal))).toEqual({
+    expect(await test.plugin.send(sendInput(test.target, controller.signal))).toEqual({
       status: "retryable",
       errorCode: "tenant_token_transport_error",
     });
@@ -258,7 +313,7 @@ describe("feishu native HTTP protocol", () => {
       const remote = await peer(() => ({ status, body }));
       cleanup.push(remote.close);
       const test = await setup(remote.url);
-      expect((await test.plugin.send(sendInput(target))).status).toBe(expected);
+      expect((await test.plugin.send(sendInput(test.target))).status).toBe(expected);
       expect(remote.requests.map((input) => input.path)).toEqual([
         "/open-apis/auth/v3/tenant_access_token/internal",
       ]);
@@ -280,7 +335,7 @@ describe("feishu native HTTP protocol", () => {
     );
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(target))).toEqual({
+    expect(await test.plugin.send(sendInput(test.target))).toEqual({
       status: "sent",
       receipt: { platformMessageId: "om_sent" },
     });
@@ -297,7 +352,7 @@ describe("feishu native HTTP protocol", () => {
         reply_in_thread: true,
       },
     });
-    await test.plugin.send(sendInput(target));
+    await test.plugin.send(sendInput(test.target));
     expect(tokens).toBe(2);
   });
 
@@ -309,7 +364,7 @@ describe("feishu native HTTP protocol", () => {
     }));
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    const { replyToId: _reply, threadId: _thread, ...chatTarget } = target;
+    const { replyToId: _reply, threadId: _thread, ...chatTarget } = test.target;
     expect((await test.plugin.send(sendInput(chatTarget))).status).toBe("sent");
     expect(remote.requests[1]).toMatchObject({
       path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
@@ -355,7 +410,7 @@ describe("feishu native HTTP protocol", () => {
     );
     cleanup.push(remote.close);
     const test = await setup(remote.url);
-    expect(await test.plugin.send(sendInput(target))).toEqual(expected);
+    expect(await test.plugin.send(sendInput(test.target))).toEqual(expected);
   });
 
   it("rejects literal credentials, insecure remote URL and foreign tenant targets", async () => {
@@ -375,7 +430,9 @@ describe("feishu native HTTP protocol", () => {
     expect(plugin.validateConfig({ ...config, domain: "lark" }).domain).toBe("lark");
     const test = await setup();
     expect(
-      await test.plugin.send(sendInput({ ...target, data: { tenantKey: "tenant-2" } })),
+      await test.plugin.send(
+        sendInput({ ...test.target, data: { ...test.target.data, tenantKey: "tenant-2" } }),
+      ),
     ).toEqual({ status: "rejected", errorCode: "invalid_target" });
   });
 });

@@ -29,3 +29,9 @@ Bot, integration, message subtype/edit and nontext events are skipped. Sending u
 Optional config: `apiBaseUrl` (default `https://slack.com/api`), `timeoutMs` (default 10000), `reconnectDelayMs` (100–30000, default 1000), `allowInsecureLoopback` (default false). Custom API endpoints support enterprise proxies. Cleartext HTTP/WS is allowed only on loopback with explicit opt-in. Persisted target contains the workspace ID, never tokens/socket URLs.
 
 Local HTTP/socket peers cover both receive modes, ACK ordering and independent send errors. Real-account support is experimental. Cards, slash commands, interactive response payloads, edits and ephemeral messages are unsupported.
+
+## Frozen sender identity and configuration changes
+
+Accepted targets now preserve the canonical API base URL (including any proxy path) and stable nonsecret bot/application identity. Sends reject `invalid_target` before HTTP if the current configured identity or API base differs. Token/secret rotation under the same bot identity remains supported. Telegram derives the bot ID from the public numeric token prefix; other channels use their configured bot/application IDs, so operators must keep those IDs accurate when replacing credentials.
+
+Upgrade boundary: older persisted targets without these identity fields are refused as `invalid_target`; requeue alone cannot add missing historical evidence. Drain pending work with the original version before upgrading, or retain the result for manual delivery under the verified original account. For new targets rejected after a configuration change, restore the matching original identity/API base before explicit recovery. The plugin never fills missing historical identity from current settings.

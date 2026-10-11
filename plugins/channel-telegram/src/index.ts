@@ -20,6 +20,7 @@ const configSchema = z.strictObject({
   ...transportOptions,
 });
 export type TelegramConfig = z.infer<typeof configSchema>;
+const targetSchema = z.object({ botId: z.string(), apiBaseUrl: z.string() });
 const messageSchema = z.looseObject({
   message_id: z.number().int().positive(),
   message_thread_id: z.number().int().positive().optional(),
@@ -88,6 +89,10 @@ export function createTelegramChannel(
   let host: ChannelHost;
   let account: AccountConfig;
   let config: TelegramConfig;
+  const identity = () => ({
+    botId: credential(config.botToken, environment).split(":")[0] ?? "",
+    apiBaseUrl: new URL(config.apiBaseUrl).toString().replace(/\/$/u, ""),
+  });
   return {
     id: "channel-telegram",
     sdkMajor: 1,
@@ -170,7 +175,7 @@ export function createTelegramChannel(
               chatId: String(message.chat.id),
               ...(message.message_thread_id ? { threadId: String(message.message_thread_id) } : {}),
               replyToId: String(message.message_id),
-              data: null,
+              data: identity(),
             },
             receivedAt: Date.now(),
             context: { messageId: String(message.message_id) },
@@ -182,7 +187,12 @@ export function createTelegramChannel(
       });
     },
     async send(input) {
+      const data = targetSchema.safeParse(input.target.data);
+      const current = identity();
       if (
+        !data.success ||
+        data.data.botId !== current.botId ||
+        data.data.apiBaseUrl !== current.apiBaseUrl ||
         input.target.accountId !== account.id ||
         input.target.channel !== "telegram" ||
         !/^-?\d+$/u.test(input.target.chatId) ||
