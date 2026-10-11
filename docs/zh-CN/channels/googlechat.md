@@ -22,7 +22,7 @@
 
 ## 参数与限制
 
-`callerEmail` 默认 `chat@system.gserviceaccount.com`；`issuer` 默认 `https://accounts.google.com`；`jwksUrl` 默认 `https://www.googleapis.com/oauth2/v3/certs`；`tokenUrl` 默认 `https://oauth2.googleapis.com/token`；`apiBase` 默认 `https://chat.googleapis.com`；`allowLoopback` 默认 false。覆盖地址由管理员信任，不能由事件指定。不支持 add-on 封装、Pub/Sub/Workspace Events、项目编号 JWT 模式、入站卡片、斜杠命令、编辑及成员操作。
+`callerEmail` 默认 `chat@system.gserviceaccount.com`；`issuer` 默认 `https://accounts.google.com`；`jwksUrl` 默认 `https://www.googleapis.com/oauth2/v3/certs`；`tokenUrl` 默认 `https://oauth2.googleapis.com/token`；`apiBase` 默认 `https://chat.googleapis.com`；`allowLoopback` 默认 false。覆盖地址由管理员信任，不能由事件指定。
 
 ## 账号变更
 

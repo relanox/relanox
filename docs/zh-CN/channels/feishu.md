@@ -22,7 +22,7 @@
 
 ## 接入与身份
 
-为企业自建应用启用机器人能力及消息收发权限，配置加密/签名 HTTP 事件订阅 v2.0，地址为 `https://relay.example/channels/<accountId>/events`，订阅 `im.message.receive_v1`。不支持 ISV app-ticket 认证及飞书 WebSocket 接收。白名单使用 `open_id`，绑定 `message.chat_id` 和 `message.thread_id`，缺少后者时使用 `root_id`。
+为企业自建应用启用机器人能力及消息收发权限，配置加密/签名 HTTP 事件订阅 v2.0，地址为 `https://relay.example/channels/<accountId>/events`，订阅 `im.message.receive_v1`。认证使用企业自建应用的 tenant access token。白名单使用 `open_id`，绑定 `message.chat_id` 和 `message.thread_id`，缺少后者时使用 `root_id`。
 
 ## 投递与恢复
 
@@ -30,7 +30,7 @@
 
 ## 参数与限制
 
-`domain` 为 `feishu`（默认）或 `lark`，对应 `https://open.feishu.cn` 或 `https://open.larksuite.com`。可用 `apiBaseUrl` 覆盖；`timeoutMs` 为 100–60,000，默认 10,000；`allowInsecureLoopback` 默认 false。不支持卡片、编辑及应用发送者。
+`domain` 为 `feishu`（默认）或 `lark`，对应 `https://open.feishu.cn` 或 `https://open.larksuite.com`。可用 `apiBaseUrl` 覆盖；`timeoutMs` 为 100–60,000，默认 10,000；`allowInsecureLoopback` 默认 false。
 
 ## 原生媒体
 

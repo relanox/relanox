@@ -1,6 +1,6 @@
 # Architecture
 
-Relanox is a resident message gateway. It persists channel text and media, hands them to an existing dot or Grok Bot, and sends asynchronous reply messages to the original conversation. It does not run a model. [Configuration](configuration.md) controls deployment; [Core](reference/core.md) and [SDK](reference/sdk.md) define runtime and persistence contracts.
+Relanox is a resident message gateway. It persists channel text and media, hands them to an existing dot or Grok Bot, and sends asynchronous reply messages to the original conversation. [Configuration](configuration.md) controls deployment; [Core](reference/core.md) and [SDK](reference/sdk.md) define runtime and persistence contracts.
 
 ## Components
 

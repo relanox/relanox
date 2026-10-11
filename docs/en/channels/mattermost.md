@@ -30,7 +30,7 @@ Targets freeze the server URL and configured bot user ID. Reconfiguring either c
 
 Native posted `file_ids` are resolved through `GET /api/v4/files/<id>/info` and downloaded through `GET /api/v4/files/<id>` with the configured token. MIME metadata classifies images, audio, video and other files. Requests stay on the configured server, reject redirects and enforce the core byte limit; no message-provided URL is fetched.
 
-Output uploads binary multipart `files` with `channel_id` to `POST /api/v4/files`, then creates the frozen thread post with `file_ids`. Server MIME processing generates native previews; this protocol does not accept the SDK's separate preview or duration fields. File order is preserved by core. The bot needs upload_file and read_channel permissions, and server file-size limits still apply. Buffering and durable storage are supported; streaming is not. Local WebSocket/HTTP/SQLite/MCP tests verify binary relay and thread metadata without claiming live-account compatibility.
+Output uploads binary multipart `files` with `channel_id` to `POST /api/v4/files`, then creates the frozen thread post with `file_ids`. Server MIME processing generates native previews. File order is preserved by core. The bot needs upload_file and read_channel permissions, and server file-size limits still apply. Buffering and durable storage are supported. Local WebSocket/HTTP/SQLite/MCP tests verify binary relay and thread metadata.
 
 Protocol source: [Mattermost file API](https://github.com/mattermost/mattermost/blob/master/api/v4/source/files.yaml).
 

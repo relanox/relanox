@@ -27,7 +27,7 @@
 
 ## 参数与限制
 
-`apiBaseUrl` 默认 `https://slack.com/api`；`timeoutMs` 为 100–60,000，默认 10,000；`reconnectDelayMs` 为 100–30,000，默认 1,000；`allowInsecureLoopback` 默认 false。不支持卡片、斜杠命令、交互载荷及临时消息。
+`apiBaseUrl` 默认 `https://slack.com/api`；`timeoutMs` 为 100–60,000，默认 10,000；`reconnectDelayMs` 为 100–30,000，默认 1,000；`allowInsecureLoopback` 默认 false。
 
 ## 原生媒体
 

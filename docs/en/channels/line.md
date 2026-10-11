@@ -20,7 +20,7 @@ Create a LINE Official Account with a Messaging API channel, obtain its channel 
 
 ## Setup and delivery
 
-`botUserId` must match the webhook `destination`. Sender allowlists contain the source `userId`; bind `chatId` to the user, group or room destination. LINE has no native text thread address. Source `webhookEventId` is the durable deduplication key. Text is limited to 5,000 UTF-16 units per chunk. Anonymous events without an attributable sender, reply-token sends, cards and other interactive events are outside this integration.
+`botUserId` must match the webhook `destination`. Sender allowlists contain the source `userId`; bind `chatId` to the user, group or room destination. LINE destinations are users, groups or rooms. Source `webhookEventId` is the durable deduplication key. Text is limited to 5,000 UTF-16 units per chunk. Incoming messages require an identifiable sender; outgoing messages use the push API.
 
 Incoming requests require the original bytes' HMAC-SHA256 `X-Line-Signature`. Relanox verifies the configured destination and waits for durable ingest before ACK. Known allowlist/unbound exclusions are diagnosed and ACKed; unexpected persistence failures return an error. The frozen target stores only the source destination/type/message reference; credentials and `replyToken` are never persisted.
 
@@ -36,7 +36,7 @@ Native outbound image/audio/video messages require the global public media publi
 
 The Messaging API requires an HTTPS `originalContentUrl` for [image](https://developers.line.biz/en/reference/messaging-api/#image-message), [audio](https://developers.line.biz/en/reference/messaging-api/#audio-message) and [video](https://developers.line.biz/en/reference/messaging-api/#video-message) output; image/video also require `previewImageUrl`. It provides no binary upload or reusable media ID for these message objects, so outbound media still needs `media.publicBaseUrl`. Text output and inbound media downloads do not need this publisher. [Get content](https://developers.line.biz/en/reference/messaging-api/#get-content) downloads received messages; [rich menu image upload](https://developers.line.biz/en/reference/messaging-api/#upload-rich-menu-image) attaches an image to a rich menu and cannot supply media for a push message.
 
-LINE has no native generic file message for outbound Messaging API sends. File input is supported, but file output is rejected and is not advertised as a native capability. Media is not converted or replaced with a URL text placeholder. Optional `contentApiBase` supports an administrator-configured gateway under the same transport policy as `apiBase`.
+LINE receives files and sends native image, audio and video messages. Optional `contentApiBase` supports an administrator-configured gateway under the same transport policy as `apiBase`.
 
 The official [message objects](https://developers.line.biz/en/reference/messaging-api/index.html.md) define these limits. Local tests verify signed ingress and native URL-fetch bytes; live account playback, reachability and quota remain unverified.
 

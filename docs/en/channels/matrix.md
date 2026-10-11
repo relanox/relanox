@@ -18,7 +18,7 @@ Account `config` ([configuration](../configuration.md)):
 
 Create a dedicated account/device and invite it into the configured rooms. Allowlist exact sender MXIDs such as `@alice:example.com`; bind `chatId` to the room ID. Thread bindings use the original `m.thread` root event ID. The plugin ignores its own events and accepts `m.text`, `m.image`, `m.audio`, `m.video` and `m.file`. Replies preserve the room, thread and original event relation.
 
-**Encrypted rooms are unsupported.** Encrypted events are explicitly diagnosed; the relay does not decrypt, manage room keys or silently convert them to text. Edits, other relation types and membership actions are not relayed.
+Use unencrypted rooms with native message events.
 
 Each send first reads the room encryption state. Transient failures of that read are safely retryable because no message has been issued. Transport or server failures after the message PUT remain unknown and require explicit recovery.
 
@@ -32,9 +32,9 @@ The reply target also freezes the homeserver and configured user identity. If th
 
 ## Native media
 
-Images, audio, video and files are downloaded through the authenticated `/_matrix/client/v1/media/download/<server>/<mediaId>` endpoint of the configured homeserver. An `mxc://` server name is a media identifier, never a credential-bearing download destination. Downloads reject redirects and enforce the core byte limit. Encrypted file payloads are unsupported.
+Images, audio, video and files are downloaded through the authenticated `/_matrix/client/v1/media/download/<server>/<mediaId>` endpoint of the configured homeserver. An `mxc://` server name is a media identifier, never a credential-bearing download destination. Downloads reject redirects and enforce the core byte limit. Use unencrypted attachments.
 
-Outgoing assets use `POST /_matrix/media/v3/upload` and native `m.image`, `m.audio`, `m.video` or `m.file` room events. Filenames, MIME types, sizes and optional duration are preserved; an explicit request-owned image preview becomes `thumbnail_url` and `thumbnail_info`. Core sends queued assets in order after text. Upload or send ambiguity follows the existing unknown-send recovery policy. Media is buffered and durably stored; streaming is unsupported. Homeserver upload limits can be lower than the core limit. Local HTTP/SQLite/MCP tests verify these protocol contracts, not compatibility with a live account.
+Outgoing assets use `POST /_matrix/media/v3/upload` and native `m.image`, `m.audio`, `m.video` or `m.file` room events. Filenames, MIME types, sizes and optional duration are preserved; an explicit request-owned image preview becomes `thumbnail_url` and `thumbnail_info`. Core sends queued assets in order after text. Upload or send ambiguity follows the existing unknown-send recovery policy. Media is buffered and durably stored. Homeserver upload limits can be lower than the core limit. Local HTTP/SQLite/MCP tests verify these protocol contracts.
 
 Protocol source: [Matrix Client-Server API](https://spec.matrix.org/latest/client-server-api/).
 

@@ -43,7 +43,7 @@ SQLite `filename` 相对进程工作目录解析，不相对配置文件；启�
 | `startupTimeoutMs`                  | `30000`              | 100–120000；原生连接初始化期限                        |
 | `shutdownTimeoutMs`                 | `15000`              | 100–120000；排空、存储和观测关闭的总预算              |
 
-容器使用 `host: "0.0.0.0"`，由可信反向代理终止 HTTPS，只转发业务路径。Agent host/origin 白名单应对应外部 URL。管理提供 GET `/health/live`、`/health/ready` 和启用时的 `/metrics`，不提供记录查询或恢复 HTTP 接口。业务 listener 不提供健康与指标路由。
+容器使用 `host: "0.0.0.0"`，由可信反向代理终止 HTTPS，只转发业务路径。Agent host/origin 白名单应对应外部 URL。管理提供 GET `/health/live`、`/health/ready` 和启用时的 `/metrics`，记录查询与恢复通过本地 CLI 操作。健康与指标由独立管理 listener 提供。
 
 就绪检查存储健康、接收状态、工作失败和批次新鲜度；渠道连接状态通过 `relanox_connection_status` 和结构化诊断单独表达，不代表真实账号验证。
 

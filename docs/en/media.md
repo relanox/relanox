@@ -1,8 +1,8 @@
 # Images, audio, video and files
 
-Relanox stores incoming media with its request and returns generated media to the original conversation. Support follows each channel's native protocol and permissions. Text and attachments form one durable request; a media-only message does not need placeholder text. Each send is an independent durable message; streaming updates are outside scope.
+Relanox stores incoming media with its request and returns generated media to the original conversation. Support follows each channel's native protocol and permissions. Text and attachments form one durable request; a media-only message does not need placeholder text. Each send is an independent durable message.
 
-The [channel guides](configuration.md) describe supported directions, formats and platform limits. IRC has no standardized native attachment transport. LINE cannot send arbitrary files through the Messaging API. Google Chat bot-authenticated delivery uses image cards and download buttons; those buttons are not native uploaded file attachments. Teams file delivery depends on personal-chat consent. These distinctions also apply when a hosted agent can generate the requested file.
+The [channel guides](configuration.md) describe supported directions, formats and platform limits. IRC handles text messages. LINE receives files and sends images, audio and video. Google Chat bot-authenticated delivery uses image cards and download buttons. Teams file delivery depends on personal-chat consent. These distinctions also apply when a hosted agent can generate the requested file.
 
 ## Agent workflow
 
@@ -13,7 +13,7 @@ Incoming dot events and Grok Routine content directly include replyTo and attach
 3. Provide positive integer durationMs when the platform requires audio/video duration. An image previewUrl downloads a generated companion atomically with its main asset; previewMediaId can reference a received image belonging to the same input. Previews need not be separate reply attachments.
 4. Multiple sends are allowed for the same replyTo. Empty text requires attachments. Reuse an explicit idempotencyKey with identical content/attachment order to retry; absent a key, identical content deduplicates. Distinct explicit keys permit intentionally identical messages. `queued` does not mean delivered.
 
-There is no standalone upload or task-completion operation. Direct SDK hosts can pass inline MediaUpload bytes or a `{media,preview}` pair to sendMessage; MCP clients provide public HTTPS URLs. Both dot and Grok expose the two media/message tools. Hosted clients must support relevant inline content or resource downloads, and generated files must be available through a public URL. Local protocol tests do not prove a particular hosted account's behavior.
+Direct SDK hosts can pass inline MediaUpload bytes or a `{media,preview}` pair to sendMessage; MCP clients provide public HTTPS URLs. Both dot and Grok expose the two media/message tools. Hosted clients must support relevant inline content or resource downloads, and generated files must be available through a public URL. Local protocol tests cover the media tools and transport.
 
 ## Public URLs for native delivery
 

@@ -17,7 +17,7 @@ Account `config` ([configuration](../configuration.md)):
 
 ## Setup and delivery
 
-Set the bot's webhook externally to `https://your-relay/channels/telegram-main/webhook` with the same `secret_token` and `allowed_updates: ["message"]`. This plugin does not alter existing platform webhook registrations. Set bindings to the exact decimal chat ID, and a decimal topic `threadId` when present. Sender allowlists use `from.id`; anonymous/channel posts are unsupported.
+Set the bot's webhook externally to `https://your-relay/channels/telegram-main/webhook` with the same `secret_token` and `allowed_updates: ["message"]`. This plugin does not alter existing platform webhook registrations. Set bindings to the exact decimal chat ID, and a decimal topic `threadId` when present. Sender allowlists use `from.id`; incoming messages use identified bot users.
 
 Webhook secrets use constant-time comparison. `update_id` deduplicates deliveries, and successful HTTP 204 follows durable ingestion; failed handoff returns 503. Bot, edited and service events create no task.
 

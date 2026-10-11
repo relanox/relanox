@@ -24,7 +24,7 @@ Account `config` ([configuration](../configuration.md)):
 
 ## Setup and delivery
 
-Selected transport is native HTTP event subscription v2.0, not the official SDK's persistent WS client. Configure encryption/signature settings and the subscription URL `https://your-relay/channels/feishu-main/events`, subscribe to `im.message.receive_v1`, enable bot capability and message send/receive permissions. This transport supports internal/self-built apps using the tenant-access-token internal endpoint; ISV app-ticket flow is unsupported.
+The transport uses native HTTP event subscription v2.0. Configure encryption/signature settings and the subscription URL `https://your-relay/channels/feishu-main/events`, subscribe to `im.message.receive_v1`, enable bot capability and message send/receive permissions. This transport supports internal/self-built apps using the tenant-access-token internal endpoint.
 
 HTTP events verify raw-body signatures with a five-minute freshness bound and decrypt encrypted envelopes. Registration challenges may be unsigned but must match the verification token. Normal events must match token, app and tenant identities. `header.event_id` deduplicates deliveries; allowlists use sender `open_id`. Human text and native media from `message.content` are relayed.
 
@@ -38,7 +38,7 @@ Grant resource download/upload permissions (`im:resource`, or the applicable new
 
 Generated images use multipart `im/v1/images` (`image_type=message`); other assets use `im/v1/files`, followed by the frozen native message/reply. Upload ceilings are 10 MiB for images and 30 MiB otherwise, plus relay limits; message-resource downloads are capped at 100 MiB. Native audio requires Opus/Ogg and `durationMs`; video requires MP4 and `durationMs`, with an optional staged image `previewMediaId`. Files use `file_type=stream`. Final text is delivered separately. Unsupported codecs and missing metadata are rejected before a message effect.
 
-See [Media transfer](../media.md), the official [resource API](https://open.feishu.cn/document/server-docs/im-v1/message/get-2), [file upload](https://open.feishu.cn/document/server-docs/im-v1/file/create), and [official SDK uploader](https://github.com/larksuite/node-sdk/blob/main/channel/outbound/media/uploader.ts). Local tests establish protocol transport, not live tenant permissions or playback.
+See [Media transfer](../media.md), the official [resource API](https://open.feishu.cn/document/server-docs/im-v1/message/get-2), [file upload](https://open.feishu.cn/document/server-docs/im-v1/file/create), and [official SDK uploader](https://github.com/larksuite/node-sdk/blob/main/channel/outbound/media/uploader.ts). Local tests establish protocol transport.
 
 ## Account changes
 
