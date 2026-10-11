@@ -16,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@relanox/sdk": "workspace:*"
+    "@relanox/sdk": "workspace:*",
+    "@relanox/transport": "workspace:*"
   },
   "engines": {
     "node": ">=26 <27"

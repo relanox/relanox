@@ -314,6 +314,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../transport
 
   packages/core:
     dependencies:
@@ -335,6 +338,8 @@ importers:
         specifier: workspace:*
         version: link:../sdk
 
+  packages/transport: {}
+
   plugins/agent-dot:
     dependencies:
       '@modelcontextprotocol/server':
@@ -346,6 +351,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       standardwebhooks:
         specifier: 1.1.1
         version: 1.1.1
@@ -421,6 +429,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -443,6 +454,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -455,6 +469,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       jose:
         specifier: 6.2.12
         version: 6.2.12
@@ -493,6 +510,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -512,6 +532,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -531,6 +554,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -556,6 +582,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       jose:
         specifier: 6.2.12
         version: 6.2.12
@@ -622,6 +651,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -678,6 +710,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@relanox/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       zod:
         specifier: 4.6.5
         version: 4.6.5

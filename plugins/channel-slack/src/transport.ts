@@ -1,3 +1,4 @@
+import { readBounded } from '@relanox/transport'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type {
   ChannelHost,
@@ -23,34 +24,6 @@ export function equal(a: string, b: string): boolean {
     createHash('sha256').update(a).digest(),
     createHash('sha256').update(b).digest()
   )
-}
-
-async function readBounded(
-  body: ReadableStream<Uint8Array> | null,
-  max = 1_048_576
-): Promise<Buffer> {
-  if (!body) {
-    return Buffer.alloc(0)
-  }
-  const reader = body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  try {
-    while (true) {
-      const next = await reader.read()
-      if (next.done) {
-        return Buffer.concat(chunks)
-      }
-      total += next.value.byteLength
-      if (total > max) {
-        throw new Error('payload_too_large')
-      }
-      chunks.push(next.value)
-    }
-  } catch (error) {
-    await reader.cancel().catch(() => {})
-    throw error
-  }
 }
 
 export async function bytes(
