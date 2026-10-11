@@ -9,8 +9,8 @@ import type {
 import { receiveFiles, uploadFile } from './media.js'
 import { WebSocket } from 'ws'
 import type { RawData } from 'ws'
-import type { z } from 'zod'
-import { validateConfig, validateBaseUrl } from './config.js'
+import { z } from 'zod'
+import { validateConfig, validateBaseUrl, platformIdSchema } from './config.js'
 import type { MattermostConfig } from './config.js'
 import {
   delay,
@@ -55,6 +55,7 @@ export function createMattermostChannel(
         account: AccountConfig
         config: MattermostConfig
         base: string
+        botUserId: string
       }
     | undefined
 
@@ -67,6 +68,7 @@ export function createMattermostChannel(
     account: AccountConfig
     config: MattermostConfig
     base: string
+    botUserId: string
   } {
     if (!runtime) {
       throw new Error('not_setup')
@@ -78,13 +80,13 @@ export function createMattermostChannel(
     frame: z.infer<typeof frameSchema>,
     signal: AbortSignal
   ): Promise<void> {
-    const { host, account, config, base } = configured()
+    const { host, account, config, base, botUserId } = configured()
     if (frame.event !== 'posted') {
       return
     }
     const encoded = postedEventSchema.parse(frame.data)
     const post = postSchema.parse(JSON.parse(encoded.post) as unknown)
-    if (post.user_id === config.botUserId) {
+    if (post.user_id === botUserId) {
       return
     }
     if (!account.allowedSenders.includes(post.user_id)) {
@@ -121,7 +123,7 @@ export function createMattermostChannel(
         chatId: post.channel_id,
         ...(post.root_id ? { threadId: post.root_id } : {}),
         replyToId: post.id,
-        data: { serverUrl: base, botUserId: config.botUserId }
+        data: { serverUrl: base, botUserId }
       },
       context: null
     })
@@ -250,14 +252,14 @@ export function createMattermostChannel(
   }
 
   async function send(input: SendInput): Promise<SendResult> {
-    const { account, config, base } = configured()
+    const { account, config, base, botUserId } = configured()
     const destination = targetSchema.safeParse(input.target.data)
     if (
       input.target.channel !== 'mattermost' ||
       input.target.accountId !== account.id ||
       !destination.success ||
       destination.data.serverUrl !== base ||
-      destination.data.botUserId !== config.botUserId
+      destination.data.botUserId !== botUserId
     ) {
       return { status: 'rejected', errorCode: 'target_mismatch' }
     }
@@ -328,11 +330,35 @@ export function createMattermostChannel(
       if (runtime) {
         throw new Error('already_setup')
       }
+
+      const base = validateBaseUrl(
+        config.serverUrl,
+        config.allowInsecureLocalhost
+      )
+
+      const response = await fetch(`${base}/api/v4/users/me`, {
+        headers: {
+          Authorization: `Bearer ${secret(config.token, environment)}`
+        },
+        redirect: 'error',
+        signal: AbortSignal.timeout(requestTimeoutMs)
+      })
+
+      if (!response.ok) {
+        await response.body?.cancel()
+        throw new Error('identity_discovery_failed')
+      }
+
+      const identity = z
+        .object({ id: platformIdSchema })
+        .parse(await readJson(response))
+
       runtime = {
         host,
         account,
         config,
-        base: validateBaseUrl(config.serverUrl, config.allowInsecureLocalhost)
+        base,
+        botUserId: identity.id
       }
     },
     async start(signal) {

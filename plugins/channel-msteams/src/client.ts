@@ -9,7 +9,7 @@ export async function accessToken(
   signal: AbortSignal
 ): Promise<string | SendResult> {
   const response = await request(
-    validateEndpointUrl(config.tokenUrl, config.allowLoopback),
+    validateEndpointUrl(config.tokenUrl),
     {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -32,7 +32,7 @@ export async function accessToken(
 }
 
 export function serviceUrl(value: string, config: TeamsConfig): URL {
-  const url = validateEndpointUrl(value, config.allowLoopback)
+  const url = validateEndpointUrl(value)
   if (
     /[?#]/u.test(url.href) ||
     !config.trustedServiceOrigins.includes(url.origin)

@@ -73,6 +73,10 @@ export async function httpPeer(
   handler: (
     request: IncomingMessage,
     response: ServerResponse
+  ) => Promise<void> | void,
+  identityHandler?: (
+    request: IncomingMessage,
+    response: ServerResponse
   ) => Promise<void> | void
 ): Promise<{
   server: ReturnType<typeof createServer>
@@ -81,6 +85,28 @@ export async function httpPeer(
   const errors: unknown[] = []
 
   const server = createServer((request, response) => {
+    if (
+      identityHandler &&
+      ['/api/v4/users/me', '/_matrix/client/v3/account/whoami'].includes(
+        request.url ?? ''
+      )
+    ) {
+      Promise.resolve(identityHandler(request, response)).catch(
+        (error: unknown) => {
+          errors.push(error)
+          response.destroy()
+        }
+      )
+      return
+    }
+    if (request.url === '/_matrix/client/v3/account/whoami') {
+      json(response, { user_id: '@bot:local.test' })
+      return
+    }
+    if (request.url === '/api/v4/users/me') {
+      json(response, { id: 'self-bot' })
+      return
+    }
     Promise.resolve(handler(request, response)).catch((error: unknown) => {
       errors.push(error)
       response.destroy()
@@ -223,6 +249,11 @@ export async function harness(
 
   await storage.initialize()
 
+  cleanup(async () => {
+    await plugin.stop?.()
+    await storage.close()
+  })
+
   const bindings: Binding[] = chats.map((chat) => ({
     accountId: 'bot',
     endpointId: 'worker',
@@ -244,11 +275,6 @@ export async function harness(
       storage: { plugin: 'sqlite', config: {} },
       observability: { plugin: 'none', config: {} }
     }
-  })
-
-  cleanup(async () => {
-    await plugin.stop?.()
-    await storage.close()
   })
 
   async function sendReply(

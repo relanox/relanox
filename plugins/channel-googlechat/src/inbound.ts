@@ -1,3 +1,4 @@
+import { apiBase } from './constants.js'
 import { downloadAttachments } from './media.js'
 import type { AccountConfig, ChannelHost } from '@relanox/sdk'
 import type { z } from 'zod'
@@ -59,7 +60,7 @@ export async function receive(
         clientEmail: serviceSchema.parse(
           JSON.parse(secret(config.serviceAccount)) as unknown
         ).client_email,
-        apiBase: new URL(config.apiBase).href
+        apiBase: new URL(apiBase).href
       }
     }
   }

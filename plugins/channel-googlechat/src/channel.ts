@@ -1,3 +1,4 @@
+import { apiBase, jwksUrl } from './constants.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -8,7 +9,7 @@ import type {
 import { validatePublicUrl } from '@relanox/sdk'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { accessToken } from './client.js'
-import { validateConfig, validateEndpointUrl } from './config.js'
+import { validateConfig } from './config.js'
 import type { GoogleChatConfig } from './config.js'
 import { mediaCards } from './media.js'
 import { receive } from './inbound.js'
@@ -62,7 +63,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     }
     if (
       target.scope.clientEmail !== clientEmail ||
-      target.scope.apiBase !== new URL(config.apiBase).href
+      target.scope.apiBase !== new URL(apiBase).href
     ) {
       return { status: 'rejected', errorCode: 'target_identity_changed' }
     }
@@ -82,10 +83,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       return preparationFailure(error)
     }
     try {
-      const url = validateEndpointUrl(
-        `${config.apiBase}/v1/${target.space}/messages`,
-        config.allowLoopback
-      )
+      const url = new URL(`${apiBase}/v1/${target.space}/messages`)
 
       if (target.thread) {
         url.searchParams.set('messageReplyOption', 'REPLY_MESSAGE_OR_FAIL')
@@ -147,13 +145,10 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       const audience = `${validatePublicUrl(host.publicUrl)}/channels/${account.id}/webhook`
       runtime = { host, account, config }
 
-      const keys = createRemoteJWKSet(
-        validateEndpointUrl(config.jwksUrl, config.allowLoopback),
-        {
-          timeoutDuration: 5000,
-          cacheMaxAge: 3_600_000
-        }
-      )
+      const keys = createRemoteJWKSet(new URL(jwksUrl), {
+        timeoutDuration: 5000,
+        cacheMaxAge: 3_600_000
+      })
 
       host.mountHttp('/webhook', async (incoming) => {
         if (incoming.method !== 'POST') {

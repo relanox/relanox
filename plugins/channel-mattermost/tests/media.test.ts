@@ -123,7 +123,6 @@ it.each(kinds)(
       plugin,
       {
         serverUrl: peer.base,
-        botUserId: 'self-bot',
         token: { env: 'MATTERMOST_TOKEN' },
         allowInsecureLocalhost: true
       },

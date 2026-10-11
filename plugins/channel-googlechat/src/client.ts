@@ -1,7 +1,7 @@
+import { tokenUrl } from './constants.js'
 import type { SendResult } from '@relanox/sdk'
 import { importPKCS8, SignJWT } from 'jose'
 import type { GoogleChatConfig } from './config.js'
-import { validateEndpointUrl } from './config.js'
 import { failure, request, secret } from './io.js'
 import { oauthTokenResponseSchema, serviceSchema } from './schemas.js'
 
@@ -20,13 +20,13 @@ export async function accessToken(
   })
     .setProtectedHeader({ alg: 'RS256' })
     .setIssuer(service.client_email)
-    .setAudience(config.tokenUrl)
+    .setAudience(tokenUrl)
     .setIssuedAt()
     .setExpirationTime('1h')
     .sign(key)
 
   const response = await request(
-    validateEndpointUrl(config.tokenUrl, config.allowLoopback),
+    new URL(tokenUrl),
     {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },

@@ -1,3 +1,4 @@
+import { jwksUrl } from './constants.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -160,13 +161,10 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     async setup(host, account, config) {
       runtime = { host, account, config }
 
-      const keys = createRemoteJWKSet(
-        validateEndpointUrl(config.jwksUrl, config.allowLoopback),
-        {
-          timeoutDuration: 5000,
-          cacheMaxAge: 3_600_000
-        }
-      )
+      const keys = createRemoteJWKSet(validateEndpointUrl(jwksUrl), {
+        timeoutDuration: 5000,
+        cacheMaxAge: 3_600_000
+      })
 
       host.mountHttp('/activities', async (incoming) => {
         if (incoming.method !== 'POST') {

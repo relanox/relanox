@@ -23,12 +23,9 @@ afterEach(async () => {
   vi.unstubAllEnvs()
 })
 
-const config = (base: string): Json => ({
-  botUserId: 'bot',
+const config = (): Json => ({
   channelSecret: { env: 'LINE_SECRET' },
-  accessToken: { env: 'LINE_TOKEN' },
-  apiBase: base,
-  allowLoopback: true
+  accessToken: { env: 'LINE_TOKEN' }
 })
 
 function webhook(text = 'hello', destination = 'bot', sender = 'user'): string {
@@ -80,7 +77,7 @@ async function setup(filename?: string): Promise<{
 
   const local = await harness(
     plugin,
-    config(remote.base),
+    config(),
     'group',
     'user',
     undefined,
@@ -92,6 +89,60 @@ async function setup(filename?: string): Promise<{
 }
 
 describe('native LINE', () => {
+  it('discovers bot identity with the account token before accepting signed webhooks', async () => {
+    const local = await setup()
+    expect(local.remote.identities).toHaveLength(1)
+    expect(local.remote.identities[0]).toMatchObject({
+      path: '/v2/bot/info',
+      headers: { authorization: 'Bearer token' }
+    })
+    expect(
+      (await local.core.fetch(incoming(webhook('hello', 'other-bot')))).status
+    ).toBe(403)
+    expect((await local.storage.getStats()).pending).toBe(0)
+    expect((await local.core.fetch(incoming(webhook()))).status).toBe(200)
+    expect((await local.storage.getStats()).pending).toBe(1)
+  })
+
+  it.each([401, 200])(
+    'fails setup safely when bot info returns %s without an identity, and permits a corrected retry',
+    async (status) => {
+      vi.stubEnv('LINE_SECRET', 'secret')
+      vi.stubEnv('LINE_TOKEN', 'token')
+      const remote = await peer()
+      cleanup.push(remote.close)
+      remote.identityResponse(status, {})
+      const plugin = createLineChannel()
+      await expect(harness(plugin, config(), 'group', 'user')).rejects.toThrow()
+      expect(
+        await plugin.send({
+          deliveryId: 'delivery',
+          requestId: 'request',
+          target: {
+            channel: 'line',
+            accountId: 'business',
+            chatId: 'group',
+            data: {
+              destination: 'group',
+              sourceType: 'group',
+              botId: 'bot',
+              apiBaseUrl: remote.base
+            }
+          },
+          chunk: { text: 'answer', idempotencyKey: 'delivery:0', state: null },
+          chunkIndex: 0,
+          signal: new AbortController().signal
+        })
+      ).toEqual({ status: 'rejected', errorCode: 'invalid_target' })
+      expect(remote.traffic).toHaveLength(0)
+      remote.identity('bot')
+      const local = await harness(plugin, config(), 'group', 'user')
+      cleanup.push(local.close)
+      expect((await local.core.fetch(incoming(webhook()))).status).toBe(200)
+      expect((await local.storage.getStats()).pending).toBe(1)
+    }
+  )
+
   it.each(['identity', 'server', 'legacy'])(
     'refuses a persisted target after %s changes',
     async (change) => {
@@ -102,36 +153,30 @@ describe('native LINE', () => {
       if (!outbound?.chunks[0]) {
         throw new Error('Missing stored outbound')
       }
+      local.remote.identity(change === 'identity' ? 'other-bot' : 'bot')
       const changedPlugin = createLineChannel()
-
-      const changed = await harness(
-        changedPlugin,
-        {
-          botUserId: change === 'identity' ? 'other-bot' : 'bot',
-          channelSecret: { env: 'LINE_SECRET' },
-          accessToken: { env: 'LINE_TOKEN' },
-          apiBase:
-            change === 'server'
-              ? `${local.remote.base}/different`
-              : local.remote.base,
-          allowLoopback: true
-        },
-        'group',
-        'user'
-      )
-
+      const changed = await harness(changedPlugin, config(), 'group', 'user')
       cleanup.push(changed.close)
+      let target = outbound.target
+      if (change === 'legacy') {
+        target = {
+          ...target,
+          data: { destination: 'group', sourceType: 'group' }
+        }
+      } else if (change === 'server') {
+        target = {
+          ...target,
+          data: {
+            ...z.record(z.string(), z.json()).parse(target.data),
+            apiBaseUrl: 'https://other.example'
+          }
+        }
+      }
       expect(
         await changedPlugin.send({
           deliveryId: outbound.deliveryId,
           requestId: outbound.requestId,
-          target:
-            change === 'legacy'
-              ? {
-                  ...outbound.target,
-                  data: { destination: 'group', sourceType: 'group' }
-                }
-              : outbound.target,
+          target,
           chunk: outbound.chunks[0],
           chunkIndex: 0,
           signal: new AbortController().signal
@@ -152,12 +197,7 @@ describe('native LINE', () => {
     vi.stubEnv('LINE_TOKEN', 'rotated-token')
     const restartedPlugin = createLineChannel()
 
-    const restarted = await harness(
-      restartedPlugin,
-      config(`${local.remote.base}/`),
-      'group',
-      'user'
-    )
+    const restarted = await harness(restartedPlugin, config(), 'group', 'user')
 
     cleanup.push(restarted.close)
     expect(
@@ -247,7 +287,7 @@ describe('native LINE', () => {
 
     const restarted = await harness(
       restartedPlugin,
-      config(local.remote.base),
+      config(),
       'group',
       'user',
       undefined,
@@ -321,19 +361,17 @@ describe('native LINE', () => {
     const plugin = createLineChannel()
     expect(() =>
       plugin.validateConfig({
-        botUserId: 'bot',
         channelSecret: 'secret',
         accessToken: 'token'
       })
     ).toThrow()
     expect(() =>
       plugin.validateConfig({
-        botUserId: 'bot',
         channelSecret: { env: 'SECRET' },
         accessToken: { env: 'TOKEN' },
         apiBase: 'http://127.0.0.1:4000'
       })
-    ).toThrow('unsafe_endpoint')
+    ).toThrow()
     expect(plugin.capabilities.idempotentSend).toBe(false)
   })
 })

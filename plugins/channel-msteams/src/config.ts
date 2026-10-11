@@ -6,19 +6,9 @@ const secretRefSchema = z.strictObject({
 
 export const platformIdSchema = z.string().min(1).max(1024)
 
-export function validateEndpointUrl(
-  value: string,
-  allowLoopback: boolean
-): URL {
+export function validateEndpointUrl(value: string): URL {
   const url = new URL(value)
-  const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-  if (
-    url.username ||
-    url.password ||
-    url.hash ||
-    (url.protocol !== 'https:' &&
-      !(allowLoopback && loopback && url.protocol === 'http:'))
-  ) {
+  if (url.username || url.password || url.hash || url.protocol !== 'https:') {
     throw new Error('unsafe_endpoint')
   }
   return url
@@ -29,18 +19,14 @@ const configSchema = z.strictObject({
   botId: platformIdSchema,
   tenantId: platformIdSchema,
   appSecret: secretRefSchema,
-  mediaOrigins: z.array(z.url()).default([]),
-  trustedUploadOrigins: z.array(z.url()).default([]),
-  trustedServiceOrigins: z.array(z.url()).min(1),
-  jwksUrl: z
-    .url()
-    .default('https://login.botframework.com/v1/.well-known/keys'),
   tokenUrl: z
     .url()
     .default(
       'https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token'
     ),
-  allowLoopback: z.boolean().default(false)
+  mediaOrigins: z.array(z.url()).default([]),
+  trustedUploadOrigins: z.array(z.url()).default([]),
+  trustedServiceOrigins: z.array(z.url()).min(1)
 })
 
 export type TeamsConfig = z.infer<typeof configSchema>
@@ -49,12 +35,11 @@ export function validateConfig(value: unknown): TeamsConfig {
   const config = configSchema.parse(value)
   for (const url of [
     config.tokenUrl,
-    config.jwksUrl,
     ...config.trustedServiceOrigins,
     ...config.mediaOrigins,
     ...config.trustedUploadOrigins
   ]) {
-    validateEndpointUrl(url, config.allowLoopback)
+    validateEndpointUrl(url)
   }
   if (
     [

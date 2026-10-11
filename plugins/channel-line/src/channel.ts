@@ -1,3 +1,4 @@
+import { apiBase } from './constants.js'
 import { randomUUID } from 'node:crypto'
 import type {
   AccountConfig,
@@ -6,8 +7,9 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
-import type { z } from 'zod'
-import { validateConfig, validateEndpointUrl } from './config.js'
+import { z } from 'zod'
+import { readJson } from '@relanox/transport'
+import { validateConfig, platformIdSchema } from './config.js'
 import type { LineConfig } from './config.js'
 import { receiveEvent } from './inbound.js'
 import { mediaError, messages } from './media.js'
@@ -56,7 +58,12 @@ async function retryIdentity(
 
 export function createLineChannel(): ChannelPlugin<LineConfig> {
   let runtime:
-    | { host: ChannelHost; account: AccountConfig; config: LineConfig }
+    | {
+        host: ChannelHost
+        account: AccountConfig
+        config: LineConfig
+        botUserId: string
+      }
     | undefined
 
   async function send(input: SendInput): Promise<SendResult> {
@@ -72,9 +79,8 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
     if (
       !parsed.success ||
       parsed.data.destination !== input.target.chatId ||
-      parsed.data.botId !== config.botUserId ||
-      parsed.data.apiBaseUrl !==
-        new URL(config.apiBase).toString().replace(/\/$/u, '')
+      parsed.data.botId !== runtime.botUserId ||
+      parsed.data.apiBaseUrl !== new URL(apiBase).toString().replace(/\/$/u, '')
     ) {
       return { status: 'rejected', errorCode: 'invalid_target' }
     }
@@ -98,10 +104,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
     }
     try {
       const response = await request(
-        validateEndpointUrl(
-          `${config.apiBase}/v2/bot/message/push`,
-          config.allowLoopback
-        ),
+        new URL(`${apiBase}/v2/bot/message/push`),
         {
           method: 'POST',
           headers: {
@@ -157,7 +160,29 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
     },
     validateConfig,
     async setup(host, account, config) {
-      runtime = { host, account, config }
+      if (runtime) {
+        throw new Error('already_setup')
+      }
+
+      const response = await request(
+        new URL(`${apiBase}/v2/bot/info`),
+        {
+          headers: { authorization: `Bearer ${secret(config.accessToken)}` }
+        },
+        AbortSignal.timeout(10_000)
+      )
+
+      if (!response.ok) {
+        await response.body?.cancel()
+        throw new Error('identity_discovery_failed')
+      }
+
+      const identity = z
+        .object({ userId: platformIdSchema })
+        .parse(await readJson(response))
+
+      const botUserId = identity.userId
+      runtime = { host, account, config, botUserId }
       host.mountHttp('/webhook', async (incoming) => {
         if (incoming.method !== 'POST') {
           return new Response(null, { status: 405 })
@@ -177,11 +202,11 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
         if (!decoded.success) {
           return new Response(null, { status: 400 })
         }
-        if (decoded.data.destination !== config.botUserId) {
+        if (decoded.data.destination !== botUserId) {
           return new Response(null, { status: 403 })
         }
         for (const event of decoded.data.events) {
-          await receiveEvent(host, account, config, event)
+          await receiveEvent(host, account, config, botUserId, event)
         }
         return Response.json({})
       })

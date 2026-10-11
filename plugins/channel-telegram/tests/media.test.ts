@@ -1,3 +1,4 @@
+import { connectLinePeer } from './line-network.js'
 import { afterEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { MediaKind } from '@relanox/sdk'
@@ -61,6 +62,9 @@ function nativeReply(
   origin: string,
   mimeType: string
 ): MediaReply {
+  if (channel === 'line' && traffic.path === '/v2/bot/info') {
+    return { json: { userId: 'U999' } }
+  }
   if (traffic.method === 'GET') {
     return { data: inputBytes, mimeType }
   }
@@ -257,6 +261,9 @@ it.each(cases)(
 
     origin = remote.origin
     cleanups.push(remote.close)
+    if (channel === 'line') {
+      cleanups.push(connectLinePeer(origin))
+    }
     const gateway = channel === 'discord' ? await discordPeer() : undefined
     if (gateway) {
       cleanups.push(gateway.close)

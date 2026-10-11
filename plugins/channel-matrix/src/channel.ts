@@ -11,7 +11,7 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import { mediaCaption, messageContent, receiveMedia } from './media.js'
-import type { z } from 'zod'
+import { z } from 'zod'
 import { validateConfig, platformIdSchema, validateBaseUrl } from './config.js'
 import type { MatrixConfig } from './config.js'
 import {
@@ -68,6 +68,7 @@ export function createMatrixChannel(
         account: AccountConfig
         config: MatrixConfig
         base: string
+        userId: string
       }
     | undefined
 
@@ -79,6 +80,7 @@ export function createMatrixChannel(
     account: AccountConfig
     config: MatrixConfig
     base: string
+    userId: string
   } {
     if (!runtime) {
       throw new Error('not_setup')
@@ -97,8 +99,8 @@ export function createMatrixChannel(
     event: z.infer<typeof eventSchema>,
     signal: AbortSignal
   ): Promise<void> {
-    const { host, account, config, base } = configured()
-    if (event.sender === config.userId) {
+    const { host, account, config, base, userId } = configured()
+    if (event.sender === userId) {
       return
     }
     if (event.type === 'm.room.encrypted') {
@@ -154,7 +156,7 @@ export function createMatrixChannel(
         chatId: room,
         replyToId: event.event_id,
         ...(threadId ? { threadId } : {}),
-        data: { homeserver: base, userId: config.userId }
+        data: { homeserver: base, userId }
       },
       context: null
     })
@@ -266,14 +268,14 @@ export function createMatrixChannel(
   }
 
   async function send(input: SendInput): Promise<SendResult> {
-    const { account, base, config } = configured()
+    const { account, base, userId } = configured()
     const destination = targetSchema.safeParse(input.target.data)
     if (
       input.target.channel !== 'matrix' ||
       input.target.accountId !== account.id ||
       !destination.success ||
       destination.data.homeserver !== base ||
-      destination.data.userId !== config.userId
+      destination.data.userId !== userId
     ) {
       return { status: 'rejected', errorCode: 'target_mismatch' }
     }
@@ -342,11 +344,35 @@ export function createMatrixChannel(
       if (runtime) {
         throw new Error('already_setup')
       }
+
+      const base = validateBaseUrl(
+        config.homeserver,
+        config.allowInsecureLocalhost
+      )
+
+      const response = await fetch(`${base}/_matrix/client/v3/account/whoami`, {
+        headers: {
+          Authorization: `Bearer ${secret(config.accessToken, environment)}`
+        },
+        redirect: 'error',
+        signal: AbortSignal.timeout(requestTimeoutMs)
+      })
+
+      if (!response.ok) {
+        await response.body?.cancel()
+        throw new Error('identity_discovery_failed')
+      }
+
+      const identity = z
+        .object({ user_id: platformIdSchema })
+        .parse(await readJson(response))
+
       runtime = {
         host,
         account,
         config,
-        base: validateBaseUrl(config.homeserver, config.allowInsecureLocalhost)
+        base,
+        userId: identity.user_id
       }
     },
     async start(signal) {

@@ -107,7 +107,6 @@ it.each(kinds)(
       plugin,
       {
         homeserver: peer.base,
-        userId: '@bot:example',
         accessToken: { env: 'MATRIX_TOKEN' },
         allowInsecureLocalhost: true
       },
@@ -229,7 +228,6 @@ it('refuses oversized Matrix media without committing the sync cursor', async ()
     plugin,
     {
       homeserver: peer.base,
-      userId: '@bot:example',
       accessToken: { env: 'MATRIX_TOKEN' },
       allowInsecureLocalhost: true
     },

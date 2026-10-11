@@ -16,13 +16,12 @@ const thread = '$thread-root'
 
 function config(base: string): {
   homeserver: string
-  userId: string
+
   accessToken: { env: string }
   allowInsecureLocalhost: boolean
 } {
   return {
     homeserver: base,
-    userId: '@bot:local.test',
     accessToken: { env: 'MATRIX_TOKEN' },
     allowInsecureLocalhost: true
   }

@@ -1,3 +1,4 @@
+import { apiBase } from './constants.js'
 import type { AccountConfig, ChannelHost } from '@relanox/sdk'
 import type { z } from 'zod'
 import type { LineConfig } from './config.js'
@@ -9,6 +10,7 @@ export async function receiveEvent(
   host: ChannelHost,
   account: AccountConfig,
   config: LineConfig,
+  botUserId: string,
   event: z.infer<typeof eventSchema>
 ): Promise<void> {
   const { source, message } = event
@@ -18,7 +20,7 @@ export async function receiveEvent(
     !message ||
     !['text', 'image', 'audio', 'video', 'file'].includes(message.type) ||
     (message.type === 'text' && !message.text) ||
-    source.userId === config.botUserId
+    source.userId === botUserId
   ) {
     host.observe.log('debug', 'channel_event_ignored', {
       errorCode: 'unsupported_or_self_text'
@@ -57,8 +59,8 @@ export async function receiveEvent(
       data: {
         destination,
         sourceType: source.type,
-        botId: config.botUserId,
-        apiBaseUrl: new URL(config.apiBase).toString().replace(/\/$/u, '')
+        botId: botUserId,
+        apiBaseUrl: new URL(apiBase).toString().replace(/\/$/u, '')
       }
     }
   })
