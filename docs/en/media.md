@@ -8,13 +8,17 @@ Start with a small picture and ask, “Please describe this image.” Once the A
 
 Send a small image in the chat you selected in the [connection configurator](connect.md), and ask the Agent to describe it. You do not need a separate attachment prompt or connection. For audio, video and other files, check your [channel guide](channels/index.md) for supported formats and any duration or cover-image requirements.
 
+Small UTF-8 text, Markdown, CSV, TSV and JSON files up to 64 KiB can be read directly through the connection. Larger files and other formats require the Agent to download them; its network or file support may limit what it can read.
+
 ## Receive a file from the Agent
 
 Try: “Create a small text file containing today’s checklist and send it as an attachment in this chat.” You should receive a downloadable file in the original chat, rather than only a filename or a message saying the file is ready.
 
 Ask the Agent to send its generated file back to the chat. dot can pass files from its workspace through the MCP file parameter. Grok Bot can upload a file from its cloud computer to Relanox, then send it as an attachment. A direct public HTTPS download link also works.
 
-After updating Relanox, refresh or reconnect the Agent's MCP connection so it sees the file tools. The connection supplies the upload instructions; no separate file service or prompt is required. Uploading saves the file, and the Agent must then send it to your chat.
+After updating Relanox, refresh or reconnect the Agent's MCP connection so it sees the file tools. The connection supplies the upload instructions; no separate file service or prompt is required. Uploading saves the file, and the Agent must then send it to your chat. If Grok still lists only two tools, its connection has an older tool list; reconnect it and confirm that Create upload appears.
+
+Grok may ask you to approve uploading the generated file from its cloud computer. Check the filename and your Relanox address before allowing that upload. While it is waiting for approval, the original chat will not receive the attachment.
 
 LINE, Google Chat and large images in Teams groups or channels also need Relanox's public HTTPS address for delivery. Use the address entered in the configurator and follow [Deployment and daily use](operations.md) to make it reachable. Teams personal chats may ask you to accept the file. IRC supports text conversations.
 
