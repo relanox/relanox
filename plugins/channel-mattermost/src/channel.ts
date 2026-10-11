@@ -5,6 +5,7 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
+import { receiveFiles, uploadFile } from "./media.js";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
 import type { z } from "zod";
@@ -45,7 +46,7 @@ export function createMattermostChannel(
     }
     return runtime;
   }
-  async function receive(frame: z.infer<typeof frameSchema>): Promise<void> {
+  async function receive(frame: z.infer<typeof frameSchema>, signal: AbortSignal): Promise<void> {
     const { host, account, config, base } = configured();
     if (frame.event !== "posted") {
       return;
@@ -55,14 +56,27 @@ export function createMattermostChannel(
     if (post.user_id === config.botUserId) {
       return;
     }
-    if (post.type || !post.message) {
+    if (!account.allowedSenders.includes(post.user_id)) {
+      diagnose(host, "sender_not_allowed");
+      return;
+    }
+    if (post.type || (!post.message && post.file_ids.length === 0)) {
       diagnose(host, "nontext_unsupported");
       return;
     }
+    const attachments = await receiveFiles(
+      post.file_ids,
+      host,
+      config,
+      base,
+      `Bearer ${secret(config.token, environment)}`,
+      signal,
+    );
     await ingest(host, {
       source: { channel: "mattermost", accountId: account.id, eventId: post.id },
       senderId: post.user_id,
       text: post.message,
+      ...(attachments.length > 0 ? { attachments } : {}),
       receivedAt: post.create_at,
       target: {
         channel: "mattermost",
@@ -132,7 +146,7 @@ export function createMattermostChannel(
       if (frame.event === "posted" && !authenticated) {
         throw new Error("unauthenticated_event");
       }
-      await receive(frame);
+      await receive(frame, signal);
     }
     current.on("message", (bytes, isBinary) => {
       if (isBinary || queued >= 100) {
@@ -192,17 +206,24 @@ export function createMattermostChannel(
       return { status: "rejected", errorCode: "target_mismatch" };
     }
     try {
+      const signal = AbortSignal.any([input.signal, AbortSignal.timeout(config.timeoutMs)]);
+      const authorization = `Bearer ${secret(config.token, environment)}`;
+      const upload = input.media ? await uploadFile(input, base, authorization, signal) : undefined;
+      if (upload && !("fileId" in upload)) {
+        return upload;
+      }
       const response = await fetch(`${base}/api/v4/posts`, {
         method: "POST",
         redirect: "error",
-        signal: AbortSignal.any([input.signal, AbortSignal.timeout(config.timeoutMs)]),
+        signal,
         headers: {
-          Authorization: `Bearer ${secret(config.token, environment)}`,
+          Authorization: authorization,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           channel_id: input.target.chatId,
           message: input.chunk.text,
+          ...(upload && "fileId" in upload ? { file_ids: [upload.fileId] } : {}),
           ...(input.target.threadId ? { root_id: input.target.threadId } : {}),
         }),
       });
@@ -228,6 +249,10 @@ export function createMattermostChannel(
       maxTextLength: 16_000,
       lengthUnit: "codepoint",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(host, account, config) {
