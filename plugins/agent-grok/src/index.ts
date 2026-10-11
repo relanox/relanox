@@ -24,7 +24,7 @@ export function createGrokAgentPlugin(): AgentPlugin<GrokConfig> {
         const scopedHost = host.forPrincipal({ subject: endpoint.id, endpointIds: [endpoint.id] });
         const media = createMediaTransport(scopedHost, config.mcp, endpoint.id, "grok");
         if (media.maxBytes > 0) {
-          host.mountHttp(`/media/${endpoint.id}`, media.fetch, {
+          host.mountHttp(`/media/${endpoint.id}/*`, media.fetch, {
             maxBodyBytes: media.maxBytes,
             authorize: media.authorize,
           });

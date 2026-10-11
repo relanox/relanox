@@ -161,12 +161,16 @@ describe("dot MCP Events and tools", () => {
       "relanox_claim",
       "relanox_complete",
       "relanox_fail",
+      "relanox_media_transfer",
+      "relanox_read_media",
     ]);
     expect(tools.tools.map((tool) => tool.annotations?.readOnlyHint)).toEqual([
       true,
       false,
       false,
       false,
+      true,
+      true,
     ]);
     const pending = await client.callTool({
       name: "relanox_list_pending",

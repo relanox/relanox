@@ -7,26 +7,21 @@ import type { McpConfig } from "./config.js";
 import { equalSecret, resolveAgentSecret } from "./secrets.js";
 
 const id = z.string().min(1).max(1024);
-function validFileName(value: string): boolean {
-  for (const character of value) {
-    if ((character.codePointAt(0) ?? 0) < 32) {
-      return false;
-    }
-  }
-  return true;
-}
 const metadata = z.strictObject({
   kind: z.enum(["image", "audio", "video", "file"]),
   mimeType: z
     .string()
     .min(1)
-    .max(255)
-    .regex(/^[\w.+-]+\/[\w.+-]+$/u),
+    .max(128)
+    .regex(/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/u),
   fileName: z
     .string()
     .min(1)
     .max(255)
-    .refine((value) => validFileName(value), "Invalid file name"),
+    .refine(
+      (name) => name.isWellFormed() && !/[\p{Cc}/\\]/u.test(name) && name !== "." && name !== "..",
+      "Invalid file name",
+    ),
 });
 const ticketSchema = z.strictObject({
   endpointId: id,
@@ -119,6 +114,7 @@ export function createMediaTransport(
           "Content-Type": stored.reference.mimeType,
           "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(stored.reference.fileName)}`,
           "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
         },
       });
     }
@@ -148,6 +144,12 @@ export function createMediaTransport(
     server.registerTool(
       "relanox_media_transfer",
       {
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
         description:
           "Issue a five-minute claim-bound binary download or upload URL. PUT the raw generated file bytes to the upload URL, then include its returned media.id in relanox_complete attachments. Never send file base64 through tool arguments. URLs are credentials; do not share them.",
         inputSchema: z.strictObject({
@@ -181,6 +183,12 @@ export function createMediaTransport(
     server.registerTool(
       "relanox_read_media",
       {
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
         description:
           "Read request media after claiming. Small image/audio assets are returned as model-visible MCP content; other assets are a binary download resource link. Client support for consuming download links must be verified separately.",
         inputSchema: z.strictObject({ requestId: id, claimToken: id, mediaId: id }),

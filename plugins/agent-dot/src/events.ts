@@ -17,7 +17,7 @@ export function createEventsHandler(
   const scopedHost = agentHost.forPrincipal({ subject: endpoint.id, endpointIds: [endpoint.id] });
   const media = createMediaTransport(scopedHost, config.mcp, endpoint.id, "dot");
   if (media.maxBytes > 0) {
-    agentHost.mountHttp(`/media/${endpoint.id}`, media.fetch, {
+    agentHost.mountHttp(`/media/${endpoint.id}/*`, media.fetch, {
       maxBodyBytes: media.maxBytes,
       authorize: media.authorize,
     });
