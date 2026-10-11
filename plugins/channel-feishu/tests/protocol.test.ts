@@ -167,6 +167,37 @@ describe("feishu native HTTP protocol", () => {
     },
   );
 
+  it.each([false, true])(
+    "accepts unsigned token-authenticated URL challenges (encrypted=%s)",
+    async (encrypted) => {
+      const test = await setup();
+      const challenge = {
+        type: "url_verification",
+        token: "verification-token",
+        challenge: "registration-42",
+      };
+      const signed = request(challenge, encrypted);
+      const unsigned = new Request(signed.url, { method: "POST", body: await signed.text() });
+      const response = await test.handler(unsigned);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ challenge: "registration-42" });
+      const wrong = request({ ...challenge, token: "wrong-token" }, encrypted);
+      expect(
+        (await test.handler(new Request(wrong.url, { method: "POST", body: await wrong.text() })))
+          .status,
+      ).toBe(401);
+      const unsignedEvent = request(event, encrypted);
+      expect(
+        (
+          await test.handler(
+            new Request(unsignedEvent.url, { method: "POST", body: await unsignedEvent.text() }),
+          )
+        ).status,
+      ).toBe(401);
+      expect(test.received).toEqual([]);
+    },
+  );
+
   it("keeps same-identity credential rotation and canonical URL spelling deliverable", async () => {
     const remote = await peer((input) => ({
       body: input.path.includes("tenant_access_token")

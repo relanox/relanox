@@ -31,3 +31,10 @@ Review covers Telegram, Discord, Slack, Feishu and LINE production parsing, iden
 2. Discord reuses a saved resume URL based only on bot ID, so a changed API/Gateway configuration can ingest the old server's events under the new server's target identity. LINE appends `/v2` to a base ending in `/`, producing a double-slash path even though the frozen base is canonical.
 3. Existing Discord recovery tests retain all connection settings; existing LINE tests do not rotate credentials or vary trailing slashes. New cases record real connection opcodes/HTTP paths and use real SQLite state for the cached session.
 4. No new seams: existing plugin lifecycle, configurable endpoints and production plugin_state storage are used.
+
+## Feishu URL registration challenge authentication
+
+1. Protect webhook URL registration with Feishu's unsigned URL-verification challenge while requiring its configured verification token, and continue requiring signatures/freshness on message events.
+2. Requiring event-signature headers before inspecting the decrypted URL challenge blocks initial subscription registration, even with the correct encrypt key and verification token.
+3. Existing challenge fixtures always add synthetic signature headers. The official [HTTP adapter](https://github.com/larksuite/node-sdk/blob/main/adaptor/default.ts) invokes [challenge decoding](https://github.com/larksuite/node-sdk/blob/main/adaptor/services/challenge.ts) before the dispatcher's signature check. New cases omit those headers; negative cases prevent unsigned regular events or wrong-token challenges being accepted.
+4. No production seam: ordinary Request handlers and AES-encrypted protocol bodies are used. No account is contacted.
