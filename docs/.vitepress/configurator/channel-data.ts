@@ -81,10 +81,13 @@ export const channelData = [
     chatExample: 'staff-userid',
     senderExample: 'staff-userid',
     defaults: {
+      mode: 'websocket',
       botId: 'intelligent-robot-id',
       secret: {
         env: 'WECOM_BOT_SECRET'
-      }
+      },
+      token: { env: 'WECOM_TOKEN' },
+      encodingAESKey: { env: 'WECOM_ENCODING_AES_KEY' }
     },
     webhook: false,
     name: {

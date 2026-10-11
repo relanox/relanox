@@ -1,5 +1,10 @@
 import { channelData } from './channel-data.js'
-import type { ChannelDefinition, FieldDefinition, Json } from './types.js'
+import type {
+  ChannelDefinition,
+  ChannelState,
+  FieldDefinition,
+  Json
+} from './types.js'
 import { fieldLabels, channelSetup } from './labels.js'
 
 const names: Record<string, [string, string]> = {
@@ -40,7 +45,8 @@ const userFields = new Set([
 
 const choices: Record<string, string[]> = {
   domain: ['feishu', 'lark'],
-  environment: ['production', 'sandbox']
+  environment: ['production', 'sandbox'],
+  mode: ['websocket', 'webhook']
 }
 
 function personalizeField(field: FieldDefinition): FieldDefinition {
@@ -113,3 +119,25 @@ export const CHANNELS: ChannelDefinition[] = channelData.map((entry) => {
     }
   }
 })
+
+/** Fields relevant to the selected platform connection mode. */
+export function accountFields(channel: ChannelState): FieldDefinition[] {
+  const fields =
+    CHANNELS.find((entry) => entry.id === channel.channel)?.fields ?? []
+
+  if (channel.channel !== 'wecom') {
+    return fields
+  }
+
+  const excluded =
+    channel.fields.mode === 'webhook' ? ['secret'] : ['token', 'encodingAESKey']
+
+  return fields.filter((field) => !excluded.includes(field.key))
+}
+
+export function accountUsesWebhook(channel: ChannelState): boolean {
+  if (channel.channel === 'wecom') {
+    return channel.fields.mode === 'webhook'
+  }
+  return CHANNELS.some((entry) => entry.id === channel.channel && entry.webhook)
+}

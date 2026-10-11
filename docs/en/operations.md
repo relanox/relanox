@@ -52,7 +52,7 @@ docker compose exec relanox node dist/main.js doctor --config /config/relanox.js
 docker compose exec relanox node dist/main.js status --config /config/relanox.json --limit 100
 ```
 
-For WeCom chat and sender IDs, stop any running process using the same bot, supply `WECOM_BOT_SECRET`, then run the discovery command below. It can use configuration with incomplete bindings or missing Agent credentials. Send a message to the bot; the command prints only IDs and makes no configuration changes. See [WeCom](channels/wecom.md).
+For WeCom WebSocket chat and sender IDs, stop any running process using the same bot, supply `WECOM_BOT_SECRET`, then run the discovery command below. It can use configuration with incomplete bindings or missing Agent credentials. Send a message to the bot; the command prints only IDs and makes no configuration changes. See [WeCom](channels/wecom.md).
 
 ```sh
 node apps/cli/dist/main.js discover --config relanox.json --account wecom-main --timeout 120

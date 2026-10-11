@@ -10,7 +10,7 @@ Relanox connects your messaging accounts to an existing dot or Grok Bot. A perso
 4. **Your agent is notified.** Relanox sends the message and attachment information to dot or Grok. The agent can read the attachments and prepare a reply in its own service.
 5. **The reply returns to the conversation.** The agent asks Relanox to send text or supported media. Relanox saves the reply, splits long text to fit the platform, then sends it and records the result.
 
-Your Agent can send a progress update followed by a final answer. After receiving your question, it takes time to prepare a response and send it back to the conversation. See [Message status and recovery](reference/core.md) if a reply is delayed.
+Your Agent can send a progress update followed by a final answer where the channel permits multiple replies. WeCom HTTP callback permits one reply per incoming message, so send only the final answer in that mode. After receiving your question, it takes time to prepare a response and send it back to the conversation. See [Message status and recovery](reference/core.md) if a reply is delayed.
 
 ## What happens after a restart?
 

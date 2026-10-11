@@ -468,6 +468,7 @@ Relanox 启动时会用机器人 Token 自动查询工作区和机器人用户 I
       "channel": "wecom",
       "allowedSenders": ["staff-userid"],
       "config": {
+        "mode": "websocket",
         "botId": "intelligent-robot-id",
         "secret": {
           "env": "WECOM_BOT_SECRET"
@@ -484,6 +485,19 @@ Relanox 启动时会用机器人 Token 自动查询工作区和机器人用户 I
   ]
 }
 ```
+
+省略 `mode` 时仍使用原有 WebSocket 配置。使用 HTTP 回调时，将上方账号的 `config` 替换为：
+
+```json
+{
+  "mode": "webhook",
+  "botId": "intelligent-robot-id",
+  "token": { "env": "WECOM_TOKEN" },
+  "encodingAESKey": { "env": "WECOM_ENCODING_AES_KEY" }
+}
+```
+
+在公网 HTTPS 地址下注册 `/channels/{accountId}/webhook`。Relanox 每条来信支持在一小时内回复一次文本，Markdown 转义前最多 2,048 个 UTF-8 字节。过长回复会在入队前被拒绝，回调不支持媒体回复。下方 WebSocket 发现命令不适用于回调账号。平台说明见[企业微信主动回复](https://developer.work.weixin.qq.com/document/path/101138)。
 
 ### 协议与命令细节
 

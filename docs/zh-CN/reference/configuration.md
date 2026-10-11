@@ -183,8 +183,8 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 | Slack、Discord                                                  | `reconnectDelayMs`                                  |
 | IRC、Matrix、Mattermost、Signal                                 | `reconnectMs`                                       |
 | Matrix                                                          | `syncTimeoutMs`                                     |
-| 钉钉、企业微信、QQ                                              | `maxReconnectAttempts`                              |
-| 企业微信                                                        | `heartbeatMs`                                       |
+| 钉钉、企业微信 WebSocket、QQ                                    | `maxReconnectAttempts`                              |
+| 企业微信 WebSocket                                              | `heartbeatMs`                                       |
 | QQ                                                              | `transport`                                         |
 | Discord                                                         | `intents`                                           |
 | Google Chat                                                     | `callerEmail`、`issuer`                             |

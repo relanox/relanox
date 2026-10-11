@@ -1,5 +1,5 @@
 import { validatePublicUrl } from '../../../packages/sdk/src/index.js'
-import { CHANNELS } from './channels.js'
+import { CHANNELS, accountFields, accountUsesWebhook } from './channels.js'
 import type {
   AgentState,
   ChannelState,
@@ -189,8 +189,7 @@ function assignField(
 
 function accountConfig(channel: ChannelState): Record<string, Json> {
   const config: Record<string, Json> = {}
-  const definition = CHANNELS.find((entry) => entry.id === channel.channel)
-  for (const field of definition?.fields ?? []) {
+  for (const field of accountFields(channel)) {
     assignField(
       config,
       field.key,
@@ -307,12 +306,13 @@ export function validateDraft(state: ConfiguratorState): DraftIssue[] {
 }
 
 export function publicHttpsChannels(state: ConfiguratorState): typeof CHANNELS {
-  return CHANNELS.filter(
-    (definition) =>
-      definition.webhook &&
-      state.channels.some(
-        (channel) => channel.enabled && channel.channel === definition.id
-      )
+  return CHANNELS.filter((definition) =>
+    state.channels.some(
+      (channel) =>
+        channel.enabled &&
+        channel.channel === definition.id &&
+        accountUsesWebhook(channel)
+    )
   )
 }
 
@@ -383,8 +383,7 @@ function channelIssues(
   if (splitIds(channel.senderIds).length === 0) {
     issues.push({ code: 'senderIds', target })
   }
-  const definition = CHANNELS.find((entry) => entry.id === channel.channel)
-  for (const field of definition?.fields ?? []) {
+  for (const field of accountFields(channel)) {
     const value = channel.fields[field.key] ?? ''
     if (!value.trim()) {
       issues.push({ code: 'fieldRequired', target: `${target}.${field.key}` })
@@ -429,14 +428,7 @@ export function webhookDetails(
   state: ConfiguratorState
 ): { id: string; channel: string; webhookUrl: string }[] {
   return state.channels
-    .filter(
-      (channel) =>
-        channel.enabled &&
-        CHANNELS.some(
-          (definition) =>
-            definition.id === channel.channel && definition.webhook
-        )
-    )
+    .filter((channel) => channel.enabled && accountUsesWebhook(channel))
     .map((channel) => ({
       id: channel.id,
       channel: channel.channel,

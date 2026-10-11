@@ -10,7 +10,7 @@
 | [Discord](discord.md)                  | Discord 机器人和消息权限           |
 | [Slack](slack.md)                      | Slack 应用和工作区授权             |
 | [飞书 / Lark](feishu.md)               | 企业自建应用和事件订阅地址         |
-| [企业微信](wecom.md)                   | 智能机器人 ID 和密钥               |
+| [企业微信](wecom.md)                   | 智能机器人 ID；密钥或回调凭据      |
 | [钉钉](dingtalk.md)                    | 应用机器人及 Stream 接入凭据       |
 | [QQ](qq.md)                            | QQ 机器人 App ID 和密钥            |
 | [Microsoft Teams](msteams.md)          | Azure 机器人、Teams 应用和租户信息 |
