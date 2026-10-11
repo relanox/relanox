@@ -98,7 +98,12 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
             'content-type': 'application/json'
           },
           body: JSON.stringify({
-            ...(input.chunk.text ? { text: input.chunk.text } : {}),
+            ...(input.chunk.text
+              ? {
+                  text: input.chunk.text,
+                  markupSyntax: 'MARKUP_SYNTAX_MARKDOWN'
+                }
+              : {}),
             ...(cardsV2 ? { cardsV2 } : {}),
             ...(target.thread ? { thread: { name: target.thread } } : {})
           })

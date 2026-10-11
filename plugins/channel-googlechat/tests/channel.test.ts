@@ -154,7 +154,11 @@ describe('native Google Chat', () => {
     expect((await local.core.fetch(await local.incoming())).status).toBe(200)
     expect((await local.core.fetch(await local.incoming())).status).toBe(200)
     expect((await local.storage.getStats()).pending).toBe(1)
-    const completed = await local.sendReply()
+
+    const completed = await local.sendReply(
+      '**answer** [link](https://example.com)'
+    )
+
     expect(completed.delivery?.status).toBe('sent')
     expect(local.dispatches).toEqual(['hello'])
 
@@ -190,7 +194,8 @@ describe('native Google Chat', () => {
     )
     expect(sent?.headers.authorization).toBe('Bearer oauth-token')
     expect(JSON.parse(sent?.body ?? 'null') as unknown).toEqual({
-      text: 'answer',
+      text: '**answer** [link](https://example.com)',
+      markupSyntax: 'MARKUP_SYNTAX_MARKDOWN',
       thread: { name: 'spaces/space/threads/thread' }
     })
     expect(completed.request.target.threadId).toBe(
@@ -541,6 +546,7 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
   expect(sent).toHaveLength(2)
   expect(JSON.parse(sent[0]?.body ?? 'null') as unknown).toEqual({
     text: 'caption',
+    markupSyntax: 'MARKUP_SYNTAX_MARKDOWN',
     thread: { name: 'spaces/space/threads/thread' }
   })
 
