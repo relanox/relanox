@@ -2,7 +2,7 @@ import type { MediaStorage, StoredMedia, MediaReference } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
 import { createHash } from "node:crypto";
 import { encodeDurableRecord } from "./record-codec.js";
-import { validMedia } from "./media-contracts.js";
+import { validMedia, withinMediaBudget } from "./media-contracts.js";
 import { isRequestInScope } from "./record-contracts.js";
 import type { Pool, PoolClient } from "pg";
 
@@ -81,6 +81,16 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
           return existing.request_id === input.requestId && existing.digest === digest(input.media)
             ? { status: "stored", media: input.media.reference, replay: true }
             : { status: "conflict" };
+        }
+        const usage = (
+          await context.query<{ count: string; bytes: string }>(
+            client,
+            "SELECT COUNT(*) count,COALESCE(SUM(octet_length(data)),0) bytes FROM media WHERE request_id=$1 AND data IS NOT NULL",
+            [input.requestId],
+          )
+        )[0];
+        if (!usage || !withinMediaBudget(input, Number(usage.count), Number(usage.bytes))) {
+          return { status: "conflict" };
         }
         const inserted = await context.query(
           client,

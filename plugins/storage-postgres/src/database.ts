@@ -106,7 +106,11 @@ export function openDatabase(
     id: string,
   ): Promise<InboundRecord | undefined> =>
     (
-      await query<{ record: InboundRecord }>(client, "SELECT record FROM inbound WHERE id=$1", [id])
+      await query<{ record: InboundRecord }>(
+        client,
+        "SELECT record FROM inbound WHERE id=$1 FOR UPDATE",
+        [id],
+      )
     )[0]?.record;
   const readOutbound = async (
     client: Pool | PoolClient,
