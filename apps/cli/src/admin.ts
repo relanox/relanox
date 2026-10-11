@@ -1,8 +1,7 @@
 import type { InboundRecord, OutboundRecord, StatusFilter, Storage } from "@relanox/sdk";
 import type { AppConfig } from "./config.js";
 import { deadline } from "./deadline.js";
-import { requireHealthy } from "./runtime.js";
-import { openStorage } from "./storage.js";
+import { openStorage, requireHealthy } from "./storage.js";
 
 export async function withStorage<T>(
   config: AppConfig,
