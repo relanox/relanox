@@ -5,6 +5,8 @@ import type {
   Observability,
   HttpRouteOptions,
 } from "@relanox/sdk";
+import { createMediaPublisher } from "../media-publisher.js";
+import type { MediaPublisherOptions } from "../types.js";
 import type { Hono } from "hono";
 import { z } from "zod";
 import { CoreError } from "../errors.js";
@@ -19,6 +21,8 @@ export function createCommonHostFactory(
   isAccepting: () => boolean,
   connections: Map<string, "connected" | "disconnected" | "degraded">,
   httpRoutes: Map<string, HttpRouteOptions>,
+  media: MediaPublisherOptions | undefined,
+  maximum: number,
 ) {
   const routes = new Set<string>();
   const componentPlugins = new Map<string, string>();
@@ -83,5 +87,5 @@ export function createCommonHostFactory(
     };
   }
 
-  return commonHost;
+  return { common: commonHost, mediaPublisher: createMediaPublisher(storage, app, media, maximum) };
 }

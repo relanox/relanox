@@ -1,4 +1,5 @@
 import type { OutboundRecord, ChannelPlugin, Storage, SendResult } from "@relanox/sdk";
+import { readPreview } from "../hosts/media.js";
 import { verifiedMedia } from "../media.js";
 
 export async function sendChunk(
@@ -16,6 +17,7 @@ export async function sendChunk(
     return { status: "rejected", errorCode: "plugin_missing" };
   }
   let media;
+  let preview;
   if (chunk.media) {
     if (!channel.capabilities.media?.send.includes(chunk.media.kind)) {
       return { status: "rejected", errorCode: "media_not_supported" };
@@ -26,6 +28,7 @@ export async function sendChunk(
     }
     try {
       media = verifiedMedia(stored, chunk.media, maximum);
+      preview = await readPreview(storage, record.requestId, media, maximum);
     } catch {
       return { status: "rejected", errorCode: "media_integrity_error" };
     }
@@ -37,6 +40,7 @@ export async function sendChunk(
     chunk: structuredClone(chunk),
     chunkIndex: record.currentChunk,
     ...(media ? { media } : {}),
+    ...(preview ? { preview } : {}),
     signal,
   });
 }

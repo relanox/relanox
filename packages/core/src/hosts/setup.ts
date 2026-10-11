@@ -10,7 +10,7 @@ import { createChannelHost } from "./channel.js";
 import { createAgentHost } from "./agent.js";
 
 interface HostSetupOptions {
-  readonly options: Pick<CoreOptions, "storage" | "channels" | "agents">;
+  readonly options: Pick<CoreOptions, "storage" | "channels" | "agents" | "media">;
   readonly config: RelanoxConfig;
   readonly worker: WorkerConfig;
   readonly observe: Observability;
@@ -32,13 +32,15 @@ export async function setupPluginHosts({
   connections,
 }: HostSetupOptions): Promise<void> {
   const storage = options.storage;
-  const common = createCommonHostFactory(
+  const { common, mediaPublisher } = createCommonHostFactory(
     storage,
     observe,
     app,
     isAccepting,
     connections,
     httpRoutes,
+    options.media,
+    worker.maxMediaBytes,
   );
   const { accountValidated, endpoints, bindings } = validatePluginConfigurations(options, config);
 
@@ -56,6 +58,7 @@ export async function setupPluginHosts({
     }
     const host = createChannelHost({
       account,
+      ...(mediaPublisher ? { mediaPublisher: mediaPublisher(account.id) } : {}),
       mediaKinds: plugin.capabilities.media?.receive ?? [],
       bindings,
       endpoints,
