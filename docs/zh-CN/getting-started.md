@@ -7,7 +7,7 @@
 准备以下内容：
 
 - 从 BotFather 获取的 Telegram bot token、你的用户 ID 和目标聊天 ID。私人聊天的 chat ID 通常就是用户 ID。群组和话题设置见 [Telegram](channels/telegram.md)。
-- 一个支持 webhook 触发 Routine 的 Grok Bot、完整 webhook URL 和 Authorization 值，以及 MCP 连接。
+- Grok Bot 桌面客户端，并登录你的付费 Cursor 账号。下面会创建 webhook 例行任务。
 - 可以持续运行 Relanox 的机器，以及公开 HTTPS 地址，例如 `https://relay.example.com`。[部署与备份](operations.md)提供反向代理示例。
 - 源码安装需要 Git、Node.js 26.11.1 和 pnpm 12.11.2。[部署与备份](operations.md)也提供 Docker 安装方式。
 
@@ -23,6 +23,12 @@ pnpm build
 打开[连接配置器](connect.md)，填写公开 HTTPS 地址，将默认 Agent 从 dot 切换为 Grok，启用 Telegram。填写允许使用的 Telegram 用户 ID 和私人聊天 ID，为这个聊天选择这个 Grok Agent。保留生成的环境变量名称，将下载的 `relanox.json` 放在仓库根目录。
 
 打开**你的接入教程**，关闭或刷新页面前保存生成的 MCP 密码。如果仍有草稿提示，先补全对应信息。教程会列出此次配置需要的变量和连接地址。使用仓库示例手动配置的方法见[配置参考](reference/configuration.md)。
+
+设置环境变量前，先创建 Grok 例行任务。在负责回复 Telegram 消息的 Bot 对话中发送：
+
+> 创建一个仅由 webhook 触发的例行任务，按 Relanox MCP 说明处理收到的用户消息。不要添加定时计划。
+
+点击 Bot 名称，打开 **详情 → 例行任务**，选择新建的任务。从 **Webhook** 区域复制 **POST 到** 作为 Routine URL。Authorization 值为 `Bearer <密钥>`；如果复制的是显示的标头，去掉开头的 `Authorization:` 字段名。保留这两个值，下一步需要使用。
 
 ## 3. 提供环境变量
 
@@ -43,7 +49,7 @@ foreach ($name in @('TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET', 'RELANOX_AG
 }
 ```
 
-服务部署时通过受保护的服务环境设置提供变量。Docker 使用[部署与备份](operations.md)中的 `.env` 文件。源码启动读取当前终端环境，启动前先载入变量。
+服务部署时通过受保护的服务环境设置提供变量。Docker 使用[部署与备份](operations.md)中的 `.env` 文件。源码启动读取当前终端环境，启动前先载入变量。Relanox 不会自动读取 `.env` 文件。
 
 ## 4. 启动 Relanox
 
@@ -78,7 +84,7 @@ Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$($env:TELEGRAM
 
 Telegram 应返回 `ok: true`。共享截图和输出前去掉 token。
 
-按[连接 Grok](agents.md#连接-grok)在 Grok Bot 桌面客户端创建 webhook 例行任务，再通过 Cursor 控制台的 **Plugins & MCPs** 添加教程生成的 MCP 地址。Routine Authorization 填写 `Bearer <密钥>`，不要包含 `Authorization:` 字段名。
+将第 2 步创建的例行任务接到 Relanox。在同一 Cursor 账号的控制台打开 **Plugins & MCPs → Add → Custom MCP**。类型保持 **URL**，将**你的接入教程**中的完整 Grok MCP 地址粘贴到 **Server URL**。**HTTP headers、Client ID、Client Secret** 留空，点击 **Add MCP**。回到 Grok Bot，打开 **连接应用 → 你的插件**，确认连接已就绪。详细步骤见[连接 Grok](agents.md#连接-grok)。
 
 修改配置或环境变量后重启 Relanox。
 

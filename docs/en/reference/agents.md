@@ -59,7 +59,8 @@ The Routine Authorization variable holds `Bearer <key>`, without the `Authorizat
 
 3. Restart Relanox and follow [Connect dot](../agents.md#connect-dot) to add `https://relay.example.com/agents/dot/mcp/agent-1` as a custom MCP server in ChatGPT using OAuth. On the Relanox authorization page, enter the value of `RELANOX_AGENT_1_MCP_TOKEN`. This value is the authorization password, not a static Bearer access token.
 
-4. Set your conversation binding's `endpointId` to `agent-1` and send a message through that conversation.
+4. Enable the plugin in dot and ask it to subscribe to incoming Relanox messages and reply to each event’s original chat.
+5. Set your conversation binding's `endpointId` to `agent-1`, send a message through that conversation, and confirm the reply arrives there.
 
 dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens rotate on use, with a 30-day lifetime from the initial authorization. Grants persist in your configured database. Reusing an old refresh token revokes its authorization; changing the configured password and restarting requires reconnecting dot.
 

@@ -24,7 +24,8 @@ There is no single “MCP callback” field: Relanox calls the Routine webhook t
 2. Open the generated setup guide. Save its authorization password and set the listed environment variable to that value. [Quick start](getting-started.md) covers starting Relanox with your downloaded configuration.
 3. In ChatGPT, open **Plugins → Add → Add custom MCP server**. Enter a name such as `Relanox`, paste the dot MCP address from the guide into **Server URL**, and keep **OAuth** selected for authentication. Relanox must be reachable at that address.
 4. Review the notice and choose **Create as plugin**. When the Relanox authorization page opens, enter the generated password and allow access.
-5. Send a short message from an allowed sender in the selected chat and check that the answer arrives there.
+5. In your dot conversation, enable the Relanox plugin and ask: “Subscribe to incoming messages from Relanox. For each event, read its message and reply to the original chat using the Relanox tools.” Allow dot to set up the subscription.
+6. Send a short message from an allowed sender in the selected chat and check that the answer arrives there. A successful OAuth login or accepted notification alone does not confirm that dot has replied.
 
 If you change the authorization password, restart Relanox and reconnect dot. If dot stops receiving new messages, check the plugin connection and Relanox message status.
 
