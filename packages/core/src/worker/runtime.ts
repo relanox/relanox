@@ -85,7 +85,10 @@ export function createWorker(
       }
       const result = await Promise.race([pending, timeout])
       const valid = validate(result)
-      successful = valid.status === 'sent' || valid.status === 'accepted'
+      successful =
+        valid.status === 'sent' ||
+        valid.status === 'accepted' ||
+        valid.status === 'pending'
       return valid
     } catch {
       return { status: 'unknown', errorCode: 'plugin_exception' }

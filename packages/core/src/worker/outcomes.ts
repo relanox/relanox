@@ -20,6 +20,10 @@ const dispatchOutcome = z.union([
 
 const sendOutcome = z.union([
   z.strictObject({
+    status: z.literal('pending'),
+    retryAfterMs: z.number().positive()
+  }),
+  z.strictObject({
     status: z.literal('sent'),
     receipt: z.strictObject({
       platformMessageId: z.string().max(1024).optional(),

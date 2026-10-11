@@ -132,6 +132,8 @@ export type DispatchResult =
 
 export type SendResult =
   | { readonly status: 'sent'; readonly receipt: SendReceipt }
+  /** A durable reply is waiting for platform retrieval; checking it is not a failed send attempt. */
+  | { readonly status: 'pending'; readonly retryAfterMs: number }
   | {
       readonly status: 'retryable'
       readonly errorCode: string

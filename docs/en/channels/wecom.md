@@ -56,7 +56,9 @@ Send “Hello” directly to the robot. In a bound group, mention the robot with
 
 WebSocket mode accepts images, videos, files or mixed text/image messages. Voice input supplies its recognized text to the agent. Media downloads expire after five minutes, so keep Relanox online when sending them. Replies can include PNG/JPEG/GIF images and MP4 video up to 10 MiB, AMR audio up to 2 MiB, and files up to 20 MiB, subject to the relay limit.
 
-HTTP callback mode accepts text, images, videos, files, mixed text/image messages and voice transcription. Send one final text reply per incoming message, within one hour. Keep it within 2,048 UTF-8 bytes; longer replies are rejected as a whole. The first reply consumes the callback reply destination, so do not send a progress update before the final answer. Image, audio, video and file replies are unavailable in this mode.
+HTTP callback mode accepts text, images, videos, files, mixed text/image messages and voice transcription. Send one final Markdown reply per incoming message, with up to 10 PNG/JPEG images of 10 MiB each, subject to the relay limit. Keep the total reply text within 20,480 UTF-8 bytes. Relanox returns the complete answer through the platform's encrypted refresh callbacks; the pending response contains no partial answer. Prepare the final reply promptly and keep the callback endpoint reachable while the platform polls it. Audio, video and file replies are unavailable in this mode.
+
+Both modes send the Agent's Markdown without escaping its formatting. Rendering follows the platform's supported Markdown syntax.
 
 ## Troubleshooting
 

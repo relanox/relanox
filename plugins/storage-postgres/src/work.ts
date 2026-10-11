@@ -263,6 +263,9 @@ export function createWorkOperations(
           next.receipts = [...record.receipts, input.outcome.receipt]
           next.status =
             next.currentChunk === next.chunks.length ? 'sent' : 'pending'
+        } else if (input.outcome.status === 'pending') {
+          next.attempts = record.attempts
+          next.status = 'pending'
         } else {
           next.status =
             input.outcome.status === 'retryable'

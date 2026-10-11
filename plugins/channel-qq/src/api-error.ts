@@ -4,7 +4,7 @@ import { errorSchema } from './schemas.js'
 export function apiError(
   raw: unknown,
   mediaUpload = false
-): Exclude<SendResult, { status: 'sent' }> | undefined {
+): Exclude<SendResult, { status: 'sent' | 'pending' }> | undefined {
   const error = errorSchema.safeParse(raw)
   if (!error.success || error.data.code === 0) {
     return undefined

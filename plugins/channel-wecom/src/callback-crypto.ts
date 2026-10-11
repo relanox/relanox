@@ -1,4 +1,38 @@
-import { createDecipheriv, createHash, timingSafeEqual } from 'node:crypto'
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  timingSafeEqual
+} from 'node:crypto'
+
+export function encryptedCallback(
+  body: object,
+  key: Buffer,
+  token: string
+): object {
+  const content = Buffer.from(JSON.stringify(body))
+  const length = Buffer.alloc(4)
+  length.writeUInt32BE(content.length)
+  const plain = Buffer.concat([randomBytes(16), length, content])
+  const padding = 32 - (plain.length % 32)
+  const cipher = createCipheriv('aes-256-cbc', key, key.subarray(0, 16))
+  cipher.setAutoPadding(false)
+
+  const encrypt = Buffer.concat([
+    cipher.update(Buffer.concat([plain, Buffer.alloc(padding, padding)])),
+    cipher.final()
+  ]).toString('base64')
+
+  const timeStamp = String(Math.floor(Date.now() / 1000))
+  const nonce = randomBytes(16).toString('hex')
+
+  const msgSignature = createHash('sha1')
+    .update([token, timeStamp, nonce, encrypt].toSorted().join(''))
+    .digest('hex')
+
+  return { encrypt, msgsignature: msgSignature, timestamp: timeStamp, nonce }
+}
 
 export function callbackKey(value: string): Buffer {
   if (!/^[A-Za-z0-9+/]{43}=?$/u.test(value)) {

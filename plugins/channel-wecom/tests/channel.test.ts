@@ -123,7 +123,7 @@ test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
     body: {
       chatid: 'group',
       msgtype: 'markdown',
-      markdown: { content: 'hello\\_\\*世界' }
+      markdown: { content: 'hello_*世界' }
     }
   })
   expect(remote.frames.at(-1)).toMatchObject({ body: { chat_type: 2 } })

@@ -513,7 +513,7 @@ Omitting `mode` keeps the existing WebSocket configuration valid. For HTTP callb
 }
 ```
 
-Register `/channels/{accountId}/webhook` on your public HTTPS origin. Relanox supports one text reply per incoming message, within one hour, and limits the reply to 2,048 UTF-8 bytes before Markdown escaping. Longer replies are rejected before enqueueing; media replies are unavailable. The WebSocket discovery command below does not apply to callback accounts. For platform details, see [WeCom active replies](https://developer.work.weixin.qq.com/document/path/101138).
+Register `/channels/{accountId}/webhook` on your public HTTPS origin. New callbacks use [WeCom passive replies](https://developer.work.weixin.qq.com/document/path/101031): the initial signed encrypted response supplies a `stream.id`, and authenticated `msgtype: "stream"` refresh callbacks retrieve one complete final reply. Relanox persists the reply and its images so refreshes can continue after a process restart. `finish: true` carries Markdown `content` and up to 10 `msg_item` images with Base64 data and the MD5 of the original bytes. Text is limited to 20,480 UTF-8 bytes; this implementation accepts PNG/JPEG images up to 10 MiB and retains the pending reply for ten minutes. Delivery remains pending until a final refresh is served; a repeated refresh returns the same final reply. Audio, video and files cannot be sent through this HTTP reply protocol. Existing saved active-reply destinations remain usable for one text reply within their original one-hour deadline. The WebSocket discovery command below does not apply to callback accounts.
 
 ### Protocol and command details
 

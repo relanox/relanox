@@ -4,7 +4,7 @@ export class RemoteError extends Error {
   override readonly name = 'RemoteError'
 
   constructor(
-    readonly result: Exclude<SendResult, { status: 'sent' }>,
+    readonly result: Exclude<SendResult, { status: 'sent' | 'pending' }>,
     readonly body?: unknown
   ) {
     super('remote_error')
