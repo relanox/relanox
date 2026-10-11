@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-安装 signal-cli，注册或关联 Signal 账号，并启动其 HTTP JSON-RPC/SSE 服务。记录账号号码和 UUID。备份 Relanox 数据库时一并备份 signal-cli 账号/会话数据。远程访问使用带认证的 HTTPS 代理，将完整 Authorization 请求头值保存到 `SIGNAL_BRIDGE_AUTHORIZATION`。
+安装 signal-cli，注册或关联 Signal 账号，并启动其 HTTP JSON-RPC/SSE 服务。记录账号号码。备份 Relanox 数据库时一并备份 signal-cli 账号/会话数据。远程访问使用带认证的 HTTPS 代理，将完整 Authorization 请求头值保存到 `SIGNAL_BRIDGE_AUTHORIZATION`。
 
 ## 添加配置
 
@@ -18,7 +18,6 @@
       "config": {
         "serviceUrl": "https://signal-bridge.example.com",
         "account": "+15551234567",
-        "selfUuid": "22222222-2222-4222-8222-222222222222",
         "authorization": {
           "env": "SIGNAL_BRIDGE_AUTHORIZATION"
         }
@@ -37,7 +36,7 @@
 }
 ```
 
-要取得发送者 ID，先发送一条测试消息，让服务管理员查看 `/api/v1/events?account=<account>` 事件流。允许发送者优先使用收到信封的 `sourceUuid`；没有 UUID 时使用号码/source 标识。私聊绑定填写 `direct:<sender>`，群聊填写 `group:<groupId>`。群组 ID 可从服务的群组信息或收到的信封取得。`selfUuid` 填服务账号自己的 UUID。
+要取得发送者 ID，先发送一条测试消息，让服务管理员查看 `/api/v1/events?account=<account>` 事件流。允许发送者优先使用收到信封的 `sourceUuid`；没有 UUID 时使用号码/source 标识。私聊绑定填写 `direct:<sender>`，群聊填写 `group:<groupId>`。群组 ID 可从服务的群组信息或收到的信封取得。Relanox 会按账号号码过滤自身消息。如果服务发出的自身消息只带 UUID，可另外设置 `selfUuid` 为该账号 UUID，以便同样过滤。
 
 ## 启用连接
 

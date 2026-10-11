@@ -4,7 +4,7 @@ Relanox reads one JSON file. Copy [the SQLite example](https://github.com/relano
 
 For a new setup, use the [connection configurator](connect.md): choose channels and Agents on the left and see the configuration update on the right. Expand connection details to enter your hostname, chat IDs and permitted users, then copy or download the JSON. The setup guide follows your selections. Each channel starts with one account and one conversation; add further conversations using bindings below. Credentials stay as environment variable references.
 
-The generated file omits default listener settings and monitoring switches. Without a `server` section, the business listener uses `127.0.0.1:8787` and management uses `127.0.0.1:8788`. Standard observability with `config: {}` enables logs and metrics. Add overrides only when your deployment needs them; containers need `server.host: "0.0.0.0"`.
+The generated file omits default listener settings and monitoring switches. Without a `server` section, the business listener uses `127.0.0.1:8787` and management uses `127.0.0.1:8788`. Omitting `relay.observability` enables standard logs and metrics. Add overrides only when your deployment needs them; containers need `server.host: "0.0.0.0"`.
 
 ## Set your public address once
 
@@ -103,28 +103,26 @@ Supply the connection string in `RELANOX_DATABASE_URL`. Its database user needs 
 
 ## Set ports and everyday options
 
-The optional top-level `server` object controls listeners and processing intervals:
+The optional top-level `server` object controls listeners and startup/shutdown deadlines:
 
-| Option              | Default     | When to change it                                                                                    |
-| ------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
-| `host`              | `127.0.0.1` | Set `0.0.0.0` in a container so its mapped business port is reachable                                |
-| `port`              | `8787`      | Change the business port used by your proxy                                                          |
-| `managementHost`    | `127.0.0.1` | Use `::1` for IPv6 loopback                                                                          |
-| `managementPort`    | `8788`      | Change the local health/metrics port                                                                 |
-| `workerIntervalMs`  | `1000`      | Change the delay between processing batches                                                          |
-| `workerStaleMs`     | `60000`     | Change how long readiness tolerates a missing successful batch; keep greater than `workerIntervalMs` |
-| `startupTimeoutMs`  | `30000`     | Allow more time to initialize platform connections                                                   |
-| `shutdownTimeoutMs` | `15000`     | Allow more time for graceful stop, and increase your service manager's stop timeout too              |
+| Option              | Default     | When to change it                                                                       |
+| ------------------- | ----------- | --------------------------------------------------------------------------------------- |
+| `host`              | `127.0.0.1` | Set `0.0.0.0` in a container so its mapped business port is reachable                   |
+| `port`              | `8787`      | Change the business port used by your proxy                                             |
+| `managementHost`    | `127.0.0.1` | Use `::1` for IPv6 loopback                                                             |
+| `managementPort`    | `8788`      | Change the local health/metrics port                                                    |
+| `startupTimeoutMs`  | `30000`     | Allow more time for channel start and CLI administration                                |
+| `shutdownTimeoutMs` | `15000`     | Allow more time for graceful stop, and increase your service manager's stop timeout too |
 
 Ports accept integers from 0 to 65535; use fixed nonzero ports for deployment. Management uses a literal loopback address. Forward business port 8787 through HTTPS and keep management local. If the MCP client sends Origin, add its exact origin to `mcp.allowedOrigins`. This identifies the calling client and is separate from your deployment address; the default empty list suits server-to-server clients without this header.
 
-Enable logs and metrics with `relay.observability`:
+Logs and metrics are enabled by default. Add `relay.observability` only to change their behavior, for example to show warning and error logs:
 
 ```json
 {
   "observability": {
     "plugin": "standard",
-    "config": { "logs": true, "metrics": true, "processMetrics": true }
+    "config": { "level": "warn" }
   }
 }
 ```
@@ -141,7 +139,7 @@ Connection timing and fixed platform identities are now managed internally. If a
 | ----------------------------------------------------------------- | --------------------------------------------------- |
 | Agent `mcp`                                                       | `maxBodyBytes`, `timeoutMs`                         |
 | dot                                                               | `callback`, `subscriptionTtlMs`, `rotationWindowMs` |
-| Grok                                                              | `timeoutMs`, `maxBodyBytes`                         |
+| Grok                                                              | `timeoutMs`, `maxBodyBytes`, `routineTransport`     |
 | Telegram, Slack, Discord, Feishu, IRC, Matrix, Mattermost, Signal | `timeoutMs`                                         |
 | Slack, Discord                                                    | `reconnectDelayMs`                                  |
 | IRC, Matrix, Mattermost, Signal                                   | `reconnectMs`                                       |
@@ -153,7 +151,53 @@ Connection timing and fixed platform identities are now managed internally. If a
 | Google Chat                                                       | `callerEmail`, `issuer`                             |
 | Microsoft Teams                                                   | `issuer`                                            |
 
+The following deployment internals also use fixed defaults; remove their overrides:
+
+| Configuration           | Remove                                                                      |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `server`                | `workerIntervalMs`, `workerStaleMs`                                         |
+| SQLite                  | `busyTimeoutMs`                                                             |
+| PostgreSQL              | `connectionTimeoutMs`, `idleTimeoutMs`, `statementTimeoutMs`                |
+| Standard observability  | `processMetrics`, `logBufferBytes`, `lifecycleTimeoutMs`                    |
+| Observability `tracing` | `maxQueueSize`, `maxExportBatchSize`, `scheduledDelayMs`, `exportTimeoutMs` |
+| IRC                     | `channels` — channel subscriptions come from this account's bindings        |
+
 Credentials, sender allowlists, trusted origins and deployment addresses remain configurable. The configurator uses native platform addresses automatically; self-hosted services still need their addresses. Advanced server, storage, monitoring and media limits are optional deployment settings.
+
+## Automatically discovered account identities
+
+Relanox queries Slack, Discord, Feishu/Lark, LINE, Matrix and Mattermost with the configured credential at startup to identify the connected account. If discovery fails, startup fails; check the credential and platform connectivity. `validate` stays offline and cannot verify a credential’s account identity.
+
+Remove these fields from existing configurations:
+
+| Channel       | Remove                               | Replacement                                                                                                |
+| ------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Slack         | `botUserId`, `teamId`, `receiveMode` | Bot token identifies the account; exactly one of `signingSecret` or `appToken` selects HTTP or Socket Mode |
+| Discord       | `botUserId`                          | Bot token identifies the account and discovers its Gateway                                                 |
+| Feishu / Lark | `botOpenId`                          | App credentials identify the bot; retain `tenantKey`                                                       |
+| LINE          | `botUserId`                          | Access token identifies the Official Account                                                               |
+| Matrix        | `userId`                             | Access token identifies the account                                                                        |
+| Mattermost    | `botUserId`                          | Token identifies the account                                                                               |
+
+Keep the credential attached to the original account while replies remain queued. Application IDs, allowed senders and conversation bindings still describe your intended setup and must be filled in.
+
+### Fixed platform endpoints
+
+Remove these obsolete overrides. Native hosted platforms now use their protocol endpoints automatically:
+
+| Channel                       | Remove                                                           |
+| ----------------------------- | ---------------------------------------------------------------- |
+| Slack, Discord, Feishu / Lark | `apiBaseUrl`, `allowInsecureLoopback`                            |
+| Discord                       | `gatewayUrl`                                                     |
+| DingTalk                      | `apiBase`, `uploadBase`, `mediaOrigins`, `allowInsecureLoopback` |
+| WeCom                         | `wsUrl`, `mediaOrigins`, `allowInsecureLoopback`                 |
+| QQ                            | `apiBase`, `mediaOrigins`, `allowInsecureLoopback`               |
+| WhatsApp                      | `apiBase`, `apiVersion`, `allowLoopback`                         |
+| Google Chat                   | `apiBase`, `tokenUrl`, `jwksUrl`, `allowLoopback`                |
+| LINE                          | `apiBase`, `contentApiBase`, `allowLoopback`                     |
+| Teams                         | `jwksUrl`, `allowLoopback`                                       |
+
+QQ defaults to production; set `environment` to `"sandbox"` for its sandbox. Relanox manages WhatsApp's Graph API version, currently `v25.0`. Telegram's local Bot API address and the self-hosted Matrix, Mattermost and Signal addresses remain configurable. Teams retains `tokenUrl` for a single-tenant application authority, along with its trusted service, media and upload origins.
 
 ## Use the CLI
 

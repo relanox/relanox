@@ -25,8 +25,7 @@ export const channelData = [
     defaults: {
       botToken: {
         env: 'DISCORD_BOT_TOKEN'
-      },
-      botUserId: '987654321098765432'
+      }
     },
     webhook: false,
     name: {
@@ -45,8 +44,6 @@ export const channelData = [
       signingSecret: {
         env: 'SLACK_SIGNING_SECRET'
       },
-      botUserId: 'UBOT123',
-      teamId: 'T123ABC',
       appId: 'A123ABC'
     },
     webhook: true,
@@ -71,7 +68,6 @@ export const channelData = [
         env: 'FEISHU_ENCRYPT_KEY'
       },
       tenantKey: 'example-tenant',
-      botOpenId: 'ou_example_bot',
       domain: 'feishu'
     },
     webhook: true,
@@ -122,6 +118,7 @@ export const channelData = [
       clientSecret: {
         env: 'QQ_CLIENT_SECRET'
       },
+      environment: 'production',
       allowProactive: false
     },
     webhook: false,
@@ -156,7 +153,6 @@ export const channelData = [
     defaults: {
       phoneNumberId: 'your_phone_number_id',
       businessAccountId: 'your_whatsapp_business_account_id',
-      apiVersion: 'v25.0',
       appSecret: {
         env: 'WHATSAPP_APP_SECRET'
       },
@@ -179,7 +175,6 @@ export const channelData = [
     senderExample: '@alice:example.com',
     defaults: {
       homeserver: 'https://matrix.example.com',
-      userId: '@relay:example.com',
       accessToken: {
         env: 'MATRIX_ACCESS_TOKEN'
       }
@@ -210,7 +205,6 @@ export const channelData = [
     chatExample: 'G_example_group',
     senderExample: 'U_example_user',
     defaults: {
-      botUserId: 'U_your_bot_destination',
       channelSecret: {
         env: 'LINE_CHANNEL_SECRET'
       },
@@ -230,7 +224,6 @@ export const channelData = [
     senderExample: 'dedicated_sender_id',
     defaults: {
       serverUrl: 'https://mattermost.example.com',
-      botUserId: 'dedicated_bot_user_id',
       token: {
         env: 'MATTERMOST_TOKEN'
       }
@@ -248,7 +241,6 @@ export const channelData = [
     defaults: {
       serviceUrl: 'https://signal-bridge.example.com',
       account: '+15551234567',
-      selfUuid: 'the_registered_accounts_uuid',
       authorization: {
         env: 'SIGNAL_BRIDGE_AUTHORIZATION'
       }
@@ -267,7 +259,6 @@ export const channelData = [
       server: 'irc.example.com',
       port: 6697,
       nick: 'relanox',
-      channels: ['#support'],
       sasl: {
         username: 'relanox',
         password: {

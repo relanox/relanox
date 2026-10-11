@@ -5,9 +5,12 @@
     "bindings": [],
     "storage": {
       "plugin": "sqlite",
-      "config": { "filename": "/data/relanox.sqlite" }
-    },
-    "observability": { "plugin": "standard", "config": {} }
+      "config": {
+        "filename": "/data/relanox.sqlite"
+      }
+    }
   },
-  "server": { "host": "0.0.0.0", "port": 8787, "managementPort": 8788 }
+  "server": {
+    "host": "0.0.0.0"
+  }
 }

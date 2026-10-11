@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-在 Discord 开发者门户创建应用和机器人，将 Token 保存到 `DISCORD_BOT_TOKEN`，机器人用户 ID 填入 `botUserId`。启用 Message Content Intent，邀请机器人时授予查看频道、发送消息、访问所需帖子及附加文件权限。
+在 Discord 开发者门户创建应用和机器人，将 Token 保存到 `DISCORD_BOT_TOKEN`；Relanox 启动时会自动查询机器人身份和 Gateway 地址。启用 Message Content Intent，邀请机器人时授予查看频道、发送消息、访问所需帖子及附加文件权限。
 
 ## 添加配置
 
@@ -20,8 +20,7 @@
       "config": {
         "botToken": {
           "env": "DISCORD_BOT_TOKEN"
-        },
-        "botUserId": "987654321098765432"
+        }
       }
     }
   ],

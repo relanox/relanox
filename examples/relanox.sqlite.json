@@ -47,10 +47,6 @@
       "config": {
         "filename": "relanox.sqlite"
       }
-    },
-    "observability": {
-      "plugin": "standard",
-      "config": {}
     }
   }
 }

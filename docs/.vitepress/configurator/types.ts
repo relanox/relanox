@@ -66,9 +66,5 @@ export type GeneratedConfig = {
       threadId?: string
     }[]
     storage: { plugin: 'sqlite'; config: { filename: string } }
-    observability: {
-      plugin: 'standard'
-      config: Record<string, Json>
-    }
   }
 }

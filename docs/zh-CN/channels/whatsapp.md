@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-创建具有 WhatsApp Business Platform 权限的 Meta 应用，注册企业电话号码。记录电话号码 ID 和 Business Account ID。取得具备 `whatsapp_business_messaging` 且可访问该号码/企业的 Access Token。保存应用密钥，并选择回调验证 Token。`apiVersion` 使用应用支持的 Graph API 版本；下方 `v25.0` 为示例。
+创建具有 WhatsApp Business Platform 权限的 Meta 应用，注册企业电话号码。记录电话号码 ID 和 Business Account ID。取得具备 `whatsapp_business_messaging` 且可访问该号码/企业的 Access Token。保存应用密钥，并选择回调验证 Token。Relanox 使用 Graph API `v25.0`，支持的 API 版本由 Relanox 版本统一管理。
 
 ## 添加配置
 
@@ -18,7 +18,6 @@
       "config": {
         "phoneNumberId": "your_phone_number_id",
         "businessAccountId": "your_whatsapp_business_account_id",
-        "apiVersion": "v25.0",
         "appSecret": {
           "env": "WHATSAPP_APP_SECRET"
         },

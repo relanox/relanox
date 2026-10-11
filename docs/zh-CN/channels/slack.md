@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-创建并安装工作区应用，将机器人 Token 和签名密钥分别保存到 `SLACK_BOT_TOKEN`、`SLACK_SIGNING_SECRET`。记录应用 ID、工作区/team ID 和机器人用户 ID。授予 `chat:write`、所用会话对应的消息历史权限；文件需要 `files:read` 和 `files:write`。将应用邀请到所选频道。
+创建并安装工作区应用，将机器人 Token 和签名密钥分别保存到 `SLACK_BOT_TOKEN`、`SLACK_SIGNING_SECRET`。记录应用 ID；Relanox 启动时会用机器人 Token 自动查询工作区和机器人用户 ID。授予 `chat:write`、所用会话对应的消息历史权限；文件需要 `files:read` 和 `files:write`。将应用邀请到所选频道。
 
 ## 添加配置
 
@@ -18,15 +18,12 @@
       "channel": "slack",
       "allowedSenders": ["U123ABC"],
       "config": {
-        "receiveMode": "http",
         "botToken": {
           "env": "SLACK_BOT_TOKEN"
         },
         "signingSecret": {
           "env": "SLACK_SIGNING_SECRET"
         },
-        "botUserId": "UBOT123",
-        "teamId": "T123ABC",
         "appId": "A123ABC"
       }
     }
@@ -48,7 +45,7 @@
 
 ## 启用连接
 
-HTTP 接收方式：将事件请求地址设为 `https://relay.example.com/channels/slack-main/events`，按需订阅 `message.channels`、`message.groups`、`message.im`、`message.mpim` 或 `app_mention`。Slack 验证地址前先启动 Relanox。也可启用 Socket Mode，将 `receiveMode` 改为 `"socket"`，用 `appToken: {"env":"SLACK_APP_TOKEN"}` 替换 `signingSecret`，并为 App Token 授予 `connections:write`；此时 Relanox 自动建立连接。
+HTTP 接收方式：将事件请求地址设为 `https://relay.example.com/channels/slack-main/events`，按需订阅 `message.channels`、`message.groups`、`message.im`、`message.mpim` 或 `app_mention`。Slack 验证地址前先启动 Relanox。也可启用 Socket Mode，用 `appToken: {"env":"SLACK_APP_TOKEN"}` 替换 `signingSecret`，并为 App Token 授予 `connections:write`；此时 Relanox 自动建立连接。`signingSecret` 和 `appToken` 只填写其中一个，Relanox 会据此选择接收方式。
 
 ## 发送第一条消息
 

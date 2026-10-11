@@ -4,7 +4,7 @@ Use a Discord bot in direct messages, server channels and threads.
 
 ## Prepare your account
 
-Create an application and bot in the Discord developer portal. Save its token as `DISCORD_BOT_TOKEN` and its user ID as `botUserId`. Enable Message Content Intent. Invite the bot with permission to view channels, send messages, access the intended threads and attach files.
+Create an application and bot in the Discord developer portal. Save its token as `DISCORD_BOT_TOKEN`; Relanox discovers the bot identity and Gateway address at startup. Enable Message Content Intent. Invite the bot with permission to view channels, send messages, access the intended threads and attach files.
 
 ## Add the configuration
 
@@ -20,8 +20,7 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
       "config": {
         "botToken": {
           "env": "DISCORD_BOT_TOKEN"
-        },
-        "botUserId": "987654321098765432"
+        }
       }
     }
   ],

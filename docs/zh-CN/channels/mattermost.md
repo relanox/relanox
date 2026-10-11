@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-创建机器人账号和 Access Token，记录用户 ID，将 Token 保存到 `MATTERMOST_TOKEN`。把机器人加入目标频道并授予读取和发帖权限。附件还需 `upload_file` 和 `read_channel` 权限。
+创建机器人账号和 Access Token，将 Token 保存到 `MATTERMOST_TOKEN`；Relanox 启动时会自动查询机器人用户 ID。把机器人加入目标频道并授予读取和发帖权限。附件还需 `upload_file` 和 `read_channel` 权限。
 
 ## 添加配置
 
@@ -17,7 +17,6 @@
       "id": "mattermost-main",
       "config": {
         "serverUrl": "https://mattermost.example.com",
-        "botUserId": "dedicated_bot_user_id",
         "token": {
           "env": "MATTERMOST_TOKEN"
         }
@@ -36,7 +35,7 @@
 }
 ```
 
-`allowedSenders` 填 Mattermost 用户 ID，`chatId` 填频道 ID。机器人 Token 可调用 `GET /api/v4/users/me` 取得自身 ID，`GET /api/v4/users/username/<username>` 取得发送者 ID，`GET /api/v4/teams/name/<team>/channels/name/<channel>` 取得频道 ID；消息事件也包含 `user_id` 和 `channel_id`。指定消息串时，`threadId` 填根帖 ID。
+`allowedSenders` 填 Mattermost 用户 ID，`chatId` 填频道 ID。机器人 Token 可调用 `GET /api/v4/users/username/<username>` 取得发送者 ID，`GET /api/v4/teams/name/<team>/channels/name/<channel>` 取得频道 ID；消息事件也包含 `user_id` 和 `channel_id`。指定消息串时，`threadId` 填根帖 ID。
 
 会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 `threadId`；省略它时匹配没有消息串 ID 的消息。
 

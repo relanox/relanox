@@ -18,6 +18,8 @@
 
 每个配置的账号都有自己的渠道实例。不要把凭据放进消息上下文、回复位置或日志。平台需要连接状态或序列号时，使用 host 提供的状态存储，避免重启丢失。
 
+Core 从当前账号的绑定提供 `host.boundChatIds`。长连接渠道可用它订阅已配置的会话；IRC 用它加入频道，无需单独的频道列表。部署的公开地址通过 `host.publicUrl` 获取。
+
 ## 扩展 Agent 接入
 
 先认证请求，再取得仅允许访问指定端点的 Agent host。Agent 可以读取有权处理的输入附件，并用该输入的 `replyTo` 回复，不能任意指定目标会话。
@@ -27,6 +29,10 @@
 附件可以引用收到的媒体，也可以包含新生成的媒体字节。请遵守目标渠道的格式和大小限制。支持的附件形式见[媒体传输](../media.md)和 SDK 导出的类型。
 
 通过 host 在 `/agents/<agentId>` 下注册 Agent HTTP 路由。不要把端点凭据混入通知或工具返回的字段。dot 和 Grok 已通过 `packages/agent-mcp` 共用 MCP 认证和消息工具；修改这些接入时可以复用现有辅助代码。
+
+## 嵌入 Core
+
+直接调用 `createCore` 时，`worker` 仅接受 `maxMediaBytes`、`maxTotalMediaBytes` 和 `maxAttachments`。调度、重试、租约和请求预算采用内部默认值。CLI 通过顶层 `mediaLimits` 提供相同的附件限制。CLI 配置省略 `relay.observability` 会使用标准日志和指标，需要覆盖时再提供明确的可观测性配置。
 
 ## 检查接入是否正确
 

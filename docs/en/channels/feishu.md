@@ -4,7 +4,7 @@ Connect an internal Feishu or Lark application bot to your agent.
 
 ## Prepare your account
 
-Create an internal application, enable its bot capability and grant message reception, sending and resource access permissions. Record the app ID, tenant key and bot open ID. Save the app secret, event verification token and encryption key in the environment variables shown below. For Lark, change `domain` to `"lark"`.
+Create an internal application, enable its bot capability and grant message reception, sending and resource access permissions. Record the app ID and tenant key; Relanox discovers the bot open ID at startup. Save the app secret, event verification token and encryption key in the environment variables shown below. For Lark, change `domain` to `"lark"`.
 
 ## Add the configuration
 
@@ -29,7 +29,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
           "env": "FEISHU_ENCRYPT_KEY"
         },
         "tenantKey": "example-tenant",
-        "botOpenId": "ou_example_bot",
         "domain": "feishu"
       }
     }

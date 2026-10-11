@@ -4,7 +4,7 @@ Connect a LINE Official Account to answer private, group and room messages.
 
 ## Prepare your account
 
-Create an Official Account with a Messaging API channel. Save its channel secret and access token in the environment variables below. Obtain its bot user ID from bot information or the webhook’s `destination`. Add the Official Account as a friend, or invite it into the intended group/room. Check that your plan has enough push-message quota.
+Create an Official Account with a Messaging API channel. Save its channel secret and access token in the environment variables below. Relanox discovers the bot identity from the access token at startup. Add the Official Account as a friend, or invite it into the intended group/room. Check that your plan has enough push-message quota.
 
 ## Add the configuration
 
@@ -16,7 +16,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
     {
       "id": "line-main",
       "config": {
-        "botUserId": "U_your_bot_destination",
         "channelSecret": {
           "env": "LINE_CHANNEL_SECRET"
         },
@@ -40,7 +39,7 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
 
 Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-Use event `source.userId` in `allowedSenders`. For a private conversation use that user ID as `chatId`; for a group use `source.groupId`, and for a room use `source.roomId`. The example is a group binding. `botUserId` must equal the account’s webhook `destination`.
+Use event `source.userId` in `allowedSenders`. For a private conversation use that user ID as `chatId`; for a group use `source.groupId`, and for a room use `source.roomId`. The example is a group binding. Relanox checks webhook destinations against the discovered bot identity.
 
 ## Enable the connection
 
@@ -56,4 +55,4 @@ Send images, audio, videos or files with your question. Image, audio and video r
 
 ## Troubleshooting
 
-If webhook verification fails, check the channel secret and bot destination ID. For missing group messages, enable group access for the Official Account and confirm its membership. If text works but media replies fail, verify the HTTPS media address, preview image and duration; check push quota for all replies.
+If webhook verification fails, check that the channel secret and access token belong to the same Official Account. For missing group messages, enable group access for the Official Account and confirm its membership. If text works but media replies fail, verify the HTTPS media address, preview image and duration; check push quota for all replies.

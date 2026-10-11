@@ -22,8 +22,7 @@
         "config": {
           "botToken": {
             "env": "DISCORD_BOT_TOKEN"
-          },
-          "botUserId": "987654321098765432"
+          }
         }
       },
       {
@@ -31,15 +30,12 @@
         "channel": "slack",
         "allowedSenders": ["U123ABC"],
         "config": {
-          "receiveMode": "http",
           "botToken": {
             "env": "SLACK_BOT_TOKEN"
           },
           "signingSecret": {
             "env": "SLACK_SIGNING_SECRET"
           },
-          "botUserId": "UBOT123",
-          "teamId": "T123ABC",
           "appId": "A123ABC"
         }
       },
@@ -59,7 +55,6 @@
             "env": "FEISHU_ENCRYPT_KEY"
           },
           "tenantKey": "example-tenant",
-          "botOpenId": "ou_example_bot",
           "domain": "feishu"
         }
       },
@@ -117,7 +112,6 @@
         "config": {
           "phoneNumberId": "your_phone_number_id",
           "businessAccountId": "your_whatsapp_business_account_id",
-          "apiVersion": "v25.0",
           "appSecret": {
             "env": "WHATSAPP_APP_SECRET"
           },
@@ -135,7 +129,6 @@
         "id": "matrix-main",
         "config": {
           "homeserver": "https://matrix.example.com",
-          "userId": "@relay:example.com",
           "accessToken": {
             "env": "MATRIX_ACCESS_TOKEN"
           }
@@ -156,7 +149,6 @@
       {
         "id": "line-main",
         "config": {
-          "botUserId": "U_your_bot_destination",
           "channelSecret": {
             "env": "LINE_CHANNEL_SECRET"
           },
@@ -171,7 +163,6 @@
         "id": "mattermost-main",
         "config": {
           "serverUrl": "https://mattermost.example.com",
-          "botUserId": "dedicated_bot_user_id",
           "token": {
             "env": "MATTERMOST_TOKEN"
           }
@@ -184,7 +175,6 @@
         "config": {
           "serviceUrl": "https://signal-bridge.example.com",
           "account": "+15551234567",
-          "selfUuid": "the_registered_accounts_uuid",
           "authorization": {
             "env": "SIGNAL_BRIDGE_AUTHORIZATION"
           }
@@ -199,7 +189,6 @@
           "port": 6697,
           "tls": true,
           "nick": "relanox",
-          "channels": ["#support"],
           "sasl": {
             "username": "relanox",
             "password": {
@@ -325,10 +314,6 @@
       "config": {
         "filename": "relanox-all.sqlite"
       }
-    },
-    "observability": {
-      "plugin": "standard",
-      "config": {}
     }
   }
 }

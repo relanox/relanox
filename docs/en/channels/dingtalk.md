@@ -22,8 +22,7 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
         "clientSecret": {
           "env": "DINGTALK_APP_SECRET"
         },
-        "robotCode": "application-robot-code",
-        "apiBase": "https://api.dingtalk.com"
+        "robotCode": "application-robot-code"
       }
     }
   ],

@@ -115,9 +115,6 @@ function accountConfig(channel: ChannelState): Record<string, Json> {
       fieldValue(field, channel.fields[field.key] ?? '')
     )
   }
-  if (channel.channel === 'slack') {
-    config.receiveMode = 'http'
-  }
   return config
 }
 
@@ -159,10 +156,6 @@ export function buildConfig(state: ConfiguratorState): GeneratedConfig {
       storage: {
         plugin: 'sqlite',
         config: { filename: 'data/relanox.sqlite' }
-      },
-      observability: {
-        plugin: 'standard',
-        config: {}
       }
     }
   }
@@ -323,10 +316,7 @@ function fieldProblem(
   ) {
     return 'number'
   }
-  if (field.key === 'domain' && !['feishu', 'lark'].includes(value)) {
-    return 'fieldValue'
-  }
-  if (field.key === 'apiVersion' && !/^v[0-9]+\.[0-9]+$/u.test(value)) {
+  if (field.options && !field.options.includes(value)) {
     return 'fieldValue'
   }
   if (['homeserver', 'serverUrl', 'serviceUrl'].includes(field.key)) {

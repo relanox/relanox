@@ -21,11 +21,8 @@ const names: Record<string, [string, string]> = {
 }
 
 const userFields = new Set([
-  'botUserId',
-  'teamId',
   'appId',
   'tenantKey',
-  'botOpenId',
   'botId',
   'clientId',
   'robotCode',
@@ -33,19 +30,17 @@ const userFields = new Set([
   'phoneNumberId',
   'businessAccountId',
   'homeserver',
-  'userId',
   'serverUrl',
   'serviceUrl',
   'account',
-  'selfUuid',
   'server',
   'nick',
-  'channels',
   'sasl.username'
 ])
 
 const choices: Record<string, string[]> = {
-  domain: ['feishu', 'lark']
+  domain: ['feishu', 'lark'],
+  environment: ['production', 'sandbox']
 }
 
 function personalizeField(field: FieldDefinition): FieldDefinition {

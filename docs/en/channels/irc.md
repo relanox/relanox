@@ -20,7 +20,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
         "port": 6697,
         "tls": true,
         "nick": "relanox",
-        "channels": ["#support"],
         "sasl": {
           "username": "relanox",
           "password": {
@@ -46,7 +45,7 @@ Use `account:<account-name>` for allowed senders: this is the user’s authentic
 
 ## Enable the connection
 
-Fill in the server hostname, TLS port, nickname and channel list. Start Relanox; it signs in and joins those channels automatically. Keep the process connected to receive new messages.
+Fill in the server hostname, TLS port and nickname. Relanox signs in and automatically joins the channels in this account’s conversation bindings; no separate channel list is needed. Keep the process connected to receive new messages.
 
 ## Send your first message
 

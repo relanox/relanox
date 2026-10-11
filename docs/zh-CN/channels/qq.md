@@ -22,7 +22,6 @@
         "clientSecret": {
           "env": "QQ_CLIENT_SECRET"
         },
-        "apiBase": "https://api.bot.qq.com",
         "allowProactive": false
       }
     }
@@ -40,6 +39,8 @@
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
 私聊的允许发送者和绑定 `chatId` 均使用 `author.user_openid`。群聊允许发送者使用 `author.member_openid`，`chatId` 使用 `group_openid`。从机器人消息事件取得这些值；它们是平台 OpenID，与显示的 QQ 号码不同。
+
+QQ 默认使用正式环境。需要沙箱时，在账号配置中加入 `"environment": "sandbox"`。Relanox 会自动选择原生 API 和令牌地址。
 
 ## 启用连接
 

@@ -4,7 +4,7 @@ Use a dedicated Signal account through a separately managed signal-cli daemon.
 
 ## Prepare your account
 
-Install signal-cli, register or link the Signal account, and start its HTTP JSON-RPC/SSE daemon. Record the account number and UUID. Back up signal-cli’s account/session data alongside your Relanox database. For remote access, place the daemon behind an authenticated HTTPS proxy; save the complete Authorization header value as `SIGNAL_BRIDGE_AUTHORIZATION`.
+Install signal-cli, register or link the Signal account, and start its HTTP JSON-RPC/SSE daemon. Record the account number. Back up signal-cli’s account/session data alongside your Relanox database. For remote access, place the daemon behind an authenticated HTTPS proxy; save the complete Authorization header value as `SIGNAL_BRIDGE_AUTHORIZATION`.
 
 ## Add the configuration
 
@@ -18,7 +18,6 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
       "config": {
         "serviceUrl": "https://signal-bridge.example.com",
         "account": "+15551234567",
-        "selfUuid": "22222222-2222-4222-8222-222222222222",
         "authorization": {
           "env": "SIGNAL_BRIDGE_AUTHORIZATION"
         }
@@ -37,7 +36,7 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
 }
 ```
 
-To discover a sender, send a test message and have the daemon administrator inspect its `/api/v1/events?account=<account>` event stream. Use the received envelope’s `sourceUuid` as the allowed sender when available; otherwise use its number/source identifier. Bind a direct conversation as `direct:<sender>` and a group as `group:<groupId>`. Get the group ID from the daemon’s group information or received envelope. Set `selfUuid` to the daemon account’s UUID.
+To discover a sender, send a test message and have the daemon administrator inspect its `/api/v1/events?account=<account>` event stream. Use the received envelope’s `sourceUuid` as the allowed sender when available; otherwise use its number/source identifier. Bind a direct conversation as `direct:<sender>` and a group as `group:<groupId>`. Get the group ID from the daemon’s group information or received envelope. Relanox filters self-messages by account number. If your daemon sends self-messages identified only by UUID, optionally set `selfUuid` to that account’s UUID for the same filtering.
 
 ## Enable the connection
 
