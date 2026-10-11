@@ -7,7 +7,11 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import type { z } from 'zod'
-import { configSchema, validateTransportUrl } from './config.js'
+import {
+  configSchema,
+  validateTransportUrl,
+  MAX_RECONNECT_ATTEMPTS
+} from './config.js'
 import type { DingTalkConfig } from './config.js'
 import {
   streamOpenResponseSchema,
@@ -260,7 +264,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         },
         receive,
         () => {},
-        config.maxReconnectAttempts
+        MAX_RECONNECT_ATTEMPTS
       )
     },
     start: async (signal) => connection.start(signal),

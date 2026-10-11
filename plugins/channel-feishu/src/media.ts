@@ -1,3 +1,4 @@
+import { REQUEST_TIMEOUT_MS } from './config.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -44,7 +45,7 @@ export async function receiveMedia(
             host.maxMediaBytes ?? 25 * 1024 * 1024,
             100 * 1024 * 1024
           ),
-          signal: AbortSignal.timeout(config.timeoutMs),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           trustedOrigins: [new URL(base).origin],
           allowInsecureLocalhost: config.allowInsecureLoopback,
           headers: { authorization: `Bearer ${access}` }
@@ -111,7 +112,10 @@ async function uploadAsset(
       method: 'POST',
       headers: { authorization: `Bearer ${access}` },
       body,
-      signal: AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]),
+      signal: AbortSignal.any([
+        signal,
+        AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      ]),
       redirect: 'error'
     }
   )

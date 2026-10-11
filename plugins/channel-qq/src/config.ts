@@ -32,12 +32,10 @@ export const configSchema = z
   .object({
     appId: z.string().min(1),
     clientSecret: secretRefSchema,
-    transport: z.literal('websocket').default('websocket'),
     apiBase: z.url().default('https://api.bot.qq.com'),
     mediaOrigins: z.array(z.url()).default([]),
     allowProactive: z.boolean().default(false),
-    allowInsecureLoopback: z.boolean().default(false),
-    maxReconnectAttempts: z.number().int().min(0).max(1000).default(20)
+    allowInsecureLoopback: z.boolean().default(false)
   })
   .strict()
   .superRefine((config, context) => {
@@ -63,3 +61,5 @@ export const configSchema = z
   })
 
 export type QqConfig = z.infer<typeof configSchema>
+
+export const MAX_RECONNECT_ATTEMPTS = 20

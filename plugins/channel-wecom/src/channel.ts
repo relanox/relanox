@@ -13,7 +13,12 @@ import type {
 } from '@relanox/sdk'
 import { randomUUID } from 'node:crypto'
 import type { z } from 'zod'
-import { configSchema, validateTransportUrl } from './config.js'
+import {
+  configSchema,
+  validateTransportUrl,
+  HEARTBEAT_MS,
+  MAX_RECONNECT_ATTEMPTS
+} from './config.js'
 import type { WeComConfig } from './config.js'
 import {
   frameSchema,
@@ -204,7 +209,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
           authenticated = true
           connection.ready()
           let awaiting = false
-          connection.setHeartbeat(config.heartbeatMs, () => {
+          connection.setHeartbeat(HEARTBEAT_MS, () => {
             if (awaiting) {
               connection.socket?.terminate()
               return
@@ -236,7 +241,7 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
             p.reject()
           }
         },
-        config.maxReconnectAttempts
+        MAX_RECONNECT_ATTEMPTS
       )
     },
     start: async (signal) => connection.start(signal),

@@ -22,9 +22,7 @@ Add the entries below to `relay.accounts` and `relay.bindings` in your existing 
         "secret": {
           "env": "WECOM_BOT_SECRET"
         },
-        "wsUrl": "wss://openws.work.weixin.qq.com",
-        "heartbeatMs": 30000,
-        "maxReconnectAttempts": 20
+        "wsUrl": "wss://openws.work.weixin.qq.com"
       }
     }
   ],

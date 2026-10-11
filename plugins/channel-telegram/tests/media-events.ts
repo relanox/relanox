@@ -31,8 +31,7 @@ export function channelConfig(
         botToken: { env: 'MEDIA_NATIVE_TOKEN' },
         webhookSecret: { env: 'MEDIA_NATIVE_SECRET' },
         apiBaseUrl: origin,
-        allowInsecureLoopback: true,
-        timeoutMs: 2000
+        allowInsecureLoopback: true
       }
     }
     case 'discord': {
@@ -41,9 +40,7 @@ export function channelConfig(
         botUserId: '999',
         apiBaseUrl: origin,
         gatewayUrl: gateway,
-        allowInsecureLoopback: true,
-        timeoutMs: 2000,
-        reconnectDelayMs: 100
+        allowInsecureLoopback: true
       }
     }
     case 'slack': {
@@ -55,8 +52,7 @@ export function channelConfig(
         teamId: 'T999',
         appId: 'A999',
         apiBaseUrl: origin,
-        allowInsecureLoopback: true,
-        timeoutMs: 2000
+        allowInsecureLoopback: true
       }
     }
     case 'feishu': {
@@ -68,8 +64,7 @@ export function channelConfig(
         botOpenId: 'ou_999',
         tenantKey: 'tenant999',
         apiBaseUrl: origin,
-        allowInsecureLoopback: true,
-        timeoutMs: 2000
+        allowInsecureLoopback: true
       }
     }
     case 'line': {

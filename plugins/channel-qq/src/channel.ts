@@ -10,7 +10,11 @@ import type {
 } from '@relanox/sdk'
 import type { WebSocket } from 'ws'
 import type { z } from 'zod'
-import { configSchema, validateTransportUrl } from './config.js'
+import {
+  configSchema,
+  validateTransportUrl,
+  MAX_RECONNECT_ATTEMPTS
+} from './config.js'
 import type { QqConfig } from './config.js'
 import {
   sendResponseSchema,
@@ -470,7 +474,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
             })
           }
         },
-        config.maxReconnectAttempts
+        MAX_RECONNECT_ATTEMPTS
       )
     },
     start: async (signal) => connection.start(signal),

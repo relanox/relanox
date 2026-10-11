@@ -34,9 +34,7 @@ export const configSchema = z
     secret: secretRefSchema,
     wsUrl: z.url().default('wss://openws.work.weixin.qq.com'),
     allowInsecureLoopback: z.boolean().default(false),
-    mediaOrigins: z.array(z.url()).default([]),
-    heartbeatMs: z.number().int().min(1000).max(60_000).default(30_000),
-    maxReconnectAttempts: z.number().int().min(0).max(1000).default(20)
+    mediaOrigins: z.array(z.url()).default([])
   })
   .strict()
   .superRefine((config, context) => {
@@ -59,3 +57,7 @@ export const configSchema = z
   })
 
 export type WeComConfig = z.infer<typeof configSchema>
+
+export const HEARTBEAT_MS = 30_000
+
+export const MAX_RECONNECT_ATTEMPTS = 20

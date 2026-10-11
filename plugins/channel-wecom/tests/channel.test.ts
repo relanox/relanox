@@ -162,13 +162,23 @@ test('WeCom correlates heartbeats and preserves uncertain sends when the socket 
       botId: 'robot',
       secret: { env: 'WECOM_SECRET' },
       wsUrl: remote.ws,
-      heartbeatMs: 1000,
       allowInsecureLoopback: true
     },
     [{ chatId: 'user', senderId: 'user' }]
   )
 
-  await host.start()
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  try {
+    await host.start()
+    await expect
+      .poll(
+        async () => (await host.runtime.status()).connections['channels/bot']
+      )
+      .toBe('connected')
+    await vi.advanceTimersByTimeAsync(30_000)
+  } finally {
+    vi.useRealTimers()
+  }
   await expect
     .poll(
       () =>
@@ -305,8 +315,7 @@ test.each(['missing credential', 'rejected subscription'])(
         botId: 'robot',
         secret: { env: 'WECOM_SECRET' },
         wsUrl: remote.ws,
-        allowInsecureLoopback: true,
-        maxReconnectAttempts: 0
+        allowInsecureLoopback: true
       },
       [{ chatId: 'user', senderId: 'user' }]
     )

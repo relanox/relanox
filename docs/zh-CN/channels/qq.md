@@ -22,10 +22,8 @@
         "clientSecret": {
           "env": "QQ_CLIENT_SECRET"
         },
-        "transport": "websocket",
         "apiBase": "https://api.bot.qq.com",
-        "allowProactive": false,
-        "maxReconnectAttempts": 20
+        "allowProactive": false
       }
     }
   ],

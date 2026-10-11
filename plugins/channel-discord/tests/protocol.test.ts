@@ -103,7 +103,6 @@ async function setup(
       botUserId: '999',
       apiBaseUrl,
       gatewayUrl,
-      reconnectDelayMs: 100,
       allowInsecureLoopback: true,
       ...overrides
     })
@@ -510,7 +509,9 @@ describe('discord native Gateway and REST', () => {
     db = createSqliteStorage({ filename, busyTimeoutMs: 5000 })
     active = await setup(undefined, remote.url, undefined, db)
     await active.plugin.start?.(new AbortController().signal)
-    await expect.poll(() => frames.some((frame) => frame.op === 6)).toBe(true)
+    await expect
+      .poll(() => frames.some((frame) => frame.op === 6), { timeout: 7000 })
+      .toBe(true)
     expect(frames).toContainEqual({
       op: 6,
       d: { token: 'discord-token', session_id: 'durable-session', seq: 2 }
@@ -588,7 +589,9 @@ describe('discord native Gateway and REST', () => {
       })
     })
     await test.plugin.start?.(new AbortController().signal)
-    await expect.poll(() => frames.some((frame) => frame.op === 6)).toBe(true)
+    await expect
+      .poll(() => frames.some((frame) => frame.op === 6), { timeout: 7000 })
+      .toBe(true)
     expect(frames).toContainEqual({
       op: 6,
       d: { token: 'discord-token', session_id: 'failed-session', seq: 1 }
@@ -680,7 +683,9 @@ describe('discord native Gateway and REST', () => {
       ws.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 30 } }))
     })
     await test.plugin.start?.(new AbortController().signal)
-    await expect.poll(() => connected).toBeGreaterThanOrEqual(2)
+    await expect
+      .poll(() => connected, { timeout: 7000 })
+      .toBeGreaterThanOrEqual(2)
     await test.plugin.stop?.()
     const bad = await setup(undefined, remote.url)
     cleanup.unshift(async () => {
@@ -758,7 +763,7 @@ describe('discord native Gateway and REST', () => {
     expect(await test.plugin.send(sendInput(test.target))).toEqual(expected)
   })
 
-  it('rejects credential/intents/TLS config and account target mismatches', async () => {
+  it('rejects raw credentials, removed intent overrides, insecure endpoints and foreign targets', async () => {
     const plugin = createDiscordChannel(environment)
     expect(() =>
       plugin.validateConfig({ botToken: 'raw', botUserId: '999' })
