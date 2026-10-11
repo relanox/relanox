@@ -81,7 +81,7 @@ export function createConsent(
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
-        'Referrer-Policy': 'no-referrer',
+        'Referrer-Policy': 'same-origin',
         'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy':
           "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://chatgpt.com",
