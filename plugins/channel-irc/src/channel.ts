@@ -10,7 +10,7 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
-import { validateConfig, nicknameSchema } from './config.js'
+import { validateConfig, nicknameSchema, channelSchema } from './config.js'
 import type { IrcConfig } from './config.js'
 import { delay, diagnose, ingest, secret, stopTask } from './protocol.js'
 import { recipientSchema, targetSchema } from './schemas.js'
@@ -61,6 +61,7 @@ export function createIrcChannel(
   let socket: Socket | undefined
   let ready = false
   let nick = ''
+  let channels: string[] = []
 
   function configured(): {
     host: ChannelHost
@@ -89,7 +90,7 @@ export function createIrcChannel(
       return
     }
 
-    const channel = config.channels.find(
+    const channel = channels.find(
       (value) => foldNick(value) === foldNick(destination)
     )
 
@@ -243,7 +244,7 @@ export function createIrcChannel(
         nick = message.params[0] ?? config.nick
         ready = true
         host.connection('connected')
-        for (const channel of config.channels) {
+        for (const channel of channels) {
           write(current, `JOIN ${channel}`)
         }
         return
@@ -437,6 +438,12 @@ export function createIrcChannel(
     async setup(host, account, config) {
       if (runtime) {
         throw new Error('already_setup')
+      }
+      channels = [...new Set(host.boundChatIds)]
+        .filter((chatId) => chatId.startsWith('#') || chatId.startsWith('&'))
+        .map((chatId) => channelSchema.parse(chatId))
+      if (channels.length > 100) {
+        throw new Error('too_many_bound_channels')
       }
       runtime = { host, account, config }
     },
