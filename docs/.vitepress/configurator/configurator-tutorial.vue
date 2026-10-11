@@ -249,8 +249,8 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
                       '在 ChatGPT 打开“插件 → 添加 → 添加自定义 MCP 服务器”，填写名称，将此地址粘贴到“服务器 URL”，身份验证保持 OAuth。'
                     )
                   : text(
-                      'Paste the complete MCP address into Grok and choose no additional authentication.',
-                      '将完整 MCP 地址粘贴到 Grok，选择无需额外认证。'
+                      'In the Cursor dashboard, open Plugins & MCPs → Add → Custom MCP. Enter a name and this complete Server URL; leave HTTP headers and OAuth fields empty.',
+                      '在 Cursor 控制台打开 Plugins & MCPs → Add → Custom MCP，填写名称和此完整 Server URL，HTTP headers 和 OAuth 字段留空。'
                     )
               }}
             </p>
@@ -263,8 +263,8 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
                       '阅读提示后选择“创建为插件”。出现 Relanox 授权页时，输入生成的密码并允许访问。'
                     )
                   : text(
-                      'Configure a webhook-triggered Routine in Grok, using the same Routine URL and Authorization values as the environment variables.',
-                      '在 Grok 设置 webhook 触发的 Routine，确保 URL 和 Authorization 与环境变量一致。'
+                      'Ask Grok Bot to create a webhook-only routine that processes incoming messages using the Relanox MCP instructions. Open the routine from the Bot details: use POST to as the Routine URL and Bearer followed by the key as Authorization, without the Authorization: label.',
+                      '在 Grok Bot 聊天中让它创建仅由 webhook 触发、按 Relanox MCP 说明处理来信的例行任务。点击 Bot 名称打开任务详情：Routine URL 使用“POST 到”，Authorization 使用 Bearer 加空格再加密钥，不要包含 Authorization: 字段名。'
                     )
               }}
             </p>
