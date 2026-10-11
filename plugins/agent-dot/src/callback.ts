@@ -84,6 +84,7 @@ export async function postCallback(
   body: string,
   headers: Record<string, string>,
   signal: AbortSignal,
+  responseMode: "body" | "headers",
 ): Promise<{
   status: number;
   body: string;
@@ -151,6 +152,14 @@ export async function postCallback(
         },
       },
       (res) => {
+        res.on("error", () => {
+          reject(new CallbackError(bound.aborted ? "timeout" : "network_error"));
+        });
+        if (responseMode === "headers") {
+          resolve({ status: res.statusCode ?? 500, body: "", headers: res.headers });
+          res.destroy();
+          return;
+        }
         const chunks: Buffer[] = [];
         let size = 0;
         res.on("data", (chunk: Buffer) => {
@@ -168,9 +177,6 @@ export async function postCallback(
             body: Buffer.concat(chunks).toString("utf8"),
             headers: res.headers,
           });
-        });
-        res.on("error", () => {
-          reject(new CallbackError(bound.aborted ? "timeout" : "network_error"));
         });
       },
     );

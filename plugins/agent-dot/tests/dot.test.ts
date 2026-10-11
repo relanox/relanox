@@ -88,6 +88,41 @@ async function setup(
   return { receiver, plugin, fx, url: `${receiver.origin}/callback` };
 }
 describe("dot MCP Events and tools", () => {
+  it("accepts request metadata on Events methods without changing subscription identity", async () => {
+    const { fx, url } = await setup();
+    const client = await fx.client();
+    const metadata = { progressToken: "subscription-progress", "com.example/correlation": "trace" };
+    const catalog = await client.request(
+      { method: "events/list", params: { _meta: metadata } },
+      z.object({ events: z.array(z.object({ name: z.string() })) }),
+    );
+    expect(catalog.events.map((event) => event.name)).toEqual(["relanox.message_available"]);
+    const request = subscribe(url, signingKey, 10_000);
+    const created = await client.request(
+      { ...request, params: { ...request.params, _meta: metadata } },
+      subResult,
+    );
+    expect((await client.request(request, subResult)).id).toBe(created.id);
+    await client.request(
+      {
+        method: "events/unsubscribe",
+        params: {
+          name: "relanox.message_available",
+          arguments: {},
+          delivery: { mode: "webhook", url },
+          _meta: metadata,
+        },
+      },
+      z.object({}),
+    );
+    expect(
+      await fx.storage.listState(
+        { pluginId: "agent-dot", ownerId: "dot" },
+        { prefix: "subscriptions/", limit: 100 },
+      ),
+    ).toEqual([]);
+  });
+
   it("rejects an already-aborted request without waiting for its stalled body", async () => {
     const controller = new AbortController();
     controller.abort();
@@ -403,6 +438,39 @@ describe("dot MCP Events and tools", () => {
     },
   );
 
+  it.each([
+    [200, "accepted", undefined],
+    [410, "rejected", "dot_callback_http_410"],
+    [503, "retryable", "dot_callback_http_503"],
+  ] as const)(
+    "uses event HTTP %i acknowledgement without consuming its oversized response body",
+    async (status, outcome, errorCode) => {
+      const { fx, url } = await setup((record) => {
+        const body = callbackBody.parse(parseWire(record.body));
+        return body.type === "verification"
+          ? { status: 200, body: JSON.stringify({ challenge: body.challenge }) }
+          : { status, body: "x".repeat(20_000) };
+      });
+      const client = await fx.client();
+      await client.request(subscribe(url, signingKey, 10_000), subResult);
+      const receipt = await fx.ingest();
+      const request = (await fx.storage.getInbound(receipt.requestId))?.snapshot;
+      if (!request) {
+        throw new Error("missing_request");
+      }
+      expect(await fx.agent.dispatch({ request, signal: new AbortController().signal })).toEqual({
+        status: outcome,
+        ...(errorCode ? { errorCode } : {}),
+      });
+      expect(
+        await fx.storage.listState(
+          { pluginId: "agent-dot", ownerId: "dot" },
+          { prefix: "subscriptions/", limit: 100 },
+        ),
+      ).toHaveLength(status === 410 ? 0 : 1);
+    },
+  );
+
   it("cannot unsubscribe another owner and stops signing with a rotated old key after overlap", async () => {
     const { fx, url, receiver } = await setup(undefined, true);
     const first = await fx.client();
@@ -446,54 +514,70 @@ describe("dot MCP Events and tools", () => {
     );
   });
 
-  it("a 410 response cannot erase a subscription renewed while delivery was in flight", async () => {
-    let release: (() => void) | undefined;
-    let observed: (() => void) | undefined;
-    const received = new Promise<void>((resolve) => {
-      observed = resolve;
-    });
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const { fx, url } = await setup(async (record) => {
-      const body = callbackBody.parse(parseWire(record.body));
-      if (body.type === "verification") {
-        return {
-          status: 200,
-          body: JSON.stringify({ challenge: body.challenge }),
-        };
+  it.each(["renewed", "recreated"] as const)(
+    "a 410 response cannot erase a subscription %s while delivery was in flight",
+    async (mode) => {
+      let release: (() => void) | undefined;
+      let observed: (() => void) | undefined;
+      const received = new Promise<void>((resolve) => {
+        observed = resolve;
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const { fx, url } = await setup(async (record) => {
+        const body = callbackBody.parse(parseWire(record.body));
+        if (body.type === "verification") {
+          return {
+            status: 200,
+            body: JSON.stringify({ challenge: body.challenge }),
+          };
+        }
+        observed?.();
+        await held;
+        return { status: 410 };
+      });
+      const client = await fx.client();
+      const subscription = await client.request(subscribe(url, signingKey, 10_000), subResult);
+      const receipt = await fx.ingest();
+      const request = (await fx.storage.getInbound(receipt.requestId))?.snapshot;
+      if (!request) {
+        throw new Error("missing_request");
       }
-      observed?.();
-      await held;
-      return { status: 410 };
-    });
-    const client = await fx.client();
-    const subscription = await client.request(subscribe(url, signingKey, 10_000), subResult);
-    const receipt = await fx.ingest();
-    const request = (await fx.storage.getInbound(receipt.requestId))?.snapshot;
-    if (!request) {
-      throw new Error("missing_request");
-    }
-    const delivery = fx.agent.dispatch({
-      request,
-      signal: new AbortController().signal,
-    });
-    await received;
-    expect((await client.request(subscribe(url, signingKey, 10_000), subResult)).id).toBe(
-      subscription.id,
-    );
-    release?.();
-    expect(await delivery).toEqual({
-      status: "rejected",
-      errorCode: "dot_callback_http_410",
-    });
-    expect(
-      await fx.storage.listState(
-        { pluginId: "agent-dot", ownerId: "dot" },
-        { prefix: "subscriptions/", limit: 100 },
-      ),
-    ).toHaveLength(1);
-  });
+      const delivery = fx.agent.dispatch({
+        request,
+        signal: new AbortController().signal,
+      });
+      await received;
+      if (mode === "recreated") {
+        await client.request(
+          {
+            method: "events/unsubscribe",
+            params: {
+              name: "relanox.message_available",
+              arguments: {},
+              delivery: { mode: "webhook", url },
+            },
+          },
+          z.object({}),
+        );
+      }
+      expect((await client.request(subscribe(url, signingKey, 10_000), subResult)).id).toBe(
+        subscription.id,
+      );
+      release?.();
+      expect(await delivery).toEqual({
+        status: "rejected",
+        errorCode: "dot_callback_http_410",
+      });
+      expect(
+        await fx.storage.listState(
+          { pluginId: "agent-dot", ownerId: "dot" },
+          { prefix: "subscriptions/", limit: 100 },
+        ),
+      ).toHaveLength(1);
+    },
+  );
 
   it.each([
     "127.0.0.1",

@@ -36,7 +36,9 @@ const destination = z.strictObject({
   mode: z.literal("webhook"),
   url: z.url().max(4096),
 });
+const requestMetadata = z.record(z.string(), z.json()).optional();
 const subscribeParams = z.strictObject({
+  _meta: requestMetadata,
   name: z.literal(name),
   arguments: args,
   delivery: destination.extend({ secret: signingSecret }),
@@ -44,6 +46,7 @@ const subscribeParams = z.strictObject({
   ttlMs: z.number().int().min(1000).nullable().optional(),
 });
 const unsubscribeParams = z.strictObject({
+  _meta: requestMetadata,
   name: z.literal(name),
   arguments: args,
   delivery: destination,
@@ -114,6 +117,7 @@ async function verifySubscription(sub: Subscription, config: DotConfig): Promise
       challengeBody,
       signedHeaders(sub, challengeBody, `verification_${randomUUID()}`),
       AbortSignal.timeout(config.callback.timeoutMs),
+      "body",
     );
     const echoed = z.strictObject({ challenge: z.string() }).safeParse(JSON.parse(response.body));
     if (
@@ -262,7 +266,7 @@ export function createDotAgentPlugin(): AgentPlugin<DotConfig> {
             server.server.setRequestHandler(
               "events/list",
               {
-                params: z.strictObject({ cursor: z.null().optional() }),
+                params: z.strictObject({ cursor: z.null().optional(), _meta: requestMetadata }),
                 result: z.strictObject({
                   events: z.array(z.record(z.string(), z.json())),
                 }),
@@ -394,6 +398,7 @@ export function createDotAgentPlugin(): AgentPlugin<DotConfig> {
             body,
             signedHeaders(sub, body, eventId),
             signal,
+            "headers",
           );
           if (response.status >= 200 && response.status < 300) {
             continue;
