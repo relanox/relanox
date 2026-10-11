@@ -125,7 +125,7 @@ describe("feishu native HTTP protocol", () => {
     },
   );
 
-  it("bounds event bodies and preserves canceled-send uncertainty", async () => {
+  it("bounds event bodies and keeps canceled token acquisition retryable", async () => {
     const remote = await peer(() => ({
       body: { code: 0, tenant_access_token: "tenant-token", expire: 7200 },
     }));
@@ -144,8 +144,8 @@ describe("feishu native HTTP protocol", () => {
     const controller = new AbortController();
     controller.abort();
     expect(await test.plugin.send(sendInput(target, controller.signal))).toEqual({
-      status: "unknown",
-      errorCode: "feishu_transport_error",
+      status: "retryable",
+      errorCode: "tenant_token_transport_error",
     });
     expect(remote.requests).toEqual([]);
   });
@@ -247,6 +247,23 @@ describe("feishu native HTTP protocol", () => {
     });
     expect((await failing.handler(request(event))).status).toBe(503);
   });
+
+  it.each([
+    { status: 503, body: {}, expected: "retryable" },
+    { status: 200, body: {}, expected: "retryable" },
+    { status: 403, body: {}, expected: "rejected" },
+  ])(
+    "does not freeze unsent text after token endpoint HTTP $status",
+    async ({ status, body, expected }) => {
+      const remote = await peer(() => ({ status, body }));
+      cleanup.push(remote.close);
+      const test = await setup(remote.url);
+      expect((await test.plugin.send(sendInput(target))).status).toBe(expected);
+      expect(remote.requests.map((input) => input.path)).toEqual([
+        "/open-apis/auth/v3/tenant_access_token/internal",
+      ]);
+    },
+  );
 
   it("refreshes expiring tenant tokens and uses independent nested text reply wire", async () => {
     let tokens = 0;
