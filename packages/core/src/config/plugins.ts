@@ -31,6 +31,13 @@ export function validatePluginConfigurations(
       plugin.capabilities.maxTextLength,
       plugin.capabilities.lengthUnit
     )
+    const maxChunks = plugin.capabilities.maxChunksPerMessage
+    if (
+      maxChunks !== undefined &&
+      (!Number.isSafeInteger(maxChunks) || maxChunks < 1)
+    ) {
+      throw new CoreError('invalid_channel_chunk_limit')
+    }
     accountValidated.set(
       account.id,
       plugin.validateConfig(jsonSnapshot(account.config))

@@ -1,6 +1,7 @@
 import {
   WEBSOCKET_URL,
   configSchema,
+  websocketConfigSchema,
   validateTransportUrl,
   HEARTBEAT_MS,
   MAX_RECONNECT_ATTEMPTS
@@ -20,7 +21,8 @@ import type {
 } from '@relanox/sdk'
 import { randomUUID } from 'node:crypto'
 import type { z } from 'zod'
-import type { WeComConfig } from './config.js'
+import type { WeComConfig, WebsocketConfig } from './config.js'
+import { createWebhookChannel } from './webhook.js'
 import {
   frameSchema,
   messageSchema,
@@ -32,9 +34,38 @@ import { JsonSocketConnection, ingestText, secret } from './transport.js'
 type Frame = z.infer<typeof frameSchema>
 
 export function createWeComChannel(): ChannelPlugin<WeComConfig> {
+  const websocket = createWebsocketChannel()
+
+  let channel: Pick<ChannelPlugin, 'start' | 'stop' | 'send' | 'capabilities'> =
+    websocket
+
+  return {
+    ...websocket,
+    get capabilities() {
+      return { ...channel.capabilities, transport: 'both' as const }
+    },
+    validateConfig: (value) => configSchema.parse(value),
+    async setup(host, account, config) {
+      const parsed = configSchema.parse(config)
+      if (parsed.mode === 'webhook') {
+        const webhook = createWebhookChannel()
+        await webhook.setup(host, account, parsed)
+        channel = webhook
+      } else {
+        await websocket.setup(host, account, parsed)
+        channel = websocket
+      }
+    },
+    start: async (signal) => channel.start?.(signal),
+    stop: async () => channel.stop?.(),
+    send: async (input) => channel.send(input)
+  }
+}
+
+function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
   let host: ChannelHost
   let account: AccountConfig
-  let config: WeComConfig
+  let config: WebsocketConfig
   let connection: JsonSocketConnection
   let authenticated = false
 
@@ -187,11 +218,11 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
         send: ['image', 'audio', 'video', 'file']
       }
     },
-    validateConfig: (value) => configSchema.parse(value),
+    validateConfig: (value) => websocketConfigSchema.parse(value),
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount
-      config = configSchema.parse(nextConfig)
+      config = websocketConfigSchema.parse(nextConfig)
       connection = new JsonSocketConnection(
         host,
         async () => validateTransportUrl(WEBSOCKET_URL, true, false),

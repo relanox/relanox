@@ -45,6 +45,38 @@ async function draft(): Promise<Awaited<ReturnType<typeof fixture>>> {
   return value
 }
 
+test('discovery rejects callback accounts before starting a connection', async () => {
+  const value = await fixture()
+  directories.push(value.directory)
+  await value.save({
+    relay: {
+      accounts: [
+        {
+          id: 'wecom-main',
+          channel: 'wecom',
+          config: {
+            mode: 'webhook',
+            botId: 'robot',
+            token: { env: 'TOKEN' },
+            encodingAESKey: { env: 'KEY' }
+          }
+        }
+      ]
+    }
+  })
+  const output: DiscoveryOutput[] = []
+  await expect(
+    discoverConversations({
+      configPath: value.configPath,
+      accountId: 'wecom-main',
+      timeoutSeconds: 1,
+      signal: new AbortController().signal,
+      output: (entry) => output.push(entry)
+    })
+  ).rejects.toThrow('discovery_requires_websocket')
+  expect(output).toEqual([])
+})
+
 test('discovery reports authenticated WeCom addresses from unfinished config without content, media fetches or sends', async () => {
   vi.stubEnv('DISCOVERY_SECRET', 'private-secret')
   const value = await draft()
