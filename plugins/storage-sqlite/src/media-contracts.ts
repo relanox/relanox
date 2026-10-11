@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { MediaReference, StoredMedia, InboundSnapshot } from "@relanox/sdk";
+import type { MediaReference, StoredMedia, InboundSnapshot, MediaStorage } from "@relanox/sdk";
 import { equalDurableValues } from "./record-codec.js";
 
 export function validMedia(media: StoredMedia): boolean {
@@ -29,3 +29,20 @@ export function validateIncoming(snapshot: InboundSnapshot, media: readonly Stor
 }
 export const sameReference = (left: MediaReference, right: MediaReference): boolean =>
   equalDurableValues(left, right);
+
+export function withinMediaBudget(
+  input: Parameters<MediaStorage["put"]>[0],
+  count: number,
+  bytes: number,
+): boolean {
+  const maxCount = input.maxCount ?? 20;
+  const maxTotalBytes = input.maxTotalBytes ?? 200 * 1024 * 1024;
+  return (
+    Number.isSafeInteger(maxCount) &&
+    maxCount >= 0 &&
+    Number.isSafeInteger(maxTotalBytes) &&
+    maxTotalBytes >= 0 &&
+    count < maxCount &&
+    bytes + input.media.data.byteLength <= maxTotalBytes
+  );
+}

@@ -57,6 +57,53 @@ export function mediaContract(name: string, open: () => Promise<Storage>) {
       }
     });
 
+    it("applies aggregate inbound and upload budgets atomically while allowing replay at the limit", async () => {
+      const s = await open();
+      try {
+        await s.initialize();
+        const media = required(s.media);
+        const incoming = asset("incoming");
+        await s.acceptInbound({ ...snapshot(), attachments: [incoming.reference] }, [incoming]);
+        const claim = {
+          requestId: "r1",
+          agent: "grok" as const,
+          endpointIds: ["ep"],
+          claimToken: "token",
+        };
+        await s.claimRequest({ ...claim, claimKey: "key", now: 105 });
+        const first = asset("first");
+        const put = { ...claim, maxCount: 2, maxTotalBytes: 6, media: first };
+        const raced = await Promise.all([media.put(put), media.put(put)]);
+        expect(raced).toEqual(
+          expect.arrayContaining([
+            { status: "stored", media: first.reference, replay: false },
+            { status: "stored", media: first.reference, replay: true },
+          ]),
+        );
+        expect(await media.put({ ...put, maxCount: 0, maxTotalBytes: 0 })).toEqual({
+          status: "stored",
+          media: first.reference,
+          replay: true,
+        });
+        expect(
+          await media.put({ ...put, maxCount: 3, media: asset("bytes-overflow", [1]) }),
+        ).toEqual({ status: "conflict" });
+        expect(
+          await media.put({ ...put, maxTotalBytes: 20, media: asset("count-overflow", [1]) }),
+        ).toEqual({ status: "conflict" });
+        expect(await media.get("r1", "bytes-overflow")).toBeUndefined();
+        expect(await media.get("r1", "count-overflow")).toBeUndefined();
+        const competing = await Promise.all([
+          media.put({ ...put, maxCount: 3, maxTotalBytes: 7, media: asset("race-one", [1]) }),
+          media.put({ ...put, maxCount: 3, maxTotalBytes: 7, media: asset("race-two", [2]) }),
+        ]);
+        expect(competing.filter((result) => result.status === "stored")).toHaveLength(1);
+        expect(competing.filter((result) => result.status === "conflict")).toHaveLength(1);
+      } finally {
+        await s.close();
+      }
+    });
+
     it("fences uploads, enforces request ownership and binds completion and retention to ordered media", async () => {
       const s = await open();
       try {
