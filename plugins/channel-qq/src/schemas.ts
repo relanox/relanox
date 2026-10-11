@@ -13,13 +13,21 @@ export const messageSchema = z.object({
     member_openid: z.string().min(1).optional(),
     bot: z.boolean().optional(),
   }),
-  content: z.string(),
+  content: z.string().default(""),
   timestamp: z.iso.datetime({ offset: true }),
   group_openid: z.string().min(1).optional(),
   message_type: z.number().int().optional(),
   msg_seq: z.number().int().optional(),
   message_scene: z.object({ ext: z.array(z.string()) }).optional(),
-  attachments: z.array(z.unknown()).optional(),
+  attachments: z
+    .array(
+      z.object({
+        url: z.string().min(1).optional(),
+        filename: z.string().optional(),
+        content_type: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 export const targetSchema = z
   .object({

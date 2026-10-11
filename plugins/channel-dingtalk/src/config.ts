@@ -32,13 +32,21 @@ export const configSchema = z
     clientSecret: secretRefSchema,
     robotCode: z.string().min(1),
     apiBase: z.url().default("https://api.dingtalk.com"),
+    uploadBase: z.url().default("https://oapi.dingtalk.com"),
+    mediaOrigins: z.array(z.url()).default([]),
     allowInsecureLoopback: z.boolean().default(false),
     maxReconnectAttempts: z.number().int().min(0).max(1000).default(20),
   })
   .strict()
   .superRefine((config, context) => {
+    for (const origin of config.mediaOrigins) {
+      if (new URL(origin).origin !== origin) {
+        context.addIssue({ code: "custom", message: "Media origins must be exact origins" });
+      }
+    }
     try {
       validateTransportUrl(config.apiBase, false, config.allowInsecureLoopback);
+      validateTransportUrl(config.uploadBase, false, config.allowInsecureLoopback);
       if (/[?#]/u.test(new URL(config.apiBase).href)) {
         context.addIssue({
           code: "custom",

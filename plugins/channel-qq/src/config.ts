@@ -32,12 +32,18 @@ export const configSchema = z
     clientSecret: secretRefSchema,
     transport: z.literal("websocket").default("websocket"),
     apiBase: z.url().default("https://api.bot.qq.com"),
+    mediaOrigins: z.array(z.url()).default([]),
     allowProactive: z.boolean().default(false),
     allowInsecureLoopback: z.boolean().default(false),
     maxReconnectAttempts: z.number().int().min(0).max(1000).default(20),
   })
   .strict()
   .superRefine((config, context) => {
+    for (const origin of config.mediaOrigins) {
+      if (new URL(origin).origin !== origin) {
+        context.addIssue({ code: "custom", message: "Media origins must be exact origins" });
+      }
+    }
     try {
       validateTransportUrl(config.apiBase, false, config.allowInsecureLoopback);
       if (/[?#]/u.test(new URL(config.apiBase).href)) {

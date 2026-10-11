@@ -25,6 +25,8 @@ const configSchema = z.strictObject({
   botId: platformIdSchema,
   tenantId: platformIdSchema,
   appSecret: secretRefSchema,
+  mediaOrigins: z.array(z.url()).default([]),
+  trustedUploadOrigins: z.array(z.url()).default([]),
   trustedServiceOrigins: z.array(z.url()).min(1),
   issuer: z.string().default("https://api.botframework.com"),
   jwksUrl: z.url().default("https://login.botframework.com/v1/.well-known/keys"),
@@ -35,10 +37,20 @@ export type TeamsConfig = z.infer<typeof configSchema>;
 
 export function validateConfig(value: unknown): TeamsConfig {
   const config = configSchema.parse(value);
-  for (const url of [config.tokenUrl, config.jwksUrl, ...config.trustedServiceOrigins]) {
+  for (const url of [
+    config.tokenUrl,
+    config.jwksUrl,
+    ...config.trustedServiceOrigins,
+    ...config.mediaOrigins,
+    ...config.trustedUploadOrigins,
+  ]) {
     validateEndpointUrl(url, config.allowLoopback);
   }
-  if (config.trustedServiceOrigins.some((origin) => new URL(origin).origin !== origin)) {
+  if (
+    [...config.trustedServiceOrigins, ...config.mediaOrigins, ...config.trustedUploadOrigins].some(
+      (origin) => new URL(origin).origin !== origin,
+    )
+  ) {
     throw new Error("service_origins_must_be_origins");
   }
   return config;

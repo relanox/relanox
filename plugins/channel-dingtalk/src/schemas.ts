@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { contentSchema } from "./media.js";
 
 export const streamSchema = z.object({
   type: z.enum(["SYSTEM", "CALLBACK", "EVENT"]),
@@ -19,6 +20,7 @@ export const messageSchema = z.object({
   robotCode: z.string().min(1),
   isInAtList: z.boolean().optional(),
   msgtype: z.string(),
+  content: contentSchema.optional(),
   text: z.object({ content: z.string().min(1) }).optional(),
 });
 export const tokenSchema = z.object({
@@ -26,7 +28,12 @@ export const tokenSchema = z.object({
   expireIn: z.number().int().positive(),
 });
 export const scopeSchema = z
-  .object({ clientId: z.string().min(1), robotCode: z.string().min(1), apiBase: z.url() })
+  .object({
+    clientId: z.string().min(1),
+    robotCode: z.string().min(1),
+    apiBase: z.url(),
+    uploadBase: z.url().optional(),
+  })
   .strict();
 export const targetSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("single"), staffId: z.string().min(1), scope: scopeSchema }).strict(),

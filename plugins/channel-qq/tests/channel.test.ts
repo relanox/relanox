@@ -109,7 +109,7 @@ test("QQ authenticates latest token protocol, receives C2C/group text and resume
       5,
       "C2C_MESSAGE_CREATE",
       createEvent("media", false, {
-        attachments: [{ url: "https://example.invalid/file" }],
+        attachments: [{ filename: "malformed.bin" }],
       }),
     ),
   );

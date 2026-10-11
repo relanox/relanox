@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resourceSchema } from "./media.js";
 
 export const frameSchema = z.object({
   cmd: z.string().optional(),
@@ -13,6 +14,23 @@ export const messageSchema = z.object({
   chattype: z.enum(["single", "group"]),
   from: z.object({ userid: z.string().min(1) }),
   msgtype: z.string(),
+  image: resourceSchema.optional(),
+  file: resourceSchema.optional(),
+  video: resourceSchema.optional(),
+  voice: z.object({ content: z.string() }).optional(),
+  mixed: z
+    .object({
+      msg_item: z.array(
+        z.object({
+          msgtype: z.string(),
+          file: resourceSchema.optional(),
+          video: resourceSchema.optional(),
+          text: z.object({ content: z.string() }).optional(),
+          image: resourceSchema.optional(),
+        }),
+      ),
+    })
+    .optional(),
   text: z.object({ content: z.string().min(1) }).optional(),
 });
 export const targetSchema = z

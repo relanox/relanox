@@ -32,11 +32,17 @@ export const configSchema = z
     secret: secretRefSchema,
     wsUrl: z.url().default("wss://openws.work.weixin.qq.com"),
     allowInsecureLoopback: z.boolean().default(false),
+    mediaOrigins: z.array(z.url()).default([]),
     heartbeatMs: z.number().int().min(1000).max(60_000).default(30_000),
     maxReconnectAttempts: z.number().int().min(0).max(1000).default(20),
   })
   .strict()
   .superRefine((config, context) => {
+    for (const origin of config.mediaOrigins) {
+      if (new URL(origin).origin !== origin) {
+        context.addIssue({ code: "custom", message: "Media origins must be exact origins" });
+      }
+    }
     try {
       validateTransportUrl(config.wsUrl, true, config.allowInsecureLoopback);
     } catch {

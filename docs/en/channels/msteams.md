@@ -24,7 +24,7 @@ The app ID (JWT audience/OAuth client) and bot ID (activity recipient/sender) ha
 
 Inbound RS256 JWT verification requires the pinned issuer/audience, valid expiration/not-before, the official configured JWKS signature, a key endorsed for `msteams`, and a JWT `serviceurl`/`serviceUrl` claim equal to the activity URL. The activity must have `channelId:msteams`, the configured recipient bot and tenant; a conversation-level tenant, when present, must also agree. Trusted service origin checks happen before any outbound credential disclosure. Emulator/skills/other Bot Framework channels have no authentication bypass. Text tasks wait for durable ingest before ACK; known core policy exclusions are diagnosed while unexpected storage errors return failures.
 
-Output obtains a bot OAuth token using `https://api.botframework.com/.default`, then posts a text Activity under the frozen service URL's `/v3/conversations/<id>/activities[/<parentId>]`. Delayed output never relies on the original request's response or an ephemeral reply closure. Conservative chunking uses 12,000 UTF-16 units to fit the Teams activity envelope. Media/cards/commands, conversation creation, app installation and activity edits are excluded.
+Output obtains a bot OAuth token using `https://api.botframework.com/.default`, then posts a text Activity under the frozen service URL's `/v3/conversations/<id>/activities[/<parentId>]`. Delayed output never relies on the original request's response or an ephemeral reply closure. Conservative chunking uses 12,000 UTF-16 units to fit the Teams activity envelope. Commands, conversation creation, app installation and activity edits are excluded.
 
 Optional `issuer`, `jwksUrl` and `tokenUrl` select trusted operator infrastructure; public defaults use Bot Framework's keys and Microsoft OAuth. `allowLoopback:true` permits HTTP loopback for authentic signed local peers, without skipping any JWT check. Redirects reject. The plugin declares `idempotentSend:false`; 429 is retryable, explicit provider 4xx is rejected, and ambiguous network/5xx/malformed success is unknown for explicit operator recovery.
 
@@ -35,3 +35,17 @@ Accepted targets also freeze the Microsoft application ID in addition to the exi
 If an operator removes a previously trusted service origin, an existing frozen target is explicitly rejected before OAuth or message traffic. This configuration refusal is not an uncertain external send; restoring the origin allows explicit delivery recovery.
 
 Defaults: `issuer` is `https://api.botframework.com`; `jwksUrl` is `https://login.botframework.com/v1/.well-known/keys`; `tokenUrl` is `https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token`.
+
+## Media and native file consent
+
+Inline attachments and personal-chat `application/vnd.microsoft.teams.file.download.info` files download before durable ingestion, including pure-media activities. Inline credentials stay on exact `trustedServiceOrigins`; OneDrive preauthorized downloads receive no bot Authorization. `mediaOrigins` optionally adds exact private download origins. Downloads enforce DNS/byte limits and refuse redirects. Set `supportsFiles:true` in the Teams app manifest.
+
+Images up to 15,000 bytes send as native attachments with persisted bytes in a base64 data URL; larger images use a scoped published URL. Audio/video/files use personal-chat native consent: a durable `application/vnd.microsoft.teams.card.file.consent`, authenticated `fileConsent/invoke`, PUT of original bytes to the accepted OneDrive URL, then `application/vnd.microsoft.teams.card.file.info`. Consent verifies frozen user/conversation/bot identity, persists across restart, and waits without duplicate cards. Decline rejects; an uncertain consent-card post requires operator recovery.
+
+Configure exact `trustedUploadOrigins` for the tenant's OneDrive upload infrastructure; default empty rejects untrusted origins. Bot credentials never accompany uploads. Native file consent only supports `personal` chat. Group/channel audio/video/file sends explicitly reject with `file_consent_requires_personal_chat`; they need a separately authorized Graph workflow that this adapter does not enable. Captions are separate text chunks.
+
+Protocol: [Teams native files and inline images](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/bots-filesv4). Local signed-JWT/HTTP/SQLite tests do not establish live-account compatibility.
+
+[Media transfer](../media.md)
+
+Images above 15,000 bytes use a scoped published URL instead of a base64 message envelope, requiring top-level `media.publicBaseUrl`. Waiting consent consumes the configured delivery attempt budget; after exhaustion, late consent requires explicit delivery requeue.
