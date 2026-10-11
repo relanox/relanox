@@ -24,7 +24,12 @@ const config = (base: string): Json => ({
   apiBase: base,
   allowLoopback: true,
 });
-function webhook(timestamp = Math.floor(Date.now() / 1000), phone = "phone", eventId = "wamid.1") {
+function webhook(
+  timestamp = Math.floor(Date.now() / 1000),
+  phone = "phone",
+  eventId = "wamid.1",
+  type: "text" | "reaction" = "text",
+) {
   return JSON.stringify({
     object: "whatsapp_business_account",
     entry: [
@@ -40,8 +45,10 @@ function webhook(timestamp = Math.floor(Date.now() / 1000), phone = "phone", eve
                   id: eventId,
                   from: "customer",
                   timestamp: String(timestamp),
-                  type: "text",
-                  text: { body: "hello" },
+                  type,
+                  ...(type === "text"
+                    ? { text: { body: "hello" } }
+                    : { reaction: { message_id: "previous-message", emoji: "\uD83D\uDC4D" } }),
                 },
               ],
             },
@@ -127,8 +134,7 @@ describe("native WhatsApp Cloud", () => {
     const filename = join(directory, "state.db");
     const local = await setup(filename);
     expect(
-      (await local.core.fetch(incoming(webhook().replace('"type":"text"', '"type":"image"'))))
-        .status,
+      (await local.core.fetch(incoming(webhook(undefined, "phone", "wamid.1", "reaction")))).status,
     ).toBe(200);
     await local.close();
     cleanup.pop();
@@ -236,13 +242,7 @@ describe("native WhatsApp Cloud", () => {
       signal: new AbortController().signal,
     };
     expect(
-      (
-        await local.core.fetch(
-          incoming(
-            webhook(undefined, "phone", "wamid.2").replace('"type":"text"', '"type":"image"'),
-          ),
-        )
-      ).status,
+      (await local.core.fetch(incoming(webhook(undefined, "phone", "wamid.2", "reaction")))).status,
     ).toBe(200);
     expect(await local.plugin.send(send)).toEqual({
       status: "sent",

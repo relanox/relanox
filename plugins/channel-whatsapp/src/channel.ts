@@ -5,6 +5,7 @@ import type {
   SendInput,
   SendResult,
 } from "@relanox/sdk";
+import { receiveMedia, uploadMedia } from "./media.js";
 import { z } from "zod";
 import { validateConfig, validateEndpointUrl } from "./config.js";
 import type { WhatsAppConfig } from "./config.js";
@@ -40,21 +41,28 @@ async function receiveMessage(
   account: AccountConfig,
   config: WhatsAppConfig,
   message: z.infer<typeof messageSchema>,
+  signal: AbortSignal,
 ): Promise<void> {
+  if (!account.allowedSenders.includes(message.from)) {
+    host.observe.log("info", "channel_policy_rejection", { errorCode: "sender_not_allowed" });
+    return;
+  }
   const timestamp = Number(message.timestamp) * 1000;
   if (!Number.isSafeInteger(timestamp) || timestamp > Date.now() + 300_000) {
     throw new Error("invalid_timestamp");
   }
   const windowUntil = timestamp + 86_400_000;
   await updateWindow(host, windowKey(config, message.from), windowUntil);
-  if (message.type !== "text" || !message.text?.body) {
+  const media = await receiveMedia(message, host, config, signal);
+  if (!media.text && media.attachments.length === 0) {
     host.observe.log("debug", "channel_event_ignored", { errorCode: "unsupported_or_empty_text" });
     return;
   }
   await ingest(host, {
     source: { channel: "whatsapp", accountId: account.id, eventId: message.id },
     senderId: message.from,
-    text: message.text.body,
+    text: media.text,
+    ...(media.attachments.length > 0 ? { attachments: media.attachments } : {}),
     receivedAt: Date.now(),
     context: null,
     target: {
@@ -78,6 +86,7 @@ async function receive(
   account: AccountConfig,
   config: WhatsAppConfig,
   body: z.infer<typeof webhookSchema>,
+  signal: AbortSignal,
 ): Promise<void> {
   for (const entry of body.entry) {
     if (entry.id !== config.businessAccountId) {
@@ -91,7 +100,7 @@ async function receive(
         throw new Error("wrong_phone_account");
       }
       for (const message of change.value.messages ?? []) {
-        await receiveMessage(host, account, config, message);
+        await receiveMessage(host, account, config, message, signal);
       }
     }
   }
@@ -128,6 +137,13 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       return { status: "rejected", errorCode: "customer_window_expired" };
     }
     try {
+      const media = input.media ? await uploadMedia(input, config) : undefined;
+      if (media && "status" in media) {
+        return media;
+      }
+      const content = media
+        ? { type: media.type, [media.type]: media.value }
+        : { type: "text", text: { body: input.chunk.text, preview_url: false } };
       const response = await request(
         validateEndpointUrl(
           `${config.apiBase}/${config.apiVersion}/${encodeURIComponent(target.phoneNumberId)}/messages`,
@@ -143,8 +159,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
             messaging_product: "whatsapp",
             recipient_type: "individual",
             to: target.customer,
-            type: "text",
-            text: { body: input.chunk.text, preview_url: false },
+            ...content,
           }),
         },
         input.signal,
@@ -174,6 +189,10 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       maxTextLength: 4096,
       lengthUnit: "utf16",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(host, account, config) {
@@ -209,7 +228,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
         if (!decoded.success) {
           return new Response(null, { status: 400 });
         }
-        await receive(host, account, config, decoded.data);
+        await receive(host, account, config, decoded.data, incoming.signal);
         return Response.json({});
       });
     },
