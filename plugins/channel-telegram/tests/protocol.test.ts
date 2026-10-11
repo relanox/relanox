@@ -65,6 +65,17 @@ function webhook(secret = "webhook-secret", extra: Record<string, unknown> = {})
   });
 }
 describe("telegram native protocol", () => {
+  it.each(["sender_not_allowed", "unbound_conversation"])(
+    "acknowledges terminal core policy rejection: %s",
+    async (code) => {
+      const test = await setup(undefined, async () => {
+        throw Object.assign(new Error(code), { code });
+      });
+      expect((await test.handler(webhook())).status).toBe(204);
+      expect(test.received).toEqual([]);
+    },
+  );
+
   it("bounds authenticated payloads and preserves canceled-send uncertainty", async () => {
     const remote = await peer(() => ({ body: { ok: true, result: { message_id: 100 } } }));
     cleanup.push(remote.close);

@@ -8,6 +8,7 @@ import {
   credential,
   failure,
   id,
+  ingest,
   jsonResponse,
   post,
   secret,
@@ -289,7 +290,7 @@ export function createDiscordChannel(
               message.content
             ) {
               const target = await messageTarget(message, signal);
-              await host.ingest({
+              await ingest(host, {
                 source: {
                   channel: "discord",
                   accountId: account.id,

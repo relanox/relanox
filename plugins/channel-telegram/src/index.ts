@@ -6,6 +6,7 @@ import {
   credential,
   equal,
   failure,
+  ingest,
   jsonResponse,
   post,
   secret,
@@ -155,7 +156,7 @@ export function createTelegramChannel(
           return new Response(null, { status: 204 });
         }
         try {
-          await host.ingest({
+          await ingest(host, {
             source: {
               channel: "telegram",
               accountId: account.id,

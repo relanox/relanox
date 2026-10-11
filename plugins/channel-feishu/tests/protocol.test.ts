@@ -114,6 +114,17 @@ function request(
   });
 }
 describe("feishu native HTTP protocol", () => {
+  it.each(["sender_not_allowed", "unbound_conversation"])(
+    "acknowledges terminal core policy rejection: %s",
+    async (code) => {
+      const test = await setup(undefined, async () => {
+        throw Object.assign(new Error(code), { code });
+      });
+      expect((await test.handler(request(event))).status).toBe(204);
+      expect(test.received).toEqual([]);
+    },
+  );
+
   it("bounds event bodies and preserves canceled-send uncertainty", async () => {
     const remote = await peer(() => ({
       body: { code: 0, tenant_access_token: "tenant-token", expire: 7200 },

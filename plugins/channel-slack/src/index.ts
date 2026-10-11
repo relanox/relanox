@@ -11,6 +11,7 @@ import {
   failure,
   fresh,
   id,
+  ingest,
   jsonResponse,
   post,
   secret,
@@ -74,7 +75,7 @@ export function createSlackChannel(
   let controller: AbortController | undefined;
   let task: Promise<void> | undefined;
   let socket: WebSocket | undefined;
-  async function ingest(value: unknown) {
+  async function ingestEnvelope(value: unknown) {
     const envelope = envelopeSchema.parse(value);
     if (envelope.type !== "event_callback") {
       host.observe.count("relanox_inbound_total", {
@@ -111,7 +112,7 @@ export function createSlackChannel(
       });
       return;
     }
-    await host.ingest({
+    await ingest(host, {
       source: {
         channel: "slack",
         accountId: account.id,
@@ -229,7 +230,7 @@ export function createSlackChannel(
             return;
           }
           if (frame.type === "events_api") {
-            await ingest(frame.payload);
+            await ingestEnvelope(frame.payload);
           } else {
             host.observe.count("relanox_inbound_total", {
               channel: "slack",
@@ -342,7 +343,7 @@ export function createSlackChannel(
           return new Response(null, { status: 401 });
         }
         try {
-          await ingest(envelope);
+          await ingestEnvelope(envelope);
           return new Response(null, { status: 204 });
         } catch {
           return new Response(null, { status: 503 });

@@ -96,6 +96,78 @@ async function gateway() {
   return { wss, url };
 }
 describe("discord native Gateway and REST", () => {
+  it.each(["sender_not_allowed", "unbound_conversation"])(
+    "continues the Gateway after terminal core policy rejection: %s",
+    async (code) => {
+      const remote = await gateway();
+      const test = await setup(undefined, remote.url, async (input) => {
+        if (input.source.eventId === "788") {
+          throw Object.assign(new Error(code), { code });
+        }
+      });
+      cleanup.unshift(async () => {
+        await test.plugin.stop?.();
+      });
+      remote.wss.on("connection", (ws) => {
+        ws.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }));
+        ws.on("message", (raw) => {
+          const frame = readFrame(raw);
+          if (frame.op === 1) {
+            ws.send(JSON.stringify({ op: 11 }));
+          }
+          if (frame.op !== 2) {
+            return;
+          }
+          ws.send(
+            JSON.stringify({
+              op: 0,
+              s: 1,
+              t: "READY",
+              d: {
+                session_id: "policy-session",
+                resume_gateway_url: remote.url,
+                user: { id: "999" },
+              },
+            }),
+          );
+          for (const [seq, messageId] of [
+            [2, "788"],
+            [3, "789"],
+          ] as const) {
+            ws.send(
+              JSON.stringify({
+                op: 0,
+                s: seq,
+                t: "MESSAGE_CREATE",
+                d: {
+                  id: messageId,
+                  channel_id: "456",
+                  content: "hello",
+                  author: { id: "42" },
+                  type: 0,
+                },
+              }),
+            );
+          }
+        });
+      });
+      await test.plugin.start?.(new AbortController().signal);
+      await expect.poll(() => test.received.map((input) => input.source.eventId)).toEqual(["789"]);
+      await expect
+        .poll(
+          async () =>
+            (
+              await test.db.getState(
+                { pluginId: "channel-discord", ownerId: "dc" },
+                "gateway-session",
+              )
+            )?.value,
+        )
+        .toMatchObject({ session_id: "policy-session", seq: 3 });
+      expect(test.connections).not.toContain("degraded");
+    },
+  );
+
   it("preserves canceled-send uncertainty without starting an HTTP effect", async () => {
     const remote = await peer(() => ({ body: { id: "900" } }));
     cleanup.push(remote.close);
