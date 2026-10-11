@@ -96,3 +96,50 @@ test('unsplittable links fail before enqueue instead of dropping their destinati
     splitMarkdown('\uD800', { maxLength: 40, unit: 'utf8' })
   ).toThrow('malformed_markdown_unicode')
 })
+
+test('empty link and image labels retain visible destinations when rendered or split', () => {
+  expect(
+    markdownRuns('[](https://example.com) ![](https://example.com/a.png)')
+  ).toEqual([
+    { text: 'https://example.com/', href: 'https://example.com/' },
+    { text: ' ' },
+    { text: 'Image', href: 'https://example.com/a.png' }
+  ])
+  expect(renderHtml('[](https://example.com)')).toBe(
+    '<p><a href="https://example.com/">https://example.com/</a></p>\n'
+  )
+  expect(
+    splitMarkdown('![](https://example.com/a.png)\n\n**next**', {
+      maxLength: 38,
+      unit: 'utf8'
+    })
+  ).toEqual(['![Image](<https://example.com/a.png>)', '**next**'])
+})
+
+test('emphasis fragments keep spaces outside delimiters and remain styled', () => {
+  const chunks = splitMarkdown('**abc def ghi jkl**', {
+    maxLength: 12,
+    unit: 'utf16'
+  })
+
+  expect(chunks).toEqual(['**abc def** ', '**ghi jkl**'])
+  expect(chunks.map(renderHtml)).toEqual([
+    '<p><strong>abc def</strong> </p>\n',
+    '<p><strong>ghi jkl</strong></p>\n'
+  ])
+  expect(
+    splitMarkdown('~~abc def ghi jkl~~', { maxLength: 12, unit: 'utf16' }).map(
+      renderHtml
+    )
+  ).toEqual(['<p><del>abc def</del> </p>\n', '<p><del>ghi jkl</del></p>\n'])
+})
+
+test('paragraph splitting keeps indentation attached to preceding visible text', () => {
+  const chunks = splitMarkdown(`${'a'.repeat(70)}    END`, {
+    maxLength: 70,
+    unit: 'utf16'
+  })
+
+  expect(chunks).toEqual(['a'.repeat(69), 'a    END'])
+  expect(renderHtml(chunks[1] ?? '')).toBe('<p>a    END</p>\n')
+})
