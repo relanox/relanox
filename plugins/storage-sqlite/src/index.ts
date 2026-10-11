@@ -112,7 +112,11 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
         )
         .get(r.snapshot.endpoint.id) as { id: string } | undefined
     )?.id === r.snapshot.requestId;
-  const scoped = (r: InboundRecord, ids: readonly string[]) => ids.includes(r.snapshot.endpoint.id);
+  const scoped = (
+    r: InboundRecord,
+    input: Pick<Parameters<Storage["claimRequest"]>[0], "endpointIds" | "agent">,
+  ) =>
+    input.endpointIds.includes(r.snapshot.endpoint.id) && r.snapshot.endpoint.agent === input.agent;
   const fence = (a: Lease | undefined, b: Lease, now: number) =>
     a !== undefined && equal(a, b) && a.expiresAt > now;
   const storage: Storage = {
@@ -179,15 +183,15 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
       return (
         db
           .prepare(
-            `SELECT record FROM inbound WHERE status='pending' AND endpoint IN (${placeholders}) ORDER BY accepted_at,id LIMIT ?`,
+            `SELECT record FROM inbound WHERE status='pending' AND endpoint IN (${placeholders}) AND json_extract(record,'$.snapshot.endpoint.agent')=? ORDER BY accepted_at,id LIMIT ?`,
           )
-          .all(...input.endpointIds, input.limit) as { record: string }[]
+          .all(...input.endpointIds, input.agent, input.limit) as { record: string }[]
       ).map((x) => decode<InboundRecord>(x.record).snapshot);
     },
     async claimRequest(input) {
       return transaction(() => {
         const r = inbound(input.requestId);
-        if (!r || !scoped(r, input.endpointIds)) {
+        if (!r || !scoped(r, input)) {
           return { status: "not_found" };
         }
         if (r.status === "claimed") {
@@ -233,7 +237,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
         if (!r) {
           return { status: "not_found" };
         }
-        if (!scoped(r, input.endpointIds) || r.claim?.token !== input.claimToken) {
+        if (!scoped(r, input) || r.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
         }
         if (r.status === "completed") {
@@ -288,7 +292,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
         if (!r) {
           return { status: "not_found" };
         }
-        if (!scoped(r, input.endpointIds) || r.claim?.token !== input.claimToken) {
+        if (!scoped(r, input) || r.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
         }
         if (r.status === "failed" && r.errorCode === input.errorCode) {

@@ -60,6 +60,7 @@ it("requires explicit migration and persists fenced claims/leases across indepen
     });
     await a.claimRequest({
       requestId: "r1",
+      agent: "grok",
       endpointIds: ["ep"],
       claimKey: "attempt",
       claimToken: "durable",
@@ -70,6 +71,7 @@ it("requires explicit migration and persists fenced claims/leases across indepen
     expect(
       await a.claimRequest({
         requestId: "r1",
+        agent: "grok",
         endpointIds: ["ep"],
         claimKey: "attempt",
         claimToken: "new",

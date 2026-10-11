@@ -30,6 +30,7 @@ export const snapshot = (id = "r1", at = 100, endpoint = "ep"): InboundSnapshot 
 });
 export const completion = (id = "r1", token = "token", resultId = "final"): CompleteInput => ({
   requestId: id,
+  agent: "grok",
   endpointIds: ["ep"],
   claimToken: token,
   result: { resultId, text: "AB", completedAt: 110 },
@@ -64,6 +65,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
     const claim = (id = "r1", key = "try", token = "token") =>
       s.claimRequest({
         requestId: id,
+        agent: "grok",
         endpointIds: ["ep"],
         claimKey: key,
         claimToken: token,
@@ -89,6 +91,7 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
         expect(
           await s.fail({
             requestId: "z-active",
+            agent: "grok",
             endpointIds: ["ep"],
             claimToken: "token",
             errorCode: "remote_failed",
@@ -220,14 +223,61 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       });
     });
 
+    it("retains agent-kind authority when an endpoint ID is reused", async () => {
+      const old = snapshot("old", 100);
+      await s.acceptInbound({ ...old, endpoint: { ...old.endpoint, agent: "dot" } });
+      await s.acceptInbound(snapshot("new", 101));
+      expect(
+        (await s.listPending({ agent: "grok", endpointIds: ["ep"], limit: 1 })).map(
+          (request) => request.requestId,
+        ),
+      ).toEqual(["new"]);
+      const claimInput = {
+        requestId: "old",
+        endpointIds: ["ep"],
+        claimKey: "original",
+        claimToken: "old-token",
+        now: 105,
+      };
+      expect(await s.claimRequest({ ...claimInput, agent: "grok" })).toEqual({
+        status: "not_found",
+      });
+      expect(await s.claimRequest({ ...claimInput, agent: "dot" })).toMatchObject({
+        status: "claimed",
+        replay: false,
+      });
+      expect(await s.claimRequest({ ...claimInput, agent: "grok" })).toEqual({
+        status: "not_found",
+      });
+      expect(
+        await s.completeAndEnqueue({ ...completion("old", "old-token"), agent: "grok" }),
+      ).toEqual({ status: "unauthorized" });
+      expect(
+        await s.fail({
+          requestId: "old",
+          endpointIds: ["ep"],
+          agent: "grok",
+          claimToken: "old-token",
+          errorCode: "foreign_failure",
+          now: 110,
+        }),
+      ).toEqual({ status: "unauthorized" });
+      expect((await s.getInbound("old"))?.status).toBe("claimed");
+      expect(await s.getOutbound("d-old")).toBeUndefined();
+      expect(
+        await s.completeAndEnqueue({ ...completion("old", "old-token"), agent: "dot" }),
+      ).toMatchObject({ status: "completed", replay: false });
+    });
+
     it("enforces scoped endpoint FIFO and idempotent claim keys", async () => {
       await s.acceptInbound(snapshot());
       await s.acceptInbound(snapshot("r2", 101));
       expect(await claim("r2")).toEqual({ status: "busy" });
-      expect(await s.listPending({ endpointIds: ["other"], limit: 10 })).toEqual([]);
+      expect(await s.listPending({ agent: "grok", endpointIds: ["other"], limit: 10 })).toEqual([]);
       expect(
         await s.claimRequest({
           requestId: "r1",
+          agent: "grok",
           endpointIds: ["other"],
           claimKey: "try",
           claimToken: "x",
@@ -263,9 +313,11 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       });
       expect(await s.getOutbound("d-r1")).toBeUndefined();
       expect((await s.getInbound("r1"))?.status).toBe("claimed");
-      expect(await s.completeAndEnqueue({ ...bad, endpointIds: ["other"] })).toEqual({
-        status: "unauthorized",
-      });
+      expect(await s.completeAndEnqueue({ ...bad, agent: "grok", endpointIds: ["other"] })).toEqual(
+        {
+          status: "unauthorized",
+        },
+      );
       expect(await s.completeAndEnqueue(bad)).toEqual({
         status: "completed",
         deliveryId: "d-r1",
@@ -651,12 +703,13 @@ export function storageContract(name: string, open: () => Promise<Storage>) {
       await claim();
       const input = {
         requestId: "r1",
+        agent: "grok" as const,
         endpointIds: ["ep"],
         claimToken: "token",
         errorCode: "remote_failed",
         now: 106,
       };
-      expect(await s.fail({ ...input, endpointIds: ["foreign"] })).toEqual({
+      expect(await s.fail({ ...input, agent: "grok", endpointIds: ["foreign"] })).toEqual({
         status: "unauthorized",
       });
       expect(await s.fail(input)).toMatchObject({ status: "updated" });

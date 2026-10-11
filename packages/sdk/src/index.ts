@@ -242,6 +242,7 @@ export interface Health {
 export interface ClaimInput {
   readonly requestId: string;
   readonly endpointIds: readonly string[];
+  readonly agent: AgentId;
   readonly claimKey: string;
   readonly claimToken: string;
   readonly now: EpochMs;
@@ -249,6 +250,7 @@ export interface ClaimInput {
 export interface CompleteInput {
   readonly requestId: string;
   readonly endpointIds: readonly string[];
+  readonly agent: AgentId;
   readonly claimToken: string;
   readonly result: FinalResult;
   readonly outbound: OutboundRecord;
@@ -256,6 +258,7 @@ export interface CompleteInput {
 export interface FailInput {
   readonly requestId: string;
   readonly endpointIds: readonly string[];
+  readonly agent: AgentId;
   readonly claimToken: string;
   readonly errorCode: string;
   readonly now: EpochMs;
@@ -307,6 +310,7 @@ export interface Storage {
   acceptInbound(snapshot: InboundSnapshot): Promise<IngestReceipt>;
   listPending(input: {
     readonly endpointIds: readonly string[];
+    readonly agent: AgentId;
     readonly limit: number;
   }): Promise<readonly InboundSnapshot[]>;
   claimRequest(input: ClaimInput): Promise<ClaimResult>;

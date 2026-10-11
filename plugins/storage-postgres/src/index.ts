@@ -241,7 +241,11 @@ export function createPostgresStorage(
         ],
       )
     ).length === 0;
-  const scoped = (r: InboundRecord, ids: readonly string[]) => ids.includes(r.snapshot.endpoint.id);
+  const scoped = (
+    r: InboundRecord,
+    input: Pick<Parameters<Storage["claimRequest"]>[0], "endpointIds" | "agent">,
+  ) =>
+    input.endpointIds.includes(r.snapshot.endpoint.id) && r.snapshot.endpoint.agent === input.agent;
   const fence = (a: Lease | undefined, b: Lease, now: number) =>
     a !== undefined && equal(a, b) && a.expiresAt > now;
   const storage: Storage = {
@@ -350,15 +354,15 @@ export function createPostgresStorage(
       return (
         await query<{ record: InboundRecord }>(
           pool,
-          "SELECT record FROM inbound WHERE status='pending' AND endpoint=ANY($1::text[]) ORDER BY accepted_at,id LIMIT $2",
-          [input.endpointIds, bounded(input.limit)],
+          "SELECT record FROM inbound WHERE status='pending' AND endpoint=ANY($1::text[]) AND record#>>'{snapshot,endpoint,agent}'=$3 ORDER BY accepted_at,id LIMIT $2",
+          [input.endpointIds, bounded(input.limit), input.agent],
         )
       ).map((r) => r.record.snapshot);
     },
     async claimRequest(input) {
       return transaction(async (client) => {
         const r = await inbound(client, input.requestId);
-        if (!r || !scoped(r, input.endpointIds)) {
+        if (!r || !scoped(r, input)) {
           return { status: "not_found" };
         }
         if (r.status === "claimed") {
@@ -404,7 +408,7 @@ export function createPostgresStorage(
         if (!r) {
           return { status: "not_found" };
         }
-        if (!scoped(r, input.endpointIds) || r.claim?.token !== input.claimToken) {
+        if (!scoped(r, input) || r.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
         }
         if (r.status === "completed") {
@@ -463,7 +467,7 @@ export function createPostgresStorage(
         if (!r) {
           return { status: "not_found" };
         }
-        if (!scoped(r, input.endpointIds) || r.claim?.token !== input.claimToken) {
+        if (!scoped(r, input) || r.claim?.token !== input.claimToken) {
           return { status: "unauthorized" };
         }
         if (r.status === "failed" && r.errorCode === input.errorCode) {

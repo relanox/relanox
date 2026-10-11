@@ -178,7 +178,11 @@ it("negotiates SASL and tags, ingests channel/private text and independently wri
   ).toBe(true);
   expect(JSON.stringify(requests)).not.toContain("sasl-password");
   await fixture.runtime.processDue();
-  for (const request of await fixture.storage.listPending({ endpointIds: ["worker"], limit: 10 })) {
+  for (const request of await fixture.storage.listPending({
+    agent: "grok",
+    endpointIds: ["worker"],
+    limit: 10,
+  })) {
     const result = await fixture.complete(request.requestId, "delayed\nanswer\rwith\r\nlines");
     await fixture.runtime.processDue();
     expect((await fixture.storage.getOutbound(result.deliveryId))?.receipts).toEqual([
