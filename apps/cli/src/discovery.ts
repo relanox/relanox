@@ -63,6 +63,9 @@ export async function discoverConversations(input: {
   const account = await readDiscoveryAccount(input.configPath, input.accountId)
   const plugin = createWeComChannel()
   const config = plugin.validateConfig(account.config)
+  if (config.mode === 'webhook') {
+    throw new Error('discovery_requires_websocket')
+  }
   if (!process.env[config.secret.env]) {
     throw new Error('missing_discovery_secret')
   }

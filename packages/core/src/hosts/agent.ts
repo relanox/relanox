@@ -61,7 +61,7 @@ function chunksFor(
     state: null
   }))
 
-  return [
+  const result = [
     ...chunks,
     ...media.map((item, index) => ({
       text: '',
@@ -70,6 +70,11 @@ function chunksFor(
       state: null
     }))
   ]
+
+  if (result.length > (plugin.capabilities.maxChunksPerMessage ?? Infinity)) {
+    throw new CoreError('reply_exceeds_channel_limit')
+  }
+  return result
 }
 
 async function enqueue(

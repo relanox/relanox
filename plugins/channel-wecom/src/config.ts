@@ -28,12 +28,31 @@ export function validateTransportUrl(
   return url.toString()
 }
 
-export const configSchema = z
+export const websocketConfigSchema = z
   .object({
+    mode: z.literal('websocket').optional(),
     botId: z.string().min(1),
     secret: secretRefSchema
   })
   .strict()
+
+export const webhookConfigSchema = z
+  .object({
+    mode: z.literal('webhook'),
+    botId: z.string().min(1),
+    token: secretRefSchema,
+    encodingAESKey: secretRefSchema
+  })
+  .strict()
+
+export const configSchema = z.union([
+  websocketConfigSchema,
+  webhookConfigSchema
+])
+
+export type WebsocketConfig = z.infer<typeof websocketConfigSchema>
+
+export type WebhookConfig = z.infer<typeof webhookConfigSchema>
 
 export type WeComConfig = z.infer<typeof configSchema>
 

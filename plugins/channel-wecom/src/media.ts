@@ -11,7 +11,7 @@ import type { messageSchema } from './schemas.js'
 
 export const resourceSchema = z.object({
   url: z.url(),
-  aeskey: z.string().min(1),
+  aeskey: z.string().min(1).optional(),
   filename: z.string().optional()
 })
 
@@ -41,7 +41,8 @@ export async function receiveResource(
   resource: z.infer<typeof resourceSchema>,
   kind: MediaUpload['kind'],
   host: ChannelHost,
-  signal: AbortSignal
+  signal: AbortSignal,
+  fallbackKey?: string
 ): Promise<MediaUpload> {
   const maximum = host.maxMediaBytes ?? 25 * 1024 * 1024
 
@@ -52,7 +53,7 @@ export async function receiveResource(
     allowInsecureLocalhost: false
   })
 
-  const key = Buffer.from(resource.aeskey, 'base64')
+  const key = Buffer.from(resource.aeskey ?? fallbackKey ?? '', 'base64')
   if (key.byteLength !== 32) {
     throw new Error('invalid_media_key')
   }
@@ -171,7 +172,8 @@ export async function uploadResource(
 export async function receiveParts(
   message: z.infer<typeof messageSchema>,
   host: ChannelHost,
-  signal: AbortSignal
+  signal: AbortSignal,
+  fallbackKey?: string
 ): Promise<{ text: string; attachments: MediaUpload[] }> {
   const attachments: MediaUpload[] = []
 
@@ -188,7 +190,9 @@ export async function receiveParts(
     for (const kind of ['image', 'file', 'video'] as const) {
       const resource = item[kind]
       if (resource) {
-        attachments.push(await receiveResource(resource, kind, host, signal))
+        attachments.push(
+          await receiveResource(resource, kind, host, signal, fallbackKey)
+        )
       }
     }
   }
