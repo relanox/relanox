@@ -1,0 +1,49 @@
+import { z } from "zod";
+
+export const frameSchema = z.object({
+  op: z.number().int(),
+  s: z.number().int().nonnegative().nullish(),
+  t: z.string().optional(),
+  d: z.unknown().optional(),
+});
+export const messageSchema = z.object({
+  id: z.string().min(1),
+  author: z.object({
+    user_openid: z.string().min(1).optional(),
+    member_openid: z.string().min(1).optional(),
+    bot: z.boolean().optional(),
+  }),
+  content: z.string(),
+  timestamp: z.iso.datetime({ offset: true }),
+  group_openid: z.string().min(1).optional(),
+  message_type: z.number().int().optional(),
+  msg_seq: z.number().int().optional(),
+  message_scene: z.object({ ext: z.array(z.string()) }).optional(),
+  attachments: z.array(z.unknown()).optional(),
+});
+export const targetSchema = z
+  .object({
+    type: z.enum(["c2c", "group"]),
+    msgId: z.string().min(1),
+    messageAt: z.number().int().nonnegative(),
+    scope: z.object({ appId: z.string().min(1), apiBase: z.url() }).strict(),
+  })
+  .strict();
+export const tokenSchema = z.object({
+  access_token: z.string().min(1),
+  expires_in: z
+    .union([z.number(), z.string().regex(/^\d+$/u)])
+    .transform(Number)
+    .pipe(z.number().positive()),
+});
+export const allocationSchema = z.object({
+  next: z.number().int().positive(),
+  allocations: z.record(
+    z.string(),
+    z.object({
+      mode: z.enum(["passive", "proactive"]),
+      seq: z.number().int().positive(),
+    }),
+  ),
+});
+export const errorSchema = z.object({ code: z.number().int() });
