@@ -26,7 +26,13 @@ export interface WorkerOptions {
   readonly maxContextBytes?: number;
   readonly maxHttpBodyBytes?: number;
 }
+export interface MediaPublisherOptions {
+  readonly publicBaseUrl: string;
+  readonly urlLifetimeMs?: number;
+  readonly allowInsecureLocalhost?: boolean;
+}
 export interface CoreOptions {
+  readonly media?: MediaPublisherOptions;
   readonly config: unknown;
   readonly storage: Storage;
   readonly channels: ReadonlyMap<string, ChannelPlugin<unknown>>;

@@ -17,6 +17,8 @@ const uploadSchema = z.strictObject({
       (name) => name.isWellFormed() && !/[\p{Cc}/\\]/u.test(name) && name !== "." && name !== "..",
     ),
   data: z.instanceof(Uint8Array),
+  durationMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  previewMediaId: z.uuid().optional(),
 });
 export const mediaId = z.uuid();
 export function storeUpload(upload: MediaUpload, id: string, maximum: number): StoredMedia {
@@ -34,6 +36,8 @@ export function storeUpload(upload: MediaUpload, id: string, maximum: number): S
       kind: valid.kind,
       mimeType: valid.mimeType.toLowerCase(),
       fileName: valid.fileName,
+      ...(valid.durationMs === undefined ? {} : { durationMs: valid.durationMs }),
+      ...(valid.previewMediaId === undefined ? {} : { previewMediaId: valid.previewMediaId }),
       size: data.byteLength,
       sha256: createHash("sha256").update(data).digest("hex"),
     },
@@ -56,6 +60,12 @@ export function verifiedMedia(
       kind: media.reference.kind,
       mimeType: media.reference.mimeType,
       fileName: media.reference.fileName,
+      ...(media.reference.durationMs === undefined
+        ? {}
+        : { durationMs: media.reference.durationMs }),
+      ...(media.reference.previewMediaId === undefined
+        ? {}
+        : { previewMediaId: media.reference.previewMediaId }),
     },
     media.reference.id,
     maximum,
@@ -66,7 +76,9 @@ export function verifiedMedia(
     checked.reference.mimeType !== reference.mimeType ||
     checked.reference.fileName !== reference.fileName ||
     checked.reference.size !== reference.size ||
-    checked.reference.sha256 !== reference.sha256
+    checked.reference.sha256 !== reference.sha256 ||
+    checked.reference.durationMs !== reference.durationMs ||
+    checked.reference.previewMediaId !== reference.previewMediaId
   ) {
     throw new CoreError("media_integrity_error");
   }
@@ -82,6 +94,9 @@ export function inboundMedia(
 ): readonly StoredMedia[] {
   validateMediaCount(uploads?.length ?? 0, count);
   const media = (uploads ?? []).map((upload) => storeUpload(upload, crypto.randomUUID(), maximum));
+  if (media.some((item) => item.reference.previewMediaId !== undefined)) {
+    throw new CoreError("invalid_media_preview");
+  }
   validateMediaTotal(media, totalMaximum);
   if (media.length > 0 && !supported) {
     throw new CoreError("media_storage_missing");

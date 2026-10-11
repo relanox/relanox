@@ -55,6 +55,7 @@ export function createAgentMedia(
         throw new CoreError("media_storage_missing");
       }
       const media = storeUpload(input.media, input.uploadId, worker.maxMediaBytes);
+      await readPreview(storage, input.requestId, media, worker.maxMediaBytes);
       return storage.media.put({
         requestId: input.requestId,
         agent,
@@ -84,8 +85,32 @@ export async function completionMedia(
     if (!stored) {
       throw new CoreError("media_not_found");
     }
-    media.push(verifiedMedia(stored, stored.reference, worker.maxMediaBytes));
+    const checked = verifiedMedia(stored, stored.reference, worker.maxMediaBytes);
+    await readPreview(storage, requestId, checked, worker.maxMediaBytes);
+    media.push(checked);
   }
   validateMediaTotal(media, worker.maxTotalMediaBytes);
   return media;
+}
+
+export async function readPreview(
+  storage: Storage,
+  requestId: string,
+  media: StoredMedia,
+  maximum: number,
+): Promise<StoredMedia | undefined> {
+  const id = media.reference.previewMediaId;
+  if (id === undefined) {
+    return undefined;
+  }
+  mediaId.parse(id);
+  const preview = await storage.media?.get(requestId, id);
+  if (
+    !preview ||
+    preview.reference.kind !== "image" ||
+    preview.reference.previewMediaId !== undefined
+  ) {
+    throw new CoreError("invalid_media_preview");
+  }
+  return verifiedMedia(preview, preview.reference, maximum);
 }

@@ -10,13 +10,17 @@ import type {
   RelanoxConfig,
   SendInput,
 } from "../../packages/sdk/src/index.js";
+import type { CoreOptions } from "../../packages/core/src/types.js";
 import { createCore } from "../../packages/core/src/index.js";
 import { createSqliteStorage } from "../../plugins/storage-sqlite/src/index.js";
 
-export async function mediaFixture(sendKinds: readonly MediaKind[] = ["image", "file"]) {
+export async function mediaFixture(
+  sendKinds: readonly MediaKind[] = ["image", "file"],
+  media?: CoreOptions["media"],
+) {
   const directory = await mkdtemp(join(tmpdir(), "relanox-core-media-"));
   const filename = join(directory, "relay.sqlite");
-  const storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
+  let storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
   const close = async () => {
     await storage.close();
     await rm(directory, { recursive: true, force: true });
@@ -81,13 +85,21 @@ export async function mediaFixture(sendKinds: readonly MediaKind[] = ["image", "
     observability: { plugin: "none", config: {} },
   };
   try {
-    const runtime = await createCore({
-      config,
-      storage,
-      channels: new Map([["bot", channel]]),
-      agents: new Map([["grok", agent]]),
-      worker: { maxHttpBodyBytes: 8, maxMediaBytes: 16, maxTotalMediaBytes: 24, maxAttachments: 2 },
-    });
+    const assemble = () =>
+      createCore({
+        ...(media ? { media } : {}),
+        config,
+        storage,
+        channels: new Map([["bot", channel]]),
+        agents: new Map([["grok", agent]]),
+        worker: {
+          maxHttpBodyBytes: 8,
+          maxMediaBytes: 16,
+          maxTotalMediaBytes: 24,
+          maxAttachments: 2,
+        },
+      });
+    const runtime = await assemble();
     if (!channelHost || !agentHost) {
       throw new Error("Hosts not initialized");
     }
@@ -99,6 +111,12 @@ export async function mediaFixture(sendKinds: readonly MediaKind[] = ["image", "
       channel: requireHost<ChannelHost>(channelHost),
       agent: requireHost<AgentHost>(agentHost),
       sent,
+      async restart() {
+        await storage.close();
+        storage = createSqliteStorage({ filename, busyTimeoutMs: 5000 });
+        await storage.initialize();
+        return assemble();
+      },
     };
   } catch (error) {
     await close();

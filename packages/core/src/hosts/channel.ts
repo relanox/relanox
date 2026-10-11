@@ -8,6 +8,7 @@ import type {
   Observability,
   Storage,
   MediaKind,
+  ChannelMediaHost,
 } from "@relanox/sdk";
 import type { WorkerConfig } from "../worker/options.js";
 import { bindingKey } from "../config/relations.js";
@@ -18,6 +19,7 @@ import { inboundMedia } from "../media.js";
 import { createOperationTracer } from "./tracing.js";
 
 interface ChannelHostOptions {
+  readonly mediaPublisher?: ChannelMediaHost;
   readonly account: AccountConfig;
   readonly bindings: ReadonlyMap<string, Binding>;
   readonly endpoints: ReadonlyMap<string, EndpointConfig>;
@@ -32,6 +34,7 @@ interface ChannelHostOptions {
 /** Authorizes sender and conversation before persisting the immutable inbound snapshot. */
 export function createChannelHost({
   account,
+  mediaPublisher,
   bindings,
   endpoints,
   common,
@@ -44,6 +47,7 @@ export function createChannelHost({
   const traced = createOperationTracer(observe);
   return {
     ...common,
+    ...(mediaPublisher ? { media: mediaPublisher } : {}),
     maxMediaBytes: worker.maxMediaBytes,
     async ingest(input: IngestInput) {
       const { attachments, ...message } = input;
