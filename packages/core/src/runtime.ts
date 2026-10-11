@@ -19,7 +19,15 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
   const connections = new Map<string, "connected" | "disconnected" | "degraded">();
   let accepting = true;
   const isAccepting = () => accepting;
-  await setupPluginHosts(options, config, workerOptions, observe, app, isAccepting, connections);
+  await setupPluginHosts({
+    options,
+    config,
+    worker: workerOptions,
+    observe,
+    app,
+    isAccepting,
+    connections,
+  });
   app.onError(() => Response.json({ error: "internal_error" }, { status: 500 }));
   const worker = createWorker(options, config, workerOptions, observe, isAccepting);
   const administration = createAdministration(storage, connections);

@@ -26,12 +26,16 @@ const sendOutcome = z.union([
   retryOutcome,
   errorOutcome,
 ]);
-export function validateOutcome(
-  input: unknown,
-  kind: "dispatch" | "send",
-): DispatchResult | SendResult {
-  const result = (kind === "dispatch" ? dispatchOutcome : sendOutcome).safeParse(input);
+export function validateDispatchOutcome(input: unknown): DispatchResult {
+  const result = dispatchOutcome.safeParse(input);
   return result.success
-    ? (result.data as DispatchResult | SendResult)
+    ? (result.data as DispatchResult)
+    : { status: "unknown", errorCode: "invalid_plugin_outcome" };
+}
+
+export function validateSendOutcome(input: unknown): SendResult {
+  const result = sendOutcome.safeParse(input);
+  return result.success
+    ? (result.data as SendResult)
     : { status: "unknown", errorCode: "invalid_plugin_outcome" };
 }

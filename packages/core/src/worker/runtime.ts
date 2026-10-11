@@ -4,16 +4,18 @@ import type {
   DueWork,
   RelanoxConfig,
   Observability,
+  TraceContext,
+  Settlement,
 } from "@relanox/sdk";
 import type { CoreOptions } from "../types.js";
 import type { WorkerConfig } from "./options.js";
 import { jsonSnapshot } from "../json.js";
-import { validateOutcome } from "./outcomes.js";
+import { validateDispatchOutcome, validateSendOutcome } from "./outcomes.js";
 import { retryDelay, retryBudgetExhausted } from "./retry.js";
 
 /** Owns one-at-a-time leases, plugin deadlines, retry settlement, and worker readiness. */
 export function createWorker(
-  options: CoreOptions,
+  options: Pick<CoreOptions, "storage" | "channels" | "agents">,
   config: RelanoxConfig,
   worker: WorkerConfig,
   observe: Observability,
@@ -44,49 +46,30 @@ export function createWorker(
   const safeRetryAccountIds = config.accounts
     .filter((a) => options.channels.get(a.id)?.capabilities.idempotentSend)
     .map((a) => a.id);
-  async function invoke(work: DueWork): Promise<DispatchResult | SendResult> {
+  async function invoke<T extends DispatchResult | SendResult>(
+    operationName: "dispatch" | "send",
+    operation: (signal: AbortSignal) => Promise<T> | undefined,
+    validate: (input: unknown) => T,
+    trace?: TraceContext,
+  ): Promise<T | { status: "unknown" | "rejected"; errorCode: string }> {
     const controller = new AbortController();
-    const operationName = work.kind === "dispatch" ? "dispatch" : "send";
-    const span = observe.span(
-      operationName,
-      { plugin: "core", operation: operationName },
-      work.kind === "dispatch" ? work.record.snapshot.trace : work.record.trace,
-    );
+    const span = observe.span(operationName, { plugin: "core", operation: operationName }, trace);
     const startedAt = Date.now();
     let successful = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const timeout = new Promise<DispatchResult | SendResult>((resolve) => {
+      const timeout = new Promise<{ status: "unknown"; errorCode: string }>((resolve) => {
         timer = setTimeout(() => {
           controller.abort();
           resolve({ status: "unknown", errorCode: "call_timeout" });
         }, worker.callTimeoutMs);
       });
-      const chunk = work.kind === "send" ? work.record.chunks[work.record.currentChunk] : undefined;
-      if (work.kind === "send" && !chunk) {
-        return { status: "rejected", errorCode: "invalid_chunk_index" };
-      }
-      let operation: Promise<DispatchResult | SendResult> | undefined;
-      if (work.kind === "dispatch") {
-        operation = options.agents.get(work.record.snapshot.endpoint.agent)?.dispatch({
-          request: jsonSnapshot(work.record.snapshot),
-          signal: controller.signal,
-        });
-      } else if (chunk) {
-        operation = options.channels.get(work.record.target.accountId)?.send({
-          deliveryId: work.record.deliveryId,
-          requestId: work.record.requestId,
-          target: jsonSnapshot(work.record.target),
-          chunk: jsonSnapshot(chunk),
-          chunkIndex: work.record.currentChunk,
-          signal: controller.signal,
-        });
-      }
-      if (!operation) {
+      const pending = operation(controller.signal);
+      if (!pending) {
         return { status: "rejected", errorCode: "plugin_missing" };
       }
-      const result = await Promise.race([operation, timeout]);
-      const valid = validateOutcome(result, work.kind);
+      const result = await Promise.race([pending, timeout]);
+      const valid = validate(result);
       successful = valid.status === "sent" || valid.status === "accepted";
       return valid;
     } catch {
@@ -97,13 +80,81 @@ export function createWorker(
       }
       span.end(successful ? "ok" : "error");
       observe.record(
-        work.kind === "dispatch"
+        operationName === "dispatch"
           ? "relanox_dispatch_duration_seconds"
           : "relanox_send_duration_seconds",
         (Date.now() - startedAt) / 1000,
         { operation: operationName },
       );
     }
+  }
+  function applyRetryBudget<T extends DispatchResult | SendResult>(outcome: T, attempts: number) {
+    return retryBudgetExhausted(outcome, attempts, worker.maxAttempts)
+      ? { status: "rejected" as const, errorCode: "retry_budget_exhausted" }
+      : outcome;
+  }
+
+  async function settlementFor(work: DueWork): Promise<Settlement> {
+    if (work.kind === "dispatch") {
+      const request = work.record.snapshot;
+      const attempts = work.record.dispatch.attempts;
+      const outcome = applyRetryBudget(
+        attempts >= worker.maxAttempts
+          ? { status: "rejected" as const, errorCode: "retry_budget_exhausted" }
+          : await invoke(
+              "dispatch",
+              (signal) =>
+                options.agents.get(request.endpoint.agent)?.dispatch({
+                  request: jsonSnapshot(request),
+                  signal,
+                }),
+              validateDispatchOutcome,
+              request.trace,
+            ),
+        attempts,
+      );
+      const now = Date.now();
+      return {
+        kind: "dispatch",
+        id: request.requestId,
+        lease: work.lease,
+        outcome,
+        nextDueAt: now + retryDelay(outcome, attempts, worker),
+        now,
+      };
+    }
+    const record = work.record;
+    const chunk = record.chunks[record.currentChunk];
+    const outcome = applyRetryBudget(
+      record.attempts >= worker.maxAttempts
+        ? { status: "rejected" as const, errorCode: "retry_budget_exhausted" }
+        : await invoke(
+            "send",
+            (signal) =>
+              chunk
+                ? options.channels.get(record.target.accountId)?.send({
+                    deliveryId: record.deliveryId,
+                    requestId: record.requestId,
+                    target: jsonSnapshot(record.target),
+                    chunk: jsonSnapshot(chunk),
+                    chunkIndex: record.currentChunk,
+                    signal,
+                  })
+                : Promise.resolve({ status: "rejected", errorCode: "invalid_chunk_index" }),
+            validateSendOutcome,
+            record.trace,
+          ),
+      record.attempts,
+    );
+    const now = Date.now();
+    return {
+      kind: "send",
+      id: record.deliveryId,
+      lease: work.lease,
+      outcome,
+      nextDueAt: now + retryDelay(outcome, record.attempts, worker),
+      now,
+    };
   }
   function canStartWork(start: number, processed: number): boolean {
     return (
@@ -136,38 +187,9 @@ export function createWorker(
           if (!work) {
             break;
           }
-          const attempts =
-            work.kind === "dispatch" ? work.record.dispatch.attempts : work.record.attempts;
-          let outcome: DispatchResult | SendResult =
-            attempts >= worker.maxAttempts
-              ? { status: "rejected", errorCode: "retry_budget_exhausted" }
-              : await invoke(work);
-          if (retryBudgetExhausted(outcome, attempts, worker.maxAttempts)) {
-            outcome = {
-              status: "rejected",
-              errorCode: "retry_budget_exhausted",
-            };
-          }
-          const now = Date.now();
-          const delay = retryDelay(outcome, attempts, worker);
-          const settlement =
-            work.kind === "dispatch"
-              ? await storage.settleAttempt({
-                  kind: "dispatch",
-                  id: work.record.snapshot.requestId,
-                  lease: work.lease,
-                  outcome: outcome as DispatchResult,
-                  nextDueAt: now + delay,
-                  now,
-                })
-              : await storage.settleAttempt({
-                  kind: "send",
-                  id: work.record.deliveryId,
-                  lease: work.lease,
-                  outcome: outcome as SendResult,
-                  nextDueAt: now + delay,
-                  now,
-                });
+          const attempt = await settlementFor(work);
+          const { outcome } = attempt;
+          const settlement = await storage.settleAttempt(attempt);
           if (settlement.status !== "updated") {
             conflicts++;
           }
