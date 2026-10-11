@@ -7,9 +7,8 @@ import { bindingKey } from "./relations.js";
 
 /** No setup is allowed until every configured plugin has accepted its configuration. */
 export function validatePluginConfigurations(
-  options: CoreOptions,
+  options: Pick<CoreOptions, "channels" | "agents">,
   config: RelanoxConfig,
-  connections: Map<string, "connected" | "disconnected" | "degraded">,
 ) {
   const accountValidated = new Map<string, unknown>();
   // Validate every endpoint before setup can register a live route. Keep ORIGINAL JSON in snapshots.
@@ -25,9 +24,6 @@ export function validatePluginConfigurations(
     }
     chunkText("", plugin.capabilities.maxTextLength, plugin.capabilities.lengthUnit);
     accountValidated.set(account.id, plugin.validateConfig(jsonSnapshot(account.config)));
-    if (plugin.capabilities.transport !== "http") {
-      connections.set(`channels/${account.id}`, "disconnected");
-    }
   }
   for (const endpoint of config.endpoints) {
     const plugin = options.agents.get(endpoint.agent);

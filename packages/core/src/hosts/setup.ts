@@ -9,23 +9,36 @@ import { createCommonHostFactory } from "./common.js";
 import { createChannelHost } from "./channel.js";
 import { createAgentHost } from "./agent.js";
 
+interface HostSetupOptions {
+  readonly options: Pick<CoreOptions, "storage" | "channels" | "agents">;
+  readonly config: RelanoxConfig;
+  readonly worker: WorkerConfig;
+  readonly observe: Observability;
+  readonly app: Hono;
+  readonly connections: Map<string, "connected" | "disconnected" | "degraded">;
+  isAccepting(this: void): boolean;
+}
+
 /** Validate the complete plugin graph before any setup callback can mount a route. */
-export async function setupPluginHosts(
-  options: CoreOptions,
-  config: RelanoxConfig,
-  worker: WorkerConfig,
-  observe: Observability,
-  app: Hono,
-  isAccepting: () => boolean,
-  connections: Map<string, "connected" | "disconnected" | "degraded">,
-): Promise<void> {
+export async function setupPluginHosts({
+  options,
+  config,
+  worker,
+  observe,
+  app,
+  isAccepting,
+  connections,
+}: HostSetupOptions): Promise<void> {
   const storage = options.storage;
   const common = createCommonHostFactory(storage, observe, app, isAccepting, connections);
-  const { accountValidated, endpoints, bindings } = validatePluginConfigurations(
-    options,
-    config,
-    connections,
-  );
+  const { accountValidated, endpoints, bindings } = validatePluginConfigurations(options, config);
+
+  // Populate every connection before setup callbacks can report aggregate plugin health.
+  for (const account of config.accounts) {
+    if (options.channels.get(account.id)?.capabilities.transport !== "http") {
+      connections.set(`channels/${account.id}`, "disconnected");
+    }
+  }
 
   for (const account of config.accounts) {
     const plugin = options.channels.get(account.id);
