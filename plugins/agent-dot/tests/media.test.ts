@@ -54,7 +54,7 @@ async function setup(agent: AgentId): Promise<{
 }> {
   const config =
     agent === 'dot'
-      ? { mcp: mcp(), callback: { allowedOrigins: ['https://callback.test'] } }
+      ? { mcp: mcp() }
       : {
           mcp: mcp(),
           routineUrl: { env: 'UNUSED_ROUTINE_URL' },

@@ -88,7 +88,7 @@ export function createEventsHandler(
             truncated: z.boolean()
           })
         },
-        async (input) => subscriptions.subscribe(endpoint, config, input)
+        async (input) => subscriptions.subscribe(endpoint, input)
       )
       server.server.setRequestHandler(
         'events/unsubscribe',

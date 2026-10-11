@@ -4,7 +4,6 @@ import type { AgentHost, EndpointConfig, Json, StateEntry } from '@relanox/sdk'
 import { Webhook } from 'standardwebhooks'
 import { z } from 'zod'
 import { CallbackError, callbackUrl, postCallback } from './callback.js'
-import type { DotConfig } from './config.js'
 import { equalSecret } from '@relanox/agent-mcp'
 import { name, subscriptionSchema } from './protocol.js'
 import type {
@@ -74,16 +73,12 @@ function rotationFields(
   return {}
 }
 
-async function verifySubscription(
-  sub: Subscription,
-  config: DotConfig
-): Promise<void> {
+async function verifySubscription(sub: Subscription): Promise<void> {
   const challenge = randomBytes(32).toString('base64url')
   const challengeBody = JSON.stringify({ type: 'verification', challenge })
   try {
     const response = await postCallback(
       sub.url,
-      config.callback,
       challengeBody,
       signedHeaders(sub, challengeBody, `verification_${randomUUID()}`),
       AbortSignal.timeout(10_000),
@@ -124,7 +119,6 @@ export type SubscriptionStore = {
   subscribe(
     this: void,
     endpoint: EndpointConfig,
-    config: DotConfig,
     input: z.infer<typeof subscribeParams>
   ): Promise<SubscriptionReceipt>
   unsubscribe(
@@ -166,13 +160,12 @@ export function createSubscriptions(
 
   async function subscribe(
     endpoint: EndpointConfig,
-    config: DotConfig,
     input: z.infer<typeof subscribeParams>
   ): Promise<SubscriptionReceipt> {
     const owner = endpoint.id
     let url: string
     try {
-      url = callbackUrl(input.delivery.url, config.callback).href
+      url = callbackUrl(input.delivery.url).href
     } catch {
       throw callbackProtocolError('forbidden_destination')
     }
@@ -207,7 +200,7 @@ export function createSubscriptions(
       replacement ||
       now - old.verifiedAt > 60_000
     ) {
-      await verifySubscription(sub, config)
+      await verifySubscription(sub)
     } else {
       sub.verifiedAt = old.verifiedAt
     }
