@@ -537,6 +537,9 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
       return { ok: false, errorCode: "storage_unavailable" };
     }
   }
+  function canStartWork(start: number, processed: number): boolean {
+    return accepting && processed < worker.batchSize && Date.now() - start < worker.batchDurationMs;
+  }
   return {
     config: jsonSnapshot(config),
     async fetch(request) {
@@ -569,7 +572,7 @@ export async function createCore(options: CoreOptions): Promise<CoreRuntime> {
       let processed = 0;
       let conflicts = 0;
       try {
-        while (processed < worker.batchSize && Date.now() - start < worker.batchDurationMs) {
+        while (canStartWork(start, processed)) {
           // Lease one at a time, so queued calls cannot expire behind earlier slow calls.
           const work = (
             await storage.takeDue({
