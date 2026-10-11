@@ -362,7 +362,8 @@ export function createIrcChannel(
     }
     let line: string;
     try {
-      line = wireLine(`PRIVMSG ${target.data.recipient} :${input.chunk.text}`);
+      const text = input.chunk.text.replaceAll(/\r\n|[\r\n]/gu, " ");
+      line = wireLine(`PRIVMSG ${target.data.recipient} :${text}`);
     } catch {
       return { status: "rejected", errorCode: "invalid_irc_text" };
     }

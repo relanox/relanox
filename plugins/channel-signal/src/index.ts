@@ -62,7 +62,15 @@ const targetSchema = z.discriminatedUnion("kind", [
 const rpcSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.string(),
-  result: z.object({ timestamp: z.number().int().nonnegative() }).optional(),
+  result: z
+    .object({
+      timestamp: z.number().int().nonnegative(),
+      results: z
+        .array(z.object({ type: z.string() }))
+        .min(1)
+        .optional(),
+    })
+    .optional(),
   error: z.object({ code: z.number().int() }).optional(),
 });
 
@@ -219,6 +227,11 @@ export function createSignalChannel(
       }
       if (!rpc.result) {
         return { status: "unknown", errorCode: "rpc_missing_result" };
+      }
+      if (rpc.result.results?.some((result) => result.type !== "SUCCESS")) {
+        // A successful group recipient prevents a top-level RPC error.
+        // Replaying the group would duplicate recipients already reached.
+        return { status: "unknown", errorCode: "rpc_recipient_failure" };
       }
       return { status: "sent", receipt: { platformMessageId: String(rpc.result.timestamp) } };
     } catch {

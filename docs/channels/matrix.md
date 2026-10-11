@@ -14,6 +14,8 @@ Create a dedicated account/device and invite it into the configured rooms. Allow
 
 **Encrypted rooms are unsupported.** Encrypted events are explicitly diagnosed; the relay does not decrypt, manage room keys or silently convert them to text. Edits and other relation types, media and membership actions are not relayed.
 
+Each send first reads the room encryption state. Transient failures of that read are safely retryable because no message has been issued. Transport or server failures after the message PUT remain unknown and require explicit recovery.
+
 The sync cursor is persisted with compare-and-set only after all received events have been handed off durably or explicitly excluded. Replayed event IDs deduplicate in core storage. If an existing cursor receives a limited timeline, the plugin reports a history gap and refuses to advance; it does not implement history backfill. Resolve the gap operationally rather than assuming missing events were processed.
 
 Outbound `PUT /rooms/<room>/send/m.room.message/<transactionId>` reuses the persisted chunk identity. Matrix transaction deduplication is scoped to the same device and endpoint; a new login/device can lose that scope. The plugin therefore declares `idempotentSend:false`: a SecretRef can be rotated to a new device, so unknown sends require explicit recovery. Known safe retries still reuse the same transaction ID.

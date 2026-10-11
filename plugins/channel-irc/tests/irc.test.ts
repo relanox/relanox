@@ -179,7 +179,7 @@ it("negotiates SASL and tags, ingests channel/private text and independently wri
   expect(JSON.stringify(requests)).not.toContain("sasl-password");
   await fixture.runtime.processDue();
   for (const request of await fixture.storage.listPending({ endpointIds: ["worker"], limit: 10 })) {
-    const result = await fixture.complete(request.requestId);
+    const result = await fixture.complete(request.requestId, "delayed\nanswer\rwith\r\nlines");
     await fixture.runtime.processDue();
     expect((await fixture.storage.getOutbound(result.deliveryId))?.receipts).toEqual([
       { data: { acknowledgement: "socket_write" } },
@@ -187,7 +187,10 @@ it("negotiates SASL and tags, ingests channel/private text and independently wri
   }
   await waitFor(() => tcp.lines.filter((line) => line.startsWith("PRIVMSG ")).length === 2);
   expect(tcp.lines.filter((line) => line.startsWith("PRIVMSG "))).toEqual(
-    expect.arrayContaining(["PRIVMSG #room :delayed answer", "PRIVMSG Alice :delayed answer"]),
+    expect.arrayContaining([
+      "PRIVMSG #room :delayed answer with lines",
+      "PRIVMSG Alice :delayed answer with lines",
+    ]),
   );
   await plugin.stop?.();
   expect((await fixture.runtime.status()).connections["channels/bot"]).toBe("disconnected");
@@ -220,7 +223,7 @@ it("reconnects and relies on durable msgid dedup while retaining configured acco
   expect(await fixture.storage.listInbound({ limit: 10 })).toHaveLength(1);
 });
 
-it("enforces complete UTF-8 wire size and rejects CRLF/NUL injection before writing", async () => {
+it("enforces UTF-8 wire size, renders CRLF as message text and rejects NUL before writing", async () => {
   const tcp = await tcpPeer(register);
   const http = await httpPeer((_request, response) => {
     json(response, {});
@@ -246,16 +249,16 @@ it("enforces complete UTF-8 wire size and rejects CRLF/NUL injection before writ
     errorCode: "invalid_irc_text",
   });
   expect(await plugin.send(sendInput(tcp.port, "#room", "answer\r\nJOIN #evil"))).toEqual({
-    status: "rejected",
-    errorCode: "invalid_irc_text",
+    status: "sent",
+    receipt: { data: { acknowledgement: "socket_write" } },
   });
   expect(await plugin.send(sendInput(tcp.port, "#room", "answer\0hidden"))).toEqual({
     status: "rejected",
     errorCode: "invalid_irc_text",
   });
-  await waitFor(() => tcp.lines.some((line) => line.startsWith(`PRIVMSG ${largeTarget}`)));
+  await waitFor(() => tcp.lines.includes("PRIVMSG #room :answer JOIN #evil"));
   const outgoing = tcp.lines.filter((line) => line.startsWith("PRIVMSG "));
-  expect(outgoing).toHaveLength(1);
+  expect(outgoing).toHaveLength(2);
   expect(Buffer.byteLength(`${outgoing[0]}\r\n`)).toBe(502);
   expect(tcp.lines).not.toContain("JOIN #evil");
   await plugin.stop?.();

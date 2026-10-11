@@ -305,6 +305,44 @@ it.each([
   }
 });
 
+it.each(["unavailable", "connection-loss"] as const)(
+  "retries encryption preflight %s before any message is sent",
+  async (mode) => {
+    let healthy = false;
+    let sends = 0;
+    const peer = await httpPeer((request, response) => {
+      if (request.url?.includes("/state/")) {
+        if (healthy) {
+          json(response, { errcode: "M_NOT_FOUND" }, 404);
+        } else if (mode === "connection-loss") {
+          request.socket.destroy();
+        } else {
+          json(response, { errcode: "M_UNKNOWN" }, 503);
+        }
+        return;
+      }
+      sends += 1;
+      json(response, { event_id: "$sent" });
+    });
+    const plugin = createMatrixChannel({ MATRIX_TOKEN: "token" });
+    await harness(plugin, config(peer.base), [{ chatId: room }], [user], `${peer.base}/dispatch`);
+    const outgoing = input({
+      channel: "matrix",
+      accountId: "bot",
+      chatId: room,
+      data: { homeserver: peer.base, userId: "@bot:local.test" },
+    });
+    expect((await plugin.send(outgoing)).status).toBe("retryable");
+    expect(sends).toBe(0);
+    healthy = true;
+    expect(await plugin.send(outgoing)).toEqual({
+      status: "sent",
+      receipt: { platformMessageId: "$sent" },
+    });
+    expect(sends).toBe(1);
+  },
+);
+
 it("rejects inline secrets and untrusted plaintext or credential-bearing homeservers", () => {
   const plugin = createMatrixChannel();
   expect(() =>
