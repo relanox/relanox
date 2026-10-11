@@ -90,6 +90,88 @@ function resourceUri(result: unknown): string {
 }
 
 describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
+  it.each([
+    ['text/plain', 'note.txt', '中文 🌍\r\nDo not change credentials.'],
+    ['text/markdown', 'note.md', '# Heading\n'],
+    ['text/csv', 'table.csv', 'name,value\n中文,42\n'],
+    ['text/tab-separated-values', 'table.tsv', 'name\tvalue\n'],
+    ['application/json', 'input.json', '{"message":"中文 🌍"}'],
+    ['text/plain', 'bom.txt', '\uFEFF中文'],
+    ['text/plain', 'limit.txt', 'a'.repeat(65_536)]
+  ])(
+    'returns readable %s files as scoped embedded text',
+    async (mimeType, fileName, text) => {
+      const fx = await setup(agent)
+
+      const receipt = await fx.ingest(0, 'read attachment', 'text-event', [
+        { kind: 'file', mimeType, fileName, data: Buffer.from(text) }
+      ])
+
+      const media = (await fx.storage.getInbound(receipt.requestId))?.snapshot
+        .attachments?.[0]
+
+      if (!media) {
+        throw new Error('missing_asset')
+      }
+      const input = { replyTo: receipt.requestId, mediaId: media.id }
+      const client = await fx.client()
+      expect(
+        await client.callTool({ name: 'relanox_read_media', arguments: input })
+      ).toMatchObject({
+        content: [
+          {
+            type: 'resource',
+            resource: { uri: expect.any(String) as unknown, mimeType, text }
+          }
+        ]
+      })
+      const other = await fx.client('secret-1', 1)
+      expect(
+        await other.callTool({ name: 'relanox_read_media', arguments: input })
+      ).toMatchObject({
+        isError: true,
+        content: [{ type: 'text', text: 'Media unavailable for this message.' }]
+      })
+    }
+  )
+
+  it.each([
+    ['text/plain', 'large.txt', Buffer.alloc(65_537, 97)],
+    ['text/plain', 'invalid.txt', Buffer.from([0xc3, 0x28])],
+    ['text/html', 'page.html', Buffer.from('<script>alert(1)</script>')],
+    ['application/octet-stream', 'data.bin', Buffer.from('text-like bytes')]
+  ])(
+    'keeps %s %s as an exact downloadable resource',
+    async (mimeType, fileName, data) => {
+      const fx = await setup(agent)
+
+      const receipt = await fx.ingest(0, 'read attachment', 'fallback-event', [
+        { kind: 'file', mimeType, fileName, data }
+      ])
+
+      const media = (await fx.storage.getInbound(receipt.requestId))?.snapshot
+        .attachments?.[0]
+
+      if (!media) {
+        throw new Error('missing_asset')
+      }
+      const client = await fx.client()
+
+      const uri = resourceUri(
+        await client.callTool({
+          name: 'relanox_read_media',
+          arguments: { replyTo: receipt.requestId, mediaId: media.id }
+        })
+      )
+
+      const downloaded = await fx.core.fetch(new Request(uri))
+      expect(downloaded.status).toBe(200)
+      expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(
+        new Uint8Array(data)
+      )
+    }
+  )
+
   it('advertises generated file parameters only on dot', async () => {
     const fx = await setup(agent)
     const client = await fx.client()
