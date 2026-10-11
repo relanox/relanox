@@ -22,6 +22,8 @@ For a first installation, you can follow the Telegram example in the [quick star
 | [Signal](signal.md)                    | signal-cli service with a registered account    |
 | [IRC](irc.md)                          | IRC server and bot nickname                     |
 
+Replies use Markdown automatically. Ask for a heading, list, code block or formatted link as needed; the appearance depends on the chat app. See [Markdown rendering](../reference/channels.md#markdown) for platform differences.
+
 ## After connecting a channel
 
 In your [settings](../configuration.md), choose the allowed users, conversations or groups and the Agent that receives their messages. Complete the [Agent setup](../agents.md) for dot or Grok Bot, then send a message in the chosen conversation and check its reply.

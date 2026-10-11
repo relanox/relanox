@@ -16,7 +16,11 @@ A channel integration receives platform events and sends replies. An agent integ
 4. Implement sending for one prepared message part at a time. Preserve its send identity across retries, report the platform receipt on success, and distinguish a known temporary failure from an uncertain result.
 5. Register any webhook handlers through the host. The application owns listening addresses and mounts channel routes under `/channels/<accountId>`.
 
-For channels with a limited reply budget, declare `capabilities.maxChunksPerMessage`. Core rejects a reply that would exceed that number of text chunks before saving it for delivery. WeCom HTTP callback uses `1` because its reply URL accepts one reply; keep this separate from the per-chunk text limit.
+Reply text is Markdown. Declare `capabilities.maxTextLength` and `lengthUnit` for the platform limit. Core splits Markdown while keeping formatting and links complete. If the rendered payload has a different size, implement `splitText(markdown, target)` with `@relanox/markdown` and measure the destination representation. Native Markdown channels send the source; other channels render it as the platform's supported formatting. There is no separate plain-text mode.
+
+Use `capabilities.maxChunksPerMessage` to limit the total text and media parts in one reply, `maxAttachmentsPerMessage` for the attachment count, and `maxTextLengthPerMessage` for the total source Markdown length using `lengthUnit`. Core checks these limits before saving the reply. `SendInput.chunkCount` identifies the final part when a platform requires one combined response.
+
+Return `pending` with `retryAfterMs` when a prepared reply is waiting for the platform to collect it, such as a WeCom callback refresh. The worker defers the same part without using a failure attempt or recording delivery. Return `sent` only after the channel observes the platform handoff. Use failure results for actual failures; waiting for an external callback must not exhaust delivery retries.
 
 Each configured account gets its own channel instance. Keep credentials out of message context, reply destinations and logs. If the platform needs connection state or sequence numbers, use the host's state store so that restarting does not lose them.
 

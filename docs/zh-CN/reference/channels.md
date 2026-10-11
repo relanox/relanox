@@ -4,6 +4,32 @@
 
 以下片段需要合并到完整配置的 `relay.accounts` 与 `relay.bindings` 中。替换示例 ID 和 Agent 名称，在服务环境中设置引用的环境变量。完整文件见[配置结构](configuration.md)。
 
+## Markdown 回复 {#markdown}
+
+Agent 回复文字统一使用 Markdown，无需选择格式模式。Relanox 使用平台原生 Markdown，或转换为该平台支持的格式。长回复按目标平台的长度限制分段，保留完整代码围栏、强调标记和链接地址。生成 HTML 或结构化格式时，原始 HTML 按文字显示。
+
+| 渠道            | 发送格式                                                                   |
+| --------------- | -------------------------------------------------------------------------- |
+| Telegram        | 使用 UTF-16 偏移的消息和说明文字实体，支持粗体、斜体、删除线、代码及链接。 |
+| Discord         | 原生消息 Markdown。                                                        |
+| Slack           | 结构化富文本块，表达强调、代码和链接。                                     |
+| 飞书 / Lark     | 包含 Markdown 元素的富文本消息。                                           |
+| 企业微信        | 原生 Markdown；回调模式合并发送最终文字和支持的图片。                      |
+| 钉钉            | `sampleMarkdown` 机器人消息。                                              |
+| QQ              | Markdown 消息（`msg_type: 2`）。                                           |
+| Microsoft Teams | 扩展 Markdown 消息。                                                       |
+| WhatsApp        | 原生粗体、斜体、删除线和等宽语法，链接保留 URL。                           |
+| Google Chat     | 声明 `MARKUP_SYNTAX_MARKDOWN` 的消息。                                     |
+| LINE            | Flex 文字组件与文本片段，使用支持的强调样式和链接动作。                    |
+| Matrix          | 在 `formatted_body` 中发送经过转义的 HTML，并保留协议要求的源文字 `body`。 |
+| Mattermost      | 原生帖子 Markdown。                                                        |
+| Signal          | 原生文字样式范围，链接保留 URL。                                           |
+| IRC             | 原生格式控制符，完整命令保持在协议长度限制以内。                           |
+
+显示效果因客户端而异。样式较少的平台会保留标题、列表和表格中的文字，代码和链接使用可用的表达方式。Markdown 图片语法不会上传文件，发送媒体请使用附件。企业微信回调等合并回复的限制会在入队前检查。
+
+原生协议见[飞书富文本](https://open.feishu.cn/document/server-docs/im-v1/message-content-description/create_json)、[钉钉机器人消息](https://open.dingtalk.com/document/development/robot-message-type)、[Teams 格式](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/format-your-bot-messages)和 [Matrix 格式化消息](https://spec.matrix.org/latest/client-server-api/#mroommessage)。本地 HTTP 与 socket 测试验证实际生成的协议请求，不代表已经验证真实账号兼容性。
+
 ## 钉钉应用机器人 {#dingtalk}
 
 用户操作：[配置 钉钉应用机器人](../channels/dingtalk.md)。

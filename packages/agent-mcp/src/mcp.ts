@@ -226,7 +226,9 @@ export function registerTools(server: McpServer, host: ScopedAgentHost): void {
           .string()
           .max(1_048_576)
           .default('')
-          .describe('Your reply text. May be empty when sending attachments.'),
+          .describe(
+            'Your reply as Markdown. May be empty when sending attachments.'
+          ),
         idempotencyKey: id
           .optional()
           .describe(
