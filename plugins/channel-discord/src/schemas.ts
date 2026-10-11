@@ -26,6 +26,18 @@ export const messageSchema = z.looseObject({
   channel_id: platformIdSchema,
   guild_id: platformIdSchema.optional(),
   content: z.string().max(1_048_576),
+  attachments: z
+    .array(
+      z.looseObject({
+        id: platformIdSchema,
+        filename: z.string().min(1),
+        size: z.number().int().nonnegative(),
+        url: z.url(),
+        content_type: z.string().optional(),
+      }),
+    )
+    .max(10)
+    .default([]),
   author: z.looseObject({ id: platformIdSchema, bot: z.boolean().optional() }),
   webhook_id: platformIdSchema.optional(),
   type: z.number().int(),

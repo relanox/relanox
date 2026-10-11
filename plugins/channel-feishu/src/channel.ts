@@ -3,8 +3,8 @@ import type { AccountConfig, ChannelHost, ChannelPlugin, SendResult } from "@rel
 import type { z } from "zod";
 import { validateConfig } from "./config.js";
 import type { FeishuConfig } from "./config.js";
+import { receiveMedia, messageContent, mediaError, parseContent } from "./media.js";
 import {
-  textContentSchema,
   encryptedEventSchema,
   tenantTokenResponseSchema,
   targetSchema,
@@ -74,6 +74,25 @@ export function createFeishuChannel(
       secretDigest,
     };
     return token.value;
+  }
+  async function sendOutcome(response: Response): Promise<SendResult> {
+    if (!response.ok) {
+      return failure(response);
+    }
+    const parsed = apiSchema.safeParse(await jsonResponse(response));
+    if (!parsed.success) {
+      return { status: "unknown", errorCode: "invalid_platform_response" };
+    }
+    if (parsed.data.code !== 0) {
+      token = undefined;
+      return { status: "rejected", errorCode: "feishu_api_error" };
+    }
+    return parsed.data.data?.message_id
+      ? {
+          status: "sent",
+          receipt: { platformMessageId: parsed.data.data.message_id },
+        }
+      : { status: "unknown", errorCode: "invalid_platform_response" };
   }
   async function verifyRequest(request: Request): Promise<unknown> {
     if (request.method !== "POST") {
@@ -159,7 +178,7 @@ export function createFeishuChannel(
     if (
       sender.sender_type !== "user" ||
       sender.sender_id.open_id === config.botOpenId ||
-      message.message_type !== "text" ||
+      !["text", "image", "audio", "media", "file", "post"].includes(message.message_type) ||
       !sender.sender_id.open_id
     ) {
       host.observe.count("relanox_inbound_total", {
@@ -173,14 +192,21 @@ export function createFeishuChannel(
     if (sender.tenant_key && sender.tenant_key !== config.tenantKey) {
       return new Response(null, { status: 401 });
     }
-    let text: string;
+    let content: ReturnType<typeof parseContent>;
     try {
-      text = textContentSchema.parse(JSON.parse(message.content)).text;
+      content = parseContent(message);
     } catch {
       return new Response(null, { status: 400 });
     }
     try {
       const threadId = message.thread_id ?? message.root_id;
+      const access =
+        content.resources.length > 0
+          ? await accessToken(AbortSignal.timeout(config.timeoutMs))
+          : "";
+      if (typeof access !== "string") {
+        return new Response(null, { status: 503 });
+      }
       await ingest(host, {
         source: {
           channel: "feishu",
@@ -188,7 +214,8 @@ export function createFeishuChannel(
           eventId: header.event_id,
         },
         senderId: sender.sender_id.open_id,
-        text,
+        text: content.text,
+        attachments: await receiveMedia(message.message_id, content, host, config, base(), access),
         target: {
           channel: "feishu",
           accountId: account.id,
@@ -221,6 +248,10 @@ export function createFeishuChannel(
       maxTextLength: 10_000,
       lengthUnit: "utf8",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(nextHost, nextAccount, nextConfig) {
@@ -266,6 +297,10 @@ export function createFeishuChannel(
         return { status: "rejected", errorCode: "invalid_target" };
       }
       // Authentication precedes the message effect, so failures here are safe to retry.
+      const errorCode = mediaError(input, host);
+      if (errorCode) {
+        return { status: "rejected", errorCode };
+      }
       const access = await accessToken(input.signal).catch(() => ({
         status: "retryable" as const,
         errorCode: "tenant_token_transport_error",
@@ -273,14 +308,20 @@ export function createFeishuChannel(
       if (typeof access !== "string") {
         return access;
       }
+      const content = await messageContent(input, host, config, base(), access).catch(() => ({
+        status: "retryable" as const,
+        errorCode: "media_upload_transport_error",
+      }));
+      if ("status" in content) {
+        return content;
+      }
       try {
         const reply = input.target.replyToId;
         const response = await postJson(
           `${base().replace(/\/$/u, "")}/open-apis/im/v1/messages${reply ? `/${encodeURIComponent(reply)}/reply` : "?receive_id_type=chat_id"}`,
           { authorization: `Bearer ${access}` },
           {
-            msg_type: "text",
-            content: JSON.stringify({ text: input.chunk.text }),
+            ...content,
             ...(reply
               ? { reply_in_thread: Boolean(input.target.threadId) }
               : { receive_id: input.target.chatId }),
@@ -288,23 +329,7 @@ export function createFeishuChannel(
           input.signal,
           config.timeoutMs,
         );
-        if (!response.ok) {
-          return failure(response);
-        }
-        const parsed = apiSchema.safeParse(await jsonResponse(response));
-        if (!parsed.success) {
-          return { status: "unknown", errorCode: "invalid_platform_response" };
-        }
-        if (parsed.data.code !== 0) {
-          token = undefined;
-          return { status: "rejected", errorCode: "feishu_api_error" };
-        }
-        return parsed.data.data?.message_id
-          ? {
-              status: "sent",
-              receipt: { platformMessageId: parsed.data.data.message_id },
-            }
-          : { status: "unknown", errorCode: "invalid_platform_response" };
+        return await sendOutcome(response);
       } catch {
         return { status: "unknown", errorCode: "feishu_transport_error" };
       }

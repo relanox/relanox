@@ -10,6 +10,7 @@ import type { z } from "zod";
 import { validateConfig, validateEndpointUrl } from "./config.js";
 import type { LineConfig } from "./config.js";
 import { receiveEvent } from "./inbound.js";
+import { mediaError, messages } from "./media.js";
 import { failure, parseBody, rawBody, request, secret, signed, unavailable } from "./io.js";
 import { webhookSchema, targetSchema, retrySchema, receiptSchema } from "./schemas.js";
 
@@ -52,9 +53,20 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       return { status: "rejected", errorCode: "invalid_target" };
     }
     const target = parsed.data;
+    const errorCode = mediaError(input, host);
+    if (errorCode) {
+      return { status: "rejected", errorCode };
+    }
     const retry = await retryIdentity(host, input.chunk.idempotencyKey);
     if (Date.now() - retry.startedAt >= 86_400_000) {
       return { status: "unknown", errorCode: "retry_key_expired" };
+    }
+    const outgoing = await messages(input, host).catch(() => ({
+      status: "retryable" as const,
+      errorCode: "media_publication_failed",
+    }));
+    if (!Array.isArray(outgoing)) {
+      return outgoing;
     }
     try {
       const response = await request(
@@ -68,7 +80,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
           },
           body: JSON.stringify({
             to: target.destination,
-            messages: [{ type: "text", text: input.chunk.text }],
+            messages: outgoing,
           }),
         },
         input.signal,
@@ -99,6 +111,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       maxTextLength: 5000,
       lengthUnit: "utf16",
       idempotentSend: false,
+      media: { receive: ["image", "audio", "video", "file"], send: ["image", "audio", "video"] },
     },
     validateConfig,
     async setup(host, account, config) {

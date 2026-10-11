@@ -299,7 +299,7 @@ describe("feishu native HTTP protocol", () => {
     expect(test.received).toHaveLength(0);
   });
 
-  it("diagnoses unsupported media/bot events and never ACKs failed ingest", async () => {
+  it("diagnoses unsupported sticker/bot events and never ACKs failed ingest", async () => {
     const test = await setup();
     expect(
       (
@@ -308,7 +308,7 @@ describe("feishu native HTTP protocol", () => {
             ...event,
             event: {
               ...event.event,
-              message: { ...event.event.message, message_type: "image" },
+              message: { ...event.event.message, message_type: "sticker" },
             },
           }),
         )

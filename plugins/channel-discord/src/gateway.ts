@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { downloadMedia, mediaKind } from "@relanox/media";
 import type { AccountConfig, ChannelHost } from "@relanox/sdk";
 import { WebSocket } from "ws";
 import type { z } from "zod";
@@ -255,7 +256,7 @@ export function createDiscordGateway(
               !message.webhook_id &&
               message.author.id !== config.botUserId &&
               [0, 19].includes(message.type) &&
-              message.content
+              (message.content || message.attachments.length > 0)
             ) {
               const target = await messageTarget(message, signal);
               await ingest(host, {
@@ -266,6 +267,26 @@ export function createDiscordGateway(
                 },
                 senderId: message.author.id,
                 text: message.content,
+                attachments: await Promise.all(
+                  message.attachments.map(async (attachment) => {
+                    if (attachment.size > (host.maxMediaBytes ?? 25 * 1024 * 1024)) {
+                      throw new Error("media_too_large");
+                    }
+                    const downloaded = await downloadMedia(attachment.url, {
+                      maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
+                      signal,
+                      trustedOrigins: [new URL(config.apiBaseUrl).origin],
+                      allowInsecureLocalhost: config.allowInsecureLoopback,
+                    });
+                    const mimeType = attachment.content_type ?? downloaded.mimeType;
+                    return {
+                      kind: mediaKind(mimeType),
+                      mimeType,
+                      fileName: attachment.filename,
+                      data: downloaded.data,
+                    };
+                  }),
+                ),
                 target: {
                   channel: "discord",
                   accountId: account.id,

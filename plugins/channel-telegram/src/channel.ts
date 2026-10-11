@@ -5,6 +5,7 @@ import { validateConfig } from "./config.js";
 import type { TelegramConfig } from "./config.js";
 import { targetSchema, updateSchema } from "./schemas.js";
 import { bytes, credential, equal, ingest, postJson } from "./transport.js";
+import { hasMedia, receiveMedia, sendMedia } from "./media.js";
 
 /** One factory instance per configured account. Credentials are resolved only at use. */
 export function createTelegramChannel(
@@ -29,6 +30,10 @@ export function createTelegramChannel(
       maxTextLength: 4096,
       lengthUnit: "codepoint",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(nextHost, nextAccount, nextConfig) {
@@ -67,7 +72,8 @@ export function createTelegramChannel(
         }
         const message = update.message;
         if (
-          !message?.text ||
+          !message ||
+          (!message.text && !hasMedia(message)) ||
           !message.from ||
           message.from.is_bot ||
           message.chat.type === "channel"
@@ -88,7 +94,13 @@ export function createTelegramChannel(
               eventId: String(update.update_id),
             },
             senderId: String(message.from.id),
-            text: message.text,
+            text: message.text ?? message.caption ?? "",
+            attachments: await receiveMedia(
+              message,
+              host,
+              config,
+              credential(config.botToken, environment),
+            ),
             target: {
               channel: "telegram",
               accountId: account.id,
@@ -125,6 +137,9 @@ export function createTelegramChannel(
         const token = credential(config.botToken, environment);
         if (!/^\d+:[A-Za-z0-9_-]+$/u.test(token)) {
           return { status: "rejected", errorCode: "invalid_bot_token" };
+        }
+        if (input.chunk.media) {
+          return await sendMedia(input, host, config, token);
         }
         const response = await postJson(
           `${config.apiBaseUrl.replace(/\/$/u, "")}/bot${token}/sendMessage`,

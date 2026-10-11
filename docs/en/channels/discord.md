@@ -21,9 +21,17 @@ Transport: Gateway v10 JSON over WSS, REST API v10. Sources: [Gateway](https://d
 
 Identify/resume, heartbeat/ACK watchdog, reconnect and invalid-session handling are native. READY bot identity must match config. Fatal authentication/intents/sharding close codes degrade the connection and stop automatic reconnect. Session/sequence live in account-scoped durable storage; a text dispatch advances the cursor only after durable ingestion. Failed handoff closes the connection and retains the earlier cursor. Discord's replay/session expiry limits still apply; no unlimited offline delivery promise is made.
 
-Human default/reply text messages are accepted; bot/webhook/system/nontext messages are diagnosed and skipped. REST sends suppress allowed mentions and reference the original message. Text is split at 2000 UTF16 units. A stable 24-character nonce with `enforce_nonce` reduces short-window duplicates, but Discord only enforces it for a few minutes, so `idempotentSend` is false. 429 `retry_after` is honored; transport/5xx ambiguity remains `unknown`.
+Human default/reply text and attachment messages are accepted; bot/webhook/system messages are diagnosed and skipped. REST sends suppress allowed mentions and reference the original message. Text is split at 2000 UTF16 units. A stable 24-character nonce with `enforce_nonce` reduces short-window duplicates, but Discord only enforces it for a few minutes, so `idempotentSend` is false. 429 `retry_after` is honored; transport/5xx ambiguity remains `unknown`.
 
 Optional config: `apiBaseUrl` (default `https://discord.com/api/v10`), `gatewayUrl` (default `wss://gateway.discord.gg`), `intents`, `timeoutMs` (default 10000), `reconnectDelayMs` (100–30000, default 5000), `allowInsecureLoopback` (default false). Production custom URLs support enterprise proxies; cleartext is loopback-only with opt-in. HTTP redirects are disallowed, WS payloads/dispatch backlog are bounded.
+
+## Native media
+
+The Gateway accepts attachment-only messages and text with attachments. `MESSAGE_CONTENT` is needed for attachment fields as well as text; grant `ATTACH_FILES` for output. Downloads use bounded public HTTPS CDN URLs without the bot token. URLs are not persisted as the attachment: core stores the original bytes.
+
+Generated images/audio/video/files use Create Message multipart `payload_json` and `files[0]`, retaining the frozen channel/thread, reply, mention suppression and nonce. The plugin uses a conservative 10 MiB upload cap, additionally bounded by relay limits. Guild tier limits and supported codecs still apply. An ambiguous multipart send remains unknown rather than being automatically replayed.
+
+See [Media transfer](../media.md) and Discord's [message API](https://docs.discord.com/developers/resources/message#create-message). Local Gateway/REST tests verify byte transport, not live-account permissions or playback.
 
 ## Account changes
 

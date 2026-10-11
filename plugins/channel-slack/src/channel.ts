@@ -6,7 +6,6 @@ import type { z } from "zod";
 import { validateConfig, validateTransportUrl } from "./config.js";
 import type { SlackConfig } from "./config.js";
 import {
-  sendResponseSchema,
   socketFrameSchema,
   socketOpenResponseSchema,
   targetSchema,
@@ -14,16 +13,8 @@ import {
   messageSchema,
 } from "./schemas.js";
 import { frameText, waitForStop } from "./socket.js";
-import {
-  bytes,
-  credential,
-  equal,
-  failure,
-  fresh,
-  ingest,
-  jsonResponse,
-  postJson,
-} from "./transport.js";
+import { receiveMedia, sendMedia, sendOutcome } from "./media.js";
+import { bytes, credential, equal, fresh, ingest, jsonResponse, postJson } from "./transport.js";
 
 export function createSlackChannel(
   environment: NodeJS.ProcessEnv = process.env,
@@ -61,10 +52,10 @@ export function createSlackChannel(
     const event = messageSchema.parse(envelope.event);
     if (
       !["message", "app_mention"].includes(event.type) ||
-      event.subtype ||
+      (event.subtype && event.subtype !== "file_share") ||
       event.bot_id ||
       event.user === config.botUserId ||
-      !event.text ||
+      (!event.text && event.files.length === 0) ||
       !event.user ||
       !event.channel ||
       !event.ts
@@ -84,7 +75,13 @@ export function createSlackChannel(
         eventId: envelope.event_id,
       },
       senderId: event.user,
-      text: event.text,
+      text: event.text ?? "",
+      attachments: await receiveMedia(
+        event.files,
+        host,
+        config,
+        credential(config.botToken, environment),
+      ),
       target: {
         channel: "slack",
         accountId: account.id,
@@ -244,6 +241,10 @@ export function createSlackChannel(
       maxTextLength: 4000,
       lengthUnit: "codepoint",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(nextHost, nextAccount, nextConfig) {
@@ -335,6 +336,9 @@ export function createSlackChannel(
         return { status: "rejected", errorCode: "invalid_target" };
       }
       try {
+        if (input.chunk.media) {
+          return await sendMedia(input, host, config, credential(config.botToken, environment));
+        }
         const response = await postJson(
           `${config.apiBaseUrl.replace(/\/$/u, "")}/chat.postMessage`,
           {
@@ -355,29 +359,7 @@ export function createSlackChannel(
           input.signal,
           config.timeoutMs,
         );
-        if (!response.ok) {
-          return failure(response);
-        }
-        const parsed = sendResponseSchema.safeParse(await jsonResponse(response));
-        if (!parsed.success) {
-          return { status: "unknown", errorCode: "invalid_platform_response" };
-        }
-        if (!parsed.data.ok) {
-          if (parsed.data.error === "ratelimited") {
-            return { status: "retryable", errorCode: "rate_limited" };
-          }
-          if (
-            ["internal_error", "fatal_error", "service_unavailable"].includes(
-              parsed.data.error ?? "",
-            )
-          ) {
-            return { status: "unknown", errorCode: "slack_api_error" };
-          }
-          return { status: "rejected", errorCode: "slack_api_error" };
-        }
-        return parsed.data.ts
-          ? { status: "sent", receipt: { platformMessageId: parsed.data.ts } }
-          : { status: "unknown", errorCode: "invalid_platform_response" };
+        return await sendOutcome(response);
       } catch {
         return { status: "unknown", errorCode: "slack_transport_error" };
       }

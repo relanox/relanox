@@ -25,6 +25,7 @@ const configSchema = z.strictObject({
   channelSecret: secretRefSchema,
   accessToken: secretRefSchema,
   apiBase: z.url().default("https://api.line.me"),
+  contentApiBase: z.url().default("https://api-data.line.me"),
   allowLoopback: z.boolean().default(false),
 });
 export type LineConfig = z.infer<typeof configSchema>;
@@ -32,8 +33,13 @@ export type LineConfig = z.infer<typeof configSchema>;
 export function validateConfig(value: unknown): LineConfig {
   const config = configSchema.parse(value);
   const apiBase = validateEndpointUrl(config.apiBase, config.allowLoopback);
-  if (/[?#]/u.test(apiBase.href)) {
+  const contentApiBase = validateEndpointUrl(config.contentApiBase, config.allowLoopback);
+  if (/[?#]/u.test(apiBase.href) || /[?#]/u.test(contentApiBase.href)) {
     throw new Error("invalid_api_base");
   }
-  return { ...config, apiBase: apiBase.href.replace(/\/$/u, "") };
+  return {
+    ...config,
+    apiBase: apiBase.href.replace(/\/$/u, ""),
+    contentApiBase: contentApiBase.href.replace(/\/$/u, ""),
+  };
 }

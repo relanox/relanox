@@ -2,6 +2,7 @@ import type { AccountConfig, ChannelHost } from "@relanox/sdk";
 import type { z } from "zod";
 import type { LineConfig } from "./config.js";
 import { ingest } from "./io.js";
+import { receiveMedia } from "./media.js";
 import type { eventSchema } from "./schemas.js";
 
 export async function receiveEvent(
@@ -14,8 +15,9 @@ export async function receiveEvent(
   if (
     event.type !== "message" ||
     !source ||
-    message?.type !== "text" ||
-    !message.text ||
+    !message ||
+    !["text", "image", "audio", "video", "file"].includes(message.type) ||
+    (message.type === "text" && !message.text) ||
     source.userId === config.botUserId
   ) {
     host.observe.log("debug", "channel_event_ignored", { errorCode: "unsupported_or_self_text" });
@@ -37,7 +39,8 @@ export async function receiveEvent(
   await ingest(host, {
     source: { channel: "line", accountId: account.id, eventId: event.webhookEventId },
     senderId: source.userId,
-    text: message.text,
+    text: message.text ?? "",
+    attachments: await receiveMedia(message, host, config),
     receivedAt: Date.now(),
     context: null,
     target: {

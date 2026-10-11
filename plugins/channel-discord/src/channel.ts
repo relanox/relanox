@@ -1,11 +1,11 @@
-import { createHash } from "node:crypto";
 import type { AccountConfig, ChannelHost, ChannelPlugin } from "@relanox/sdk";
 import { validateConfig } from "./config.js";
 import type { DiscordConfig } from "./config.js";
+import { sendMessage, mediaError } from "./media.js";
 import type { DiscordGateway } from "./gateway.js";
 import { createDiscordGateway } from "./gateway.js";
 import { sendResponseSchema, rateLimitResponseSchema, targetSchema } from "./schemas.js";
-import { credential, failure, jsonResponse, postJson } from "./transport.js";
+import { credential, failure, jsonResponse } from "./transport.js";
 
 export function createDiscordChannel(
   environment: NodeJS.ProcessEnv = process.env,
@@ -30,6 +30,10 @@ export function createDiscordChannel(
       maxTextLength: 2000,
       lengthUnit: "utf16",
       idempotentSend: false,
+      media: {
+        receive: ["image", "audio", "video", "file"],
+        send: ["image", "audio", "video", "file"],
+      },
     },
     validateConfig,
     async setup(nextHost, nextAccount, nextConfig) {
@@ -61,28 +65,15 @@ export function createDiscordChannel(
         return { status: "rejected", errorCode: "invalid_target" };
       }
       try {
-        const response = await postJson(
-          `${config.apiBaseUrl.replace(/\/$/u, "")}/channels/${input.target.threadId ?? input.target.chatId}/messages`,
-          { authorization: `Bot ${credential(config.botToken, environment)}` },
-          {
-            content: input.chunk.text,
-            allowed_mentions: { parse: [], replied_user: false },
-            nonce: createHash("sha256")
-              .update(input.chunk.idempotencyKey)
-              .digest("hex")
-              .slice(0, 24),
-            enforce_nonce: true,
-            ...(input.target.replyToId
-              ? {
-                  message_reference: {
-                    message_id: input.target.replyToId,
-                    fail_if_not_exists: false,
-                  },
-                }
-              : {}),
-          },
-          input.signal,
-          config.timeoutMs,
+        const errorCode = mediaError(input, host);
+        if (errorCode) {
+          return { status: "rejected", errorCode };
+        }
+        const response = await sendMessage(
+          input,
+          host,
+          config,
+          credential(config.botToken, environment),
         );
         if (response.status === 429) {
           const parsed = rateLimitResponseSchema.safeParse(
