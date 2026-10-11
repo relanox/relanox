@@ -8,13 +8,12 @@ Create and enable a robot on the QQ bot platform. Save its app ID and client sec
 
 ## Fill in the configurator
 
-Open the [connection configurator](../configuration.md), select **QQ robot**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
+Open the [connection configurator](../connect.md), select **QQ robot**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-| Configurator field                 | What to enter                     |
-| ---------------------------------- | --------------------------------- |
-| Application ID                     | Replace example: `123456789`      |
-| Client secret environment variable | Variable name: `QQ_CLIENT_SECRET` |
-| Allow proactive messages           | Initial value: `false`            |
+| Configurator field       | What to enter                                          |
+| ------------------------ | ------------------------------------------------------ |
+| Application ID           | The application id obtained during account preparation |
+| Allow proactive messages | Initial value: `false`                                 |
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#qq).
 

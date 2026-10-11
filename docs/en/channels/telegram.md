@@ -8,12 +8,7 @@ Create a bot with @BotFather and save its token as `TELEGRAM_BOT_TOKEN`. Choose 
 
 ## Fill in the configurator
 
-Open the [connection configurator](../configuration.md), select **Telegram**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
-
-| Configurator field                  | What to enter                            |
-| ----------------------------------- | ---------------------------------------- |
-| Bot token environment variable      | Variable name: `TELEGRAM_BOT_TOKEN`      |
-| Webhook secret environment variable | Variable name: `TELEGRAM_WEBHOOK_SECRET` |
+Open the [connection configurator](../connect.md), select **Telegram**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#telegram).
 

@@ -8,15 +8,14 @@ Choose a TLS IRC server with authenticated account tags and register the relayâ€
 
 ## Fill in the configurator
 
-Open the [connection configurator](../configuration.md), select **IRC**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
+Open the [connection configurator](../connect.md), select **IRC**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-| Configurator field                 | What to enter                      |
-| ---------------------------------- | ---------------------------------- |
-| IRC server hostname                | Replace example: `irc.example.com` |
-| TLS port                           | Initial value: `6697`              |
-| Bot nickname                       | Replace example: `relanox`         |
-| SASL account name                  | Replace example: `relanox`         |
-| SASL password environment variable | Variable name: `IRC_SASL_PASSWORD` |
+| Configurator field  | What to enter                                               |
+| ------------------- | ----------------------------------------------------------- |
+| IRC server hostname | The irc server hostname obtained during account preparation |
+| TLS port            | Initial value: `6697`                                       |
+| Bot nickname        | The bot nickname obtained during account preparation        |
+| SASL account name   | The sasl account name obtained during account preparation   |
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#irc).
 

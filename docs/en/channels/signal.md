@@ -8,13 +8,12 @@ Install signal-cli, register or link the Signal account, and start its HTTP JSON
 
 ## Fill in the configurator
 
-Open the [connection configurator](../configuration.md), select **Signal**, and enter the account details and secret environment variable names obtained above. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
+Open the [connection configurator](../connect.md), select **Signal**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-| Configurator field                 | What to enter                                        |
-| ---------------------------------- | ---------------------------------------------------- |
-| Signal bridge URL                  | Replace example: `https://signal-bridge.example.com` |
-| Registered account phone number    | Replace example: `+15551234567`                      |
-| Authorization environment variable | Variable name: `SIGNAL_BRIDGE_AUTHORIZATION`         |
+| Configurator field              | What to enter                                                           |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| Signal bridge URL               | The signal bridge url obtained during account preparation               |
+| Registered account phone number | The registered account phone number obtained during account preparation |
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#signal).
 
