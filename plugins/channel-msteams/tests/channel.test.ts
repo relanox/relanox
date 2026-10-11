@@ -157,58 +157,66 @@ describe("native Microsoft Teams", () => {
     expect((await local.storage.getStats()).pending).toBe(0);
   });
 
-  it("rejects frozen targets after application identity changes across SQLite reopen", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "relanox-teams-identity-"));
-    cleanup.push(() => rm(directory, { recursive: true, force: true }));
-    const filename = join(directory, "state.db");
-    const local = await setup(["msteams"], filename);
-    expect((await local.core.fetch(await local.incoming())).status).toBe(200);
-    await local.close();
-    const plugin = createTeamsChannel();
-    const reopened = await harness(
-      plugin,
-      { ...local.config, appId: "replacement-app" },
-      "conversation-1",
-      "user-id",
-      "root-1",
-      filename,
-    );
-    cleanup.push(reopened.close);
-    const item = (await reopened.storage.listInbound({ limit: 10 }))[0];
-    if (!item) {
-      throw new Error("Missing frozen target");
-    }
-    const input: SendInput = {
-      deliveryId: "delivery",
-      requestId: item.snapshot.requestId,
-      chunkIndex: 0,
-      signal: new AbortController().signal,
-      target: item.snapshot.target,
-      chunk: { text: "answer", idempotencyKey: "delivery:0", state: null },
-    };
-    expect(await plugin.send(input)).toMatchObject({ status: "rejected" });
-    expect(local.remote.traffic.filter((entry) => entry.path.startsWith("/teams/v3"))).toHaveLength(
-      0,
-    );
-    await reopened.close();
-    vi.stubEnv("TEAMS_SECRET", "rotated-secret");
-    const restoredPlugin = createTeamsChannel();
-    const restored = await harness(
-      restoredPlugin,
-      local.config,
-      "conversation-1",
-      "user-id",
-      "root-1",
-      filename,
-    );
-    cleanup.push(restored.close);
-    const legacy = z.record(z.string(), z.json()).parse(input.target.data);
-    delete legacy.appId;
-    expect(
-      await restoredPlugin.send({ ...input, target: { ...input.target, data: legacy } }),
-    ).toMatchObject({ status: "rejected" });
-    expect(await restoredPlugin.send(input)).toMatchObject({ status: "sent" });
-  });
+  it.each(["application identity", "service origin trust"])(
+    "rejects frozen targets after %s changes across SQLite reopen",
+    async (change) => {
+      const directory = await mkdtemp(join(tmpdir(), "relanox-teams-identity-"));
+      cleanup.push(() => rm(directory, { recursive: true, force: true }));
+      const filename = join(directory, "state.db");
+      const local = await setup(["msteams"], filename);
+      expect((await local.core.fetch(await local.incoming())).status).toBe(200);
+      await local.close();
+      const plugin = createTeamsChannel();
+      const reopened = await harness(
+        plugin,
+        {
+          ...local.config,
+          ...(change === "application identity"
+            ? { appId: "replacement-app" }
+            : { trustedServiceOrigins: ["https://replacement.invalid"] }),
+        },
+        "conversation-1",
+        "user-id",
+        "root-1",
+        filename,
+      );
+      cleanup.push(reopened.close);
+      const item = (await reopened.storage.listInbound({ limit: 10 }))[0];
+      if (!item) {
+        throw new Error("Missing frozen target");
+      }
+      const input: SendInput = {
+        deliveryId: "delivery",
+        requestId: item.snapshot.requestId,
+        chunkIndex: 0,
+        signal: new AbortController().signal,
+        target: item.snapshot.target,
+        chunk: { text: "answer", idempotencyKey: "delivery:0", state: null },
+      };
+      expect(await plugin.send(input)).toMatchObject({ status: "rejected" });
+      expect(
+        local.remote.traffic.filter((entry) => entry.path.startsWith("/teams/v3")),
+      ).toHaveLength(0);
+      await reopened.close();
+      vi.stubEnv("TEAMS_SECRET", "rotated-secret");
+      const restoredPlugin = createTeamsChannel();
+      const restored = await harness(
+        restoredPlugin,
+        local.config,
+        "conversation-1",
+        "user-id",
+        "root-1",
+        filename,
+      );
+      cleanup.push(restored.close);
+      const legacy = z.record(z.string(), z.json()).parse(input.target.data);
+      delete legacy.appId;
+      expect(
+        await restoredPlugin.send({ ...input, target: { ...input.target, data: legacy } }),
+      ).toMatchObject({ status: "rejected" });
+      expect(await restoredPlugin.send(input)).toMatchObject({ status: "sent" });
+    },
+  );
 
   it.each([
     [503, "pending"],
