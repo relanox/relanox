@@ -123,8 +123,8 @@ export async function mediaMessage(
 ): Promise<{ msgKey: string; msgParam: string }> {
   if (!input.chunk.media) {
     return {
-      msgKey: 'sampleText',
-      msgParam: JSON.stringify({ content: input.chunk.text })
+      msgKey: 'sampleMarkdown',
+      msgParam: JSON.stringify({ title: 'Relanox', text: input.chunk.text })
     }
   }
   if (!input.media) {

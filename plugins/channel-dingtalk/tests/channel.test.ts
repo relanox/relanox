@@ -189,8 +189,8 @@ test('DingTalk authenticates Stream, ACKs durable stable messages and sends to s
   expect(single?.body).toEqual({
     robotCode: 'robot-code',
     userIds: ['staff'],
-    msgKey: 'sampleText',
-    msgParam: '{"content":"hello_*世界"}'
+    msgKey: 'sampleMarkdown',
+    msgParam: '{"title":"Relanox","text":"hello_*世界"}'
   })
   expect(
     remote.requests.find(
@@ -199,8 +199,8 @@ test('DingTalk authenticates Stream, ACKs durable stable messages and sends to s
   ).toEqual({
     robotCode: 'robot-code',
     openConversationId: 'group-conversation',
-    msgKey: 'sampleText',
-    msgParam: '{"content":"hello_*世界"}'
+    msgKey: 'sampleMarkdown',
+    msgParam: '{"title":"Relanox","text":"hello_*世界"}'
   })
 })
 

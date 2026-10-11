@@ -299,7 +299,7 @@ test.each(
     await scoped.sendMessage({
       replyTo: item.requestId,
       idempotencyKey: 'file-result',
-      text: 'caption',
+      text: '**caption** [link](https://example.com)',
       attachments: [item.attachments[0].id]
     })
     await local.runtime.processDue()
@@ -347,7 +347,12 @@ test.each(
         .filter((request) => request.path === `${base}/messages`)
         .map((request) => request.body)
     ).toEqual([
-      { content: 'caption', msg_type: 0, msg_id: 'file-in', msg_seq: 1 },
+      {
+        markdown: { content: '**caption** [link](https://example.com)' },
+        msg_type: 2,
+        msg_id: 'file-in',
+        msg_seq: 1
+      },
       {
         content: '',
         msg_type: 7,

@@ -358,9 +358,13 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         ),
         jsonPostRequest(
           {
-            content: input.chunk.text,
-            msg_type: media ? 7 : 0,
-            ...(media ? { media: { file_info: media } } : {}),
+            ...(media
+              ? {
+                  msg_type: 7,
+                  content: input.chunk.text,
+                  media: { file_info: media }
+                }
+              : { msg_type: 2, markdown: { content: input.chunk.text } }),
             ...(allocation.mode === 'passive'
               ? { msg_id: target.msgId, msg_seq: allocation.seq }
               : {})

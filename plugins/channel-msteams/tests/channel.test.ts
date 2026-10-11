@@ -200,7 +200,11 @@ describe('native Microsoft Teams', () => {
     expect((await local.core.fetch(await local.incoming())).status).toBe(200)
     expect((await local.core.fetch(await local.incoming())).status).toBe(200)
     expect((await local.storage.getStats()).pending).toBe(1)
-    const completed = await local.sendReply()
+
+    const completed = await local.sendReply(
+      '**answer** [link](https://example.com)'
+    )
+
     expect(completed.delivery?.status).toBe('sent')
     expect(local.dispatches).toEqual(['hello'])
     expect(completed.request.target).toEqual({
@@ -242,7 +246,8 @@ describe('native Microsoft Teams', () => {
     expect(sent?.headers.authorization).toBe('Bearer oauth-token')
     expect(JSON.parse(sent?.body ?? 'null') as unknown).toEqual({
       type: 'message',
-      text: 'answer',
+      textFormat: 'extendedmarkdown',
+      text: '**answer** [link](https://example.com)',
       channelId: 'msteams',
       from: { id: 'bot-id' },
       recipient: { id: 'user-id' },
@@ -381,7 +386,11 @@ describe('native Microsoft Teams', () => {
       const local = await setup()
       await local.core.fetch(await local.incoming())
       local.remote.token(status, { error: 'temporarily_unavailable' })
-      const completed = await local.sendReply()
+
+      const completed = await local.sendReply(
+        '**answer** [link](https://example.com)'
+      )
+
       expect(completed.delivery?.status).toBe(expected)
       expect(
         local.remote.traffic.filter((request) =>

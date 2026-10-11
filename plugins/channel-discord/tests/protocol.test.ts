@@ -818,7 +818,7 @@ describe('discord native Gateway and REST', () => {
       path: '/channels/456/messages',
       headers: { authorization: 'Bot discord-token' },
       body: {
-        content: 'hello @everyone <@U123>',
+        content: '**hello** [link](https://example.com) @everyone <@U123>',
         allowed_mentions: { parse: [], replied_user: false },
         enforce_nonce: true,
         message_reference: { message_id: '789', fail_if_not_exists: false }
