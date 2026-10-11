@@ -346,12 +346,16 @@
   min-width: 0;
   margin: 8px 0 16px;
 }
-.connection-app .discovery-help pre {
-  max-width: 100%;
-  overflow: auto;
-  padding: 12px;
-  background: var(--vp-c-bg-soft);
+.account-advanced {
+  margin-top: 12px;
+}
+.account-advanced summary {
+  cursor: pointer;
+}
+.account-advanced summary span {
+  color: var(--connection-muted);
   font-size: 12px;
+  margin-left: 8px;
 }
 .tutorial-chat {
   display: block;

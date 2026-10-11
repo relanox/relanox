@@ -4,7 +4,7 @@
 
 ## 准备账号
 
-创建企业自建应用，启用机器人能力，授予接收消息、发送消息和资源访问权限。记录 App ID 和 tenant key；将应用密钥、事件 Verification Token 和 Encrypt Key 存入下方环境变量。Lark 用户在「平台域」选择 lark。
+创建企业自建应用，启用机器人能力，授予接收消息、发送消息和资源访问权限。记录 App ID 和 tenant key；将应用密钥、事件 Verification Token 和 Encrypt Key 存入接入教程列出的环境变量。Lark 用户在「平台域」选择 lark。
 
 ## 在配置器中填写
 
@@ -16,11 +16,11 @@
 | 租户标识                 | 上一步取得的租户标识 |
 | 平台域（feishu 或 lark） | 初始值：`feishu`     |
 
-下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#feishu)。
+将下载的配置保存为 `relanox.json`，并按接入教程在服务器上设置密钥。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#feishu)。
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-消息事件的发送者 `open_id` 填入 「允许使用的用户 ID」，`message.chat_id` 填入 「聊天 ID」。事件头中可取得 `tenant_key`，机器人身份可通过机器人信息 API 取得。消息串绑定使用 `message.thread_id`；事件以 `root_id` 标识消息串时使用该值。
+消息事件的发送者 `open_id` 填入 「允许使用的用户 ID」，`message.chat_id` 填入 「聊天 ID」。事件头中可取得 `tenant_key`。消息串绑定使用 `message.thread_id`；事件以 `root_id` 标识消息串时使用该值。
 
 ## 启用连接
 

@@ -15,7 +15,7 @@
 | Signal 桥接地址    | 上一步取得的Signal 桥接地址    |
 | 已注册账户电话号码 | 上一步取得的已注册账户电话号码 |
 
-下载配置后，在启动服务的环境中设置密钥变量，保存为 `relanox.json`。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#signal)。
+将下载的配置保存为 `relanox.json`，并按接入教程在服务器上设置密钥。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#signal)。
 
 要取得发送者 ID，先发送一条测试消息，让服务管理员查看 `/api/v1/events?account=<account>` 事件流。允许发送者优先使用收到信封的 `sourceUuid`；没有 UUID 时使用号码/source 标识。私聊绑定填写 `direct:<sender>`，群聊填写 `group:<groupId>`。群组 ID 可从服务的群组信息或收到的信封取得。
 

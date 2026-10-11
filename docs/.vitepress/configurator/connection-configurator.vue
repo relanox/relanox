@@ -17,7 +17,6 @@ const {
   selectedDetails,
   feedback,
   selected,
-  httpsChannels,
   lines,
   issues,
   issueMessages,
@@ -26,6 +25,7 @@ const {
   activeChannel,
   definition,
   channelName,
+  accountName,
   visibleChannels,
   toggleChannel,
   appendAccount,
@@ -202,8 +202,8 @@ async function showDetails(): Promise<void> {
                             '在 dot 选择 OAuth，在 Relanox 授权页面输入此密码。'
                           )
                         : text(
-                            'The MCP address includes this password. Paste the full address into Grok.',
-                            'MCP 地址包含此密码，将完整地址粘贴到 Grok。'
+                            'Copy the complete address from the setup guide into Grok. You do not need to enter this password separately.',
+                            '将接入教程中的完整地址复制到 Grok，无需另外填写密码。'
                           )
                     }}
                   </p>
@@ -234,9 +234,8 @@ async function showDetails(): Promise<void> {
                 >
                   <PlatformLogo :platform="channel.channel" />
                   <span
-                    >{{ channelName(channel.channel)
-                    }}<small
-                      >{{ channel.id }} ·
+                    >{{ accountName(channel.id)
+                    }}<small>
                       {{
                         chat.chatId ||
                         text(`Chat ${index + 1}`, `聊天 ${index + 1}`)
@@ -250,8 +249,8 @@ async function showDetails(): Promise<void> {
                   v-model="chat.endpointId"
                   :aria-label="
                     text(
-                      `${channel.id} chat ${index + 1} Agent`,
-                      `${channel.id} 聊天 ${index + 1} 接收 Agent`
+                      `${accountName(channel.id)} chat ${index + 1} Agent`,
+                      `${accountName(channel.id)} 聊天 ${index + 1} 接收 Agent`
                     )
                   "
                 >
@@ -309,20 +308,9 @@ async function showDetails(): Promise<void> {
               <p id="public-host-hint" class="field-hint">
                 {{
                   text(
-                    'dot and Grok access MCP through this address. Point it to your Relanox server, including when channels use outbound connections.',
-                    'dot 和 Grok 通过此地址访问 MCP。请将它指向 Relanox 服务，长连接渠道也需要填写。'
+                    'Enter the public address where you deployed Relanox so your Agent can connect.',
+                    '填写部署 Relanox 时使用的公开地址，让 Agent 能连接到你的服务。'
                   )
-                }}
-                {{
-                  httpsChannels.length
-                    ? text(
-                        `${httpsChannels.join(', ')} also uses it for webhooks.`,
-                        `${httpsChannels.join('、')} 的回调也使用此地址。`
-                      )
-                    : text(
-                        'These channels need no separate webhook registration.',
-                        '所选渠道无需另行注册 webhook。'
-                      )
                 }}
               </p>
               <template v-if="activeChannel">
@@ -337,7 +325,7 @@ async function showDetails(): Promise<void> {
                       :key="channel.id"
                       :value="channel.id"
                     >
-                      {{ channelName(channel.channel) }} · {{ channel.id }}
+                      {{ accountName(channel.id) }}
                     </option>
                   </select>
                 </div>
@@ -368,8 +356,8 @@ async function showDetails(): Promise<void> {
                 <p class="field-hint">
                   {{
                     text(
-                      'Each account uses its own credentials. Multiple chats below share this account and its allowed users.',
-                      '每个账号使用独立凭据。下方多个聊天共用此账号及其允许用户。'
+                      'These chats use the same bot account and allowed users. Add another account for a different bot.',
+                      '下方聊天共用此机器人账号和允许用户。另一个机器人请添加新账号。'
                     )
                   }}
                 </p>
@@ -397,7 +385,9 @@ async function showDetails(): Promise<void> {
                   }}
                 </p>
                 <div
-                  v-for="field in definition(activeChannel.channel)?.fields"
+                  v-for="field in definition(
+                    activeChannel.channel
+                  )?.fields.filter((entry) => entry.kind !== 'env')"
                   :key="field.key"
                   class="extra-field"
                 >
@@ -434,12 +424,35 @@ async function showDetails(): Promise<void> {
                     :placeholder="field.placeholder"
                   />
                 </div>
+                <details class="account-advanced">
+                  <summary>
+                    {{ text('Credential variable names', '凭据变量名') }}
+                    <span>{{ text('Usually unchanged', '通常无需修改') }}</span>
+                  </summary>
+                  <div
+                    v-for="field in definition(
+                      activeChannel.channel
+                    )?.fields.filter((entry) => entry.kind === 'env')"
+                    :key="field.key"
+                    class="extra-field"
+                  >
+                    <label :for="`${activeChannel.id}-${field.key}`">{{
+                      local(field.label)
+                    }}</label>
+                    <input
+                      :id="`${activeChannel.id}-${field.key}`"
+                      v-model="activeChannel.fields[field.key]"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                  </div>
+                </details>
               </template>
               <p class="field-hint">
                 {{
                   text(
-                    'Channel credentials use environment variables. Set their values on your server. Copy the generated MCP passwords from the setup guide.',
-                    '渠道凭据使用环境变量，请在服务器上设置其值。生成的 MCP 密码可从接入教程复制。'
+                    'Open the setup guide to see which credentials to copy and where to put them.',
+                    '打开接入教程，按步骤复制凭据并完成服务器设置。'
                   )
                 }}
               </p>
@@ -498,6 +511,7 @@ async function showDetails(): Promise<void> {
       :connections="connections"
       :issues="issues"
       :chinese="chinese"
+      :account-name="accountName"
       @close="tutorialOpen = false"
     />
   </div>

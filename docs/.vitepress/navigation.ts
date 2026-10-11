@@ -62,7 +62,20 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
       {
         text: label('Daily use', '日常使用'),
         items: [
-          page(label('Deployment and backups', '部署与备份'), 'operations'),
+          page(label('Deployment and backups', '部署与备份'), 'operations')
+        ]
+      },
+      {
+        text: label('Technical reference', '技术参考'),
+        collapsed: true,
+        items: [
+          page(
+            label('Configuration and CLI', '配置与 CLI'),
+            'reference/configuration'
+          ),
+          page(label('Agent protocols', 'Agent 协议'), 'reference/agents'),
+          page(label('Channel settings', '渠道配置'), 'reference/channels'),
+          page(label('Media transfer', '媒体传输'), 'reference/media'),
           page(
             label('Message status and recovery', '消息状态与恢复'),
             'reference/core'
