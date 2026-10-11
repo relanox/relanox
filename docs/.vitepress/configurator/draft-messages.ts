@@ -8,8 +8,12 @@ const messages: Record<string, Localized> = {
     zh: '将示例域名替换为你自己的域名。'
   },
   publicHost: {
-    en: 'Enter a valid public HTTPS hostname, without a path.',
-    zh: '填写有效的公开 HTTPS 域名，不包含路径。'
+    en: 'Enter an HTTPS address or a local HTTP address (127.0.0.1 or [::1]), without a path.',
+    zh: '填写 HTTPS 地址或本机 HTTP 地址（127.0.0.1 或 [::1]），不包含路径。'
+  },
+  publicHostRequired: {
+    en: 'The selected webhook channels require a public HTTPS address.',
+    zh: '所选回调渠道需要填写公开 HTTPS 地址。'
   },
   channelRequired: {
     en: 'Choose at least one channel.',

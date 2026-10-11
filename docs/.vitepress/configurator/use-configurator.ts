@@ -10,6 +10,7 @@ import {
   createState,
   environmentNames,
   removeAgent,
+  publicHttpsChannels,
   validateDraft
 } from './model.js'
 import type {
@@ -32,6 +33,7 @@ type ConfiguratorView = {
   selectedDetails: Ref<string>
   feedback: Ref<string>
   selected: ComputedRef<ChannelState[]>
+  httpsChannels: ComputedRef<string[]>
   json: ComputedRef<string>
   lines: ComputedRef<{ text: string; kind: string }[][]>
   issues: ComputedRef<DraftIssue[]>
@@ -116,6 +118,10 @@ export function useConfigurator(): ConfiguratorView {
   const channelName = (id: string): string =>
     local(definition(id)?.name ?? { en: id, zh: id })
 
+  const httpsChannels = computed(() =>
+    publicHttpsChannels(state).map((channel) => local(channel.name))
+  )
+
   const common = ['telegram', 'feishu', 'discord', 'slack', 'wecom', 'dingtalk']
 
   const visibleChannels = computed(() =>
@@ -195,6 +201,7 @@ export function useConfigurator(): ConfiguratorView {
     selectedDetails,
     feedback,
     selected,
+    httpsChannels,
     json,
     lines,
     issues,

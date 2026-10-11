@@ -1,4 +1,4 @@
-/* Keep the tool inside the native VitePress shell, with bounded scroll panes. */
+/* Desktop uses bounded panes; narrow screens follow the document flow. */
 .Layout.connection-page {
   height: 100dvh;
   min-height: 0;
@@ -529,6 +529,36 @@
   }
 }
 @media (max-width: 767px) {
+  .Layout.connection-page {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .connection-page .VPContent {
+    flex: none;
+  }
+  .connection-page .VPDoc,
+  .connection-page
+    .VPDoc
+    :is(.container, .content, .content-container, .main, .vp-doc),
+  .connection-page .VPDoc .vp-doc > div,
+  .connection-app {
+    height: auto;
+  }
+  .connection-workspace {
+    flex: none;
+  }
+  .connection-inputs {
+    flex: none;
+    overflow: visible;
+  }
+  .connection-details {
+    scroll-margin-top: calc(var(--vp-nav-height) + 16px);
+  }
+  .preview-code {
+    flex: none;
+    max-height: min(70dvh, 640px);
+  }
   .connection-page .VPDoc {
     padding: 12px;
   }
@@ -544,7 +574,7 @@
   }
   .connection-workspace {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 0.85fr);
+    grid-template-rows: auto auto;
   }
   .connection-preview {
     border-left: 0;
@@ -589,9 +619,6 @@
   }
 }
 @media (max-height: 520px) and (max-width: 767px) {
-  .connection-workspace {
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1.2fr);
-  }
   .connection-page .VPDoc {
     padding: 8px;
   }

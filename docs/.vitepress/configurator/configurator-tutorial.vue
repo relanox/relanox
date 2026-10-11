@@ -125,8 +125,8 @@ onUnmounted(() => {
           <p>
             {{
               text(
-                'This configuration uses SQLite. Keep data/relanox.sqlite on persistent storage. Point your HTTPS domain to the service on 127.0.0.1:8787.',
-                '这份配置使用 SQLite，请持久保存 data/relanox.sqlite。将公开 HTTPS 域名转发到本机 127.0.0.1:8787。'
+                'This configuration uses SQLite. Keep data/relanox.sqlite on persistent storage. For webhook channels, forward your HTTPS address to 127.0.0.1:8787. Outbound channels need no public callback; cloud Agents still need a reachable MCP address. A loopback address is only reachable on the same machine.',
+                '这份配置使用 SQLite，请持久保存 data/relanox.sqlite。回调渠道需将 HTTPS 地址转发到本机 127.0.0.1:8787。长连接渠道无需公开回调，但云端 Agent 仍需可访问的 MCP 地址；本机地址仅能在同一台机器访问。'
               )
             }}
             <a :href="link('operations.html')" target="_blank" rel="noopener">{{

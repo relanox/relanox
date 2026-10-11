@@ -54,6 +54,86 @@ describe('connection configurator production contracts', () => {
     })
   })
 
+  it.each([
+    ['telegram', true],
+    ['slack', true],
+    ['feishu', true],
+    ['msteams', true],
+    ['whatsapp', true],
+    ['googlechat', true],
+    ['line', true],
+    ['discord', false],
+    ['wecom', false],
+    ['dingtalk', false],
+    ['qq', false],
+    ['matrix', false],
+    ['mattermost', false],
+    ['signal', false],
+    ['irc', false]
+  ] as const)(
+    'applies %s address requirements without forcing HTTPS on outbound channels',
+    (channelId, requiresHttps) => {
+      const state = completedState()
+      state.publicHost = ''
+      for (const channel of state.channels) {
+        channel.enabled = channel.channel === channelId
+      }
+      if (requiresHttps) {
+        expect(validateDraft(state)).toContainEqual({
+          code: 'publicHostRequired',
+          target: 'publicHost'
+        })
+      } else {
+        expect(validateDraft(state)).toEqual([])
+        const config = buildConfig(state)
+        expect(validateApp(config).publicUrl).toBe('http://127.0.0.1:8787')
+        expect(connectionDetails(state)[0]?.mcpUrl).toBe(
+          'http://127.0.0.1:8787/agents/dot/mcp/agent-1'
+        )
+        expect(webhookDetails(state)).toEqual([])
+      }
+    }
+  )
+
+  it('rechecks callback requirements when adding a channel and retains the supplied address', () => {
+    const state = completedState()
+    for (const channel of state.channels) {
+      channel.enabled = channel.channel === 'discord'
+    }
+    state.publicHost = 'http://[::1]:8787'
+    expect(validateDraft(state)).toEqual([])
+    expect(validateApp(buildConfig(state)).publicUrl).toBe('http://[::1]:8787')
+
+    const telegram = state.channels.find(
+      (channel) => channel.channel === 'telegram'
+    )
+
+    if (!telegram) {
+      throw new Error('Telegram missing')
+    }
+    telegram.enabled = true
+    expect(validateDraft(state)).toContainEqual({
+      code: 'publicHostRequired',
+      target: 'publicHost'
+    })
+    state.publicHost = 'https://relay.test.example:8443'
+    expect(validateDraft(state)).toEqual([])
+    expect(webhookDetails(state)).toEqual([
+      {
+        id: 'telegram-main',
+        webhookUrl:
+          'https://relay.test.example:8443/channels/telegram-main/webhook'
+      }
+    ])
+    telegram.enabled = false
+    expect(buildConfig(state).publicUrl).toBe('https://relay.test.example:8443')
+    state.publicHost = 'http://public.example'
+    expect(validateDraft(state)).toContainEqual({
+      code: 'publicHost',
+      target: 'publicHost'
+    })
+  })
+
   it('uses native platform callback paths and excludes outbound connections', () => {
     const state = completedState()
     expect(webhookDetails(state)).toEqual([

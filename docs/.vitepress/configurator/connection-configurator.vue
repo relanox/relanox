@@ -15,6 +15,7 @@ const {
   selectedDetails,
   feedback,
   selected,
+  httpsChannels,
   lines,
   issues,
   issueMessages,
@@ -41,8 +42,12 @@ async function showDetails(): Promise<void> {
   if (!pane || !panel) {
     return
   }
-  pane.scrollTop +=
-    panel.getBoundingClientRect().top - pane.getBoundingClientRect().top - 16
+  if (pane.scrollHeight > pane.clientHeight) {
+    pane.scrollTop +=
+      panel.getBoundingClientRect().top - pane.getBoundingClientRect().top - 16
+  } else {
+    panel.scrollIntoView({ block: 'start' })
+  }
   panel.querySelector('summary')?.focus({ preventScroll: true })
 }
 </script>
@@ -222,20 +227,36 @@ async function showDetails(): Promise<void> {
                 </li>
               </ul>
               <label for="public-host">{{
-                text('Public HTTPS hostname', '公开 HTTPS 域名')
+                httpsChannels.length
+                  ? text(
+                      'Public HTTPS address (required)',
+                      '公开 HTTPS 地址（必填）'
+                    )
+                  : text('Service address (optional)', '服务地址（可选）')
               }}</label>
               <input
                 id="public-host"
                 v-model="state.publicHost"
-                placeholder="relay.example.com"
+                :placeholder="
+                  httpsChannels.length
+                    ? 'https://relay.example.com'
+                    : 'http://127.0.0.1:8787'
+                "
+                :required="httpsChannels.length > 0"
+                aria-describedby="public-host-hint"
                 autocomplete="off"
               />
-              <p class="field-hint">
+              <p id="public-host-hint" class="field-hint">
                 {{
-                  text(
-                    'Use the domain pointing to your Relanox server.',
-                    '填写指向你的 Relanox 服务的域名。'
-                  )
+                  httpsChannels.length
+                    ? text(
+                        `${httpsChannels.join(', ')} needs HTTPS webhook delivery. Enter the address pointing to your Relanox server.`,
+                        `${httpsChannels.join('、')} 需要 HTTPS 回调地址，请填写指向 Relanox 服务的地址。`
+                      )
+                    : text(
+                        'These channels connect outward and do not need an HTTPS callback. Leave blank for http://127.0.0.1:8787; your Agent must still be able to reach the MCP address.',
+                        '所选渠道主动连接平台，无需 HTTPS 回调。留空使用 http://127.0.0.1:8787；Agent 仍需能够访问 MCP 地址。'
+                      )
                 }}
               </p>
               <template v-if="activeChannel">
