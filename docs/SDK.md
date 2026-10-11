@@ -1,6 +1,6 @@
 # SDK v1 implementation contract
 
-`packages/sdk/src/index.ts` is the executable contract. All methods returning promises must finish their durable write before resolving. Times use integer Unix epoch milliseconds; durations use milliseconds. JSON is serializable, excludes undefined, and carries only platform protocol context. No SQL or transaction callback is exposed.
+`packages/sdk/src/index.ts` is the stable public contract entrypoint. Definitions are organized by configuration, messages, plugin state, storage, observability and plugin hosts in adjacent domain modules. All methods returning promises must finish their durable write before resolving. Times use integer Unix epoch milliseconds; durations use milliseconds. JSON is serializable, excludes undefined, and carries only platform protocol context. No SQL or transaction callback is exposed.
 
 ## Assembly and scope
 
