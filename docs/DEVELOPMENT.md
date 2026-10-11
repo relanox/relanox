@@ -31,10 +31,22 @@ Read [SDK](SDK.md), [Core](CORE.md) and the selected protocol document before ch
 
 ## Changes and tests
 
-Follow [AGENTS.md](../AGENTS.md) and [code quality rules](CODE_QUALITY.md). Use a fresh task worktree, inspect recent commit messages before each commit, and keep commits coherent. `prepare` installs the tracked pre-commit hook. Run `pnpm format` explicitly; the hook checks without silently modifying the index and rejects partially staged files.
+Inspect recent commit messages before each commit, match the existing style, and keep commits coherent. `prepare` installs the tracked pre-commit hook. Run `pnpm format` explicitly; the hook checks without silently modifying the index and rejects partially staged files.
 
-Before adding or changing tests, record the four admission answers in `docs/testing/<task>.md`. Test observable behavior and credible regressions. Use real storage and external HTTP/socket peers; peers may implement external protocol responses, never Relanox routing, authorization or persistence. A full relay test must exercise production ingress, agent authentication/claim/completion and outbound transport, not stitch together mocked business functions.
+Test observable behavior and credible regressions. Explain the behavior protected, the failure it catches, and why existing coverage is insufficient in the pull request; do not create per-task test reports or production seams used only by tests. Use real storage and external HTTP/socket peers; peers may implement external protocol responses, never Relanox routing, authorization or persistence. A full relay test must exercise production ingress, agent authentication/claim/completion and outbound transport, not stitch together mocked business functions.
 
 Keep package dependencies exact, update the lockfile, inspect install scripts and license metadata, and refresh production notices when the runtime graph changes. No reference checkout is shipped. New protocol behavior must have a verified primary source and explicit limits in its channel documentation. Do not claim live-account compatibility from local tests.
 
 pnpm 12 retains its default release-age policy. The workspace exempts only the reviewed, already-pinned `oxlint-tsgolint` platform packages at `7.0.2004` and `process-warning@5.1.1`; other fresh releases remain subject to that policy. Dependency build scripts are allowed only for `esbuild@0.28.2`, whose install script validates its pinned executable. These exact exceptions are recorded in `pnpm-workspace.yaml`; do not disable the supply-chain policy globally when updating dependencies.
+
+## Code quality and source organization
+
+Oxfmt owns formatting and type-aware Oxlint owns linting. Use the root scripts and configuration; do not add another formatter or bypass the tracked hook. CI builds workspace declarations first, then runs the same checks. New test directories need a discoverable TypeScript configuration.
+
+- Keep configuration schemas below runtime modules in the import graph. Validation must not resolve secrets, open resources or initialize live state.
+- Organize modules by responsibility. Keep transactions and connection state machines under one owner; file length alone is not a reason to split them.
+- Keep SDK contracts explicit and import concrete siblings rather than a package's own public entrypoint. Preserve discriminated work/result types through settlement.
+- Use descriptive names and format SQL so parameters, predicates and version fences can be reviewed together.
+- Complexity is limited to 20 and nesting to four levels. Unsafe types, unhandled promises and unused suppressions fail the lint gate. Refactoring should use existing API and protocol tests, not assertions about private structure.
+
+The static CLI catalog in `apps/cli/src/plugins.ts` has an explicit import limit of 18 for fifteen channels, two agents and the SDK contract; other files retain the default limit of ten. Other scoped rule exceptions are defined in `.oxlintrc.json`, including test method references and synchronous tooling subprocesses. Do not disable a rule merely to pass a check; justify any narrow policy change in the pull request.
