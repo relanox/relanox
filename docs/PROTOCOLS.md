@@ -1,6 +1,6 @@
-# Protocol implementation baseline
+# Protocol references
 
-Date: 2026-10-11. This is an implementation checklist, not evidence of live-account compatibility. All 15 text channels are required. Implementers must read the linked specification and encode the actual request/response shape in Zod/TypeScript (or use the SDK); do not infer a wire format from this summary. Record any version/transport choice in the channel documentation.
+Primary references for the supported protocols. Wire formats are validated with Zod/TypeScript and the relevant SDK. Transport choices and limitations are documented per channel; local protocol tests do not establish live-account compatibility.
 
 ## MCP and hosted agents
 
@@ -25,7 +25,7 @@ Follow the [OpenAI MCP Events documentation](https://developers.openai.com/plugi
 
 ### Grok
 
-Use user-configured Routine URL and exact Authorization, not a guessed internal endpoint. Send the request ID, text and minimum source context in the documented Relanox JSON envelope, using content for the publicly demonstrated text path. Complete via the authenticated MCP tools. The full Grok Bot Webhook schema is not publicly specified; external implementation examples are evidence, not an official promise. Tests verify Relanox's submitted bytes and subsequent MCP behavior, not remote Bot comprehension. See architecture sources.
+Use user-configured Routine URL and exact Authorization, not a guessed internal endpoint. Send the request ID, text and minimum source context in the documented Relanox JSON envelope, using content for the publicly demonstrated text path. Complete via the authenticated MCP tools. The full Grok Bot Webhook schema is not publicly specified; external implementation examples are evidence, not an official promise. Tests verify Relanox's submitted bytes and subsequent MCP behavior, not remote Bot comprehension. See [hosted Agent protocols](AGENTS_PROTOCOL.md).
 
 ## Native channel protocols
 
@@ -51,4 +51,4 @@ Each plugin must expose its chosen receive mode and unsupported events/features.
 
 ## Test protocol peers
 
-Local HTTP/WebSocket/TCP/SSE peers exercise actual production transport code and capture sent bytes. They may respond as the remote service, but must not decide whether Relanox bindings, claims, retries or state transitions are correct. Use independently specified expected headers/bodies, real storage for transaction/restart behavior, and real SDK clients for MCP where possible. Record the four test-admission answers before writing each test group.
+Local HTTP/WebSocket/TCP/SSE peers exercise actual production transport code and capture sent bytes. They may respond as the remote service, but must not decide whether Relanox bindings, claims, retries or state transitions are correct. Use independently specified expected headers/bodies, real storage for transaction/restart behavior, and real SDK clients for MCP where possible.
