@@ -8,13 +8,14 @@ Include Relanox's license and the notices for the dependencies you distribute. T
 
 The package manifests and lockfile identify the exact versions. The shipped runtime uses dependencies under the following declared licenses:
 
-| License       | Examples in the runtime                                                             |
-| ------------- | ----------------------------------------------------------------------------------- |
-| MIT           | Hono, Pino, better-sqlite3, PostgreSQL's `pg` client, Zod, `ws`, Standard Webhooks. |
-| Apache-2.0    | Model Context Protocol packages, OpenTelemetry packages, Prometheus client.         |
-| ISC           | `pg-int8` and `split2`.                                                             |
-| Unlicense     | `fast-sha256`.                                                                      |
-| Public domain | SQLite embedded by better-sqlite3.                                                  |
+| License       | Examples in the runtime                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| MIT           | Hono, Pino, better-sqlite3, PostgreSQL's `pg` client, Zod, `ws`, Standard Webhooks, Marked. |
+| Apache-2.0    | Model Context Protocol packages, OpenTelemetry packages, Prometheus client.                 |
+| BSD-2-Clause  | `entities`.                                                                                 |
+| ISC           | `pg-int8` and `split2`.                                                                     |
+| Unlicense     | `fast-sha256`.                                                                              |
+| Public domain | SQLite embedded by better-sqlite3.                                                          |
 
 The MIT texts for `pg-types` and `pgpass` are included in their README files. Standard Webhooks' missing archive license and the Prometheus client's missing upstream NOTICE are supplied in `licenses/` from the matching published upstream commits. Development tools are separate from the production image.
 

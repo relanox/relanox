@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@relanox/markdown": "workspace:*",
     "@relanox/sdk": "workspace:*",
     "hono": "4.13.13",
     "zod": "4.6.5"

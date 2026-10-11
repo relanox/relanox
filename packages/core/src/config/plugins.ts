@@ -32,6 +32,7 @@ export function validatePluginConfigurations(
       plugin.capabilities.lengthUnit
     )
     for (const maximum of [
+      plugin.capabilities.maxTextLengthPerMessage,
       plugin.capabilities.maxChunksPerMessage,
       plugin.capabilities.maxAttachmentsPerMessage
     ]) {
