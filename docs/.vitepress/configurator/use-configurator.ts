@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import { useData, withBase } from 'vitepress'
 import { CHANNELS } from './channels.js'
@@ -9,6 +9,7 @@ import {
   connectionDetails,
   createState,
   environmentNames,
+  generateMcpToken,
   removeAgent,
   publicHttpsChannels,
   validateDraft
@@ -17,6 +18,7 @@ import type {
   ChannelDefinition,
   ChannelState,
   ConfiguratorState,
+  ConnectionDetails,
   Localized
 } from './types.js'
 import type { DraftIssue } from './model.js'
@@ -34,16 +36,18 @@ type ConfiguratorView = {
   feedback: Ref<string>
   selected: ComputedRef<ChannelState[]>
   httpsChannels: ComputedRef<string[]>
+  hasOAuth: ComputedRef<boolean>
   json: ComputedRef<string>
   lines: ComputedRef<{ text: string; kind: string }[][]>
   issues: ComputedRef<DraftIssue[]>
   issueMessages: ComputedRef<string[]>
   variables: ComputedRef<string[]>
-  connections: ComputedRef<{ id: string; mcpUrl: string; tokenEnv: string }[]>
+  connections: ComputedRef<ConnectionDetails[]>
   activeChannel: ComputedRef<ChannelState | undefined>
   definition(id: string): ChannelDefinition | undefined
   channelName(id: string): string
   visibleChannels: ComputedRef<ChannelState[]>
+  regenerateToken(id: string): void
   appendAgent(): void
   deleteAgent(id: string): void
   copy(): Promise<void>
@@ -79,6 +83,11 @@ export function useConfigurator(): ConfiguratorView {
     withBase(`/${chinese.value ? 'zh-CN' : 'en'}/${path}`)
 
   const state = reactive(createState())
+  onMounted(() => {
+    for (const agent of state.agents) {
+      agent.mcpToken = generateMcpToken()
+    }
+  })
   const firstAgent = state.agents[0]
   if (firstAgent) {
     firstAgent.name = text('My assistant', '我的助手')
@@ -122,6 +131,10 @@ export function useConfigurator(): ConfiguratorView {
     publicHttpsChannels(state).map((channel) => local(channel.name))
   )
 
+  const hasOAuth = computed(() =>
+    state.agents.some((agent) => agent.type === 'dot')
+  )
+
   const common = ['telegram', 'feishu', 'discord', 'slack', 'wecom', 'dingtalk']
 
   const visibleChannels = computed(() =>
@@ -150,10 +163,18 @@ export function useConfigurator(): ConfiguratorView {
 
   function appendAgent(): void {
     const agent = addAgent(state)
+    agent.mcpToken = generateMcpToken()
     agent.name = text(
       `Assistant ${state.nextAgentNumber - 1}`,
       `助手 ${state.nextAgentNumber - 1}`
     )
+  }
+
+  function regenerateToken(id: string): void {
+    const agent = state.agents.find((entry) => entry.id === id)
+    if (agent) {
+      agent.mcpToken = generateMcpToken()
+    }
   }
 
   function deleteAgent(id: string): void {
@@ -202,6 +223,7 @@ export function useConfigurator(): ConfiguratorView {
     feedback,
     selected,
     httpsChannels,
+    hasOAuth,
     json,
     lines,
     issues,
@@ -212,6 +234,7 @@ export function useConfigurator(): ConfiguratorView {
     definition,
     channelName,
     visibleChannels,
+    regenerateToken,
     appendAgent,
     deleteAgent,
     copy,

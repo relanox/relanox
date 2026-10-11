@@ -4,6 +4,7 @@ import type {
   AgentState,
   ChannelState,
   ConfiguratorState,
+  ConnectionDetails,
   FieldDefinition,
   GeneratedConfig,
   Json
@@ -15,7 +16,8 @@ export function addAgent(state: ConfiguratorState): AgentState {
   const agent: AgentState = {
     id: `agent-${number}`,
     name: `Agent ${number}`,
-    type: 'dot'
+    type: 'dot',
+    mcpToken: ''
   }
 
   state.agents.push(agent)
@@ -127,7 +129,8 @@ function endpointConfig(agent: AgentState): Record<string, Json> {
   const prefix = `RELANOX_${agent.id.replaceAll('-', '_').toUpperCase()}`
 
   const mcp = {
-    token: { env: `${prefix}_MCP_TOKEN` }
+    token: { env: `${prefix}_MCP_TOKEN` },
+    auth: agent.type === 'dot' ? 'oauth' : 'path'
   }
 
   if (agent.type === 'grok') {
@@ -212,6 +215,9 @@ export function validateDraft(state: ConfiguratorState): DraftIssue[] {
     issues.push({ code: 'agentRequired', target: 'agents' })
   }
   for (const agent of state.agents) {
+    if (!/^[A-Za-z0-9_-]{32,}$/u.test(agent.mcpToken)) {
+      issues.push({ code: 'mcpToken', target: agent.id })
+    }
     if (!agent.name.trim()) {
       issues.push({ code: 'agentName', target: agent.id })
     }
@@ -233,15 +239,26 @@ export function publicHttpsChannels(state: ConfiguratorState): typeof CHANNELS {
 }
 
 function publicHostIssues(state: ConfiguratorState): DraftIssue[] {
-  const required = publicHttpsChannels(state).length > 0
+  const oauth = state.agents.some((agent) => agent.type === 'dot')
+  const required = publicHttpsChannels(state).length > 0 || oauth
   const host = state.publicHost.trim()
   if (!host && required) {
-    return [{ code: 'publicHostRequired', target: 'publicHost' }]
+    return [
+      {
+        code: oauth ? 'oauthPublicHost' : 'publicHostRequired',
+        target: 'publicHost'
+      }
+    ]
   }
   try {
     const origin = validatePublicUrl(publicOrigin(host))
     if (required && !origin.startsWith('https:')) {
-      return [{ code: 'publicHostRequired', target: 'publicHost' }]
+      return [
+        {
+          code: oauth ? 'oauthPublicHost' : 'publicHostRequired',
+          target: 'publicHost'
+        }
+      ]
     }
   } catch {
     return [{ code: 'publicHost', target: 'publicHost' }]
@@ -368,10 +385,19 @@ function secureUrlProblem(value: string): string | undefined {
 
 export function connectionDetails(
   state: ConfiguratorState
-): { id: string; mcpUrl: string; tokenEnv: string }[] {
+): ConnectionDetails[] {
   return state.agents.map((agent) => ({
     id: agent.id,
-    mcpUrl: `${publicOrigin(state.publicHost)}/agents/${agent.type}/mcp/${agent.id}`,
-    tokenEnv: `RELANOX_${agent.id.replaceAll('-', '_').toUpperCase()}_MCP_TOKEN`
+    mcpUrl: `${publicOrigin(state.publicHost)}/agents/${agent.type}/mcp/${agent.id}${agent.type === 'grok' && agent.mcpToken ? `/${encodeURIComponent(agent.mcpToken)}` : ''}`,
+    tokenEnv: `RELANOX_${agent.id.replaceAll('-', '_').toUpperCase()}_MCP_TOKEN`,
+    token: agent.mcpToken,
+    auth: agent.type === 'dot' ? 'oauth' : 'path'
   }))
+}
+
+/** Generate credentials only when explicitly requested by the browser UI. */
+export function generateMcpToken(): string {
+  return [...globalThis.crypto.getRandomValues(new Uint8Array(32))]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
 }

@@ -30,6 +30,7 @@ export type AgentState = {
   id: string
   name: string
   type: AgentType
+  mcpToken: string
 }
 
 export type ChannelState = {
@@ -67,4 +68,12 @@ export type GeneratedConfig = {
     }[]
     storage: { plugin: 'sqlite'; config: { filename: string } }
   }
+}
+
+export type ConnectionDetails = {
+  id: string
+  mcpUrl: string
+  tokenEnv: string
+  token: string
+  auth: 'oauth' | 'path'
 }
