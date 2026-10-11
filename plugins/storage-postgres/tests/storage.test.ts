@@ -1,3 +1,4 @@
+import { asset, mediaContract } from "../../../tests/storage/media-contract.js";
 import { randomUUID } from "node:crypto";
 import type { Storage } from "@relanox/sdk";
 import { Pool } from "pg";
@@ -46,6 +47,21 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
     };
   });
 
+  mediaContract("PostgreSQL media durability", async () => {
+    const schema = schemaName();
+    const storage = open(schema);
+    return {
+      ...storage,
+      async close() {
+        try {
+          await storage.close();
+        } finally {
+          await drop(schema);
+        }
+      },
+    };
+  });
+
   it("initializes idempotently and retains fenced leases and processing claims across independent pools and restart", async () => {
     const schema = schemaName();
     let a = open(schema);
@@ -58,7 +74,8 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       await a.initialize();
       await a.initialize();
       expect(await b.health()).toEqual({ ok: true });
-      await a.acceptInbound(snapshot());
+      const incoming = asset();
+      await a.acceptInbound({ ...snapshot(), attachments: [incoming.reference] }, [incoming]);
       await a.initialize();
       expect((await a.getInbound("r1"))?.snapshot.text).toBe("question");
       const input = {
@@ -77,6 +94,7 @@ describe.skipIf(!enabled)("postgreSQL real database", () => {
       await a.close();
       a = open(schema);
       await a.initialize();
+      expect(await required(a.media).get("r1", incoming.reference.id)).toEqual(incoming);
       expect(await a.takeDue({ ...input, now: 110 })).toEqual([]);
       expect((await a.getInbound("r1"))?.dispatch).toMatchObject({
         status: "unknown",

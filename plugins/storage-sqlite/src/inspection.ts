@@ -138,14 +138,22 @@ export function createInspectionOperations(
             : undefined;
           saveInbound({
             ...record,
-            snapshot: { ...record.snapshot, text: "", context: null },
-            ...(record.result ? { result: { ...record.result, text: "" } } : {}),
+            snapshot: { ...record.snapshot, text: "", context: null, attachments: [] },
+            ...(record.result ? { result: { ...record.result, text: "", attachments: [] } } : {}),
             redactedAt: input.before,
           });
+          db.prepare("UPDATE media SET data=NULL,reference=? WHERE request_id=?").run(
+            "{}",
+            record.snapshot.requestId,
+          );
           if (delivery) {
             saveOutbound({
               ...delivery,
-              chunks: delivery.chunks.map((chunk) => ({ ...chunk, text: "", state: null })),
+              chunks: delivery.chunks.map((chunk) => ({
+                text: "",
+                state: null,
+                idempotencyKey: chunk.idempotencyKey,
+              })),
               receipts: delivery.receipts.map(() => ({})),
             });
           }

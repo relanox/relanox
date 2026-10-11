@@ -1,3 +1,4 @@
+import { asset, mediaContract } from "../../../tests/storage/media-contract.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +24,8 @@ it("initializes idempotently and persists fenced claims/leases across independen
     await a.initialize();
     await a.initialize();
     expect(await a.health()).toEqual({ ok: true });
-    await a.acceptInbound(snapshot());
+    const incoming = asset();
+    await a.acceptInbound({ ...snapshot(), attachments: [incoming.reference] }, [incoming]);
     await a.initialize();
     expect((await a.getInbound("r1"))?.snapshot.text).toBe("question");
     b = open();
@@ -43,6 +45,7 @@ it("initializes idempotently and persists fenced claims/leases across independen
     await a.close();
     a = open();
     await a.initialize();
+    expect(await required(a.media).get("r1", incoming.reference.id)).toEqual(incoming);
     expect(await a.takeDue({ ...input, now: 110 })).toEqual([]);
     expect((await a.getInbound("r1"))?.dispatch.status).toBe("unknown");
     const r = required(await a.getInbound("r1"));
@@ -80,3 +83,7 @@ it("initializes idempotently and persists fenced claims/leases across independen
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+mediaContract("SQLite media durability", async () =>
+  createSqliteStorage({ filename: ":memory:", busyTimeoutMs: 5000 }),
+);

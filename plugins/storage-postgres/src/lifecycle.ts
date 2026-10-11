@@ -26,6 +26,10 @@ export function createLifecycle(
             result_id TEXT NOT NULL UNIQUE,status TEXT NOT NULL,version INTEGER NOT NULL,record JSONB NOT NULL);
           CREATE INDEX IF NOT EXISTS outbound_due ON outbound(((record->>'dueAt')::bigint),id) WHERE status='pending';
           CREATE INDEX IF NOT EXISTS outbound_lease ON outbound(((record#>>'{lease,expiresAt}')::bigint)) WHERE status='pending';
+          CREATE TABLE IF NOT EXISTS media(
+            id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES inbound(id),
+            reference JSONB NOT NULL, data BYTEA, digest TEXT NOT NULL);
+          CREATE INDEX IF NOT EXISTS media_request ON media(request_id);
           CREATE TABLE IF NOT EXISTS plugin_state(
             plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT COLLATE "C" NOT NULL,version INTEGER NOT NULL,
             expires_at BIGINT,record JSONB NOT NULL,PRIMARY KEY(plugin,owner,key));
@@ -37,6 +41,7 @@ export function createLifecycle(
         await pool.query("SELECT id,record,final_digest FROM inbound LIMIT 0");
         await pool.query("SELECT id,record FROM outbound LIMIT 0");
         await pool.query("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0");
+        await pool.query("SELECT id,reference,data FROM media LIMIT 0");
         return { ok: true };
       } catch {
         return { ok: false, errorCode: "storage_unavailable" };

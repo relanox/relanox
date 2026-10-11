@@ -147,18 +147,26 @@ export function createInspectionOperations(
             client,
             {
               ...record,
-              snapshot: { ...record.snapshot, text: "", context: null },
-              ...(record.result ? { result: { ...record.result, text: "" } } : {}),
+              snapshot: { ...record.snapshot, text: "", context: null, attachments: [] },
+              ...(record.result ? { result: { ...record.result, text: "", attachments: [] } } : {}),
               redactedAt: input.before,
             },
             record.version,
+          );
+          await client.query(
+            "UPDATE media SET data=NULL,reference='{}'::jsonb WHERE request_id=$1",
+            [record.snapshot.requestId],
           );
           if (delivery) {
             await saveOutbound(
               client,
               {
                 ...delivery,
-                chunks: delivery.chunks.map((chunk) => ({ ...chunk, text: "", state: null })),
+                chunks: delivery.chunks.map((chunk) => ({
+                  text: "",
+                  state: null,
+                  idempotencyKey: chunk.idempotencyKey,
+                })),
                 receipts: delivery.receipts.map(() => ({})),
               },
               delivery.version,

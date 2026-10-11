@@ -20,6 +20,10 @@ export function createLifecycle(
             id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE REFERENCES inbound(id),
             result_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL,
             version INTEGER NOT NULL, record TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS media(
+            id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES inbound(id),
+            reference TEXT NOT NULL, data BLOB, digest TEXT NOT NULL);
+          CREATE INDEX IF NOT EXISTS media_request ON media(request_id);
           CREATE TABLE IF NOT EXISTS plugin_state(
             plugin TEXT NOT NULL, owner TEXT NOT NULL, key TEXT NOT NULL,
             version INTEGER NOT NULL, expires_at INTEGER, record TEXT NOT NULL,
@@ -33,6 +37,7 @@ export function createLifecycle(
         db.prepare("SELECT id,record,final_digest FROM inbound LIMIT 0").all();
         db.prepare("SELECT id,record FROM outbound LIMIT 0").all();
         db.prepare("SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0").all();
+        db.prepare("SELECT id,reference,data FROM media LIMIT 0").all();
         return { ok: true };
       } catch {
         return { ok: false, errorCode: "storage_unavailable" };

@@ -10,6 +10,8 @@ import { createWorkOperations } from "./work.js";
 import { createStateOperations } from "./plugin-state.js";
 import { createInspectionOperations } from "./inspection.js";
 
+import { createMediaOperations } from "./media.js";
+
 export type { PostgresConfig } from "./config.js";
 
 export function createPostgresStorage(
@@ -18,6 +20,7 @@ export function createPostgresStorage(
 ): Storage {
   const context = openDatabase(configuration, observe);
   return {
+    media: createMediaOperations(context),
     ...createLifecycle(context),
     ...createRequestOperations(context),
     ...createWorkOperations(context),

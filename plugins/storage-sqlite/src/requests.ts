@@ -1,17 +1,16 @@
+import { validateIncoming, sameReference } from "./media-contracts.js";
+import { readMedia, insertIncomingMedia } from "./media.js";
 import type { Storage, InboundRecord } from "@relanox/sdk";
 import type { DatabaseContext } from "./database.js";
 import { encodeDurableRecord, decodeDurableRecord, resultDigest } from "./record-codec.js";
 import { matchesInitialResult, isRequestInScope } from "./record-contracts.js";
 
 export function createRequestOperations(
-  context: Pick<
-    DatabaseContext,
-    "db" | "transaction" | "readInbound" | "saveInbound" | "isEndpointHead"
-  >,
+  context: DatabaseContext,
 ): Pick<Storage, "acceptInbound" | "listPending" | "claimRequest" | "completeAndEnqueue" | "fail"> {
   const { db, transaction, readInbound, saveInbound, isEndpointHead } = context;
   return {
-    async acceptInbound(snapshot) {
+    async acceptInbound(snapshot, media = []) {
       return transaction(() => {
         const row = db
           .prepare("SELECT id FROM inbound WHERE channel=? AND account=? AND event=?")
@@ -21,6 +20,7 @@ export function createRequestOperations(
         if (row) {
           return { requestId: row.id, duplicate: true };
         }
+        validateIncoming(snapshot, media);
         const record: InboundRecord = {
           snapshot: decodeDurableRecord(encodeDurableRecord(snapshot)),
           status: "pending",
@@ -43,6 +43,7 @@ export function createRequestOperations(
           1,
           encodeDurableRecord(record),
         );
+        insertIncomingMedia(context, snapshot.requestId, media);
         return { requestId: snapshot.requestId, duplicate: false };
       });
     },
@@ -127,12 +128,18 @@ export function createRequestOperations(
             .prepare("SELECT id FROM outbound WHERE request_id=?")
             .get(input.requestId) as { id: string };
           return record.result?.resultId === input.result.resultId &&
-            row.final_digest === resultDigest(input.result.text)
+            row.final_digest === resultDigest(input.result)
             ? { status: "completed", deliveryId: delivery.id, replay: true }
             : { status: "conflict" };
         }
         if (record.status !== "claimed") {
           return { status: "conflict" };
+        }
+        for (const reference of input.result.attachments ?? []) {
+          const asset = readMedia(context, input.requestId, reference.id);
+          if (!asset || !sameReference(asset.reference, reference)) {
+            return { status: "conflict" };
+          }
         }
         const delivery = input.outbound;
         if (!matchesInitialResult(delivery, record, input)) {
@@ -166,7 +173,7 @@ export function createRequestOperations(
         });
         db.prepare("UPDATE inbound SET final_id=?,final_digest=? WHERE id=?").run(
           input.result.resultId,
-          resultDigest(input.result.text),
+          resultDigest(input.result),
           input.requestId,
         );
         return { status: "completed", deliveryId: delivery.deliveryId, replay: false };
