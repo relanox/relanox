@@ -202,32 +202,32 @@
     ],
     "endpoints": [
       {
-        "id": "dot-main",
+        "id": "agent-1",
         "agent": "dot",
         "config": {
           "mcp": {
             "token": {
-              "env": "DOT_MCP_TOKEN"
+              "env": "RELANOX_AGENT_1_MCP_TOKEN"
             },
             "auth": "oauth"
           }
         }
       },
       {
-        "id": "grok-main",
+        "id": "agent-2",
         "agent": "grok",
         "config": {
           "mcp": {
             "token": {
-              "env": "GROK_MCP_TOKEN"
+              "env": "RELANOX_AGENT_2_MCP_TOKEN"
             },
             "auth": "path"
           },
           "routineUrl": {
-            "env": "GROK_ROUTINE_URL"
+            "env": "RELANOX_AGENT_2_ROUTINE_URL"
           },
           "routineAuthorization": {
-            "env": "GROK_ROUTINE_AUTHORIZATION"
+            "env": "RELANOX_AGENT_2_ROUTINE_AUTHORIZATION"
           }
         }
       }
@@ -236,79 +236,79 @@
       {
         "accountId": "telegram-main",
         "chatId": "123456789",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "discord-main",
         "chatId": "112233445566778899",
-        "endpointId": "dot-main"
+        "endpointId": "agent-1"
       },
       {
         "accountId": "slack-main",
         "chatId": "C123ABC",
-        "endpointId": "grok-main",
+        "endpointId": "agent-2",
         "threadId": "1710000000.000001"
       },
       {
         "accountId": "feishu-main",
         "chatId": "oc_example_chat",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "wecom-main",
         "chatId": "staff-userid",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "dingtalk-main",
         "chatId": "staff-user-id",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "qq-main",
         "chatId": "user-openid",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "msteams-main",
         "chatId": "teams-conversation-id",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "whatsapp-main",
         "chatId": "15551234567",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "matrix-main",
         "chatId": "!support:example.com",
-        "endpointId": "dot-main"
+        "endpointId": "agent-1"
       },
       {
         "accountId": "googlechat-main",
         "chatId": "spaces/AAAAExample",
-        "endpointId": "grok-main",
+        "endpointId": "agent-2",
         "threadId": "spaces/AAAAExample/threads/BBBBExample"
       },
       {
         "accountId": "line-main",
         "chatId": "G_example_group",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "mattermost-main",
         "chatId": "dedicated_channel_id",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "signal-main",
         "chatId": "direct:11111111-1111-4111-8111-111111111111",
-        "endpointId": "grok-main"
+        "endpointId": "agent-2"
       },
       {
         "accountId": "irc-main",
         "chatId": "#support",
-        "endpointId": "dot-main"
+        "endpointId": "agent-1"
       }
     ],
     "storage": {

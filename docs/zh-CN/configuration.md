@@ -1,12 +1,12 @@
 # 修改配置
 
-Relanox 从一个 JSON 文件读取配置。先复制 [SQLite 示例](https://github.com/relanox/relanox/blob/master/examples/relanox.sqlite.json)，再换成自己的账号和 Agent 设置。修改后重启服务，让新配置生效。
+Relanox 从一个 JSON 文件读取配置。保留配置器下载的 `relanox.json`；手动配置时可复制 [SQLite 示例](https://github.com/relanox/relanox/blob/master/examples/relanox.sqlite.json)，再换成自己的账号和 Agent 设置。修改后重启服务，让新配置生效。
 
 首次配置可以使用[连接配置器](connect.md)：左侧选择渠道和 Agent，右侧实时更新配置。展开“连接信息”，填写域名、聊天 ID 和允许使用的用户，再复制或下载 JSON；接入教程会按你的选择生成。每个渠道先配置一个账号和一个聊天，更多聊天可按下文添加绑定。凭据保留为环境变量引用。
 
 默认监听地址和监控开关无需重复填写，生成器会省略这些默认值。不写 `server` 时，业务端口为 `127.0.0.1:8787`，管理端口为 `127.0.0.1:8788`；省略 `relay.observability` 即可启用标准日志和指标。只在部署需要时添加覆盖值；容器中需要设置 `server.host: "0.0.0.0"`。
 
-配置器会根据所选回调渠道和 dot OAuth 要求填写公开 HTTPS 地址。使用 Grok 时，Discord、企业微信、IRC 等主动连接平台的渠道可以留空服务地址，此时生成的 MCP 地址使用 `http://127.0.0.1:8787`，用于本机配置。云端 Agent 仍需能够访问 MCP 地址。切换渠道时会保留已填写的服务地址。窄屏下设置与预览按内容高度依次排列。
+dot 和 Grok 的 MCP 连接都需要公网可访问的 HTTPS 地址，包括主动连接平台的渠道。将 `publicUrl` 设置为这个地址；切换渠道时会保留已填写的服务地址。
 
 配置器加载时会在浏览器中生成 32 字节十六进制 MCP token，可以编辑或重新生成。将生成的准确值复制到服务器环境变量中；JSON 保留环境变量引用。Relanox 不会自动加载 `.env` 文件。dot 使用这个值作为 OAuth 授权密码，Grok 将它作为 URL token。手动配置仍可使用[快速开始](getting-started.md)中的随机 token 命令。
 
@@ -32,13 +32,13 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 - **Agent 连接**（`endpoints`）：一个已连接的 dot 或 Grok Agent。`config` 保存 MCP 凭据以及通知这个 Agent 的方式。
 - **聊天绑定**（`bindings`）：把账号中的一个聊天连接到一个 Agent。这个聊天的消息发给所选 Agent，回信也发回这里。
 
-例如，以下绑定将 Telegram 聊天 `123456789` 交给名为 `grok-main` 的 Grok：
+例如，以下绑定将 Telegram 聊天 `123456789` 交给名为 `agent-1` 的 Grok：
 
 ```json
 {
   "accountId": "telegram-main",
   "chatId": "123456789",
-  "endpointId": "grok-main"
+  "endpointId": "agent-1"
 }
 ```
 
@@ -51,7 +51,7 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
   "accountId": "telegram-main",
   "chatId": "-1001234567890",
   "threadId": "42",
-  "endpointId": "grok-main",
+  "endpointId": "agent-1",
   "allowedSenders": ["123456789"]
 }
 ```
@@ -208,10 +208,10 @@ QQ 默认使用正式环境，需要沙箱时将 `environment` 设为 `"sandbox"
 从仓库根目录运行构建后的 CLI。每条命令带 `--config <文件>`，也可简写为 `-c`：
 
 ```sh
-node apps/cli/dist/main.js validate --config relay.json
-node apps/cli/dist/main.js run --config relay.json
-node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
-node apps/cli/dist/main.js status --config relay.json --limit 100
+node apps/cli/dist/main.js validate --config relanox.json
+node apps/cli/dist/main.js run --config relanox.json
+node apps/cli/dist/main.js doctor --config relanox.json --management-url http://127.0.0.1:8788
+node apps/cli/dist/main.js status --config relanox.json --limit 100
 ```
 
 | 命令       | 用途                                                         |
@@ -228,9 +228,9 @@ node apps/cli/dist/main.js status --config relay.json --limit 100
 缩小状态查询范围：
 
 ```sh
-node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --dispatch-status unknown
-node apps/cli/dist/main.js status --config relay.json --delivery-status pending
-node apps/cli/dist/main.js status --config relay.json --include-content
+node apps/cli/dist/main.js status --config relanox.json --endpoint-id agent-1 --dispatch-status unknown
+node apps/cli/dist/main.js status --config relanox.json --delivery-status pending
+node apps/cli/dist/main.js status --config relanox.json --include-content
 ```
 
 通知状态可筛选 `due`、`accepted`、`rejected`、`unknown`；回信状态可筛选 `pending`、`sent`、`rejected`、`unknown`。默认每页 100 条，`--limit` 范围 1–1000。用 `--after-id <id>` 从某条记录之后继续查询。`--include-content` 会加入消息正文，请按私人聊天数据保护输出。

@@ -9,55 +9,57 @@ Connect your existing dot or Grok Bot to receive channel messages and send repli
 
 Set top-level `publicUrl` to your public HTTPS address once, for example `https://relay.example.com`. Use the connector/Routine setup available in your account with the values below. Interface names can vary; these steps describe the required addresses and credentials.
 
+Each example below configures a first Agent as `agent-1`. Keep the IDs and environment references in your downloaded configuration. For another Agent, use `agent-2` and `RELANOX_AGENT_2_*` instead of reusing the first entry.
+
 ## Connect Grok
 
 1. Select the Grok Bot that should answer messages, and configure its Routine to accept a webhook trigger.
-2. Copy the complete webhook URL and Authorization value. Supply them as `GROK_ROUTINE_URL` and `GROK_ROUTINE_AUTHORIZATION` in Relanox's environment.
-3. Generate a random MCP token, save it as `GROK_MCP_TOKEN`, and add this entry to `relay.endpoints`:
+2. Copy the complete webhook URL and Authorization value. Supply them as `RELANOX_AGENT_1_ROUTINE_URL` and `RELANOX_AGENT_1_ROUTINE_AUTHORIZATION` in Relanox's environment.
+3. Use the configurator’s generated MCP token, or generate a random token for manual setup. Supply it as `RELANOX_AGENT_1_MCP_TOKEN`. For manual setup, add this entry to `relay.endpoints`:
 
 ```json
 {
-  "id": "grok-main",
+  "id": "agent-1",
   "agent": "grok",
   "config": {
     "mcp": {
       "auth": "path",
-      "token": { "env": "GROK_MCP_TOKEN" }
+      "token": { "env": "RELANOX_AGENT_1_MCP_TOKEN" }
     },
-    "routineUrl": { "env": "GROK_ROUTINE_URL" },
-    "routineAuthorization": { "env": "GROK_ROUTINE_AUTHORIZATION" }
+    "routineUrl": { "env": "RELANOX_AGENT_1_ROUTINE_URL" },
+    "routineAuthorization": { "env": "RELANOX_AGENT_1_ROUTINE_AUTHORIZATION" }
   }
 }
 ```
 
 4. Restart Relanox with your `publicUrl` setting. [Operations](operations.md) covers HTTPS setup.
-5. Add the MCP connection at `https://relay.example.com/agents/grok/mcp/grok-main/<URL-encoded-GROK_MCP_TOKEN>`. Replace the last segment with your token, URL-encoded as a path segment. Select no additional authentication; no Authorization header is required.
-6. Set the conversation binding's `endpointId` to `grok-main`.
+5. Add the MCP connection at `https://relay.example.com/agents/grok/mcp/agent-1/<URL-encoded-RELANOX_AGENT_1_MCP_TOKEN>`. Replace the last segment with your token, URL-encoded as a path segment. Select no additional authentication; no Authorization header is required.
+6. Set the conversation binding's `endpointId` to `agent-1`.
 7. Send a short message in that conversation and check the reply. Use `status` if it stalls.
 
 The Routine Authorization variable holds exactly the supplied value, including any prefix. The MCP variable holds the raw token. Protect all three variables; a Routine URL may contain a secret.
 
 ## Connect dot
 
-1. Use the configurator's generated authorization password, or generate a random value of at least 32 characters, and supply it as `DOT_MCP_TOKEN`.
-2. Add this entry to `relay.endpoints`:
+1. Use the configurator's generated authorization password, or generate a random value of at least 32 characters, and supply it as `RELANOX_AGENT_1_MCP_TOKEN`.
+2. For manual setup, add this entry to `relay.endpoints`:
 
 ```json
 {
-  "id": "dot-main",
+  "id": "agent-1",
   "agent": "dot",
   "config": {
     "mcp": {
       "auth": "oauth",
-      "token": { "env": "DOT_MCP_TOKEN" }
+      "token": { "env": "RELANOX_AGENT_1_MCP_TOKEN" }
     }
   }
 }
 ```
 
-3. Restart Relanox and connect dot to `https://relay.example.com/agents/dot/mcp/dot-main` using OAuth. If asked, select **Dynamic Client Registration (DCR)**. Discovery is automatic. Enter `DOT_MCP_TOKEN` as the password on the Relanox consent page, then allow access. It is not a static Bearer access token.
+3. Restart Relanox and connect dot to `https://relay.example.com/agents/dot/mcp/agent-1` using OAuth. If asked, select **Dynamic Client Registration (DCR)**. Discovery is automatic. Enter `RELANOX_AGENT_1_MCP_TOKEN` as the password on the Relanox consent page, then allow access. It is not a static Bearer access token.
 4. Enable a `relanox.message_available` subscription through the connection's Events support. Enable automatic renewal in the connection so it keeps receiving messages.
-5. Set your conversation binding's `endpointId` to `dot-main` and send a message through that conversation.
+5. Set your conversation binding's `endpointId` to `agent-1` and send a message through that conversation.
 
 dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens rotate on use, with a 30-day lifetime from the initial authorization. Grants persist in your configured database. Reusing an old refresh token revokes its authorization; changing the configured password and restarting requires reconnecting dot.
 

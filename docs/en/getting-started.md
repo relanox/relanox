@@ -11,13 +11,13 @@ Have these ready:
 - A machine that can keep Relanox running and a public HTTPS address, such as `https://relay.example.com`. [Operations](operations.md) shows a reverse proxy setup.
 - Git, Node.js 26.11.1 and pnpm 12.11.2 for the source installation below. [Operations](operations.md) also covers Docker.
 
-Create independent random secrets for Telegram's webhook and Grok's MCP connection. Generate each separately and keep it in your secret manager:
+For manual setup, create independent random secrets for Telegram's webhook and Grok's MCP connection. Generate each separately and keep it in your secret manager:
 
 ```sh
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-## 2. Install and copy the example
+## 2. Install and prepare the configuration
 
 ```sh
 git clone https://github.com/relanox/relanox.git
@@ -26,13 +26,13 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-Copy the example in PowerShell:
+If you used the [connection configurator](connect.md), keep its downloaded `relanox.json` in the repository root and follow its generated guide. The Telegram/Grok commands below match the manual example. For manual setup, copy the example in PowerShell:
 
 ```powershell
-Copy-Item examples/relanox.sqlite.json relay.json
+Copy-Item examples/relanox.sqlite.json relanox.json
 ```
 
-On Linux/macOS use `cp examples/relanox.sqlite.json relay.json`. Edit `relay.json`:
+On Linux/macOS use `cp examples/relanox.sqlite.json relanox.json`. Edit `relanox.json`:
 
 | Location                           | Your value                                                                                    |
 | ---------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -41,22 +41,24 @@ On Linux/macOS use `cp examples/relanox.sqlite.json relay.json`. Edit `relay.jso
 | `publicUrl`                        | Your public HTTPS origin, for example `https://relay.example.com`; include a non-default port |
 | `relay.storage.config.filename`    | Your database path; the example uses `relanox.sqlite` in the launch directory                 |
 
-Keep `telegram-main` and `grok-main` for the URLs below. Keep `server.host` as `127.0.0.1` for a reverse proxy on the same host; use `0.0.0.0` inside a container.
+Keep `telegram-main` and `agent-1` for the URLs below. Keep `server.host` as `127.0.0.1` for a reverse proxy on the same host; use `0.0.0.0` inside a container.
 
 ## 3. Supply the environment variables
 
-| Variable                     | Value                                                  |
-| ---------------------------- | ------------------------------------------------------ |
-| `TELEGRAM_BOT_TOKEN`         | BotFather's token                                      |
-| `TELEGRAM_WEBHOOK_SECRET`    | Your random Telegram webhook secret                    |
-| `GROK_MCP_TOKEN`             | Your separate random MCP token, as a raw token         |
-| `GROK_ROUTINE_URL`           | Complete Routine webhook URL                           |
-| `GROK_ROUTINE_AUTHORIZATION` | Complete Authorization value supplied for that Routine |
+For generated configuration, supply the exact environment names and values shown by the configurator. This table matches the manual Telegram/Grok example.
+
+| Variable                                | Value                                                  |
+| --------------------------------------- | ------------------------------------------------------ |
+| `TELEGRAM_BOT_TOKEN`                    | BotFather's token                                      |
+| `TELEGRAM_WEBHOOK_SECRET`               | Your random Telegram webhook secret                    |
+| `RELANOX_AGENT_1_MCP_TOKEN`             | Your separate random MCP token, as a raw token         |
+| `RELANOX_AGENT_1_ROUTINE_URL`           | Complete Routine webhook URL                           |
+| `RELANOX_AGENT_1_ROUTINE_AUTHORIZATION` | Complete Authorization value supplied for that Routine |
 
 Prompt for the values in PowerShell so they stay out of literal command history:
 
 ```powershell
-foreach ($name in @('TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET', 'GROK_MCP_TOKEN', 'GROK_ROUTINE_URL', 'GROK_ROUTINE_AUTHORIZATION')) {
+foreach ($name in @('TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET', 'RELANOX_AGENT_1_MCP_TOKEN', 'RELANOX_AGENT_1_ROUTINE_URL', 'RELANOX_AGENT_1_ROUTINE_AUTHORIZATION')) {
   $value = Read-Host $name -AsSecureString
   [Environment]::SetEnvironmentVariable($name, [System.Net.NetworkCredential]::new('', $value).Password, 'Process')
 }
@@ -67,8 +69,8 @@ For a service, supply these variables through its protected environment settings
 ## 4. Start Relanox
 
 ```sh
-node apps/cli/dist/main.js validate --config relay.json
-node apps/cli/dist/main.js run --config relay.json
+node apps/cli/dist/main.js validate --config relanox.json
+node apps/cli/dist/main.js run --config relanox.json
 ```
 
 Validation reports `ok: true` and the account/agent counts. Starting creates the database tables and prints a `started` event with the listener addresses. Leave the terminal running.
@@ -76,7 +78,7 @@ Validation reports `ok: true` and the account/agent counts. Starting creates the
 In another terminal, supply the same environment variables and run:
 
 ```sh
-node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
+node apps/cli/dist/main.js doctor --config relanox.json --management-url http://127.0.0.1:8788
 ```
 
 Wait until `ok` is `true`. Start the service before checking a fresh database: startup initializes storage, and readiness becomes healthy after the first successful processing batch.
@@ -99,7 +101,7 @@ Telegram should return `ok: true`. Keep tokens out of shared screenshots and out
 
 Add an MCP connection to your Grok Bot:
 
-- URL: `https://relay.example.com/agents/grok/mcp/grok-main/<URL-encoded-GROK_MCP_TOKEN>`.
+- URL: `https://relay.example.com/agents/grok/mcp/agent-1/<URL-encoded-RELANOX_AGENT_1_MCP_TOKEN>`.
 - Authentication: no additional authentication; the example sets `mcp.auth` to `path`, so no Authorization header is required.
 
 Configure the Routine to use that bot. Relanox provides reply guidance through the MCP connection; no separate reply prompt is needed. See [Connect an agent](agents.md). Check its URL and Authorization against the environment variables. Restart Relanox after editing its configuration or deployment environment.
@@ -109,7 +111,7 @@ Configure the Routine to use that bot. Relanox provides reply guidance through t
 Start a private conversation with the Telegram bot and send `Hello, please reply with a short greeting.` from the allowed user in the bound chat. Grok calls `relanox_send_message`, and Relanox returns its answer to Telegram.
 
 ```sh
-node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main
+node apps/cli/dist/main.js status --config relanox.json --endpoint-id agent-1
 ```
 
 An incoming request marked `accepted` means the Routine accepted the notification. An outgoing delivery marked `sent` means Telegram accepted the reply. If only the incoming record appears, check Grok's MCP connection and Routine execution; refresh the connection after updating Relanox. If no incoming record appears, check the webhook, user ID and chat binding. [Operations](operations.md#find-and-recover-a-stalled-message) covers other states and recovery.

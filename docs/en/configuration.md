@@ -1,12 +1,12 @@
 # Configure conversations and commands
 
-Relanox reads one JSON file. Copy [the SQLite example](https://github.com/relanox/relanox/blob/master/examples/relanox.sqlite.json), then edit it for your accounts and agents. Restart the service after editing to apply the settings.
+Relanox reads one JSON file. Keep the configurator’s downloaded `relanox.json`, or for manual setup copy [the SQLite example](https://github.com/relanox/relanox/blob/master/examples/relanox.sqlite.json), then edit it for your accounts and agents. Restart the service after editing to apply the settings.
 
 For a new setup, use the [connection configurator](connect.md): choose channels and Agents on the left and see the configuration update on the right. Expand connection details to enter your hostname, chat IDs and permitted users, then copy or download the JSON. The setup guide follows your selections. Each channel starts with one account and one conversation; add further conversations using bindings below. Credentials stay as environment variable references.
 
 The generated file omits default listener settings and monitoring switches. Without a `server` section, the business listener uses `127.0.0.1:8787` and management uses `127.0.0.1:8788`. Omitting `relay.observability` enables standard logs and metrics. Add overrides only when your deployment needs them; containers need `server.host: "0.0.0.0"`.
 
-The configurator requires a public HTTPS address for selected webhook channels and dot OAuth. For Grok, outbound channels such as Discord, WeCom and IRC can leave the service address blank; generated MCP URLs then use `http://127.0.0.1:8787` for local use. Cloud Agents still need a reachable MCP address. An explicit service address is preserved when you switch channels. On narrow screens, settings and preview follow each other in normal page flow.
+Both dot and Grok need a publicly reachable HTTPS address for MCP, including with outbound channels. Set `publicUrl` to that address; it is preserved when switching channels.
 
 The configurator generates a 32-byte hexadecimal MCP token in your browser when loaded. You can edit or regenerate it. Copy the exact generated values into your server environment; JSON keeps environment references. Relanox does not automatically load `.env` files. For dot, this value is the OAuth consent password; for Grok, it is the URL token. Manual setup can still use the random-token command in [Quick start](getting-started.md).
 
@@ -32,13 +32,13 @@ Three lists describe your connections:
 - An **agent connection** (`endpoints`) is one connected dot or Grok agent. Its `config` holds MCP credentials and the settings for notifying it.
 - A **binding** (`bindings`) connects one conversation on an account to one agent. Messages go to that agent, and replies return to that conversation.
 
-For example, this binding sends Telegram chat `123456789` to Grok connection `grok-main`:
+For example, this binding sends Telegram chat `123456789` to Grok connection `agent-1`:
 
 ```json
 {
   "accountId": "telegram-main",
   "chatId": "123456789",
-  "endpointId": "grok-main"
+  "endpointId": "agent-1"
 }
 ```
 
@@ -51,7 +51,7 @@ Add a binding for each conversation. Topics or threads need their exact `threadI
   "accountId": "telegram-main",
   "chatId": "-1001234567890",
   "threadId": "42",
-  "endpointId": "grok-main",
+  "endpointId": "agent-1",
   "allowedSenders": ["123456789"]
 }
 ```
@@ -208,10 +208,10 @@ QQ defaults to production; set `environment` to `"sandbox"` for its sandbox. Rel
 Run the built CLI from the repository root. Every command takes `--config <file>` (or `-c`):
 
 ```sh
-node apps/cli/dist/main.js validate --config relay.json
-node apps/cli/dist/main.js run --config relay.json
-node apps/cli/dist/main.js doctor --config relay.json --management-url http://127.0.0.1:8788
-node apps/cli/dist/main.js status --config relay.json --limit 100
+node apps/cli/dist/main.js validate --config relanox.json
+node apps/cli/dist/main.js run --config relanox.json
+node apps/cli/dist/main.js doctor --config relanox.json --management-url http://127.0.0.1:8788
+node apps/cli/dist/main.js status --config relanox.json --limit 100
 ```
 
 | Command    | Purpose                                                                                      |
@@ -228,9 +228,9 @@ node apps/cli/dist/main.js status --config relay.json --limit 100
 Narrow status queries with:
 
 ```sh
-node apps/cli/dist/main.js status --config relay.json --endpoint-id grok-main --dispatch-status unknown
-node apps/cli/dist/main.js status --config relay.json --delivery-status pending
-node apps/cli/dist/main.js status --config relay.json --include-content
+node apps/cli/dist/main.js status --config relanox.json --endpoint-id agent-1 --dispatch-status unknown
+node apps/cli/dist/main.js status --config relanox.json --delivery-status pending
+node apps/cli/dist/main.js status --config relanox.json --include-content
 ```
 
 Dispatch filters are `due`, `accepted`, `rejected`, `unknown`; delivery filters are `pending`, `sent`, `rejected`, `unknown`. Default page size is 100; `--limit` accepts 1–1000. Use `--after-id <id>` to continue after a record. `--include-content` adds message text; protect that output as private conversation data.
