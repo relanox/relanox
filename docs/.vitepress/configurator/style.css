@@ -226,8 +226,38 @@
 .agent-fields > label {
   grid-area: type-label;
 }
-.agent-fields > select {
+.agent-type-select {
   grid-area: type-input;
+}
+.connection-app .platform-logo {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  object-fit: contain;
+  margin: 0;
+}
+.dark .connection-app .platform-logo {
+  filter: brightness(0) invert(1);
+}
+.platform-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.platform-select {
+  position: relative;
+  min-width: 0;
+}
+.platform-select .platform-logo {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.connection-app .platform-select select {
+  padding-left: 42px;
 }
 .agent-fields label {
   color: var(--connection-muted);
