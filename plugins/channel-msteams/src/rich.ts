@@ -8,8 +8,8 @@ import type {
 export const richCapabilities = {
   maxParts: 20,
   maxTextLength: 2000,
-  imageMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
-  maxImageBytes: 26_214_400
+  imageMimeTypes: ['image/png', 'image/jpeg', 'image/gif'],
+  maxImageBytes: 1_000_000
 }
 
 export function richError(
@@ -70,9 +70,7 @@ function invalidImage(
     stored.reference.fileName !== part.media.fileName ||
     stored.data.byteLength === 0 ||
     stored.data.byteLength !== part.media.size ||
-    !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(
-      part.media.mimeType
-    ) ||
+    !['image/png', 'image/jpeg', 'image/gif'].includes(part.media.mimeType) ||
     stored.data.byteLength >
       Math.min(
         host.maxMediaBytes ?? 25 * 1024 * 1024,
