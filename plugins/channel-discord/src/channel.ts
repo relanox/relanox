@@ -38,7 +38,16 @@ export function createDiscordChannel(
       maxTextLength: 2000,
       lengthUnit: 'utf16',
       idempotentSend: false,
-      richText: { maxParts: 10, maxTextLength: 1800 },
+      get richText() {
+        return {
+          maxParts: 10,
+          maxTextLength: 1800,
+          maxImageBytes: Math.min(
+            host?.maxMediaBytes ?? 25 * 1024 * 1024,
+            10 * 1024 * 1024
+          )
+        }
+      },
       media: {
         receive: ['image', 'audio', 'video', 'file'],
         send: ['image', 'audio', 'video', 'file']

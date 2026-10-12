@@ -22,6 +22,9 @@ import { frameText, waitForStop } from './socket.js'
 import {
   receiveMedia,
   sendMedia,
+  richBlocks,
+  richError,
+  richCapabilities,
   sendOutcome,
   discoverIdentity,
   slackMarkdown,
@@ -282,6 +285,7 @@ export function createSlackChannel(
       receive: true,
       transport: 'both',
       maxTextLength: 4000,
+      richText: richCapabilities,
       lengthUnit: 'codepoint',
       idempotentSend: false,
       media: {
@@ -416,6 +420,10 @@ export function createSlackChannel(
       ) {
         return { status: 'rejected', errorCode: 'invalid_target' }
       }
+      const errorCode = richError(input, host)
+      if (errorCode) {
+        return { status: 'rejected', errorCode }
+      }
       try {
         if (input.chunk.media) {
           return await sendMedia(
@@ -425,6 +433,20 @@ export function createSlackChannel(
           )
         }
 
+        const formatted = input.chunk.richText
+          ? await richBlocks(
+              input,
+              credential(config.botToken, environment)
+            ).catch(() => ({
+              status: 'retryable' as const,
+              errorCode: 'rich_media_preparation_unavailable'
+            }))
+          : slackMarkdown(input.chunk.text)
+
+        if ('status' in formatted) {
+          return formatted
+        }
+
         const response = await postJson(
           `${API_BASE_URL.replace(/\/$/u, '')}/chat.postMessage`,
           {
@@ -432,7 +454,7 @@ export function createSlackChannel(
           },
           {
             channel: input.target.chatId,
-            ...slackMarkdown(input.chunk.text),
+            ...formatted,
             mrkdwn: false,
             parse: 'none',
             unfurl_links: false,

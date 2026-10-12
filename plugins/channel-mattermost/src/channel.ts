@@ -338,7 +338,13 @@ export function createMattermostChannel(
         lengthUnit: 'codepoint',
         idempotentSend: false,
         ...(runtime?.host.publicUrl && runtime.host.media
-          ? { richText: { maxParts: 20, maxTextLength: 8000 } }
+          ? {
+              richText: {
+                maxParts: 20,
+                maxTextLength: 8000,
+                maxImageBytes: runtime.host.maxMediaBytes ?? 16_777_216
+              }
+            }
           : {}),
         media: {
           receive: ['image', 'audio', 'video', 'file'],

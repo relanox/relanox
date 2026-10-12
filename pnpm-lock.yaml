@@ -490,6 +490,9 @@ importers:
       '@relanox/channel-media':
         specifier: workspace:*
         version: link:../../packages/channel-media
+      '@relanox/markdown':
+        specifier: workspace:*
+        version: link:../../packages/markdown
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

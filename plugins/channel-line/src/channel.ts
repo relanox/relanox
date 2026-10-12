@@ -162,7 +162,17 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
         lengthUnit: 'utf16',
         idempotentSend: false,
         ...(runtime?.host.publicUrl && runtime.host.media
-          ? { richText: { maxParts: 20, maxTextLength: 2000 } }
+          ? {
+              richText: {
+                maxParts: 20,
+                maxTextLength: 2000,
+                imageMimeTypes: ['image/jpeg', 'image/png'],
+                maxImageBytes: Math.min(
+                  runtime.host.maxMediaBytes ?? 25 * 1024 * 1024,
+                  10_000_000
+                )
+              }
+            }
           : {}),
         media: {
           receive: ['image', 'audio', 'video', 'file'],

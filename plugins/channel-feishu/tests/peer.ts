@@ -96,10 +96,13 @@ export async function peer(
       chunks.push(value)
     }
 
-    const body: unknown =
-      chunks.length > 0
-        ? JSON.parse(Buffer.concat(chunks).toString('utf8'))
-        : null
+    const content = Buffer.concat(chunks).toString('utf8')
+
+    const body: unknown = request.headers['content-type']?.includes(
+      'application/json'
+    )
+      ? JSON.parse(content || 'null')
+      : content
 
     const input: Captured = {
       path: (request.url ?? '').replace(/^\/api(?:\/v10)?(?=\/)/u, ''),

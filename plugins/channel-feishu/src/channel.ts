@@ -1,3 +1,4 @@
+import { richError, richCapabilities } from './rich.js'
 import { createDecipheriv, createHash } from 'node:crypto'
 import type {
   AccountConfig,
@@ -364,6 +365,7 @@ export function createFeishuChannel(
       receive: true,
       transport: 'http',
       maxTextLength: 10_000,
+      richText: richCapabilities,
       lengthUnit: 'utf8',
       idempotentSend: false,
       media: {
@@ -472,7 +474,7 @@ export function createFeishuChannel(
         return { status: 'rejected', errorCode: 'address_unresolved' }
       }
       // Authentication precedes the message effect, so failures here are safe to retry.
-      const errorCode = mediaError(input, host)
+      const errorCode = richError(input, host) ?? mediaError(input, host)
       if (errorCode) {
         return { status: 'rejected', errorCode }
       }
