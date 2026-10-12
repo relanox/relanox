@@ -345,7 +345,7 @@ export function registerTools(
                 .max(10)
                 .optional()
                 .describe(
-                  "Files generated or selected in dot. Supply the OpenAI file object with download_url and file_id; file_id is opaque and is not a received Relanox mediaId. Attachments are sent first, then these files in order. Preserve bytes and both arrays' order for retries."
+                  "Files generated or selected in dot. Supply the OpenAI file object with download_url and file_id; file_id is opaque and is not a received Relanox mediaId. Positional Markdown references count attachments first, then these files. Unreferenced items are sent afterward in that order. Preserve bytes and both arrays' order for retries."
                 )
             }
           : {}),
@@ -357,7 +357,7 @@ export function registerTools(
           .max(1_048_576)
           .default('')
           .describe(
-            'Your reply as Markdown. May be empty when sending attachments.'
+            'Your reply as Markdown with ordered file references: ![description](relanox://media/UUID) embeds a channel-owned image; [filename](relanox://media/UUID) sends a file at that position. Use relanox://attachment/1 for the first item in attachments followed by files (1-based). Unreferenced attachments follow the text. Each file may appear once. Code examples stay literal. Check status.richText for native layout or ordered separate messages. May be empty when sending attachments.'
           ),
         idempotencyKey: id
           .optional()

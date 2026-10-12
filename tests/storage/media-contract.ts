@@ -59,6 +59,85 @@ export function mediaContract(
   open: () => Promise<Storage>
 ): void {
   describe(name, () => {
+    it('retains pending rich image bytes and redacts completed rich text without breaking keyed replay', async () => {
+      const s = await open()
+      try {
+        await s.initialize()
+        await s.registerConversations(testConversations)
+        const image = asset('rich-image')
+        const base = messageWithMedia('rich', [image])
+
+        const input: EnqueueMessageInput = {
+          ...base,
+          outbound: {
+            ...base.outbound,
+            chunks: [
+              {
+                text: '',
+                state: null,
+                idempotencyKey: 'rich-chunk',
+                richText: [
+                  { type: 'text', text: 'private before' },
+                  {
+                    type: 'image',
+                    media: image.reference,
+                    label: 'private image'
+                  },
+                  { type: 'text', text: 'private after' }
+                ]
+              }
+            ]
+          }
+        }
+
+        expect(await s.enqueueMessage(input)).toMatchObject({
+          status: 'queued',
+          replay: false
+        })
+        await s.cleanup({ before: Date.now() + 1000, limit: 10 })
+        expect(await required(s.media).get('channel', 'rich-image')).toEqual(
+          image
+        )
+
+        const work = required(
+          (
+            await s.takeDue({
+              now: 110,
+              leaseMs: 20,
+              limit: 10,
+              leaseOwner: 'rich-worker',
+              safeRetryAccountIds: []
+            })
+          )[0]
+        )
+
+        expect(work.kind).toBe('send')
+        await s.settleAttempt({
+          kind: 'send',
+          id: input.outbound.deliveryId,
+          lease: work.lease,
+          outcome: { status: 'sent', receipt: {} },
+          now: 111,
+          nextDueAt: 112
+        })
+        expect(
+          await s.cleanup({ before: Date.now() + 1000, limit: 10 })
+        ).toEqual({ redacted: 1 })
+        expect(
+          await required(s.media).get('channel', 'rich-image')
+        ).toBeUndefined()
+        expect(
+          (await s.getOutbound(input.outbound.deliveryId))?.chunks
+        ).toEqual([{ text: '', state: null, idempotencyKey: 'rich-chunk' }])
+        expect(await s.enqueueMessage(input)).toMatchObject({
+          status: 'queued',
+          replay: true
+        })
+      } finally {
+        await s.close()
+      }
+    })
+
     it('reclaims abandoned staged uploads past protected pending assets and restores outstanding quotas', async () => {
       const s = await open()
       const clock = vi.spyOn(Date, 'now').mockReturnValue(100)

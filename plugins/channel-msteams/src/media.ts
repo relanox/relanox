@@ -406,7 +406,7 @@ export async function richMarkdown(
   return text
 }
 
-export { richError } from './rich.js'
+export { richError, richCapabilities } from './rich.js'
 
 export function richPreparationFailure(error: unknown): SendResult {
   if (
