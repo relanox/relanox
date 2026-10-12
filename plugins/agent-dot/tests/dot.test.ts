@@ -91,6 +91,7 @@ vi.mock(import('node:https'), async () => {
 const signingKey = `whsec_${Buffer.alloc(32, 17).toString('base64')}`
 const newKey = `whsec_${Buffer.alloc(32, 25).toString('base64')}`
 const cleanups: (() => Promise<void>)[] = []
+const numberValue: unknown = expect.any(Number)
 const stringValue: unknown = expect.any(String)
 beforeEach(() => {
   callbackNetwork.addresses = [{ address: '8.8.8.8', family: 4 }]
@@ -204,6 +205,74 @@ async function setup(
 }
 
 describe('dot MCP Events and tools', () => {
+  it('recovers persisted messages through authenticated MCP without exposing another endpoint or old ownership', async () => {
+    const fx = await fixture('dot', createDotAgentPlugin(), [
+      { mcp: dotMcp() },
+      { mcp: dotMcp('AGENT_TEST_TOKEN_1') }
+    ])
+
+    cleanups.push(async () => fx.close())
+    const own = await fx.ingest(0, 'recover this', 'read-own')
+    const other = await fx.ingest(1, 'private other', 'read-other')
+    await fx.reopen(createDotAgentPlugin())
+    const client = await fx.client()
+
+    const read = async (args: Record<string, unknown>): Promise<unknown> =>
+      (
+        await client.callTool({
+          name: 'relanox_read_messages',
+          arguments: args
+        })
+      ).structuredContent
+
+    const result = await read({ requestId: own.requestId })
+    expect(result).toEqual({
+      messages: [
+        {
+          requestId: own.requestId,
+          acceptedAt: numberValue,
+          text: 'recover this',
+          context: { thread: 'protocol-context' },
+          source: {
+            channel: {
+              id: own.channel,
+              platform: 'telegram',
+              accountId: 'bot',
+              chatId: 'chat0'
+            },
+            senderId: 'alice'
+          }
+        }
+      ]
+    })
+    expect(await read({ requestId: other.requestId })).toEqual({ messages: [] })
+    expect(await read({ requestId: 'missing' })).toEqual({ messages: [] })
+    expect(await read({ limit: 1 })).toEqual(result)
+    expect(
+      (
+        await client.callTool({
+          name: 'relanox_read_messages',
+          arguments: { limit: 21 }
+        })
+      ).isError
+    ).toBe(true)
+    fx.endpoints[0] = {
+      id: 'endpoint0',
+      agent: 'dot',
+      config: { mcp: { ...dotMcp(), allowedOrigins: ['https://new.test'] } }
+    }
+    await fx.reopen(createDotAgentPlugin())
+    const rebound = await fx.client()
+    expect(
+      (
+        await rebound.callTool({
+          name: 'relanox_read_messages',
+          arguments: { requestId: own.requestId }
+        })
+      ).structuredContent
+    ).toEqual({ messages: [] })
+  })
+
   it('defaults native dot connections to OAuth and rejects static bearer authentication', () => {
     const plugin = createDotAgentPlugin()
     expect(plugin.validateConfig({ mcp: dotMcp() })).toMatchObject({
@@ -567,12 +636,14 @@ describe('dot MCP Events and tools', () => {
       'relanox_status',
       'relanox_send_message',
       'relanox_create_upload',
-      'relanox_read_media'
+      'relanox_read_media',
+      'relanox_read_messages'
     ])
     expect(tools.tools.map((tool) => tool.annotations?.readOnlyHint)).toEqual([
       true,
       false,
       false,
+      true,
       true
     ])
     expect(
@@ -706,6 +777,8 @@ describe('dot MCP Events and tools', () => {
       name: 'relanox.message_available',
       timestamp: stringValue,
       data: {
+        requestId: received.requestId,
+        acceptedAt: numberValue,
         text: '中文\nsecond line',
         context: { thread: 'protocol-context' },
         source: {
@@ -798,7 +871,14 @@ describe('dot MCP Events and tools', () => {
 
     expect(
       Object.keys(catalog.events[0]?.payloadSchema.properties ?? {})
-    ).toEqual(['text', 'context', 'attachments', 'source'])
+    ).toEqual([
+      'text',
+      'context',
+      'attachments',
+      'source',
+      'requestId',
+      'acceptedAt'
+    ])
     await client.request(subscribe(url, signingKey, 10_000), subResult)
 
     const receipt = await fx.ingest(0, 'inspect attachment', 'full-media', [
@@ -930,6 +1010,8 @@ describe('dot MCP Events and tools', () => {
         name: 'relanox.message_available',
         timestamp: new Date(request.acceptedAt).toISOString(),
         data: {
+          requestId: receipt.requestId,
+          acceptedAt: request.acceptedAt,
           text: '中文\nsecond line',
           context: { thread: 'protocol-context' },
           source: {

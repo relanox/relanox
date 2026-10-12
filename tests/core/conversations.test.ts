@@ -195,3 +195,54 @@ it('keeps channel identity and learned target stable when equivalent endpoint co
     await fixture.close()
   }
 })
+
+it('hides retained message content after cleanup or channel rebinding', async () => {
+  const fixture = await mediaFixture()
+  try {
+    const receipt = await fixture.channel.ingest({
+      ...incoming,
+      text: 'retained content'
+    })
+
+    const principal = fixture.agent.forPrincipal({
+      subject: 'first',
+      endpointIds: ['first']
+    })
+
+    expect(
+      await principal.readMessages({ requestId: receipt.requestId })
+    ).toMatchObject([{ text: 'retained content' }])
+    await fixture.runtime.processDue()
+    expect(
+      await fixture.storage.cleanup({ before: Date.now() + 1000, limit: 10 })
+    ).toEqual({ redacted: 1 })
+    expect(
+      await principal.readMessages({ requestId: receipt.requestId })
+    ).toEqual([])
+    expect(await principal.readMessages()).toEqual([])
+
+    const second = await fixture.channel.ingest({
+      ...incoming,
+      source: { ...incoming.source, eventId: 'next' },
+      text: 'old ownership'
+    })
+
+    await fixture.restart({
+      ...fixture.runtime.config,
+      bindings: [{ accountId: 'bot', chatId: 'chat', endpointId: 'other' }]
+    })
+    for (const endpoint of ['first', 'other']) {
+      const current = fixture.agent.forPrincipal({
+        subject: endpoint,
+        endpointIds: [endpoint]
+      })
+
+      expect(
+        await current.readMessages({ requestId: second.requestId })
+      ).toEqual([])
+      expect(await current.readMessages()).toEqual([])
+    }
+  } finally {
+    await fixture.close()
+  }
+})

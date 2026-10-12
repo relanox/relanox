@@ -37,7 +37,11 @@ export function createDispatch(
       eventId,
       name,
       timestamp: new Date(request.acceptedAt).toISOString(),
-      data: projectAgentRequest(request),
+      data: {
+        requestId: request.requestId,
+        acceptedAt: request.acceptedAt,
+        ...projectAgentRequest(request)
+      },
       cursor: null
     })
 

@@ -94,7 +94,7 @@ The Agent host decides how to use this metadata; verify setup by sending a messa
 
 ## Incoming messages {#incoming-messages}
 
-dot receives this payload in the `data` of a `relanox.message_available` event. Grok receives the same payload as a JSON string in the Routine webhook's `content`:
+dot receives this payload in the `data` of a `relanox.message_available` event. dot also includes `requestId` and `acceptedAt` for recovery. Grok receives the message fields shown below as a JSON string in the Routine webhook's `content`:
 
 ```json
 {
@@ -253,3 +253,9 @@ After cleanup, retained metadata and send receipts can still recognize an identi
 Send a channel message and receive the Agent's reply. In the CLI's `status` output, incoming `accepted` means the notification was accepted; outgoing `sent` means the platform accepted the reply. MCP `queued` means Relanox saved the reply for sending. A successful dot callback does not mean the host has started processing the event; native event processing can take several minutes. Check the outgoing delivery before retrying an accepted request.
 
 If MCP authentication fails, compare the token and URL, check `publicUrl` against your public address, and preserve Host through your proxy. Add the client's exact Origin to `mcp.allowedOrigins` when it sends that header. If Grok receives nothing, compare the Routine URL and Authorization. If dot receives nothing, check the active subscription and connectivity to the native OpenAI callback.
+
+### Recover missing dot event data
+
+The dot event data includes `requestId` and `acceptedAt` alongside the full message. If the host omits the data when starting the task, call `relanox_read_messages` with that request ID, or remove `evt_` from the event ID. Without an ID, the tool returns recent persisted messages (default 5, maximum 20), newest first. Match the event before replying: recent results can include already processed messages.
+
+Reads use the configured database, survive restarts, and expose only messages whose endpoint and channel binding are still authorized. Removed bindings, changed endpoint ownership and redacted messages are unavailable. Retention still applies. A read does not claim, acknowledge or retry a message and does not accelerate host scheduling. Do not poll this tool for new events.

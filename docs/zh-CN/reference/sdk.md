@@ -45,6 +45,8 @@ Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中
 
 通过 host 在 `/agents/<agentId>` 下注册 Agent HTTP 路由。不要把端点凭据混入通知或工具返回的字段。dot 和 Grok 已通过 `packages/agent-mcp` 共用 MCP 认证和消息工具；修改这些接入时可以复用现有辅助代码。
 
+使用 `host.readMessages({ requestId?, limit? })` 补取保留的来信内容。读取会检查当前端点和频道归属，排除已清理记录、端点配置和私有回复目标。未传入 ID 时，先查询各授权端点最近的记录，再过滤权限，最多返回 `limit` 条消息（默认 5，最大 20）。读取不会领取或确认任务。
+
 ## 保存 channel 和投递
 
 Core 在设置接入之前通过 `registerConversations` 登记配置中的会话。存储独立保存已认证的原生目标信息。`enqueueMessage` 检查 channel 授权，并一起保存端点、解析后的目标及渲染分块。发送顺序和显式幂等键以 channel 为边界。

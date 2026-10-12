@@ -100,6 +100,32 @@ export function storageContract(
       await s.close()
     })
 
+    it('lists recent inputs by acceptance time with an ID tie-break, scoped before limiting', async () => {
+      await s.acceptInbound(snapshot('z-old', 100))
+      await s.acceptInbound(snapshot('a-new', 200))
+      await s.acceptInbound(snapshot('b-new', 200))
+      await s.acceptInbound(snapshot('foreign', 300, 'ep2'))
+
+      const result = await s.listInbound({
+        endpointId: 'ep',
+        limit: 2,
+        recent: true
+      })
+
+      expect(result.map((record) => record.snapshot.requestId)).toEqual([
+        'b-new',
+        'a-new'
+      ])
+      expect(
+        (await s.listInbound({ endpointId: 'ep', limit: 2 })).map(
+          (record) => record.snapshot.requestId
+        )
+      ).toEqual(['a-new', 'b-new'])
+      await expect(
+        s.listInbound({ limit: 1, recent: true, afterId: 'a-new' })
+      ).rejects.toThrow('recent_cursor_unsupported')
+    })
+
     const due = async (
       now = 110,
       safeRetryAccountIds: string[] = []

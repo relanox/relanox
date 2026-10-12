@@ -94,7 +94,7 @@ Agent 平台决定如何使用这些元数据；完成连接后，发送一条�
 
 ## 来信格式 {#incoming-messages}
 
-dot 在 `relanox.message_available` 事件的 `data` 中收到以下结构；Grok 在 Routine webhook 的 `content` 中收到相同结构的 JSON 字符串：
+dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段，并额外包含用于补取的 `requestId` 和 `acceptedAt`。Grok 在 Routine webhook 的 `content` 中收到以下结构的 JSON 字符串：
 
 ```json
 {
@@ -253,3 +253,9 @@ curl --fail-with-body --request PUT \
 发送渠道消息并收到 Agent 回信。在 CLI 的 `status` 输出中，来信 `accepted` 表示通知已接收，回信 `sent` 表示平台已接收。MCP 返回 `queued` 表示 Relanox 已保存待发送的回信。dot 回调成功不代表宿主已开始处理事件，原生事件处理可能需要数分钟。对已接受的请求进行重试前，先检查是否已有回信投递。
 
 MCP 认证失败时核对 token 和 URL，检查 `publicUrl` 与公开地址一致，并让代理保留 Host。客户端发送 Origin 时，将其准确来源加入 `mcp.allowedOrigins`。Grok 没收到消息时核对 Routine URL 和 Authorization；dot 没收到消息时检查有效订阅及原生 OpenAI 回调地址是否可达。
+
+### 补取缺失的 dot 事件内容
+
+dot 事件在完整消息之外包含 `requestId` 和 `acceptedAt`。如果宿主启动任务时没有提供事件内容，可用请求 ID 调用 `relanox_read_messages`，也可去掉事件 ID 的 `evt_` 前缀得到请求 ID。未提供 ID 时，工具按接收时间从新到旧返回最近保存的消息，默认 5 条，最多 20 条。回复前应匹配触发事件，最近消息可能已经处理过。
+
+补取读取配置的数据库，重启后仍可用，且只返回当前端点和频道绑定仍有权访问的消息。移除绑定、变更端点归属或清理正文后，旧内容不可用；数据保留期限仍然适用。读取不会领取、确认或重试消息，也不会加快宿主调度。不要轮询此工具等待新事件。

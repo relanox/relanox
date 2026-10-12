@@ -46,6 +46,10 @@ export function createInspectionOperations(
       return readOutbound(pool, id)
     },
     async listInbound(filter) {
+      if (filter.recent && filter.afterId !== undefined) {
+        throw new Error('recent_cursor_unsupported')
+      }
+      const order = filter.recent ? 'accepted_at DESC,id DESC' : 'id'
       const where = ['1=1']
       const params: unknown[] = []
       if (filter.dispatchStatus !== undefined) {
@@ -68,7 +72,7 @@ export function createInspectionOperations(
             SELECT record
             FROM inbound
             WHERE ${where.join(' AND ')}
-            ORDER BY id
+            ORDER BY ${order}
             LIMIT $${params.length}
           `,
           params

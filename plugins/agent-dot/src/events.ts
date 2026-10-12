@@ -7,8 +7,7 @@ import {
   createMediaTransport,
   guard,
   agentInstructions,
-  registerTools,
-  agentRequestSchema
+  registerTools
 } from '@relanox/agent-mcp'
 import {
   args,
@@ -20,6 +19,7 @@ import {
 import type { SubscriptionStore } from './subscriptions.js'
 import { mountOAuth } from './oauth/index.js'
 import { connectionStatus } from './connection.js'
+import { dotMessageSchema, registerReadMessages } from './read-messages.js'
 
 export function createEventsHandler(
   agentHost: AgentHost,
@@ -71,6 +71,7 @@ export function createEventsHandler(
         connectionStatus(endpoint.id, subscriptions)
       )
       media.register(server)
+      registerReadMessages(server, scopedHost)
       server.server.setRequestHandler(
         'events/list',
         {
@@ -90,7 +91,7 @@ export function createEventsHandler(
                 'A persisted message is available in the authenticated Relanox endpoint; the payload contains the complete message to process.',
               delivery: ['webhook'],
               inputSchema: z.json().parse(z.toJSONSchema(args)),
-              payloadSchema: z.json().parse(z.toJSONSchema(agentRequestSchema))
+              payloadSchema: z.json().parse(z.toJSONSchema(dotMessageSchema))
             }
           ]
         })
