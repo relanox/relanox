@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import type {
   AgentHost,
   AgentId,
@@ -7,7 +6,7 @@ import type {
   CommonHost,
   DeliveryChunk,
   EndpointConfig,
-  InboundRecord,
+  ConversationRecord,
   Observability,
   ReplyTarget,
   ScopedAgentHost,
@@ -19,10 +18,12 @@ import { CoreError } from '../errors.js'
 import { jsonSnapshot } from '../json.js'
 import { textId, boundedText } from '../validation.js'
 import type { WorkerConfig } from '../worker/options.js'
-import { createAgentMedia, messageMedia, authorizedRequest } from './media.js'
+import { createAgentMedia, prepareMessageMedia, messageMedia } from './media.js'
+import { authorizedConversation } from './conversations.js'
+import { channelStatus } from './status.js'
 import { createOperationTracer } from './tracing.js'
 
-type AgentHostOptions = {
+export type AgentHostOptions = {
   readonly agent: AgentId
   readonly agentEndpoints: readonly EndpointConfig[]
   readonly common: CommonHost
@@ -30,6 +31,11 @@ type AgentHostOptions = {
   readonly observe: Observability
   readonly worker: WorkerConfig
   readonly channels: ReadonlyMap<string, ChannelPlugin<unknown>>
+  readonly configured: ReadonlyMap<string, ConversationRecord>
+  readonly connections: ReadonlyMap<
+    string,
+    'connected' | 'disconnected' | 'degraded'
+  >
 }
 
 type MessageInput = Parameters<ScopedAgentHost['sendMessage']>[0]
@@ -91,58 +97,83 @@ async function enqueue(
   options: AgentHostOptions,
   scope: readonly string[],
   input: MessageInput,
-  request: InboundRecord
+  conversation: ConversationRecord
 ): ReturnType<ScopedAgentHost['sendMessage']> {
   const { storage, worker, channels, agent, observe } = options
 
-  const media = await messageMedia(
+  const messageId = input.idempotencyKey ?? crypto.randomUUID()
+
+  const prepared = await prepareMessageMedia(
     storage,
-    input.replyTo,
+    input.channel,
+    messageId,
     input.attachments,
-    worker
+    worker,
+    input.idempotencyKey !== undefined
   )
 
-  const plugin = channels.get(request.snapshot.target.accountId)
+  const now = Date.now()
+  const references = prepared.references
+
+  const message = {
+    messageId,
+    text: input.text,
+    ...(references.length > 0 ? { attachments: references } : {}),
+    createdAt: now
+  }
+
+  if (input.idempotencyKey !== undefined) {
+    const receipt = await storage.getMessageReceipt({
+      channelId: input.channel,
+      endpointIds: scope,
+      agent,
+      message
+    })
+
+    if (receipt.status !== 'not_found') {
+      return receipt
+    }
+  }
+  const media = await messageMedia(storage, input.channel, prepared, worker)
+  const plugin = channels.get(conversation.address.accountId)
   if (!plugin) {
     throw new CoreError('channel_plugin_missing')
   }
   const deliveryId = crypto.randomUUID()
-  const now = Date.now()
-  const references = media.attachments.map((item) => item.reference)
 
-  const messageId =
-    input.idempotencyKey ??
-    createHash('sha256')
-      .update(JSON.stringify([input.text, references]))
-      .digest('hex')
+  const resolution = await plugin.resolveChannel?.(
+    conversation.address,
+    conversation.target
+  )
+
+  if (resolution?.status !== 'available') {
+    throw new CoreError('channel_unavailable')
+  }
+  const target = resolution.target
 
   const result = await createOperationTracer(observe)(
     'enqueue_message',
     async () =>
       storage.enqueueMessage({
-        requestId: input.replyTo,
+        channelId: input.channel,
         endpointIds: scope,
         agent,
-        message: {
-          messageId,
-          text: input.text,
-          ...(references.length > 0 ? { attachments: references } : {}),
-          createdAt: now
-        },
+        message,
         media: media.stored,
         maxCount: worker.maxAttachments * 2,
         maxTotalBytes: worker.maxTotalMediaBytes * 2,
         outbound: {
           deliveryId,
-          requestId: input.replyTo,
+          channelId: input.channel,
           messageId,
-          target: jsonSnapshot(request.snapshot.target),
+          endpoint: conversation.endpoint,
+          target: jsonSnapshot(target),
           chunks: chunksFor(
             plugin,
             deliveryId,
             input.text,
             media.attachments,
-            request.snapshot.target
+            target
           ),
           currentChunk: 0,
           receipts: [],
@@ -150,29 +181,20 @@ async function enqueue(
           version: 1,
           attempts: 0,
           dueAt: now,
-          createdAt: now,
-          ...(request.snapshot.trace ? { trace: request.snapshot.trace } : {})
+          createdAt: now
         }
-      }),
-    request.snapshot.trace
+      })
   )
 
-  if (result.status === 'queued' && !result.replay) {
-    observe.record(
-      'relanox_reply_duration_seconds',
-      Math.max(0, (now - request.snapshot.acceptedAt) / 1000),
-      { agent }
-    )
-  }
   observe.log('info', 'message.queued', {
     plugin: 'core',
-    requestId: input.replyTo,
+    channelId: input.channel,
     outcome: result.status === 'queued' ? 'ok' : result.status
   })
   return result
 }
 
-/** Authenticated endpoints can send messages only to the frozen incoming reply address. */
+/** Authenticated endpoints send to current configured conversations. */
 export function createAgentHost(options: AgentHostOptions): AgentHost {
   const { agent, agentEndpoints, common, storage, worker } = options
   return {
@@ -185,9 +207,21 @@ export function createAgentHost(options: AgentHostOptions): AgentHost {
       )
 
       return {
-        media: createAgentMedia(storage, agent, scope, worker),
+        ...(storage.media
+          ? {
+              media: createAgentMedia(
+                storage,
+                agent,
+                scope,
+                worker,
+                options.configured
+              )
+            }
+          : {}),
+        status: async (input) =>
+          channelStatus(options, scope, input?.deliveryId),
         async sendMessage(input) {
-          textId.parse(input.replyTo)
+          textId.parse(input.channel)
           if (input.idempotencyKey !== undefined) {
             textId.parse(input.idempotencyKey)
           }
@@ -196,11 +230,18 @@ export function createAgentHost(options: AgentHostOptions): AgentHost {
             worker.maxTextBytes,
             !input.attachments?.length
           )
-          const request = await storage.getInbound(input.replyTo)
-          if (!authorizedRequest(request, agent, scope)) {
+          const conversation = await storage.getConversation(input.channel)
+          if (
+            !authorizedConversation(
+              conversation,
+              agent,
+              scope,
+              options.configured
+            )
+          ) {
             return { status: 'not_found' }
           }
-          return enqueue(options, scope, input, request)
+          return enqueue(options, scope, input, conversation)
         }
       }
     }

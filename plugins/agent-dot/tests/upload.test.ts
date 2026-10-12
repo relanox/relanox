@@ -67,12 +67,12 @@ const file = {
 
 async function offer(
   client: Client,
-  replyTo: string,
+  channel: string,
   metadata: Record<string, unknown> = {}
 ): Promise<Offer> {
   const result = await client.callTool({
     name: 'relanox_create_upload',
-    arguments: { ...file, replyTo, ...metadata }
+    arguments: { ...file, channel, ...metadata }
   })
 
   expect(result.isError).not.toBe(true)
@@ -119,7 +119,7 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
       })
     ).toMatchObject({ status: 'updated' })
     const client = await fx.client()
-    const ticket = await offer(client, receipt.requestId)
+    const ticket = await offer(client, receipt.channel)
     expect(ticket.uploadUrl).not.toContain(
       agent === 'dot' ? password : 'secret-0'
     )
@@ -132,7 +132,7 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
       .parse(await uploaded.json())
 
     expect(
-      (await fx.storage.media?.get(receipt.requestId, fileId))?.data
+      (await fx.storage.media?.get(receipt.channel, fileId))?.data
     ).toEqual(new Uint8Array([0, 128, 255]))
     expect(await fx.storage.listOutbound({ limit: 10 })).toEqual([])
 
@@ -147,7 +147,7 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
     const reconnected = await fx.client()
 
     const args = {
-      replyTo: receipt.requestId,
+      channel: receipt.channel,
       text: '',
       idempotencyKey: 'uploaded-answer',
       attachments: [{ mediaId: fileId }]
@@ -180,11 +180,34 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
     ])
     expect(
       await fx.storage.cleanup({ before: Date.now() + 1000, limit: 10 })
-    ).toEqual({ redacted: 1 })
-    expect((await fx.core.fetch(put(ticket))).status).toBe(404)
+    ).toEqual({ redacted: 2 })
+    expect((await fx.core.fetch(put(ticket))).status).toBe(409)
+    expect(await fx.storage.media?.get(receipt.channel, fileId)).toBeUndefined()
     expect(
-      await fx.storage.media?.get(receipt.requestId, fileId)
-    ).toBeUndefined()
+      await fx.storage.media?.getReference(receipt.channel, fileId)
+    ).toMatchObject({ id: fileId, fileName: '结果.bin', size: 3 })
+    expect(
+      await reconnected.callTool({
+        name: 'relanox_send_message',
+        arguments: args
+      })
+    ).toMatchObject({ structuredContent: { status: 'queued', replay: true } })
+    expect(
+      await reconnected.callTool({
+        name: 'relanox_send_message',
+        arguments: { ...args, text: 'different' }
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { status: 'conflict' }
+    })
+    expect(
+      await reconnected.callTool({
+        name: 'relanox_send_message',
+        arguments: { ...args, idempotencyKey: 'new-expired-media' }
+      })
+    ).toMatchObject({ isError: true })
+    expect(await fx.storage.listOutbound({ limit: 10 })).toHaveLength(1)
   })
 
   it('rejects forged, expired, cross-endpoint and wrong-method capabilities', async () => {
@@ -195,10 +218,10 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
     expect(
       await other.callTool({
         name: 'relanox_create_upload',
-        arguments: { ...file, replyTo: receipt.requestId }
+        arguments: { ...file, channel: receipt.channel }
       })
     ).toMatchObject({ isError: true })
-    const ticket = await offer(client, receipt.requestId)
+    const ticket = await offer(client, receipt.channel)
     const tampered = new URL(ticket.uploadUrl)
     tampered.searchParams.set(
       'ticket',
@@ -241,7 +264,7 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
   it('checks signed MIME and actual byte size before saving and accepts a corrected retry', async () => {
     const fx = await setup(agent)
     const receipt = await fx.ingest()
-    const ticket = await offer(await fx.client(), receipt.requestId)
+    const ticket = await offer(await fx.client(), receipt.channel)
     expect(
       (
         await fx.core.fetch(
@@ -289,7 +312,7 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
     expect(
       await client.callTool({
         name: 'relanox_create_upload',
-        arguments: { ...file, replyTo: receipt.requestId, ...metadata }
+        arguments: { ...file, channel: receipt.channel, ...metadata }
       })
     ).toMatchObject({ isError: true })
   })
@@ -298,17 +321,16 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
     const fx = await setup(agent)
     const receipt = await fx.ingest()
     const client = await fx.client()
-    const first = await offer(client, receipt.requestId)
+    const first = await offer(client, receipt.channel)
     expect((await fx.core.fetch(put(first))).status).toBe(200)
     for (let index = 1; index < 20; index++) {
       expect(
-        (await fx.core.fetch(put(await offer(client, receipt.requestId))))
-          .status
+        (await fx.core.fetch(put(await offer(client, receipt.channel)))).status
       ).toBe(200)
     }
 
     const rejected = await fx.core.fetch(
-      put(await offer(client, receipt.requestId))
+      put(await offer(client, receipt.channel))
     )
 
     expect(rejected.status).toBe(413)

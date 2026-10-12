@@ -1,4 +1,9 @@
-import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
+import type {
+  Storage,
+  InboundRecord,
+  OutboundRecord,
+  MediaReference
+} from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { boundedLimit } from './database.js'
 
@@ -78,7 +83,9 @@ export function createInspectionOperations(
       }
       if (filter.endpointId !== undefined) {
         params.push(filter.endpointId)
-        where.push(`inbound_request.endpoint=$${params.length}`)
+        where.push(
+          `outbound_delivery.record#>>'{endpoint,id}'=$${params.length}`
+        )
       }
       if (filter.afterId !== undefined) {
         params.push(filter.afterId)
@@ -91,7 +98,6 @@ export function createInspectionOperations(
           `
             SELECT outbound_delivery.record
             FROM outbound outbound_delivery
-            JOIN inbound inbound_request ON inbound_request.id=outbound_delivery.request_id
             WHERE ${where.join(' AND ')}
             ORDER BY outbound_delivery.id
             LIMIT $${params.length}
@@ -134,9 +140,14 @@ export function createInspectionOperations(
     },
     async cleanup(input) {
       return transaction(async (client) => {
+        // Media writers lock their conversation before publishing references.
+        await client.query(
+          'SELECT id FROM conversations ORDER BY id FOR UPDATE'
+        )
+
         const rows = await query<{ record: InboundRecord }>(
           client,
-          `SELECT i.record FROM inbound i WHERE i.accepted_at<$1 AND i.status IN ('accepted','rejected') AND i.record->'redactedAt' IS NULL AND NOT EXISTS(SELECT 1 FROM outbound o WHERE o.request_id=i.id AND (o.status!='sent' OR (o.record->>'createdAt')::bigint>=$1)) ORDER BY i.accepted_at,i.id LIMIT $2 FOR UPDATE`,
+          "SELECT record FROM inbound WHERE accepted_at<$1 AND status IN ('accepted','rejected') AND record->'redactedAt' IS NULL ORDER BY accepted_at,id LIMIT $2 FOR UPDATE",
           [input.before, boundedLimit(input.limit)]
         )
 
@@ -152,30 +163,86 @@ export function createInspectionOperations(
             },
             redactedAt: input.before
           })
-          await client.query('UPDATE media SET data=NULL WHERE request_id=$1', [
-            record.snapshot.requestId
-          ])
+        }
 
-          const deliveries = await query<{ record: OutboundRecord }>(
-            client,
-            'SELECT record FROM outbound WHERE request_id=$1',
-            [record.snapshot.requestId]
-          )
+        const deliveries = await query<{ record: OutboundRecord }>(
+          client,
+          "SELECT record FROM outbound WHERE status='sent' AND (record->>'createdAt')::bigint<$1 AND record->'redactedAt' IS NULL LIMIT $2 FOR UPDATE",
+          [input.before, boundedLimit(input.limit)]
+        )
 
-          for (const { record: delivery } of deliveries) {
-            await saveOutbound(client, {
-              ...delivery,
-              version: delivery.version + 1,
-              chunks: delivery.chunks.map((chunk) => ({
-                text: '',
-                state: null,
-                idempotencyKey: chunk.idempotencyKey
-              })),
-              receipts: delivery.receipts.map(() => ({}))
-            })
+        for (const { record } of deliveries) {
+          await saveOutbound(client, {
+            ...record,
+            version: record.version + 1,
+            chunks: record.chunks.map((chunk) => ({
+              text: '',
+              state: null,
+              idempotencyKey: chunk.idempotencyKey
+            })),
+            receipts: record.receipts.map(() => ({})),
+            redactedAt: input.before
+          })
+        }
+        const retained = new Set<string>()
+
+        const incoming = await query<{ record: InboundRecord }>(
+          client,
+          "SELECT record FROM inbound WHERE record->'redactedAt' IS NULL"
+        )
+
+        for (const { record } of incoming) {
+          for (const ref of record.snapshot.attachments ?? []) {
+            retained.add(ref.id)
+            if (ref.previewMediaId) {
+              retained.add(ref.previewMediaId)
+            }
           }
         }
-        return { redacted: rows.length }
+
+        const outgoing = await query<{ record: OutboundRecord }>(
+          client,
+          "SELECT record FROM outbound WHERE record->'redactedAt' IS NULL"
+        )
+
+        for (const { record } of outgoing) {
+          for (const chunk of record.chunks) {
+            if (chunk.media) {
+              retained.add(chunk.media.id)
+              if (chunk.media.previewMediaId) {
+                retained.add(chunk.media.previewMediaId)
+              }
+            }
+          }
+        }
+
+        const staged = await query<{ reference: MediaReference }>(
+          client,
+          'SELECT reference FROM media WHERE staged=TRUE AND data IS NOT NULL AND created_at>=$1',
+          [input.before]
+        )
+
+        for (const { reference } of staged) {
+          if (reference.previewMediaId) {
+            retained.add(reference.previewMediaId)
+          }
+        }
+
+        const candidates = await query<{ id: string }>(
+          client,
+          'SELECT id FROM media WHERE data IS NOT NULL AND created_at<$1 AND NOT(id=ANY($2::text[])) ORDER BY created_at,id LIMIT $3 FOR UPDATE',
+          [input.before, [...retained], boundedLimit(input.limit)]
+        )
+
+        for (const { id } of candidates) {
+          if (!retained.has(id)) {
+            await client.query(
+              'UPDATE media SET data=NULL,staged=FALSE WHERE id=$1',
+              [id]
+            )
+          }
+        }
+        return { redacted: rows.length + deliveries.length }
       })
     }
   }

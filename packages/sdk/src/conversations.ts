@@ -31,10 +31,18 @@ export type AgentChannelStatus = {
     | { readonly status: 'unavailable'; readonly reason: string }
   readonly media: readonly MediaKind[]
   readonly maxTextLength: number
+  readonly lengthUnit: 'utf16' | 'codepoint' | 'utf8'
+  readonly maxTextLengthPerMessage?: number
+  readonly maxChunksPerMessage?: number
   readonly maxAttachments?: number
 }
 
 export type AgentStatus = {
+  readonly mediaLimits: {
+    readonly maxBytes: number
+    readonly maxTotalBytes: number
+    readonly maxAttachments: number
+  }
   readonly channels: readonly AgentChannelStatus[]
   readonly delivery?: {
     readonly id: string
@@ -47,5 +55,8 @@ export type AgentStatus = {
 /** Durable channel authorization and learned native addresses, independent of messages. */
 export type ConversationStorage = {
   registerConversations(records: readonly ConversationRecord[]): Promise<void>
-  getConversation(id: string): Promise<ConversationRecord | undefined>
+  getConversation(
+    id: string,
+    options?: { readonly includeInactive?: boolean }
+  ): Promise<ConversationRecord | undefined>
 }

@@ -244,13 +244,9 @@ export function createWorker(
             {
               plugin: 'core',
               operation: work.kind === 'dispatch' ? 'dispatch' : 'send',
-              requestId:
-                work.kind === 'dispatch'
-                  ? work.record.snapshot.requestId
-                  : work.record.requestId,
-              ...(work.kind === 'send'
-                ? { deliveryId: work.record.deliveryId }
-                : {}),
+              ...(work.kind === 'dispatch'
+                ? { requestId: work.record.snapshot.requestId }
+                : { channelId: work.record.channelId }),
               outcome: outcome.status,
               ...('errorCode' in outcome
                 ? { errorCode: outcome.errorCode }

@@ -74,7 +74,7 @@ function frame(response: ServerResponse, value: unknown, id: string): void {
 function sendInput(base: string): SendInput {
   return {
     deliveryId: 'delivery',
-    requestId: 'request',
+    channelId: 'request',
     target: {
       channel: 'signal',
       accountId: 'bot',

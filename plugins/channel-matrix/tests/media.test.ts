@@ -172,9 +172,7 @@ it.each(kinds)(
         },
         'm.relates_to': {
           rel_type: 'm.thread',
-          event_id: '$thread',
-          is_falling_back: true,
-          'm.in_reply_to': { event_id: '$media' }
+          event_id: '$thread'
         }
       }
     ])

@@ -41,8 +41,8 @@ function compatibleKind(value: { kind: string; mimeType: string }): boolean {
 
 export const uploadInput = z
   .strictObject({
-    replyTo: id.describe(
-      'Copy replyTo unchanged from the incoming message that will own the uploaded file.'
+    channel: id.describe(
+      'An authorized channel ID from relanox_status or source.channel.id; this channel owns the uploaded file.'
     ),
     ...metadata
   })
@@ -51,7 +51,7 @@ export const uploadInput = z
 const ticketSchema = z
   .strictObject({
     endpointId: id,
-    requestId: id,
+    channelId: id,
     mediaId: z.uuid(),
     expiresAt: z.number().int().positive(),
     ...metadata
@@ -80,7 +80,7 @@ export function uploadTickets(
       .digest('base64url')
 
   const path = (ticket: UploadTicket): string =>
-    `${prefix}${encodeURIComponent(ticket.requestId)}/${ticket.mediaId}`
+    `${prefix}${encodeURIComponent(ticket.channelId)}/${ticket.mediaId}`
 
   return {
     matches(request: Request): boolean {

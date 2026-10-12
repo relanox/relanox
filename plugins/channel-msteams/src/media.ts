@@ -350,7 +350,7 @@ async function imageAttachment(
       }
     }
     contentUrl = await host.media.publish({
-      requestId: input.requestId,
+      channelId: input.channelId,
       mediaId: id
     })
   }

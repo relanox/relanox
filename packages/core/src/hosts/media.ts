@@ -2,13 +2,14 @@ import { createHash } from 'node:crypto'
 import type {
   AgentId,
   AgentAttachment,
-  InboundRecord,
+  ConversationRecord,
   Storage,
   AgentMediaHost,
   MediaUpload,
   MediaReference,
   StoredMedia
 } from '@relanox/sdk'
+import { authorizedConversation } from './conversations.js'
 import { CoreError } from '../errors.js'
 import { textId } from '../validation.js'
 import {
@@ -20,44 +21,35 @@ import {
 } from '../media.js'
 import type { WorkerConfig } from '../worker/options.js'
 
-export function authorizedRequest(
-  request: InboundRecord | undefined,
-  agent: AgentId,
-  scope: readonly string[]
-): request is InboundRecord {
-  return (
-    request?.snapshot.endpoint.agent === agent &&
-    scope.includes(request.snapshot.endpoint.id) &&
-    request.redactedAt === undefined
-  )
-}
-
 export function createAgentMedia(
   storage: Storage,
   agent: AgentId,
   scope: readonly string[],
-  worker: WorkerConfig
+  worker: WorkerConfig,
+  configured: ReadonlyMap<string, ConversationRecord>
 ): AgentMediaHost {
   return {
     maxBytes: worker.maxMediaBytes,
     maxTotalBytes: worker.maxTotalMediaBytes,
     maxAttachments: worker.maxAttachments,
     async authorize(input) {
-      textId.parse(input.requestId)
-      return authorizedRequest(
-        await storage.getInbound(input.requestId),
+      textId.parse(input.channelId)
+      return authorizedConversation(
+        await storage.getConversation(input.channelId),
         agent,
-        scope
+        scope,
+        configured
       )
     },
     async upload(input): Promise<MediaReference | undefined> {
-      textId.parse(input.requestId)
+      textId.parse(input.channelId)
       mediaId.parse(input.mediaId)
       if (
-        !authorizedRequest(
-          await storage.getInbound(input.requestId),
+        !authorizedConversation(
+          await storage.getConversation(input.channelId),
           agent,
-          scope
+          scope,
+          configured
         )
       ) {
         return undefined
@@ -67,7 +59,7 @@ export function createAgentMedia(
       }
 
       const result = await storage.media.put({
-        requestId: input.requestId,
+        channelId: input.channelId,
         agent,
         endpointIds: scope,
         media: storeUpload(input.upload, input.mediaId, worker.maxMediaBytes),
@@ -87,13 +79,13 @@ export function createAgentMedia(
       return result.reference
     },
     async read(input): Promise<StoredMedia | undefined> {
-      textId.parse(input.requestId)
+      textId.parse(input.channelId)
       mediaId.parse(input.mediaId)
-      const request = await storage.getInbound(input.requestId)
-      if (!authorizedRequest(request, agent, scope)) {
+      const request = await storage.getConversation(input.channelId)
+      if (!authorizedConversation(request, agent, scope, configured)) {
         return undefined
       }
-      const media = await storage.media?.get(input.requestId, input.mediaId)
+      const media = await storage.media?.get(input.channelId, input.mediaId)
       return media
         ? verifiedMedia(media, media.reference, worker.maxMediaBytes)
         : undefined
@@ -101,9 +93,10 @@ export function createAgentMedia(
   }
 }
 
-/** Stable request-owned asset IDs make a repeated send with identical bytes replayable. */
+/** Channel and send-intent ownership makes generated assets replayable for that send. */
 function outgoingMedia(
-  requestId: string,
+  channelId: string,
+  intent: string,
   upload: MediaUpload,
   maximum: number
 ): StoredMedia {
@@ -111,96 +104,144 @@ function outgoingMedia(
   const { id: _id, ...metadata } = stored.reference
 
   const digest = createHash('sha256')
-    .update(JSON.stringify([requestId, metadata]))
+    .update(JSON.stringify([channelId, intent, metadata]))
     .digest('hex')
 
   const id = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-8${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`
   return { ...stored, reference: { ...stored.reference, id } }
 }
 
+type PreparedMedia = {
+  readonly references: readonly MediaReference[]
+  readonly cached: readonly StoredMedia[]
+}
+
+function generatedGraph(
+  channelId: string,
+  intent: string,
+  attachment: Exclude<AgentAttachment, string>,
+  maximum: number
+): { primary: StoredMedia; assets: readonly StoredMedia[] } {
+  if (!('media' in attachment)) {
+    const primary = outgoingMedia(channelId, intent, attachment, maximum)
+    return { primary, assets: [primary] }
+  }
+  const preview = outgoingMedia(channelId, intent, attachment.preview, maximum)
+  if (
+    preview.reference.kind !== 'image' ||
+    preview.reference.previewMediaId !== undefined
+  ) {
+    throw new CoreError('invalid_media_preview')
+  }
+
+  const primary = outgoingMedia(
+    channelId,
+    intent,
+    { ...attachment.media, previewMediaId: preview.reference.id },
+    maximum
+  )
+
+  return { primary, assets: [preview, primary] }
+}
+
+/** Keyed replay needs immutable metadata even after content retention. */
+export async function prepareMessageMedia(
+  storage: Storage,
+  channelId: string,
+  intent: string,
+  attachments: readonly AgentAttachment[] | undefined,
+  worker: WorkerConfig,
+  recovery: boolean
+): Promise<PreparedMedia> {
+  validateMediaCount(attachments?.length ?? 0, worker.maxAttachments)
+  const references: MediaReference[] = []
+  const cached: StoredMedia[] = []
+  for (const attachment of attachments ?? []) {
+    if (typeof attachment !== 'string') {
+      const graph = generatedGraph(
+        channelId,
+        intent,
+        attachment,
+        worker.maxMediaBytes
+      )
+
+      references.push(graph.primary.reference)
+      cached.push(...graph.assets)
+      continue
+    }
+    const id = mediaId.parse(attachment)
+    if (recovery) {
+      const reference = await storage.media?.getReference(channelId, id)
+      if (!reference) {
+        throw new CoreError('media_not_found')
+      }
+      references.push(reference)
+    } else {
+      const stored = await storage.media?.get(channelId, id)
+      if (!stored) {
+        throw new CoreError('media_not_found')
+      }
+      cached.push(verifiedMedia(stored, stored.reference, worker.maxMediaBytes))
+      references.push(stored.reference)
+    }
+  }
+  if (
+    new Set(references.map((reference) => reference.id)).size !==
+    references.length
+  ) {
+    throw new CoreError('duplicate_attachment')
+  }
+  return { references, cached }
+}
+
 export async function messageMedia(
   storage: Storage,
-  requestId: string,
-  attachments: readonly AgentAttachment[] | undefined,
+  channelId: string,
+  prepared: PreparedMedia,
   worker: WorkerConfig
 ): Promise<{
   attachments: readonly StoredMedia[]
   stored: readonly StoredMedia[]
 }> {
-  validateMediaCount(attachments?.length ?? 0, worker.maxAttachments)
-  const media: StoredMedia[] = []
-  const assets: StoredMedia[] = []
-  for (const attachment of attachments ?? []) {
-    if (typeof attachment !== 'string' && 'media' in attachment) {
-      const preview = outgoingMedia(
-        requestId,
-        attachment.preview,
-        worker.maxMediaBytes
-      )
+  const cache = new Map(
+    prepared.cached.map((asset) => [asset.reference.id, asset])
+  )
 
-      if (
-        preview.reference.kind !== 'image' ||
-        preview.reference.previewMediaId !== undefined
-      ) {
-        throw new CoreError('invalid_media_preview')
-      }
-
-      const main = outgoingMedia(
-        requestId,
-        {
-          ...attachment.media,
-          previewMediaId: preview.reference.id
-        },
-        worker.maxMediaBytes
-      )
-
-      assets.push(preview, main)
-      media.push(main)
-      continue
-    }
-
-    const stored =
-      typeof attachment === 'string'
-        ? await storage.media?.get(requestId, mediaId.parse(attachment))
-        : outgoingMedia(requestId, attachment, worker.maxMediaBytes)
-
+  const attachments: StoredMedia[] = []
+  const assets = new Map<string, StoredMedia>()
+  for (const ref of prepared.references) {
+    const cached = cache.get(ref.id)
+    const stored = cached ?? (await storage.media?.get(channelId, ref.id))
     if (!stored) {
       throw new CoreError('media_not_found')
     }
-
-    const checked =
-      typeof attachment === 'string'
-        ? verifiedMedia(stored, stored.reference, worker.maxMediaBytes)
-        : stored
-
-    const preview = await readPreview(
-      storage,
-      requestId,
-      checked,
-      worker.maxMediaBytes
-    )
-
-    if (preview) {
-      assets.push(preview)
+    const primary = cached ?? verifiedMedia(stored, ref, worker.maxMediaBytes)
+    assets.set(ref.id, primary)
+    attachments.push(primary)
+    if (ref.previewMediaId === undefined) {
+      continue
     }
-    assets.push(checked)
-    media.push(checked)
-  }
-  if (new Set(media.map((item) => item.reference.id)).size !== media.length) {
-    throw new CoreError('duplicate_attachment')
-  }
 
-  const unique = [
-    ...new Map(assets.map((item) => [item.reference.id, item])).values()
-  ]
+    const preview =
+      cache.get(ref.previewMediaId) ??
+      (await readPreview(storage, channelId, primary, worker.maxMediaBytes))
 
-  validateMediaTotal(unique, worker.maxTotalMediaBytes)
-  return { attachments: media, stored: unique }
+    if (
+      preview?.reference.kind !== 'image' ||
+      preview.reference.previewMediaId !== undefined
+    ) {
+      throw new CoreError('invalid_media_preview')
+    }
+    assets.set(preview.reference.id, preview)
+  }
+  const stored = [...assets.values()]
+  validateMediaTotal(stored, worker.maxTotalMediaBytes)
+  return { attachments, stored }
 }
 
 export async function readPreview(
   storage: Storage,
-  requestId: string,
+  channelId: string,
   media: StoredMedia,
   maximum: number
 ): Promise<StoredMedia | undefined> {
@@ -209,7 +250,7 @@ export async function readPreview(
     return undefined
   }
   mediaId.parse(id)
-  const preview = await storage.media?.get(requestId, id)
+  const preview = await storage.media?.get(channelId, id)
   if (
     preview?.reference.kind !== 'image' ||
     preview.reference.previewMediaId !== undefined

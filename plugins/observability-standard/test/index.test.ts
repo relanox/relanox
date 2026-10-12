@@ -200,6 +200,7 @@ describe('jSON log boundary', () => {
     const value = await runtime({ logs: true }, output)
     value.observe.log('info', 'inbound.accepted', {
       requestId: '11223344-1122-4433-8899-112233445566',
+      channelId: '0123456789abcdef'.repeat(4),
       plugin: 'core',
       text: 'PRIVATE MESSAGE',
       authorization: 'Bearer TOKEN',
@@ -210,6 +211,7 @@ describe('jSON log boundary', () => {
     value.observe.log('error', 'PRIVATE EVENT', {
       operation: 'PRIVATE OPERATION',
       requestId: 'PRIVATE ID',
+      channelId: 'PRIVATE CHANNEL',
       traceId: 'TOKEN',
       errorCode: 'call_timeout'
     })
@@ -225,10 +227,12 @@ describe('jSON log boundary', () => {
       level: 30,
       event: 'inbound.accepted',
       requestId: '11223344-1122-4433-8899-112233445566',
+      channelId: '0123456789abcdef'.repeat(4),
       plugin: 'core',
       outcome: 'accepted'
     })
     expect(Object.keys(lines[0] ?? {}).toSorted()).toEqual([
+      'channelId',
       'event',
       'level',
       'outcome',
@@ -301,9 +305,9 @@ describe('prometheus public facade', () => {
     first.observe.record('relanox_send_duration_seconds', 0.25, {
       channel: 'telegram'
     })
-    first.observe.record('relanox_reply_duration_seconds', 0.5, {
-      operation: 'enqueue_message',
-      outcome: 'queued'
+    first.observe.record('relanox_dispatch_duration_seconds', 0.5, {
+      operation: 'dispatch',
+      outcome: 'accepted'
     })
     first.observe.record('relanox_claimed', 1)
     first.observe.record('relanox_result_duration_seconds', 1)
@@ -318,7 +322,7 @@ describe('prometheus public facade', () => {
       /relanox_send_duration_seconds_bucket\{le="0.5"[^\n]*\} 1/u
     )
     expect(body).toMatch(
-      /relanox_reply_duration_seconds_sum\{[^\n]*operation="enqueue_message"[^\n]*outcome="queued"[^\n]*\} 0.5/u
+      /relanox_dispatch_duration_seconds_sum\{[^\n]*operation="dispatch"[^\n]*outcome="accepted"[^\n]*\} 0.5/u
     )
     expect(body).not.toContain('relanox_claimed')
     expect(body).not.toContain('relanox_result_duration_seconds')

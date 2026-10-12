@@ -50,7 +50,7 @@ export const sameReference = (
   right: MediaReference
 ): boolean => equalDurableValues(left, right)
 
-/** Storage calls this inside the request lock, using metadata and SQL byte totals. */
+/** Storage calls this inside the channel lock, using metadata and SQL byte totals. */
 export function validateStagedMedia(
   input: PutMediaInput,
   previous: MediaReference | undefined,
@@ -163,11 +163,10 @@ export function validateMessageMedia(
   if (
     !withinMediaBudget(
       input,
-      assets.size,
-      [...assets.values()].reduce(
-        (sum, asset) => sum + asset.data.byteLength,
-        0
-      )
+      used.size,
+      [...assets.values()]
+        .filter((asset) => used.has(asset.reference.id))
+        .reduce((sum, asset) => sum + asset.data.byteLength, 0)
     )
   ) {
     return undefined
@@ -195,3 +194,19 @@ export const mediaDigest = (media: StoredMedia): string =>
       ])
     )
     .digest('hex')
+
+/** Read only this send's graph and supplied immutable IDs, never channel history. */
+export function messageMediaIds(input: EnqueueMessageInput): readonly string[] {
+  const refs = [...(input.message.attachments ?? [])]
+  for (const asset of input.media ?? []) {
+    refs.push(asset.reference)
+  }
+  const ids = new Set<string>()
+  for (const ref of refs) {
+    ids.add(ref.id)
+    if (ref.previewMediaId) {
+      ids.add(ref.previewMediaId)
+    }
+  }
+  return [...ids]
+}

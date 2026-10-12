@@ -297,7 +297,7 @@ describe('native Google Chat', () => {
 
       const input: SendInput = {
         deliveryId: 'delivery',
-        requestId: item.snapshot.requestId,
+        channelId: item.snapshot.channel.id,
         chunkIndex: 0,
         signal: new AbortController().signal,
         target:
@@ -488,7 +488,7 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
   expect(item.text).toBe('')
 
   const media = await scoped.media?.read({
-    requestId: item.requestId,
+    channelId: item.channel.id,
     mediaId: item.attachments[0].id
   })
 
@@ -497,13 +497,13 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
   }
 
   const storageFailure = vi
-    .spyOn(local.storage, 'getInbound')
+    .spyOn(local.storage, 'getConversation')
     .mockRejectedValueOnce(new Error('storage_temporarily_unavailable'))
 
   expect(
     await local.plugin.send({
       deliveryId: 'publication-attempt',
-      requestId: item.requestId,
+      channelId: item.channel.id,
       target: item.target,
       chunkIndex: 0,
       chunk: {
@@ -526,7 +526,7 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
     )
   ).toHaveLength(0)
   await scoped.sendMessage({
-    replyTo: item.requestId,
+    channel: item.channel.id,
     idempotencyKey: 'media-result',
     text: 'caption',
     attachments: [item.attachments[0].id]

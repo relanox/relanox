@@ -260,7 +260,7 @@ test.each([
 
     const input: SendInput = {
       deliveryId: 'delivery',
-      requestId: persisted.snapshot.requestId,
+      channelId: persisted.snapshot.channel.id,
       chunkIndex: 0,
       signal: new AbortController().signal,
       target: persisted.snapshot.target,

@@ -128,6 +128,7 @@ export async function harness(
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
   dispatches: string[]
+  principal(this: void): ScopedAgentHost
   sendReply(
     this: void,
     text?: string
@@ -212,7 +213,7 @@ export async function harness(
     }
 
     const completion = await scoped.sendMessage({
-      replyTo: item.requestId,
+      channel: item.channel.id,
       idempotencyKey: 'local-result',
       text
     })
@@ -231,6 +232,7 @@ export async function harness(
     core,
     storage,
     dispatches,
+    principal,
     sendReply,
     async close(): Promise<void> {
       await storage.close()
@@ -238,11 +240,11 @@ export async function harness(
   }
 }
 
-export function legacyTargetOrigin(filename: string): void {
+export function rewriteSavedOrigin(filename: string): void {
   const legacy = new DatabaseSync(filename)
   legacy
     .prepare(
-      "UPDATE inbound SET record = json_set(record, '$.snapshot.target.data.apiBase', ?)"
+      "UPDATE outbound SET record = json_set(record, '$.target.data.apiBase', ?)"
     )
     .run('https://foreign.example')
   legacy.close()

@@ -19,7 +19,7 @@ import {
 } from './protocol.js'
 import type { SubscriptionStore } from './subscriptions.js'
 import { mountOAuth } from './oauth/index.js'
-import { registerConnectionStatus } from './connection.js'
+import { connectionStatus } from './connection.js'
 
 export function createEventsHandler(
   agentHost: AgentHost,
@@ -67,8 +67,9 @@ export function createEventsHandler(
         }
       )
 
-      registerTools(server, scopedHost, true)
-      registerConnectionStatus(server, endpoint.id, subscriptions)
+      registerTools(server, scopedHost, true, async () =>
+        connectionStatus(endpoint.id, subscriptions)
+      )
       media.register(server)
       server.server.setRequestHandler(
         'events/list',

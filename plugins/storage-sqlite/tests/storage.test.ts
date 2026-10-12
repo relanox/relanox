@@ -1,5 +1,6 @@
 import type { Storage } from '@relanox/sdk'
 import { asset, mediaContract } from '../../../tests/storage/media-contract.js'
+import { DatabaseSync } from 'node:sqlite'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +8,7 @@ import { expect, it } from 'vitest'
 import {
   required,
   snapshot,
+  testConversations,
   completion,
   storageContract
 } from '../../../tests/contracts/storage-contract.js'
@@ -30,7 +32,9 @@ it('initializes idempotently and persists messages and leases across independent
       errorCode: 'storage_unavailable'
     })
     await a.initialize()
+    await a.registerConversations(testConversations)
     await a.initialize()
+    await a.registerConversations(testConversations)
     expect(await a.health()).toEqual({ ok: true })
     const incoming = asset()
     await a.acceptInbound(
@@ -40,7 +44,7 @@ it('initializes idempotently and persists messages and leases across independent
     const staged = asset('staged')
 
     const stageInput = {
-      requestId: 'r1',
+      channelId: 'channel',
       agent: 'grok' as const,
       endpointIds: ['ep'],
       media: staged,
@@ -53,6 +57,7 @@ it('initializes idempotently and persists messages and leases across independent
       status: 'stored'
     })
     await a.initialize()
+    await a.registerConversations(testConversations)
     expect((await a.getInbound('r1'))?.snapshot.text).toBe('question')
     b = open()
 
@@ -74,10 +79,11 @@ it('initializes idempotently and persists messages and leases across independent
     await a.close()
     a = open()
     await a.initialize()
-    expect(await required(a.media).get('r1', incoming.reference.id)).toEqual(
-      incoming
-    )
-    expect(await required(a.media).get('r1', 'staged')).toEqual(staged)
+    await a.registerConversations(testConversations)
+    expect(
+      await required(a.media).get('channel', incoming.reference.id)
+    ).toEqual(incoming)
+    expect(await required(a.media).get('channel', 'staged')).toEqual(staged)
     expect(await required(a.media).put(stageInput)).toEqual({
       status: 'stored',
       reference: staged.reference
@@ -97,6 +103,7 @@ it('initializes idempotently and persists messages and leases across independent
     await a.close()
     a = open()
     await a.initialize()
+    await a.registerConversations(testConversations)
     expect(await a.enqueueMessage(message)).toMatchObject({
       status: 'queued',
       replay: true
@@ -114,3 +121,41 @@ it('initializes idempotently and persists messages and leases across independent
 mediaContract('SQLite media durability', async () =>
   createSqliteStorage({ filename: ':memory:' })
 )
+
+it('rejects a request-addressed database schema without altering historical data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'relanox-sqlite-legacy-'))
+  const filename = join(directory, 'historical.sqlite')
+  const previous = new DatabaseSync(filename)
+  previous.exec(
+    'CREATE TABLE outbound(id TEXT PRIMARY KEY, request_id TEXT NOT NULL, record TEXT NOT NULL)'
+  )
+  previous
+    .prepare('INSERT INTO outbound VALUES(?,?,?)')
+    .run('old-delivery', 'old-request', 'historical payload')
+  previous.close()
+  const storage = createSqliteStorage({ filename })
+  try {
+    await expect(storage.initialize()).rejects.toThrow(
+      'Unsupported request-addressed database schema'
+    )
+    await storage.close()
+    const saved = new DatabaseSync(filename)
+    try {
+      expect(
+        saved
+          .prepare('SELECT request_id,record FROM outbound WHERE id=?')
+          .get('old-delivery')
+      ).toEqual({ request_id: 'old-request', record: 'historical payload' })
+      expect(
+        saved
+          .prepare("SELECT name FROM sqlite_master WHERE name='conversations'")
+          .get()
+      ).toBeUndefined()
+    } finally {
+      saved.close()
+    }
+  } finally {
+    await storage.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})

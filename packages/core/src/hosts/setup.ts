@@ -10,7 +10,7 @@ import { jsonSnapshot } from '../json.js'
 import type { Hono } from 'hono'
 import { validatePluginConfigurations } from '../config/plugins.js'
 import { createCommonHostFactory } from './common.js'
-import { createChannelHost } from './channel.js'
+import { createChannelHost, configuredConversations } from './channel.js'
 import { createAgentHost } from './agent.js'
 
 type HostSetupOptions = {
@@ -54,6 +54,13 @@ export async function setupPluginHosts({
 
   const { accountValidated, endpoints, bindings } =
     validatePluginConfigurations(options, config)
+
+  const conversations = configuredConversations(config)
+  await storage.registerConversations(conversations)
+
+  const configured = new Map(
+    conversations.map((record) => [record.address.id, record])
+  )
 
   // Populate every connection before setup callbacks can report aggregate plugin health.
   for (const account of config.accounts) {
@@ -112,7 +119,9 @@ export async function setupPluginHosts({
       storage,
       observe,
       worker,
-      channels: options.channels
+      channels: options.channels,
+      configured,
+      connections
     })
 
     await plugin.setup(host, jsonSnapshot(agentEndpoints), {})

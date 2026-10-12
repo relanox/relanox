@@ -1,10 +1,12 @@
 import {
   validateIncoming,
   validateMessageMedia,
+  messageMediaIds,
   encodeDurableRecord,
   messageDigest,
   matchesInitialMessage,
-  isRequestInScope
+  isConversationInScope,
+  validConversationInbound
 } from '@relanox/storage-support'
 import { readMedia, insertIncomingMedia } from './media.js'
 import type { Storage, InboundRecord } from '@relanox/sdk'
@@ -12,8 +14,8 @@ import type { DatabaseContext } from './database.js'
 
 export function createRequestOperations(
   context: DatabaseContext
-): Pick<Storage, 'acceptInbound' | 'enqueueMessage'> {
-  const { query, transaction, readInbound } = context
+): Pick<Storage, 'acceptInbound' | 'enqueueMessage' | 'getMessageReceipt'> {
+  const { query, transaction, readConversation } = context
   return {
     async acceptInbound(snapshot, media = []) {
       return transaction(async (client) => {
@@ -31,6 +33,10 @@ export function createRequestOperations(
 
         if (existing) {
           return { requestId: existing.id, duplicate: true }
+        }
+        const conversation = await readConversation(client, snapshot.channel.id)
+        if (!validConversationInbound(snapshot, conversation)) {
+          throw new Error('Unauthorized inbound conversation')
         }
         validateIncoming(snapshot, media)
 
@@ -62,7 +68,14 @@ export function createRequestOperations(
         )
 
         if (inserted.length > 0) {
-          await insertIncomingMedia(context, client, snapshot.requestId, media)
+          await client.query(
+            'UPDATE conversations SET record=$1::jsonb WHERE id=$2',
+            [
+              encodeDurableRecord({ ...conversation, target: snapshot.target }),
+              snapshot.channel.id
+            ]
+          )
+          await insertIncomingMedia(context, client, snapshot.channel.id, media)
           return { requestId: snapshot.requestId, duplicate: false }
         }
 
@@ -84,21 +97,44 @@ export function createRequestOperations(
         return { requestId: original.id, duplicate: true }
       })
     },
+    async getMessageReceipt(input) {
+      return transaction(async (client) => {
+        const record = await readConversation(client, input.channelId)
+        if (!record || !isConversationInScope(record, input)) {
+          return { status: 'not_found' }
+        }
+
+        const previous = (
+          await query<{ id: string; digest: string }>(
+            client,
+            'SELECT id,digest FROM outbound WHERE channel_id=$1 AND message_id=$2',
+            [input.channelId, input.message.messageId]
+          )
+        )[0]
+
+        if (!previous) {
+          return { status: 'not_found' }
+        }
+        return previous.digest === messageDigest(input.message)
+          ? { status: 'queued', deliveryId: previous.id, replay: true }
+          : { status: 'conflict' }
+      })
+    },
     async enqueueMessage(input) {
       return transaction(async (client) => {
-        const record = await readInbound(client, input.requestId)
+        const record = await readConversation(client, input.channelId)
         if (!record) {
           return { status: 'not_found' }
         }
-        if (!isRequestInScope(record, input)) {
+        if (!isConversationInScope(record, input)) {
           return { status: 'unauthorized' }
         }
 
         const previous = (
           await query<{ id: string; digest: string }>(
             client,
-            'SELECT id,digest FROM outbound WHERE request_id=$1 AND message_id=$2',
-            [input.requestId, input.message.messageId]
+            'SELECT id,digest FROM outbound WHERE channel_id=$1 AND message_id=$2',
+            [input.channelId, input.message.messageId]
           )
         )[0]
 
@@ -108,22 +144,19 @@ export function createRequestOperations(
             ? { status: 'queued', deliveryId: previous.id, replay: true }
             : { status: 'conflict' }
         }
-        if (
-          record.redactedAt !== undefined ||
-          !matchesInitialMessage(input.outbound, record, input)
-        ) {
+        if (!matchesInitialMessage(input.outbound, record, input)) {
           return { status: 'conflict' }
         }
 
         const rows = await query<{ id: string }>(
           client,
-          'SELECT id FROM media WHERE request_id=$1 AND data IS NOT NULL',
-          [input.requestId]
+          'SELECT id FROM media WHERE channel_id=$1 AND id=ANY($2::text[]) AND data IS NOT NULL',
+          [input.channelId, messageMediaIds(input)]
         )
 
         const assets = []
         for (const { id } of rows) {
-          const asset = await readMedia(context, client, input.requestId, id)
+          const asset = await readMedia(context, client, input.channelId, id)
           if (asset) {
             assets.push(asset)
           }
@@ -146,10 +179,10 @@ export function createRequestOperations(
 
         const inserted = await query(
           client,
-          'INSERT INTO outbound(id,request_id,message_id,digest,status,version,record) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) ON CONFLICT DO NOTHING RETURNING id',
+          'INSERT INTO outbound(id,channel_id,message_id,digest,status,version,record) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) ON CONFLICT DO NOTHING RETURNING id',
           [
             delivery.deliveryId,
-            input.requestId,
+            input.channelId,
             input.message.messageId,
             digest,
             delivery.status,
@@ -161,7 +194,17 @@ export function createRequestOperations(
         if (inserted.length === 0) {
           return { status: 'conflict' }
         }
-        await insertIncomingMedia(context, client, input.requestId, additions)
+        await insertIncomingMedia(context, client, input.channelId, additions)
+        await client.query(
+          'UPDATE media SET staged=FALSE WHERE channel_id=$1 AND id=ANY($2::text[])',
+          [
+            input.channelId,
+            input.message.attachments?.flatMap((ref) => [
+              ref.id,
+              ...(ref.previewMediaId ? [ref.previewMediaId] : [])
+            ]) ?? []
+          ]
+        )
         return {
           status: 'queued',
           deliveryId: delivery.deliveryId,
@@ -171,3 +214,5 @@ export function createRequestOperations(
     }
   }
 }
+
+export { createConversationOperations } from './conversations.js'

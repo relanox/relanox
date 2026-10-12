@@ -122,7 +122,6 @@ export const metricDefinitions = {
   relanox_storage_duration_seconds: 'histogram',
   relanox_dispatch_duration_seconds: 'histogram',
   relanox_send_duration_seconds: 'histogram',
-  relanox_reply_duration_seconds: 'histogram',
   relanox_delivery_duration_seconds: 'histogram',
   relanox_pending: 'gauge',
   relanox_outbound: 'gauge',
@@ -179,6 +178,12 @@ export function safeFields(fields: LogFields = {}): Record<string, string> {
     ) {
       safe[key] = value
     }
+  }
+  if (
+    typeof fields.channelId === 'string' &&
+    /^[a-f0-9]{64}$/iu.test(fields.channelId)
+  ) {
+    safe.channelId = fields.channelId
   }
   if (
     typeof fields.traceId === 'string' &&

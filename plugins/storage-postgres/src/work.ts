@@ -63,6 +63,7 @@ export function createWorkOperations(
         }
         if (
           record.version !== input.expectedVersion ||
+          record.redactedAt !== undefined ||
           !['rejected', 'unknown'].includes(record.status) ||
           (record.status === 'unknown' && !input.acknowledgeUnknown)
         ) {
@@ -181,7 +182,7 @@ export function createWorkOperations(
             SELECT record
             FROM outbound o
             WHERE o.status='pending'
-              AND NOT EXISTS(SELECT 1 FROM outbound earlier WHERE earlier.request_id=o.request_id AND earlier.sequence<o.sequence AND earlier.status IN ('pending','unknown'))
+              AND NOT EXISTS(SELECT 1 FROM outbound earlier WHERE earlier.channel_id=o.channel_id AND earlier.sequence<o.sequence AND earlier.status IN ('pending','unknown'))
               AND record->'lease' IS NULL
               AND (record->>'dueAt')::bigint<=$1
             ORDER BY o.sequence

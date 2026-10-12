@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { mediaPeer } from './media-peer.js'
 
 export const mediaRequestSchema = z.looseObject({
-  replyTo: z.string(),
+  source: z.object({ channel: z.object({ id: z.string() }) }),
   text: z.string(),
   attachments: z.array(
     z.looseObject({
@@ -32,12 +32,12 @@ export async function dispatchedMedia(
 
 export async function readMedia(
   client: Client,
-  replyTo: string,
+  channel: string,
   mediaId: string
 ): Promise<Uint8Array<ArrayBuffer>> {
   const result = await client.callTool({
     name: 'relanox_read_media',
-    arguments: { replyTo, mediaId }
+    arguments: { channel, mediaId }
   })
 
   const contents = z

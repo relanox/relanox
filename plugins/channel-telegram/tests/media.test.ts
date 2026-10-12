@@ -190,15 +190,15 @@ async function assertNativeOutput(
     if (channel === 'telegram') {
       expect(form.get('chat_id')).toBe('456')
       expect(form.get('message_thread_id')).toBe('8')
-      expect(formJson(form, 'reply_parameters')).toMatchObject({
-        message_id: 9
-      })
+      expect(form.has('reply_parameters')).toBe(false)
     } else {
       expect(formJson(form, 'payload_json')).toMatchObject({
         allowed_mentions: { parse: [], replied_user: false },
-        message_reference: { message_id: '789' },
         attachments: [{ id: 0, filename: 'generated.png' }]
       })
+      expect(formJson(form, 'payload_json')).not.toHaveProperty(
+        'message_reference'
+      )
     }
   } else if (channel === 'slack') {
     const upload = traffic.find((item) => item.path === '/upload')
@@ -361,9 +361,9 @@ it.each(cases)(
     if (!inbound) {
       throw new Error('missing_input_asset')
     }
-    expect(await readMedia(client, request.replyTo, inbound.id)).toEqual(
-      inputBytes
-    )
+    expect(
+      await readMedia(client, request.source.channel.id, inbound.id)
+    ).toEqual(inputBytes)
 
     const media = {
       kind,
@@ -388,7 +388,7 @@ it.each(cases)(
 
     expect(
       await fixture.principal().sendMessage({
-        replyTo: request.replyTo,
+        channel: request.source.channel.id,
         idempotencyKey: 'generated-message',
         text: '',
         attachments: [attachment]

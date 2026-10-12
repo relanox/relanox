@@ -89,7 +89,7 @@ export async function mediaCards(
     }
 
     const url = await host.media.publish({
-      requestId: input.requestId,
+      channelId: input.channelId,
       mediaId: input.media.reference.id
     })
 

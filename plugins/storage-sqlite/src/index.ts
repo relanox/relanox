@@ -8,6 +8,7 @@ import { createWorkOperations } from './work.js'
 import { createStateOperations } from './plugin-state.js'
 import { createInspectionOperations } from './inspection.js'
 
+import { createConversationOperations } from './conversations.js'
 import { createMediaOperations } from './media.js'
 
 export type { SqliteConfig } from './config.js'
@@ -16,6 +17,7 @@ export function createSqliteStorage(config: SqliteConfig): Storage {
   const context = openDatabase(config)
   return {
     media: createMediaOperations(context),
+    ...createConversationOperations(context),
     ...createLifecycle(context),
     ...createRequestOperations(context),
     ...createWorkOperations(context),

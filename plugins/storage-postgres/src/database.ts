@@ -1,5 +1,6 @@
 import type {
   InboundRecord,
+  ConversationRecord,
   OutboundRecord,
   Observability,
   Span
@@ -145,6 +146,19 @@ export function openDatabase(
       )
     )[0]?.record
 
+  const readConversation = async (
+    client: Pool | PoolClient,
+    id: string,
+    includeInactive = false
+  ): Promise<ConversationRecord | undefined> =>
+    (
+      await query<{ record: ConversationRecord }>(
+        client,
+        'SELECT record FROM conversations WHERE id=$1 AND (active=TRUE OR $2) FOR UPDATE',
+        [id, includeInactive]
+      )
+    )[0]?.record
+
   const saveInbound = async (
     client: PoolClient,
     record: InboundRecord,
@@ -193,6 +207,7 @@ export function openDatabase(
     query,
     transaction,
     readInbound,
+    readConversation,
     readOutbound,
     saveInbound,
     saveOutbound
@@ -212,6 +227,12 @@ export type DatabaseContext = {
     this: void,
     operation: (client: PoolClient) => Promise<T>
   ): Promise<T>
+  readConversation(
+    this: void,
+    client: Pool | PoolClient,
+    id: string,
+    includeInactive?: boolean
+  ): Promise<ConversationRecord | undefined>
   readInbound(
     this: void,
     client: Pool | PoolClient,

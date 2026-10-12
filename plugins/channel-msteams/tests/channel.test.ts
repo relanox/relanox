@@ -337,7 +337,7 @@ describe('native Microsoft Teams', () => {
 
       const input: SendInput = {
         deliveryId: 'delivery',
-        requestId: item.snapshot.requestId,
+        channelId: item.snapshot.channel.id,
         chunkIndex: 0,
         signal: new AbortController().signal,
         target: item.snapshot.target,
@@ -512,7 +512,7 @@ it.each([
       throw new Error('missing_media')
     }
     await scoped.sendMessage({
-      replyTo: item.requestId,
+      channel: item.channel.id,
       idempotencyKey: 'image-result',
       text: '',
       attachments: [item.attachments[0].id]
@@ -604,7 +604,7 @@ it.each([
     }
 
     const media = await scoped.media?.read({
-      requestId: item.requestId,
+      channelId: item.channel.id,
       mediaId: item.attachments[0].id
     })
 
@@ -614,7 +614,7 @@ it.each([
 
     const input: SendInput = {
       deliveryId: 'file-delivery',
-      requestId: item.requestId,
+      channelId: item.channel.id,
       target: item.target,
       chunkIndex: 0,
       chunk: {
@@ -655,7 +655,7 @@ it.each([
     cleanup.push(restarted.close)
 
     const resumed = await restarted.principal().media?.read({
-      requestId: item.requestId,
+      channelId: item.channel.id,
       mediaId: media.reference.id
     })
 
@@ -766,7 +766,7 @@ it('learns trusted Teams installation context without an incoming message and ke
 
   const input: SendInput = {
     deliveryId: 'installation-delivery',
-    requestId: 'channel',
+    channelId: 'channel',
     target: resolved.target,
     chunkIndex: 0,
     chunk: { text: 'hello', idempotencyKey: 'installation:0', state: null },

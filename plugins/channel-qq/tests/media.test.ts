@@ -291,13 +291,13 @@ test.each(
     }
 
     const stored = await scoped.media.read({
-      requestId: item.requestId,
+      channelId: item.channel.id,
       mediaId: item.attachments[0].id
     })
 
     expect(stored?.data).toEqual(new Uint8Array(smallBytes))
     await scoped.sendMessage({
-      replyTo: item.requestId,
+      channel: item.channel.id,
       idempotencyKey: 'file-result',
       text: '**caption** [link](https://example.com)',
       attachments: [item.attachments[0].id]

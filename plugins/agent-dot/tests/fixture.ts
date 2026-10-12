@@ -137,7 +137,7 @@ export async function fixture(
     text?: string,
     event?: string,
     attachments?: readonly MediaUpload[]
-  ): Promise<IngestReceipt>
+  ): Promise<IngestReceipt & { channel: string }>
   client(
     this: void,
     token?: string,
@@ -173,6 +173,20 @@ export async function fixture(
       }
     },
     validateConfig: () => ({}),
+    async resolveChannel(address) {
+      return {
+        status: 'available',
+        target: {
+          channel: address.platform,
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId === undefined
+            ? {}
+            : { threadId: address.threadId }),
+          data: { privateTarget: 'internal' }
+        }
+      }
+    },
     async setup(host) {
       channelHost = host
     },
@@ -235,11 +249,12 @@ export async function fixture(
       text = '中文\nsecond line',
       event = 'event-1',
       attachments?: readonly MediaUpload[]
-    ): Promise<IngestReceipt> {
+    ): Promise<IngestReceipt & { channel: string }> {
       if (!channelHost) {
         throw new Error('channel_not_setup')
       }
-      return channelHost.ingest({
+
+      const receipt = await channelHost.ingest({
         source: { channel: 'telegram', accountId: 'bot', eventId: event },
         senderId: 'alice',
         text,
@@ -254,6 +269,12 @@ export async function fixture(
         context: { thread: 'protocol-context' },
         ...(attachments ? { attachments } : {})
       })
+
+      const record = await storage.getInbound(receipt.requestId)
+      if (!record) {
+        throw new Error('Missing accepted source channel')
+      }
+      return { ...receipt, channel: record.snapshot.channel.id }
     },
     async client(
       token,

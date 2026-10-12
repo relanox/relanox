@@ -325,7 +325,7 @@ export async function harness(
     }
 
     const completion = await scoped.sendMessage({
-      replyTo: item.requestId,
+      channel: item.channel.id,
       idempotencyKey: 'local-result',
       text
     })

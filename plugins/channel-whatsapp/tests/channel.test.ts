@@ -13,10 +13,11 @@ import type {
   SendInput,
   Storage,
   InboundSnapshot,
-  OutboundRecord
+  OutboundRecord,
+  ScopedAgentHost
 } from '@relanox/sdk'
 import { createWhatsAppChannel } from '../src/index.js'
-import { harness, peer, legacyTargetOrigin } from './harness.js'
+import { harness, peer, rewriteSavedOrigin } from './harness.js'
 
 installPeerNetwork()
 
@@ -89,6 +90,7 @@ async function setup(filename = ':memory:'): Promise<{
   core: CoreRuntime
   storage: Storage
   dispatches: string[]
+  principal(this: void): ScopedAgentHost
   sendReply(
     this: void,
     text?: string
@@ -179,10 +181,22 @@ describe('native WhatsApp Cloud', () => {
       const filename = join(directory, 'state.db')
       const local = await setup(filename)
       expect((await local.core.fetch(incoming(webhook()))).status).toBe(200)
+      const channel = (await local.principal().status()).channels[0]?.channel.id
+      if (!channel) {
+        throw new Error('Missing native channel')
+      }
+
+      const queued = await local
+        .principal()
+        .sendMessage({ channel, idempotencyKey: 'saved-send', text: 'answer' })
+
+      if (queued.status !== 'queued') {
+        throw new Error('Missing queued native send')
+      }
       await local.close()
       cleanup.pop()
       if (change === 'server') {
-        legacyTargetOrigin(filename)
+        rewriteSavedOrigin(filename)
       }
       const replacement = await peer()
       cleanup.push(replacement.close)
@@ -211,8 +225,9 @@ describe('native WhatsApp Cloud', () => {
       )
 
       cleanup.push(restarted.close)
-      const completed = await restarted.sendReply()
-      expect(completed.delivery?.status).toBe(
+      await restarted.core.processDue()
+      const completed = await restarted.storage.getOutbound(queued.deliveryId)
+      expect(completed?.status).toBe(
         change === 'rotation' ? 'sent' : 'rejected'
       )
       expect(replacement.traffic).toHaveLength(0)
@@ -269,31 +284,45 @@ describe('native WhatsApp Cloud', () => {
         )
       ).status
     ).toBe(200)
-    const completed = await restarted.sendReply()
-    expect(completed.delivery?.status).toBe('rejected')
-    expect(completed.delivery?.errorCode).toBe('customer_window_expired')
+    expect((await restarted.principal().status()).channels).toMatchObject([
+      { send: { status: 'unavailable', reason: 'customer_window_expired' } }
+    ])
+    await expect(restarted.sendReply()).rejects.toMatchObject({
+      code: 'channel_unavailable'
+    })
+    expect(await restarted.storage.listOutbound({ limit: 10 })).toEqual([])
     expect(local.remote.traffic).toHaveLength(0)
-    const delivery = completed.delivery
-    if (!delivery?.chunks[0]) {
-      throw new Error('No outbound')
+
+    const request = (await restarted.storage.listInbound({ limit: 10 }))[0]
+      ?.snapshot
+
+    if (!request) {
+      throw new Error('Missing accepted customer input')
     }
     expect(
       await plugin.send({
-        deliveryId: delivery.deliveryId,
-        requestId: delivery.requestId,
+        deliveryId: 'guard-check',
+        channelId: request.channel.id,
         target: {
-          ...delivery.target,
+          ...request.target,
           data: {
             phoneNumberId: 'replacement-phone',
+            businessAccountId: 'business-1',
+            apiBase: 'https://graph.facebook.com',
             customer: 'customer',
             windowUntil: Date.now() + 10_000
           }
         },
-        chunk: delivery.chunks[0],
+        chunk: {
+          text: 'must not send',
+          state: null,
+          idempotencyKey: 'guard-check:0'
+        },
         chunkIndex: 0,
         signal: new AbortController().signal
       })
-    ).toEqual({ status: 'rejected', errorCode: 'invalid_target' })
+    ).toEqual({ status: 'rejected', errorCode: 'customer_window_expired' })
+    expect(local.remote.traffic).toHaveLength(0)
   })
 
   it('verifies challenge and exact HMAC, deduplicates and independently sends Graph text', async () => {
@@ -355,24 +384,32 @@ describe('native WhatsApp Cloud', () => {
         )
       ).status
     ).toBe(200)
-    const completed = await local.sendReply()
-    expect(completed.delivery?.status).toBe('rejected')
-    expect(completed.delivery?.errorCode).toBe('customer_window_expired')
-    expect(local.remote.traffic).toHaveLength(0)
-    const outbound = completed.delivery
-    if (!outbound?.chunks[0]) {
-      throw new Error('No outbound')
+    await expect(local.sendReply()).rejects.toMatchObject({
+      code: 'channel_unavailable'
+    })
+    expect(await local.storage.listOutbound({ limit: 10 })).toEqual([])
+
+    const request = (await local.storage.listInbound({ limit: 10 }))[0]
+      ?.snapshot
+
+    if (!request) {
+      throw new Error('Missing accepted input')
     }
 
     const send: SendInput = {
-      deliveryId: outbound.deliveryId,
-      requestId: outbound.requestId,
-      target: outbound.target,
-      chunk: outbound.chunks[0],
+      deliveryId: 'expired-window-check',
+      channelId: request.channel.id,
+      target: request.target,
+      chunk: { text: 'answer', state: null, idempotencyKey: 'expired:0' },
       chunkIndex: 0,
       signal: new AbortController().signal
     }
 
+    expect(await local.plugin.send(send)).toEqual({
+      status: 'rejected',
+      errorCode: 'customer_window_expired'
+    })
+    expect(local.remote.traffic).toHaveLength(0)
     expect(
       (
         await local.core.fetch(
@@ -380,10 +417,10 @@ describe('native WhatsApp Cloud', () => {
         )
       ).status
     ).toBe(200)
-    expect(await local.plugin.send(send)).toEqual({
-      status: 'sent',
-      receipt: { platformMessageId: 'wamid.sent' }
-    })
+    expect((await local.principal().status()).channels).toMatchObject([
+      { send: { status: 'available' } }
+    ])
+    expect((await local.sendReply()).delivery?.status).toBe('sent')
     expect(local.remote.traffic).toHaveLength(1)
   })
 

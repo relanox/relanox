@@ -11,6 +11,7 @@ export type MetricLabels = Readonly<
 
 export type LogFields = {
   readonly plugin?: string
+  readonly channelId?: string
   readonly requestId?: string
   readonly deliveryId?: string
   readonly traceId?: string

@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { afterEach, expect, test, vi } from 'vitest'
 import { sendMessage, dispatched, fixture, ingest } from './fixture.js'
 import type { Cleanup } from './fixture.js'
@@ -37,10 +38,18 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
     }
   })
   expect(request).toEqual({
-    replyTo: stringValue,
     text: '中文\nhello 🌍',
-    context: { messageId: '41' },
-    source: { channel: 'telegram', eventId: '1' }
+    context: null,
+    source: {
+      channel: {
+        id: stringValue,
+        platform: 'telegram',
+        accountId: 'bot',
+        chatId: '101',
+        threadId: '9'
+      },
+      senderId: '17'
+    }
   })
   await expect
     .poll(async () => (await runtime.core.status()).stats.pending, {
@@ -66,20 +75,21 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
     await beta.callTool({
       name: 'relanox_send_message',
       arguments: {
-        replyTo: request.replyTo,
+        channel: request.source.channel.id,
         text: 'untrusted cross-scope answer'
       }
     })
   ).toMatchObject({ structuredContent: { status: 'not_found' }, isError: true })
   const alpha = await fx.client(runtime, 'alpha')
   expect((await alpha.listTools()).tools.map((tool) => tool.name)).toEqual([
+    'relanox_status',
     'relanox_send_message',
     'relanox_create_upload',
     'relanox_read_media'
   ])
-  const result = await sendMessage(alpha, request.replyTo)
+  const result = await sendMessage(alpha, request.source.channel.id)
   expect(result.replay).toBe(false)
-  expect(await sendMessage(alpha, request.replyTo)).toEqual({
+  expect(await sendMessage(alpha, request.source.channel.id)).toEqual({
     ...result,
     replay: true
   })
@@ -98,7 +108,6 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
     chat_id: '101',
     message_thread_id: 9,
     text: '最终 answer 🌍',
-    reply_parameters: { message_id: 41, allow_sending_without_reply: true },
     link_preview_options: { is_disabled: true }
   })
   const status = await runtime.core.status()
@@ -118,7 +127,7 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
 
   const second = await sendMessage(
     alpha,
-    request.replyTo,
+    request.source.channel.id,
     'second response',
     'second-response'
   )
@@ -127,19 +136,37 @@ test('native HTTP, official network MCP and resident worker relay a scoped final
   await expect.poll(() => fx.telegram.traffic.length, { timeout: 5000 }).toBe(2)
   expect(JSON.parse(fx.telegram.traffic[1]?.body ?? '')).toMatchObject({
     text: 'second response',
-    chat_id: '101',
-    reply_parameters: { message_id: 41 }
+    chat_id: '101'
   })
   expect(fx.routine.traffic).toHaveLength(1)
 })
 
-test('runtime restart preserves incoming messages and frozen routing while new events follow a changed binding', async () => {
-  const fx = await fixture(cleanups)
+test('runtime restart preserves queued destinations while new sends and events use current binding ownership', async () => {
+  const fx = await fixture(cleanups, (_traffic, index) =>
+    index === 0
+      ? {
+          status: 429,
+          body: {
+            ok: false,
+            error_code: 429,
+            description: 'retry later',
+            parameters: { retry_after: 2 }
+          }
+        }
+      : { body: { ok: true, result: { message_id: 700 } } }
+  )
+
   const before = await fx.start()
   expect((await ingest(before)).status).toBe(204)
   await expect.poll(() => fx.routine.traffic.length, { timeout: 5000 }).toBe(1)
   const request = dispatched(firstTraffic(fx.routine.traffic))
   const alphaBefore = await fx.client(before, 'alpha')
+  const queued = await sendMessage(alphaBefore, request.source.channel.id)
+  await expect
+    .poll(async () => (await before.core.status()).deliveries[0]?.attempts, {
+      timeout: 5000
+    })
+    .toBe(1)
   await alphaBefore.close()
   await before.stop()
 
@@ -161,32 +188,65 @@ test('runtime restart preserves incoming messages and frozen routing while new e
       dispatch: { status: 'accepted' },
       snapshot: {
         endpoint: { id: 'alpha' },
-        target: { chatId: '101', threadId: '9', replyToId: '41' }
+        channel: { id: request.source.channel.id, chatId: '101', threadId: '9' }
       }
     }
   ])
-  await after.core.processDue()
-  expect(fx.routine.traffic).toHaveLength(1)
-  expect(fx.telegram.traffic).toHaveLength(0)
+  await expect
+    .poll(
+      async () =>
+        (await after.core.status()).deliveries.find(
+          (delivery) => delivery.deliveryId === queued.deliveryId
+        )?.status,
+      { timeout: 5000 }
+    )
+    .toBe('sent')
+  expect((await after.core.status()).deliveries[0]).toMatchObject({
+    channelId: request.source.channel.id,
+    endpoint: { id: 'alpha' },
+    target: { chatId: '101', threadId: '9' }
+  })
   const alphaAfter = await fx.client(after, 'alpha')
   const beta = await fx.client(after, 'beta')
-  expect(
-    await beta.callTool({
-      name: 'relanox_send_message',
-      arguments: { replyTo: request.replyTo, text: 'replacement answer' }
+  for (const client of [alphaAfter, beta]) {
+    expect(
+      await client.callTool({
+        name: 'relanox_send_message',
+        arguments: { channel: request.source.channel.id, text: 'old ownership' }
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { status: 'not_found' }
     })
-  ).toMatchObject({ isError: true, structuredContent: { status: 'not_found' } })
-  expect((await sendMessage(alphaAfter, request.replyTo)).replay).toBe(false)
-  await expect
-    .poll(async () => (await after.core.status()).deliveries[0]?.status, {
-      timeout: 5000
+  }
+
+  const authorized = z
+    .object({
+      channels: z.array(
+        z.object({ channel: z.object({ id: z.string(), chatId: z.string() }) })
+      )
     })
-    .toBe('sent')
-  expect(JSON.parse(firstTraffic(fx.telegram.traffic).body)).toMatchObject({
+    .parse(
+      (await beta.callTool({ name: 'relanox_status', arguments: {} }))
+        .structuredContent
+    )
+
+  const channel = authorized.channels.find(
+    (entry) => entry.channel.chatId === '101'
+  )?.channel.id
+
+  if (!channel) {
+    throw new Error('Missing new bound channel')
+  }
+  expect(channel).not.toBe(request.source.channel.id)
+  expect((await sendMessage(beta, channel, 'new binding answer')).replay).toBe(
+    false
+  )
+  await expect.poll(() => fx.telegram.traffic.length, { timeout: 5000 }).toBe(3)
+  expect(JSON.parse(fx.telegram.traffic[2]?.body ?? '')).toMatchObject({
+    text: 'new binding answer',
     chat_id: '101',
-    message_thread_id: 9,
-    reply_parameters: { message_id: 41 },
-    text: '最终 answer 🌍'
+    message_thread_id: 9
   })
   expect((await ingest(after, 2, 101, 'new binding message')).status).toBe(204)
   await expect.poll(() => fx.routine.traffic.length, { timeout: 5000 }).toBe(2)
@@ -195,19 +255,9 @@ test('runtime restart preserves incoming messages and frozen routing while new e
     throw new Error('Expected new binding Routine dispatch')
   }
   expect(newWire.url).toBe('/beta')
-  const later = dispatched(newWire)
-  expect(later).toMatchObject({
+  expect(dispatched(newWire)).toMatchObject({
     text: 'new binding message',
-    source: { eventId: '2' }
-  })
-  expect(
-    (await sendMessage(beta, later.replyTo, 'new binding answer')).replay
-  ).toBe(false)
-  await expect.poll(() => fx.telegram.traffic.length, { timeout: 5000 }).toBe(2)
-  expect(JSON.parse(fx.telegram.traffic[1]?.body ?? '')).toMatchObject({
-    text: 'new binding answer',
-    chat_id: '101',
-    reply_parameters: { message_id: 42 }
+    source: { channel: { id: channel }, senderId: '17' }
   })
 })
 
@@ -223,7 +273,12 @@ test('an uncertain native send stays held across restart and explicit delivery r
   await expect.poll(() => fx.routine.traffic.length, { timeout: 5000 }).toBe(1)
   const request = dispatched(firstTraffic(fx.routine.traffic))
   const alpha = await fx.client(before, 'alpha')
-  const final = await sendMessage(alpha, request.replyTo, 'saved final')
+
+  const final = await sendMessage(
+    alpha,
+    request.source.channel.id,
+    'saved final'
+  )
 
   await expect
     .poll(async () => (await before.core.status()).deliveries[0]?.status, {
@@ -244,7 +299,7 @@ test('an uncertain native send stays held across restart and explicit delivery r
     status: 'unknown',
     currentChunk: 0,
     chunks: [{ text: 'saved final' }],
-    target: { chatId: '101', threadId: '9', replyToId: '41' }
+    target: { chatId: '101', threadId: '9' }
   })
   expect(status.requests).toMatchObject([{ dispatch: { status: 'accepted' } }])
   await after.core.processDue()
@@ -282,14 +337,12 @@ test('an uncertain native send stays held across restart and explicit delivery r
       chat_id: '101',
       message_thread_id: 9,
       text: 'saved final',
-      reply_parameters: { message_id: 41, allow_sending_without_reply: true },
       link_preview_options: { is_disabled: true }
     },
     {
       chat_id: '101',
       message_thread_id: 9,
       text: 'saved final',
-      reply_parameters: { message_id: 41, allow_sending_without_reply: true },
       link_preview_options: { is_disabled: true }
     }
   ])

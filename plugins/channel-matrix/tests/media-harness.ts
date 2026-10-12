@@ -182,7 +182,7 @@ export async function mediaRelay(
       const reference = referenceSchema.parse(asset)
       inbound.push({
         reference,
-        data: await readMedia(client, requestId, reference.id)
+        data: await readMedia(client, request.snapshot.channel.id, reference.id)
       })
     }
     if (uploads) {
@@ -191,7 +191,7 @@ export async function mediaRelay(
       }
 
       const reply = await principal.sendMessage({
-        replyTo: requestId,
+        channel: request.snapshot.channel.id,
         text: '',
         attachments: uploads,
         idempotencyKey: `reply:${requestId}`
@@ -210,7 +210,7 @@ export async function mediaRelay(
           await client.callTool({
             name: 'relanox_send_message',
             arguments: {
-              replyTo: requestId,
+              channel: request.snapshot.channel.id,
               text: '',
               idempotencyKey: `reply:${requestId}`,
               attachments: inbound.map((item) => ({

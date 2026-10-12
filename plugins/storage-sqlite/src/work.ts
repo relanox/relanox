@@ -58,6 +58,7 @@ export function createWorkOperations(
         }
         if (
           record.version !== input.expectedVersion ||
+          record.redactedAt !== undefined ||
           !['rejected', 'unknown'].includes(record.status) ||
           (record.status === 'unknown' && !input.acknowledgeUnknown)
         ) {
@@ -142,7 +143,7 @@ export function createWorkOperations(
                 SELECT record
                 FROM outbound o
                 WHERE o.status='pending'
-                  AND NOT EXISTS(SELECT 1 FROM outbound earlier WHERE earlier.request_id=o.request_id AND earlier.rowid<o.rowid AND earlier.status IN ('pending','unknown'))
+                  AND NOT EXISTS(SELECT 1 FROM outbound earlier WHERE earlier.channel_id=o.channel_id AND earlier.rowid<o.rowid AND earlier.status IN ('pending','unknown'))
                   AND (json_extract(record,'$.lease.expiresAt')<=?
                     OR (json_extract(record,'$.lease') IS NULL
                       AND json_extract(record,'$.dueAt')<=?))

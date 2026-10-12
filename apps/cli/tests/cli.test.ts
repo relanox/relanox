@@ -5,7 +5,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { startRuntime } from '../src/runtime.js'
 import { closeServer, listen } from '../src/listeners.js'
 import { snapshot } from '../../../tests/contracts/storage-contract.js'
-import { cli, fixture, storage, runCli } from './fixture.js'
+import { cli, fixture, storage, runCli, seedInbound } from './fixture.js'
 
 const directories: string[] = []
 const stops: (() => Promise<void>)[] = []
@@ -116,8 +116,14 @@ test('requeue passes exact version and explicit unknown-effect acknowledgement i
   const db = await storage(value.filename)
   try {
     await db.initialize()
-    await db.acceptInbound({
+    await seedInbound(db, {
       requestId: 'unknown-request',
+      channel: {
+        id: 'historical-channel',
+        platform: 'telegram',
+        accountId: 'bot',
+        chatId: 'chat'
+      },
       source: { channel: 'telegram', accountId: 'bot', eventId: 'event' },
       senderId: 'sender',
       text: 'secret source text',
@@ -359,7 +365,7 @@ test('run initializes a new database and preserves work on restart while diagnos
   expect((await fetch(`${first.managementUrl}/health/ready`)).status).toBe(200)
   await first.stop()
   const db = await storage(value.filename)
-  await db.acceptInbound({
+  await seedInbound(db, {
     ...snapshot(),
     endpoint: { id: 'ep', agent: 'grok', config: {} }
   })
