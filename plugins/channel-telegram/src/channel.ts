@@ -39,6 +39,29 @@ export function createTelegramChannel(
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      if (
+        address.platform !== 'telegram' ||
+        address.accountId !== account.id ||
+        !/^-?\d+$/u.test(address.chatId) ||
+        (address.threadId !== undefined && !/^\d+$/u.test(address.threadId))
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'telegram',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: identity()
+        }
+      }
+    },
+
     splitText: splitTelegramMarkdown,
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
@@ -122,7 +145,7 @@ export function createTelegramChannel(
               data: identity()
             },
             receivedAt: Date.now(),
-            context: { messageId: String(message.message_id) }
+            context: null
           })
           return new Response(null, { status: 204 })
         } catch {

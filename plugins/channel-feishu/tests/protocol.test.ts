@@ -643,3 +643,63 @@ describe('feishu native HTTP protocol', () => {
     ).toEqual({ status: 'rejected', errorCode: 'invalid_target' })
   })
 })
+
+it('resolves authenticated Feishu threads through their real root message while omitting visual reply quoting', async () => {
+  const remote = await peer((input) => ({
+    body: input.path.includes('tenant_access_token')
+      ? { code: 0, tenant_access_token: 'token', expire: 7200 }
+      : { code: 0, data: { message_id: 'sent' } }
+  }))
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+
+  const address = {
+    id: 'channel',
+    platform: 'feishu' as const,
+    accountId: 'fs',
+    chatId: 'oc_chat',
+    threadId: 'omt_thread'
+  }
+
+  expect(await local.plugin.resolveChannel?.(address)).toEqual({
+    status: 'unavailable',
+    reason: 'address_unresolved'
+  })
+  expect(
+    (
+      await local.handler(
+        request({
+          ...event,
+          event: {
+            ...event.event,
+            message: { ...event.event.message, root_id: 'om_root' }
+          }
+        })
+      )
+    ).status
+  ).toBe(204)
+  const learned = local.received[0]?.target
+  const resolved = await local.plugin.resolveChannel?.(address, learned)
+  expect(resolved).toMatchObject({
+    status: 'available',
+    target: { threadId: 'omt_thread', data: { threadAnchor: 'om_root' } }
+  })
+  if (resolved?.status !== 'available') {
+    throw new Error('missing_thread_anchor')
+  }
+  expect(resolved.target.replyToId).toBeUndefined()
+  expect(await local.plugin.send(sendInput(resolved.target))).toMatchObject({
+    status: 'sent'
+  })
+  expect(remote.requests.at(-1)).toMatchObject({
+    path: '/open-apis/im/v1/messages/om_root/reply',
+    body: { reply_in_thread: true }
+  })
+  expect(
+    await local.plugin.resolveChannel?.(
+      { ...address, chatId: 'another_chat' },
+      learned
+    )
+  ).toEqual({ status: 'unavailable', reason: 'address_unresolved' })
+})

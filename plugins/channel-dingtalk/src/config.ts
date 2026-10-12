@@ -32,7 +32,10 @@ export const configSchema = z
   .object({
     clientId: z.string().min(1),
     clientSecret: secretRefSchema,
-    robotCode: z.string().min(1)
+    robotCode: z.string().min(1),
+    recipientTypes: z
+      .record(z.string().min(1), z.enum(['single', 'group']))
+      .optional()
   })
   .strict()
 

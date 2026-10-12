@@ -49,6 +49,13 @@ function matchesScope(
   )
 }
 
+function configuredType(
+  types: DingTalkConfig['recipientTypes'],
+  chatId: string
+): 'single' | 'group' | undefined {
+  return types && Object.hasOwn(types, chatId) ? types[chatId] : undefined
+}
+
 export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
   let host: ChannelHost
   let account: AccountConfig
@@ -217,6 +224,58 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       }
     },
     validateConfig: (value) => configSchema.parse(value),
+    async resolveChannel(address, learned) {
+      if (
+        address.platform !== 'dingtalk' ||
+        address.accountId !== account.id ||
+        !address.chatId ||
+        address.threadId !== undefined
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      const prior = targetSchema.safeParse(learned?.data)
+
+      const known =
+        learned?.channel === 'dingtalk' &&
+        learned.accountId === account.id &&
+        learned.chatId === address.chatId &&
+        learned.threadId === undefined &&
+        prior.success &&
+        matchesScope(prior.data.scope, config) &&
+        address.chatId ===
+          (prior.data.type === 'group'
+            ? prior.data.openConversationId
+            : prior.data.staffId)
+          ? prior.data.type
+          : undefined
+
+      const type =
+        configuredType(config.recipientTypes, address.chatId) ?? known
+
+      if (!type) {
+        return { status: 'unavailable', reason: 'address_unresolved' }
+      }
+
+      const scope = {
+        clientId: config.clientId,
+        robotCode: config.robotCode,
+        apiBase: new URL(API_BASE).href,
+        uploadBase: new URL(UPLOAD_BASE).href
+      }
+
+      return {
+        status: 'available',
+        target: {
+          channel: 'dingtalk',
+          accountId: account.id,
+          chatId: address.chatId,
+          data:
+            type === 'group'
+              ? { type, openConversationId: address.chatId, scope }
+              : { type, staffId: address.chatId, scope }
+        }
+      }
+    },
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount

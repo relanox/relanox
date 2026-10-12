@@ -725,3 +725,78 @@ it.each([
     })
   }
 )
+
+it('learns trusted Teams installation context without an incoming message and keeps configured thread routing', async () => {
+  const local = await setup()
+
+  const address = {
+    id: 'channel',
+    platform: 'msteams' as const,
+    accountId: 'business',
+    chatId: 'conversation-1',
+    threadId: 'root-1'
+  }
+
+  expect(await local.plugin.resolveChannel?.(address)).toEqual({
+    status: 'unavailable',
+    reason: 'address_unresolved'
+  })
+  const update = { ...local.activity, type: 'conversationUpdate', text: '' }
+  expect(
+    (await local.core.fetch(await local.incoming({ aud: 'wrong-app' }, update)))
+      .status
+  ).toBe(401)
+  expect(await local.plugin.resolveChannel?.(address)).toEqual({
+    status: 'unavailable',
+    reason: 'address_unresolved'
+  })
+  expect(
+    (await local.core.fetch(await local.incoming({}, update))).status
+  ).toBe(200)
+  expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+  const resolved = await local.plugin.resolveChannel?.(address)
+  if (resolved?.status !== 'available') {
+    throw new Error('missing_conversation_context')
+  }
+  expect(resolved.target.replyToId).toBeUndefined()
+  expect(resolved.target).toMatchObject({
+    threadId: 'root-1',
+    data: { replyToId: 'root-1' }
+  })
+
+  const input: SendInput = {
+    deliveryId: 'installation-delivery',
+    requestId: 'channel',
+    target: resolved.target,
+    chunkIndex: 0,
+    chunk: { text: 'hello', idempotencyKey: 'installation:0', state: null },
+    signal: new AbortController().signal
+  }
+
+  expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+  expect(
+    local.remote.traffic.find((item) => item.path.includes('/activities'))?.path
+  ).toBe('/teams/v3/conversations/conversation-1/activities/root-1')
+
+  const old = {
+    ...resolved.target,
+    data: {
+      ...(resolved.target.data as Record<string, Json>),
+      appId: 'old-app'
+    }
+  }
+
+  expect(await local.plugin.resolveChannel?.(address, old)).toMatchObject({
+    status: 'available'
+  })
+  expect(await local.plugin.send({ ...input, target: old })).toEqual({
+    status: 'rejected',
+    errorCode: 'invalid_target'
+  })
+  const { threadId: _thread, ...topAddress } = address
+  const top = await local.plugin.resolveChannel?.(topAddress)
+  if (top?.status !== 'available') {
+    throw new Error('missing_conversation_context')
+  }
+  expect(top.target.data).not.toHaveProperty('replyToId')
+})

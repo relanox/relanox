@@ -380,7 +380,15 @@ export function createIrcChannel(
       !target.success ||
       target.data.server !== config.server ||
       target.data.port !== config.port ||
-      target.data.tls !== config.tls
+      target.data.tls !== config.tls ||
+      input.target.threadId !== undefined ||
+      foldNick(input.target.chatId) !==
+        foldNick(
+          target.data.recipient.startsWith('#') ||
+            target.data.recipient.startsWith('&')
+            ? target.data.recipient
+            : `dm:${target.data.recipient}`
+        )
     ) {
       return { status: 'rejected', errorCode: 'target_mismatch' }
     }
@@ -436,6 +444,38 @@ export function createIrcChannel(
       media: { receive: [], send: [] }
     },
     validateConfig,
+    async resolveChannel(address) {
+      const { account, config } = configured()
+
+      const recipient = address.chatId.startsWith('dm:')
+        ? address.chatId.slice(3)
+        : address.chatId
+
+      if (
+        address.platform !== 'irc' ||
+        address.accountId !== account.id ||
+        address.threadId !== undefined ||
+        !(
+          address.chatId.startsWith('dm:') ? nicknameSchema : channelSchema
+        ).safeParse(recipient).success
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'irc',
+          accountId: account.id,
+          chatId: address.chatId,
+          data: {
+            recipient,
+            server: config.server,
+            port: config.port,
+            tls: config.tls
+          }
+        }
+      }
+    },
     splitText: splitIrcMarkdown,
     async setup(host, account, config) {
       if (runtime) {

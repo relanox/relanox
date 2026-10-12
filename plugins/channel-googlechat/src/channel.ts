@@ -143,6 +143,50 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      if (
+        !runtime ||
+        address.platform !== 'googlechat' ||
+        address.accountId !== runtime.account.id
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      let clientEmail: string
+      try {
+        clientEmail = serviceSchema.parse(
+          JSON.parse(secret(runtime.config.serviceAccount)) as unknown
+        ).client_email
+      } catch {
+        return { status: 'unavailable', reason: 'oauth_unavailable' }
+      }
+
+      const destination = {
+        space: address.chatId,
+        ...(address.threadId !== undefined ? { thread: address.threadId } : {}),
+        scope: { clientEmail, apiBase: new URL(apiBase).href }
+      }
+
+      const data = targetSchema.safeParse(destination)
+      if (
+        !data.success ||
+        (address.threadId !== undefined &&
+          !address.threadId.startsWith(`${address.chatId}/threads/`))
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'googlechat',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: destination
+        }
+      }
+    },
     async setup(host, account, config) {
       if (host.publicUrl === undefined) {
         throw new Error('public_url_required')

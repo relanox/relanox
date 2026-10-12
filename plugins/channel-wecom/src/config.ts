@@ -32,7 +32,10 @@ export const websocketConfigSchema = z
   .object({
     mode: z.literal('websocket').optional(),
     botId: z.string().min(1),
-    secret: secretRefSchema
+    secret: secretRefSchema,
+    recipientTypes: z
+      .record(z.string().min(1), z.enum(['single', 'group']))
+      .optional()
   })
   .strict()
 

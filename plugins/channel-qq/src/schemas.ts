@@ -34,11 +34,14 @@ export const messageSchema = z.object({
 export const targetSchema = z
   .object({
     type: z.enum(['c2c', 'group']),
-    msgId: z.string().min(1),
-    messageAt: z.number().int().nonnegative(),
+    msgId: z.string().min(1).optional(),
+    messageAt: z.number().int().nonnegative().optional(),
     scope: z.object({ appId: z.string().min(1), apiBase: z.url() }).strict()
   })
   .strict()
+  .refine(
+    (value) => (value.msgId === undefined) === (value.messageAt === undefined)
+  )
 
 export const tokenSchema = z.object({
   access_token: z.string().min(1),

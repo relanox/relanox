@@ -116,7 +116,7 @@ export function createSlackChannel(
         channel: 'slack',
         accountId: account.id,
         chatId: event.channel,
-        threadId: event.thread_ts ?? event.ts,
+        ...(event.thread_ts ? { threadId: event.thread_ts } : {}),
         replyToId: event.ts,
         data: identity()
       },
@@ -290,6 +290,30 @@ export function createSlackChannel(
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      if (
+        address.platform !== 'slack' ||
+        address.accountId !== account.id ||
+        !/^[A-Z0-9]+$/u.test(address.chatId) ||
+        (address.threadId !== undefined &&
+          !/^\d+\.\d+$/u.test(address.threadId))
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'slack',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: identity()
+        }
+      }
+    },
+
     splitText: splitSlackMarkdown,
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost

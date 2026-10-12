@@ -59,6 +59,25 @@ export async function startPassive(
   }
 }
 
+export async function passiveAvailability(
+  host: ChannelHost,
+  id: string,
+  eventId: string,
+  chatId: string
+): Promise<string | undefined> {
+  const entry = await host.state.get(stateKey(id))
+  const parsed = streamSchema.safeParse(entry?.value)
+  if (!parsed.success || parsed.data.expiresAt <= Date.now()) {
+    return 'callback_stream_expired'
+  }
+  if (parsed.data.eventId !== eventId || parsed.data.chatId !== chatId) {
+    return 'target_identity_changed'
+  }
+  return parsed.data.deliveryId || parsed.data.finish
+    ? 'callback_reply_used'
+    : undefined
+}
+
 export async function passiveResponse(
   host: ChannelHost,
   id: string,
@@ -130,6 +149,13 @@ function appendMedia(
   return undefined
 }
 
+function callbackEvent(input: SendInput): string {
+  return (
+    input.target.replyToId ??
+    z.object({ eventId: z.string() }).parse(input.target.data).eventId
+  )
+}
+
 export async function stagePassive(
   host: ChannelHost,
   id: string,
@@ -142,7 +168,7 @@ export async function stagePassive(
   }
   const state = parsed.data
   if (
-    state.eventId !== input.target.replyToId ||
+    state.eventId !== callbackEvent(input) ||
     state.chatId !== input.target.chatId
   ) {
     return { status: 'rejected', errorCode: 'target_identity_changed' }

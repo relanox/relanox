@@ -223,7 +223,12 @@ export function createSignalChannel(
       input.target.accountId !== account.id ||
       !target.success ||
       target.data.serviceUrl !== base ||
-      target.data.account !== config.account
+      target.data.account !== config.account ||
+      input.target.threadId !== undefined ||
+      input.target.chatId !==
+        (target.data.kind === 'group'
+          ? `group:${target.data.groupId}`
+          : `direct:${target.data.recipient}`)
     ) {
       return { status: 'rejected', errorCode: 'target_mismatch' }
     }
@@ -301,6 +306,46 @@ export function createSignalChannel(
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      const { account, config, base } = configured()
+      if (
+        address.platform !== 'signal' ||
+        address.accountId !== account.id ||
+        address.threadId !== undefined
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+
+      let destination: unknown = null
+      if (address.chatId.startsWith('group:')) {
+        destination = {
+          kind: 'group',
+          groupId: address.chatId.slice(6),
+          serviceUrl: base,
+          account: config.account
+        }
+      } else if (address.chatId.startsWith('direct:')) {
+        destination = {
+          kind: 'direct',
+          recipient: address.chatId.slice(7),
+          serviceUrl: base,
+          account: config.account
+        }
+      }
+      const data = targetSchema.safeParse(destination)
+      if (!data.success) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'signal',
+          accountId: account.id,
+          chatId: address.chatId,
+          data: data.data
+        }
+      }
+    },
     splitText: splitSignalMarkdown,
     async setup(host, account, config) {
       if (runtime) {

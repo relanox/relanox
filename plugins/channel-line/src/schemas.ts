@@ -38,7 +38,7 @@ export const webhookSchema = z.object({
 
 export const targetSchema = z.strictObject({
   destination: platformIdSchema,
-  sourceType: z.enum(['user', 'group', 'room']),
+  sourceType: z.enum(['user', 'group', 'room']).optional(),
   botId: platformIdSchema,
   apiBaseUrl: z.string()
 })

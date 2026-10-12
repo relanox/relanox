@@ -112,7 +112,10 @@ function sendInput(
     target: {
       channel: 'irc',
       accountId: 'bot',
-      chatId: '#room',
+      chatId:
+        recipient.startsWith('#') || recipient.startsWith('&')
+          ? recipient
+          : `dm:${recipient}`,
       data: { recipient, server: '127.0.0.1', port, tls: false }
     },
     chunk: { text, idempotencyKey: 'delivery:0', state: null },

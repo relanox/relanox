@@ -3,7 +3,10 @@ import type {
   AccountConfig,
   ChannelHost,
   ChannelPlugin,
-  SendResult
+  SendResult,
+  ReplyTarget,
+  ChannelAddress,
+  Json
 } from '@relanox/sdk'
 import { z } from 'zod'
 import { validateConfig, REQUEST_TIMEOUT_MS } from './config.js'
@@ -38,6 +41,60 @@ const botInfoSchema = z.object({
   code: z.literal(0),
   bot: z.object({ open_id: z.string().min(1) })
 })
+
+function matchesIdentity(
+  data: z.infer<typeof targetSchema>,
+  current: Omit<z.infer<typeof targetSchema>, 'threadAnchor'>
+): boolean {
+  return (
+    data.tenantKey === current.tenantKey &&
+    data.appId === current.appId &&
+    data.botId === current.botId &&
+    data.apiBaseUrl === current.apiBaseUrl
+  )
+}
+
+function learnedAnchor(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  current: Omit<z.infer<typeof targetSchema>, 'threadAnchor'>
+): string | undefined {
+  const prior = targetSchema.safeParse(learned?.data)
+  if (
+    learned?.channel !== 'feishu' ||
+    learned.accountId !== address.accountId ||
+    learned.chatId !== address.chatId ||
+    learned.threadId !== address.threadId ||
+    !prior.success ||
+    !matchesIdentity(prior.data, current)
+  ) {
+    return undefined
+  }
+  return prior.data.threadAnchor ?? learned.replyToId
+}
+
+function threadIdentity(
+  data: Json,
+  threadId: string | undefined,
+  message: z.infer<typeof messageSchema>['message']
+): Json {
+  if (!threadId) {
+    return data
+  }
+  return {
+    ...targetSchema.parse(data),
+    threadAnchor: message.root_id ?? message.message_id
+  }
+}
+
+function threadReply(
+  target: ReplyTarget,
+  data: z.infer<typeof targetSchema>
+): string | undefined {
+  return target.threadId
+    ? (data.threadAnchor ?? target.replyToId)
+    : target.replyToId
+}
 
 export function createFeishuChannel(
   environment: NodeJS.ProcessEnv = process.env
@@ -284,11 +341,10 @@ export function createFeishuChannel(
           chatId: message.chat_id,
           ...(threadId ? { threadId } : {}),
           replyToId: message.message_id,
-          data: identity()
+          data: threadIdentity(identity(), threadId, message)
         },
         context: {
-          tenantKey: config.tenantKey,
-          ...(message.parent_id ? { parentId: message.parent_id } : {})
+          tenantKey: config.tenantKey
         },
         receivedAt: Date.now()
       })
@@ -316,6 +372,37 @@ export function createFeishuChannel(
       }
     },
     validateConfig,
+    async resolveChannel(address, learned) {
+      if (
+        address.platform !== 'feishu' ||
+        address.accountId !== account.id ||
+        !/^[A-Za-z0-9_-]+$/u.test(address.chatId) ||
+        (address.threadId !== undefined &&
+          !/^[A-Za-z0-9_-]+$/u.test(address.threadId))
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      const current = identity()
+      let threadAnchor: string | undefined
+      if (address.threadId !== undefined) {
+        threadAnchor = learnedAnchor(address, learned, current)
+        if (!threadAnchor || !/^[A-Za-z0-9_-]+$/u.test(threadAnchor)) {
+          return { status: 'unavailable', reason: 'address_unresolved' }
+        }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'feishu',
+          accountId: account.id,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: { ...current, ...(threadAnchor ? { threadAnchor } : {}) }
+        }
+      }
+    },
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount
@@ -377,12 +464,12 @@ export function createFeishuChannel(
         (input.target.replyToId &&
           !/^[A-Za-z0-9_-]+$/u.test(input.target.replyToId)) ||
         !data.success ||
-        data.data.tenantKey !== current.tenantKey ||
-        data.data.appId !== current.appId ||
-        data.data.botId !== current.botId ||
-        data.data.apiBaseUrl !== current.apiBaseUrl
+        !matchesIdentity(data.data, current)
       ) {
         return { status: 'rejected', errorCode: 'invalid_target' }
+      }
+      if (input.target.threadId && !threadReply(input.target, data.data)) {
+        return { status: 'rejected', errorCode: 'address_unresolved' }
       }
       // Authentication precedes the message effect, so failures here are safe to retry.
       const errorCode = mediaError(input, host)
@@ -414,7 +501,7 @@ export function createFeishuChannel(
         return content
       }
       try {
-        const reply = input.target.replyToId
+        const reply = threadReply(input.target, data.data)
 
         const response = await postJson(
           `${base().replace(/\/$/u, '')}/open-apis/im/v1/messages${reply ? `/${encodeURIComponent(reply)}/reply` : '?receive_id_type=chat_id'}`,

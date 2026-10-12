@@ -330,3 +330,69 @@ test.each(['missing credential', 'rejected subscription'])(
     expect(await records(host.storage)).toHaveLength(0)
   }
 )
+
+test('WeCom websocket sends to explicitly configured single/group conversations before any inbound message', async () => {
+  vi.stubEnv('WECOM_SECRET', 'secret')
+
+  const remote = await peer(
+    () => ({ status: 404 }),
+    (socket) => {
+      socket.on('message', (bytes) => {
+        const frame = z
+          .object({ headers: z.object({ req_id: z.string() }) })
+          .parse(JSON.parse(wireText(bytes)))
+
+        socket.send(JSON.stringify({ headers: frame.headers, errcode: 0 }))
+      })
+    }
+  )
+
+  const plugin = createWeComChannel()
+
+  const host = await assemble(
+    plugin,
+    {
+      botId: 'robot',
+      secret: { env: 'WECOM_SECRET' },
+      recipientTypes: { user: 'single', group: 'group' }
+    },
+    [
+      { chatId: 'user', senderId: 'user' },
+      { chatId: 'group', senderId: 'user' }
+    ]
+  )
+
+  await host.start()
+  for (const [chatId, chatType] of [
+    ['user', 1],
+    ['group', 2]
+  ] as const) {
+    const resolved = await plugin.resolveChannel?.({
+      id: 'channel',
+      platform: 'wecom',
+      accountId: 'bot',
+      chatId
+    })
+
+    if (resolved?.status !== 'available') {
+      throw new Error('missing_destination')
+    }
+    expect(resolved.target.replyToId).toBeUndefined()
+    expect(
+      await plugin.send({
+        ...sendInput(
+          'wecom',
+          chatId,
+          resolved.target.data,
+          `proactive:${chatId}`
+        ),
+        target: resolved.target
+      })
+    ).toMatchObject({ status: 'sent' })
+    expect(remote.frames.at(-1)).toMatchObject({
+      cmd: 'aibot_send_msg',
+      body: { chatid: chatId, chat_type: chatType }
+    })
+  }
+  expect(await records(host.storage)).toEqual([])
+})

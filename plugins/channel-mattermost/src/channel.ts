@@ -326,6 +326,31 @@ export function createMattermostChannel(
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      const current = configured()
+      if (
+        address.platform !== 'mattermost' ||
+        address.accountId !== current.account.id ||
+        !platformIdSchema.safeParse(address.chatId).success ||
+        (address.threadId !== undefined &&
+          !platformIdSchema.safeParse(address.threadId).success)
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'mattermost',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: { serverUrl: current.base, botUserId: current.botUserId }
+        }
+      }
+    },
+
     async setup(host, account, config) {
       if (runtime) {
         throw new Error('already_setup')
