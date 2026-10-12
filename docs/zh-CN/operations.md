@@ -149,15 +149,17 @@ pg_restore --dbname="$RESTORE_DATABASE_URL" relanox.dump
 docker compose exec relanox node dist/main.js status --config /config/relanox.json --endpoint-id agent-1
 ```
 
-| 状态                      | 检查事项                                                    |
-| ------------------------- | ----------------------------------------------------------- |
-| 没有来信记录              | webhook/连接、发送者名单、准确聊天和话题绑定                |
-| 来信 `due`                | Agent 凭据、Routine 可用性或 dot 订阅；日志可查看安排的重试 |
-| 来信 `accepted`，没有回信 | MCP 连接元数据、连接状态和远端执行                          |
-| 来信或回信 `rejected`     | 重试前修正报告的权限或配置问题                              |
-| 回信 `pending`            | 平台连接、权限、重试等待时间，以及同一来信更早的未完成回信  |
-| 回信 `sent`               | 平台已接收，检查原聊天或话题                                |
-| `unknown`                 | 重复操作前检查 Agent 或平台上是否已经完成                   |
+| 状态                      | 检查事项                                                        |
+| ------------------------- | --------------------------------------------------------------- |
+| 没有来信记录              | webhook/连接、发送者名单、准确聊天和话题绑定                    |
+| 来信 `due`                | Agent 凭据、Routine 可用性或 dot 订阅；日志可查看安排的重试     |
+| 来信 `accepted`，没有回信 | MCP 连接元数据、连接状态和远端执行                              |
+| 来信或回信 `rejected`     | 重试前修正报告的权限或配置问题                                  |
+| 回信 `pending`            | 平台连接、权限、重试等待时间，以及同一 channel 更早的未完成投递 |
+| 回信 `sent`               | 平台已接收，检查原聊天或话题                                    |
+| `unknown`                 | 重复操作前检查 Agent 或平台上是否已经完成                       |
+
+Agent 可以调用 `relanox_status` 检查授权 channel、原生发送可用性及指定 `deliveryId`。上面的 CLI 命令还提供保留的来信通知与恢复版本号。新发送遵循当前 channel 归属，修改绑定不会重定向已入队投递。
 
 临时故障会自动重试。需要再次通知 Agent 时，从 status 读取来信的 `requestId` 和当前 `version`，代入：
 
@@ -186,7 +188,7 @@ $before = [DateTimeOffset]::UtcNow.AddDays(-30).ToUnixTimeMilliseconds()
 docker compose exec relanox node dist/main.js cleanup --config /config/relanox.json --before $before --limit 1000
 ```
 
-需要时分批再次运行。清理保留未完成工作和防止重复处理的记录，删除符合条件的旧文字、附件字节及相关内容。为用户下载留出足够时间：附件清理后公开 URL 失效。备份使用单独的保留策略。
+需要时分批再次运行。清理分别处理已完成的来信通知和已发送投递，保留等待、被拒绝或结果不确定的投递，以及保留消息或近期暂存上传仍引用的媒体。旧的无引用上传字节可被清理，以释放暂存额度。文件元数据和发送摘要保留用于幂等重试，已清理字节不能再读取或用于新发送。为用户下载留出足够时间：附件清理后公开 URL 失效。备份使用单独的保留策略。
 
 ## 监控安装
 

@@ -13,8 +13,9 @@
 1. 定义并验证账号配置。凭据字段使用环境变量引用；验证配置只检查值，不发起网络请求。
 2. 认证传入的平台事件，提取稳定的事件标识，将文字、支持的附件和会话信息交给渠道 host。等待输入保存成功后，再向平台确认接收。
 3. 声明平台的文字长度限制和支持的媒体类型。Relanox 在发送前拆分文字，接入代码处理平台原生上传和下载。
-4. 实现单个消息部分的发送。重试时保留原发送标识，成功时返回平台回执，并区分明确的临时失败和不确定结果。
-5. 通过 host 注册回调处理程序。应用负责监听地址，渠道路由会挂载在 `/channels/<accountId>` 下。
+4. 实现 `resolveChannel(address, learned)`，把绑定的 `ChannelAddress` 解析为原生目标，或返回不可用原因。平台需要上下文时使用已认证的原生信息，不要伪造来信。可用性只是当前快照，实际发送时仍需检查会过期的窗口和凭据。
+5. 实现单个消息部分的发送。重试时保留原发送标识，成功时返回平台回执，并区分明确的临时失败和不确定结果。
+6. 通过 host 注册回调处理程序。应用负责监听地址，渠道路由会挂载在 `/channels/<accountId>` 下。
 
 回复文字统一使用 Markdown。用 `capabilities.maxTextLength` 和 `lengthUnit` 声明平台长度限制，Core 会在保持格式和链接完整的前提下分段。如果转换后的消息大小不同，使用 `@relanox/markdown` 实现 `splitText(markdown, target)`，按实际发送格式计量长度。原生支持 Markdown 的渠道发送源文本，其余渠道转换为平台支持的格式，不提供单独的纯文本模式。
 
@@ -28,13 +29,19 @@ Core 从当前账号的绑定提供 `host.boundChatIds`。长连接渠道可用�
 
 ## 扩展 Agent 接入
 
-先认证请求，再取得仅允许访问指定端点的 Agent host。Agent 可以读取有权处理的输入附件，并用该输入的 `replyTo` 回复，不能任意指定目标会话。
+先认证请求，再取得仅允许访问指定端点的 Agent host。`host.status()` 从当前授权绑定列出 channel，包含原生发送可用性和限制。来信携带 `source.channel` 与 `source.senderId`，公开发送和媒体工具使用 channel ID。内部来信 request ID 仍用于事件去重和通知恢复。
 
-回复调用为 `sendMessage({ replyTo, text, idempotencyKey?, attachments? })`。重试同一个调用时复用明确的键；有意发送重复回复时使用不同的键。返回 `queued` 表示回复已经保存，等待发送。
+发送调用为 `sendMessage({ channel, text, idempotencyKey?, attachments? })`，目标来自 `source.channel.id` 或 status 返回的 channel，无需先收到消息。不提供键时，每次调用都会创建新发送；仅在重试同一次发送意图、文字和有序附件都相同时复用明确的键。返回 `queued` 表示消息已经保存，等待发送。`host.status({ deliveryId })` 仅在该投递所属 channel 仍获授权时返回投递信息。
 
-附件可以引用收到或已上传的媒体，也可以包含新生成的媒体字节。签发上传凭证前，用 `host.media.authorize({ requestId })` 检查权限；`host.media.upload({ requestId, mediaId, upload })` 保存归属于该请求、不可覆盖的媒体，并返回引用。存储会在写入事务中重新检查权限、脱敏状态、封面和累计额度。上传不会创建待发送回复，之后再将返回的 ID 传给 `sendMessage`。请遵守目标渠道的格式和大小限制。支持的附件形式见[媒体传输](../media.md)和 SDK 导出的类型。
+附件可以引用所选 channel 中收到或已上传的媒体，也可以包含新生成的字节。签发上传凭证前，用 `host.media.authorize({ channelId })` 检查权限；`host.media.upload({ channelId, mediaId, upload })` 保存归属于该 channel、不可覆盖的媒体。`host.media.read({ channelId, mediaId })` 读取可用字节。存储会在写入事务中重新检查当前归属、封面和未发送上传额度。入队后，引用的上传文件释放暂存额度；每条消息独立检查媒体限制。上传不会创建待发送消息，之后再将返回的 ID 传给 `sendMessage`。附件形式见[媒体传输](../media.md)和 SDK 导出的类型。
 
 通过 host 在 `/agents/<agentId>` 下注册 Agent HTTP 路由。不要把端点凭据混入通知或工具返回的字段。dot 和 Grok 已通过 `packages/agent-mcp` 共用 MCP 认证和消息工具；修改这些接入时可以复用现有辅助代码。
+
+## 保存 channel 和投递
+
+Core 在设置接入之前通过 `registerConversations` 登记配置中的会话。存储独立保存已认证的原生目标信息。`enqueueMessage` 检查 channel 授权，并一起保存端点、解析后的目标及渲染分块。发送顺序和显式幂等键以 channel 为边界。
+
+`getMessageReceipt` 与不可变的 `media.getReference` 元数据使已授权的显式键重试能在媒体字节清理后返回原投递记录；它们不会恢复文件读取，也不允许用已清理文件发起新发送。清理时保留未完成投递及其引用的媒体。
 
 ## 嵌入 Core
 

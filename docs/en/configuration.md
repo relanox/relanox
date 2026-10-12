@@ -16,7 +16,7 @@ Under **Allowed user IDs**, enter the people who may chat with the bot. Separate
 
 To connect a topic or thread, enter its thread ID. Leaving it blank receives messages in the main chat only; it does not include every child thread. Add each thread you want to connect.
 
-Several chats can use the same Agent. Each reply still returns to its original chat.
+Several chats can use the same Agent. The Agent can query `relanox_status` to find its authorized channels and select one when sending; incoming messages identify their source channel.
 
 ## Set the service address and passwords
 
