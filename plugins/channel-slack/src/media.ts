@@ -278,4 +278,4 @@ export async function richBlocks(
   return { text: text.join('\n'), blocks }
 }
 
-export { richError } from './rich.js'
+export { richError, richCapabilities } from './rich.js'

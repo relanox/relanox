@@ -24,6 +24,7 @@ import {
   sendMedia,
   richBlocks,
   richError,
+  richCapabilities,
   sendOutcome,
   discoverIdentity,
   slackMarkdown,
@@ -284,7 +285,7 @@ export function createSlackChannel(
       receive: true,
       transport: 'both',
       maxTextLength: 4000,
-      richText: { maxParts: 20, maxTextLength: 2500 },
+      richText: richCapabilities,
       lengthUnit: 'codepoint',
       idempotentSend: false,
       media: {

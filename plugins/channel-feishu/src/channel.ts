@@ -1,4 +1,4 @@
-import { richError } from './rich.js'
+import { richError, richCapabilities } from './rich.js'
 import { createDecipheriv, createHash } from 'node:crypto'
 import type {
   AccountConfig,
@@ -365,7 +365,7 @@ export function createFeishuChannel(
       receive: true,
       transport: 'http',
       maxTextLength: 10_000,
-      richText: { maxParts: 20, maxTextLength: 8000 },
+      richText: richCapabilities,
       lengthUnit: 'utf8',
       idempotentSend: false,
       media: {

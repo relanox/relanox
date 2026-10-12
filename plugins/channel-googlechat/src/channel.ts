@@ -1,4 +1,4 @@
-import { richError } from './rich.js'
+import { richError, richCapabilities } from './rich.js'
 import { apiBase, jwksUrl } from './constants.js'
 import type {
   AccountConfig,
@@ -140,7 +140,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       receive: true,
       transport: 'http',
       maxTextLength: 30_000,
-      richText: { maxParts: 20, maxTextLength: 2000 },
+      richText: richCapabilities,
       lengthUnit: 'utf8',
       idempotentSend: false,
       media: {

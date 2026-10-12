@@ -22,7 +22,8 @@ import {
   consentPosted,
   richMarkdown,
   richPreparationFailure,
-  richError
+  richError,
+  richCapabilities
 } from './media.js'
 import { receive } from './inbound.js'
 import { failure, parseBody, rawBody, request, unavailable } from './io.js'
@@ -240,7 +241,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
         transport: 'http',
         maxTextLength: 12_000,
         ...(runtime?.host.publicUrl?.startsWith('https://')
-          ? { richText: { maxParts: 20, maxTextLength: 2000 } }
+          ? { richText: richCapabilities }
           : {}),
         lengthUnit: 'utf16',
         idempotentSend: false,

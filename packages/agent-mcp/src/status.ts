@@ -34,6 +34,17 @@ export const statusSchema = z.strictObject({
         z.strictObject({ status: z.literal('unavailable'), reason: z.string() })
       ]),
       media: z.array(z.enum(['image', 'audio', 'video', 'file'])),
+      richText: z
+        .enum(['native', 'sequential', 'text-only', 'text-then-images'])
+        .optional(),
+      richTextLimits: z
+        .strictObject({
+          maxParts: z.number().int().positive(),
+          maxTextLength: z.number().int().positive(),
+          imageMimeTypes: z.array(z.string()).optional(),
+          maxImageBytes: z.number().int().positive().optional()
+        })
+        .optional(),
       maxTextLength: z.number().int().positive(),
       lengthUnit: z.enum(['utf16', 'codepoint', 'utf8']),
       maxTextLengthPerMessage: z.number().int().positive().optional(),

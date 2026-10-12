@@ -17,7 +17,8 @@ import { createSqliteStorage } from '../../plugins/storage-sqlite/src/index.js'
 export async function mediaFixture(
   sendKinds: readonly MediaKind[] = ['image', 'file'],
   publicUrl = 'https://relay.example',
-  media?: CoreOptions['media']
+  media?: CoreOptions['media'],
+  richText?: ChannelPlugin['capabilities']['richText']
 ): Promise<{
   channelId: string
   storage: ReturnType<typeof createSqliteStorage>
@@ -55,6 +56,7 @@ export async function mediaFixture(
       maxTextLength: 3,
       lengthUnit: 'codepoint',
       idempotentSend: false,
+      ...(richText ? { richText } : {}),
       media: { receive: ['image', 'file'], send: sendKinds }
     },
     validateConfig: () => null,

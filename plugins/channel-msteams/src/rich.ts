@@ -5,6 +5,13 @@ import type {
   RichTextPart
 } from '@relanox/sdk'
 
+export const richCapabilities = {
+  maxParts: 20,
+  maxTextLength: 2000,
+  imageMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+  maxImageBytes: 26_214_400
+}
+
 export function richError(
   input: SendInput,
   host: ChannelHost
@@ -21,7 +28,7 @@ export function richError(
     input.chunk.media ||
     input.media ||
     parts.length === 0 ||
-    parts.length > 20
+    parts.length > richCapabilities.maxParts
   ) {
     return 'invalid_rich_text'
   }
@@ -31,7 +38,7 @@ export function richError(
     .map((part) => part.text)
     .join('')
 
-  if (text.length > 2000) {
+  if (text.length > richCapabilities.maxTextLength) {
     return 'rich_text_limit_exceeded'
   }
   const images = parts.filter((part) => part.type === 'image')
@@ -67,7 +74,10 @@ function invalidImage(
       part.media.mimeType
     ) ||
     stored.data.byteLength >
-      Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, 26_214_400) ||
+      Math.min(
+        host.maxMediaBytes ?? 25 * 1024 * 1024,
+        richCapabilities.maxImageBytes
+      ) ||
     (part.label || part.media.fileName).length > 2000
   )
 }

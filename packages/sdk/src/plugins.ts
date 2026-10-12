@@ -122,6 +122,8 @@ export type ChannelPlugin<C = Json> = {
       readonly maxParts: number
       /** Aggregate source text per rich chunk, measured using lengthUnit. */
       readonly maxTextLength: number
+      readonly imageMimeTypes?: readonly string[]
+      readonly maxImageBytes?: number
     }
     readonly media?: {
       readonly receive: readonly MediaKind[]

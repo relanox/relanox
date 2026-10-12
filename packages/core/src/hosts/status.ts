@@ -8,6 +8,20 @@ import type { AgentHostOptions } from './agent.js'
 import { authorizedConversation } from './conversations.js'
 import { textId } from '../validation.js'
 
+function richTextMode(
+  plugin: ChannelPlugin<unknown>
+): NonNullable<AgentChannelStatus['richText']> {
+  if (plugin.capabilities.richText) {
+    return 'native'
+  }
+  if (!plugin.capabilities.media?.send.length) {
+    return 'text-only'
+  }
+  return plugin.channel === 'wecom' && plugin.capabilities.transport === 'http'
+    ? 'text-then-images'
+    : 'sequential'
+}
+
 async function channelView(
   options: AgentHostOptions,
   conversation: ConversationRecord,
@@ -34,6 +48,8 @@ async function channelView(
             reason: resolution?.reason ?? 'address_unresolved'
           },
     media: options.storage.media ? (capabilities.media?.send ?? []) : [],
+    richText: richTextMode(plugin),
+    ...(capabilities.richText ? { richTextLimits: capabilities.richText } : {}),
     maxTextLength: capabilities.maxTextLength,
     lengthUnit: capabilities.lengthUnit,
     ...(capabilities.maxTextLengthPerMessage === undefined
