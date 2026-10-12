@@ -1,6 +1,8 @@
+import { slackMarkdown } from './markdown.js'
 import { REQUEST_TIMEOUT_MS, API_BASE_URL } from './config.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
+  Json,
   ChannelHost,
   MediaUpload,
   SendInput,
@@ -224,3 +226,56 @@ export async function sendMedia(
     ? { status: 'sent', receipt: { platformMessageId: upload.file_id } }
     : { status: 'unknown', errorCode: 'invalid_upload_completion' }
 }
+
+export async function richBlocks(
+  input: SendInput,
+  token: string
+): Promise<{ text: string; blocks: Json[] } | SendResult> {
+  const blocks: Json[] = []
+  const text: string[] = []
+  let imageIndex = 0
+  for (const part of input.chunk.richText ?? []) {
+    if (part.type === 'text') {
+      const formatted = slackMarkdown(part.text)
+      blocks.push(...formatted.blocks)
+      text.push(formatted.text)
+      continue
+    }
+    const media = input.richMedia?.[imageIndex++]
+    if (!media) {
+      return { status: 'rejected', errorCode: 'missing_media' }
+    }
+    const prepared = await prepareUpload({ ...input, media }, token)
+    if ('status' in prepared) {
+      return prepared
+    }
+
+    const response = await postJson(
+      `${API_BASE_URL}/files.completeUploadExternal`,
+      { authorization: `Bearer ${token}` },
+      { files: [{ id: prepared.file_id, title: part.media.fileName }] },
+      input.signal,
+      REQUEST_TIMEOUT_MS
+    )
+
+    if (!response.ok) {
+      return uploadFailure(failure(response))
+    }
+    const completed = completeSchema.parse(await jsonResponse(response))
+    if (!completed.ok) {
+      return uploadFailure(apiError(completed.error))
+    }
+    if (!completed.files?.some((file) => file.id === prepared.file_id)) {
+      return { status: 'retryable', errorCode: 'invalid_upload_completion' }
+    }
+    blocks.push({
+      type: 'image',
+      slack_file: { id: prepared.file_id },
+      alt_text: part.label || part.media.fileName
+    })
+    text.push(part.label)
+  }
+  return { text: text.join('\n'), blocks }
+}
+
+export { richError } from './rich.js'

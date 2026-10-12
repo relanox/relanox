@@ -800,3 +800,95 @@ it('learns trusted Teams installation context without an incoming message and ke
   }
   expect(top.target.data).not.toHaveProperty('replyToId')
 })
+
+it('publishes verified images and preserves text/image/text order in native rich messages', async () => {
+  const local = await setup(['msteams'], ':memory:', 'https://relay.example')
+  expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+  const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
+  if (!item) {
+    throw new Error('missing_inbound')
+  }
+  const principal = local.principal()
+
+  const reference = await principal.media?.upload({
+    channelId: item.channel.id,
+    mediaId: 'c0ffef01-ecf3-46f3-bb31-7ae8c2865f51',
+    upload: {
+      kind: 'image',
+      mimeType: 'image/png',
+      fileName: 'photo.png',
+      data: new Uint8Array([1, 2, 3, 4, 5])
+    }
+  })
+
+  if (!reference) {
+    throw new Error('missing_image')
+  }
+
+  const media = await principal.media?.read({
+    channelId: item.channel.id,
+    mediaId: reference.id
+  })
+
+  if (!media) {
+    throw new Error('missing_image_bytes')
+  }
+
+  const input: SendInput = {
+    deliveryId: 'rich',
+    channelId: item.channel.id,
+    target: item.target,
+    chunkIndex: 0,
+    signal: new AbortController().signal,
+    chunk: {
+      text: '',
+      state: null,
+      idempotencyKey: 'rich',
+      richText: [
+        { type: 'text', text: '**before**' },
+        { type: 'image', media: reference, label: 'photo' },
+        { type: 'text', text: 'after' }
+      ]
+    },
+    richMedia: [media]
+  }
+
+  expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+
+  const sent = local.remote.traffic.filter((request) =>
+    request.path.includes('/activities')
+  )
+
+  expect(sent).toHaveLength(1)
+  expect(JSON.parse(sent[0]?.body ?? 'null') as unknown).toMatchObject({
+    textFormat: 'extendedmarkdown',
+    conversation: { id: 'conversation-1', tenantId: 'tenant-id' },
+    replyToId: 'root-1'
+  })
+
+  const payload = z
+    .object({ text: z.string() })
+    .parse(JSON.parse(sent[0]?.body ?? 'null'))
+
+  expect(payload.text).toMatch(
+    /^\*\*before\*\*\n\n!\[photo\]\(https:\/\/relay\.example\/media\/[^\n]+\)\n\nafter$/u
+  )
+  const count = local.remote.traffic.length
+  expect(await local.plugin.send({ ...input, richMedia: [] })).toMatchObject({
+    status: 'rejected',
+    errorCode: 'invalid_rich_media'
+  })
+  expect(
+    await local.plugin.send({
+      ...input,
+      chunk: {
+        ...input.chunk,
+        richText: [
+          { type: 'text', text: 'a'.repeat(2001) },
+          { type: 'image', media: reference, label: 'photo' }
+        ]
+      }
+    })
+  ).toMatchObject({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
+  expect(local.remote.traffic).toHaveLength(count)
+})

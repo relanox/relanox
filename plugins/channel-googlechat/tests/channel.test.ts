@@ -582,3 +582,122 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
   const published = await local.core.fetch(new Request(image.imageUrl))
   expect(new Uint8Array(await published.arrayBuffer())).toEqual(bytes)
 })
+
+it('publishes verified images and preserves text/image/text order in native rich messages', async () => {
+  const local = await setup()
+  expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+  const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
+  if (!item) {
+    throw new Error('missing_inbound')
+  }
+  const principal = local.principal()
+
+  const reference = await principal.media?.upload({
+    channelId: item.channel.id,
+    mediaId: 'c0ffef01-ecf3-46f3-bb31-7ae8c2865f51',
+    upload: {
+      kind: 'image',
+      mimeType: 'image/png',
+      fileName: 'photo.png',
+      data: new Uint8Array([1, 2, 3, 4, 5])
+    }
+  })
+
+  if (!reference) {
+    throw new Error('missing_image')
+  }
+
+  const media = await principal.media?.read({
+    channelId: item.channel.id,
+    mediaId: reference.id
+  })
+
+  if (!media) {
+    throw new Error('missing_image_bytes')
+  }
+
+  const input: SendInput = {
+    deliveryId: 'rich',
+    channelId: item.channel.id,
+    target: item.target,
+    chunkIndex: 0,
+    signal: new AbortController().signal,
+    chunk: {
+      text: '',
+      state: null,
+      idempotencyKey: 'rich',
+      richText: [
+        { type: 'text', text: '**before**' },
+        { type: 'image', media: reference, label: 'photo' },
+        { type: 'text', text: 'after' }
+      ]
+    },
+    richMedia: [media]
+  }
+
+  expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+
+  const sent = local.remote.traffic.filter((request) =>
+    request.path.includes('/v1/spaces/space/messages')
+  )
+
+  expect(sent).toHaveLength(1)
+  expect(JSON.parse(sent[0]?.body ?? 'null') as unknown).toMatchObject({
+    cardsV2: [
+      {
+        card: {
+          sections: [
+            {
+              widgets: [
+                { textParagraph: { text: '<b>before</b>' } },
+                {
+                  image: {
+                    altText: 'photo'
+                  }
+                },
+                { textParagraph: { text: 'after' } }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    thread: { name: 'spaces/space/threads/thread' }
+  })
+
+  const payload = z
+    .object({
+      cardsV2: z.array(
+        z.object({
+          card: z.object({
+            sections: z.array(z.object({ widgets: z.array(z.unknown()) }))
+          })
+        })
+      )
+    })
+    .parse(JSON.parse(sent[0]?.body ?? 'null'))
+
+  const image = z
+    .object({ image: z.object({ imageUrl: z.string() }) })
+    .parse(payload.cardsV2[0]?.card.sections[0]?.widgets[1])
+
+  expect(image.image.imageUrl).toMatch(/^https:\/\/relay\.example\/media\//u)
+  const count = local.remote.traffic.length
+  expect(await local.plugin.send({ ...input, richMedia: [] })).toMatchObject({
+    status: 'rejected',
+    errorCode: 'invalid_rich_media'
+  })
+  expect(
+    await local.plugin.send({
+      ...input,
+      chunk: {
+        ...input.chunk,
+        richText: [
+          { type: 'text', text: 'a'.repeat(2001) },
+          { type: 'image', media: reference, label: 'photo' }
+        ]
+      }
+    })
+  ).toMatchObject({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
+  expect(local.remote.traffic).toHaveLength(count)
+})
