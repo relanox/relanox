@@ -627,7 +627,7 @@ it('publishes verified images and preserves text/image/text order in native rich
       state: null,
       idempotencyKey: 'rich',
       richText: [
-        { type: 'text', text: '**before**' },
+        { type: 'text', text: '**before** `code<value>`' },
         { type: 'image', media: reference, label: 'photo' },
         { type: 'text', text: 'after' }
       ]
@@ -649,7 +649,7 @@ it('publishes verified images and preserves text/image/text order in native rich
           sections: [
             {
               widgets: [
-                { textParagraph: { text: '<b>before</b>' } },
+                { textParagraph: { text: '<b>before</b> code&lt;value&gt;' } },
                 {
                   image: {
                     altText: 'photo'
