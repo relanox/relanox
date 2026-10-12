@@ -22,9 +22,15 @@ Files belong to the chat selected when they are received or uploaded. Ask the Ag
 
 Grok may ask you to approve uploading the generated file from its cloud computer. Check the filename and your Relanox address before allowing that upload. While it is waiting for approval, the original chat will not receive the attachment.
 
-LINE, Google Chat and large images in Teams groups or channels also need Relanox's public HTTPS address for delivery. Use the address entered in the configurator and follow [Deployment and daily use](operations.md) to make it reachable. Teams personal chats may ask you to accept the file. IRC supports text conversations.
+Native image layouts in LINE, Google Chat, Microsoft Teams, Mattermost and QQ need Relanox's public HTTPS address. LINE audio/video and large standalone images in Teams groups or channels also use this address. Use the address entered in the configurator and follow [Deployment and daily use](operations.md) to make it reachable. Teams personal chats may ask you to accept the file. IRC supports text conversations.
 
 Relanox download links normally last 24 hours. Anyone holding a valid link can download its file, so share it only with the intended recipients.
+
+## Place pictures between paragraphs
+
+Ask the Agent to put pictures beside the explanation they illustrate. It can reference received or uploaded files in its Markdown, or place a generated file supplied with the same send call. Files belong to the selected chat and are sent once; files without a Markdown reference follow the text.
+
+The result depends on the channel. Some channels support a native layout with text and pictures; others send separate messages in the requested order. WeCom HTTP callback replies show the text before the pictures, and IRC supports text only. The Agent can check `relanox_status` for the available layout and limits. See [Ordered Markdown media](reference/media.md#ordered-markdown-media) for the syntax and channel details.
 
 ## Choose a suitable file size
 

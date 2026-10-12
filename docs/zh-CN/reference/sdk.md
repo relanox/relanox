@@ -27,6 +27,14 @@
 
 Core 从当前账号的绑定提供 `host.boundChatIds`。长连接渠道可用它订阅已配置的会话；IRC 用它加入频道，无需单独的频道列表。部署的公开地址通过 `host.publicUrl` 获取。
 
+### 原生文字和图片布局
+
+仅在原生协议接受有序文字和图片内容时声明 `capabilities.richText`。其中 `maxParts` 计算每个分块中的文字和图片部分数，`maxTextLength` 按 `lengthUnit` 限制这些部分的源文本总长度。可选的 `imageMimeTypes` 和 `maxImageBytes` 限制行内图片。超出行内限制时，Core 在原位置通过独立媒体发送图片，只发送一次。普通媒体限制和整条消息限制仍适用。
+
+Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中的引用，检查渠道归属和图片类型，拆分闭合格式的文字，并在入队前固定投递计划。`DeliveryChunk.richText` 包含有序的 `RichTextPart` 文字和图片条目，与非空 `text` 和独立 `media` 互斥。`SendInput.richMedia` 按阅读顺序提供已验证的存储图片。将这些字节与分块引用对应，使用平台的原生上传或图片 URL 表达方式，不要下载内部 Markdown URI。需要跨重试复用的平台上传 ID 应保存在渠道状态中。
+
+没有声明 `richText` 的渠道接收有序文字和独立媒体分块。企业微信 HTTP 合并为先文字后图片的一条最终回复，IRC 拒绝附件。`host.status()` 返回对应的 `richText` 模式，原生布局还提供 `richTextLimits`。本地协议测试应验证实际原生请求和行内图片降级行为，不代表真实账号兼容性已经验证。
+
 ## 扩展 Agent 接入
 
 先认证请求，再取得仅允许访问指定端点的 Agent host。`host.status()` 从当前授权绑定列出 channel，包含原生发送可用性和限制。来信携带 `source.channel` 与 `source.senderId`，公开发送和媒体工具使用 channel ID。内部来信 request ID 仍用于事件去重和通知恢复。

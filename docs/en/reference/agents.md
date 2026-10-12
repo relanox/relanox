@@ -135,6 +135,8 @@ Call `relanox_status` with `{}` to list the current Agent's authorized channels.
 | `channels[].connection`                                     | Channel connection state: `connected`, `disconnected` or `degraded`.                                                                                                            |
 | `channels[].send`                                           | `{ "status": "available" }`, or `{ "status": "unavailable", "reason": "..." }` describing the current native address or sending constraint.                                     |
 | `channels[].media`                                          | Supported outgoing kinds: `image`, `audio`, `video` and/or `file`.                                                                                                              |
+| `channels[].richText`                                       | Layout mode: `native`, `sequential`, `text-then-images` or `text-only`.                                                                                                         |
+| `channels[].richTextLimits`                                 | Native layout limits: `maxParts`, `maxTextLength` and optional `imageMimeTypes` and `maxImageBytes`; omitted for other modes.                                                   |
 | `channels[].maxTextLength`, `lengthUnit`                    | Text limit per chunk and its unit: `utf16`, `codepoint` or `utf8`.                                                                                                              |
 | `channels[].maxTextLengthPerMessage`, `maxChunksPerMessage` | Optional limits on total message text and chunk count.                                                                                                                          |
 | `channels[].maxAttachments`                                 | The channel's attachment-count limit, bounded by the configured message limit.                                                                                                  |
@@ -167,7 +169,9 @@ For each new send intent, generate a fresh `idempotencyKey`, such as a UUID; the
 
 To inspect a received attachment, call `relanox_read_media` with its owning `channel` and the attachment's `id` as `mediaId`. Images/audio up to 1 MiB and supported UTF-8 text files up to 64 KiB are returned as MCP content; other files return a download link. Links expire after five minutes. See [Media protocol](media.md) for supported text types and limits.
 
-To return a received or uploaded attachment, include `{ "mediaId": "..." }` in `attachments`. Generated files can use the file tools below or a public HTTPS URL:
+To place a received or uploaded image between paragraphs, use `![description](relanox://media/UUID)` in `text`, replacing `UUID` with its channel-owned media ID. Relanox resolves the reference; it does not need a duplicate `attachments` entry. Use `[filename](relanox://media/UUID)` to send a file at that position. Each file may appear once. Check `channels[].richText` for the layout: sequential channels send separate messages, and WeCom HTTP places text before images. Code examples remain literal. Ordinary HTTPS Markdown images are not automatically downloaded. See [Ordered Markdown media](media.md#ordered-markdown-media).
+
+To append a received or uploaded attachment, include `{ "mediaId": "..." }` in `attachments`. Generated files can use the file tools below or a public HTTPS URL:
 
 ```json
 {
@@ -193,7 +197,7 @@ dot's `relanox_send_message` exposes a top-level `files` array with `_meta["open
 ```json
 {
   "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
-  "text": "Here is the report.",
+  "text": "Here is the report: [Download report](relanox://attachment/1)",
   "files": [
     {
       "download_url": "COPY_FROM_THE_HOST_FILE_OBJECT",
@@ -205,7 +209,7 @@ dot's `relanox_send_message` exposes a top-level `files` array with `_meta["open
 }
 ```
 
-Do not substitute a local path or pass OpenAI's `file_id` as `mediaId`. When both arrays are present, `attachments` precedes `files`; their combined count and byte size must fit the message limits. For audio/video that requires duration or cover metadata, use the upload flow or URL attachment parameters instead. Grok's send tool does not advertise OpenAI file parameters.
+Do not substitute a local path or pass OpenAI's `file_id` as `mediaId`. When both arrays are present, positional references count `attachments` first, then `files`; their combined count and byte size must fit the message limits. Referenced files are sent at their Markdown position, and unreferenced files follow the content in array order. For audio/video that requires duration or cover metadata, use the upload flow or URL attachment parameters instead. Grok's send tool does not advertise OpenAI file parameters.
 
 ## Upload a local file
 

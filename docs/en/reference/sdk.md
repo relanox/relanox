@@ -27,6 +27,14 @@ Each configured account gets its own channel instance. Keep credentials out of m
 
 Core supplies `host.boundChatIds` from this account's bindings. Connection channels can use it to subscribe to configured conversations; IRC uses it to join channels without a separate channel list. Use `host.publicUrl` for your deployment's public address.
 
+### Native text and image layouts
+
+Declare `capabilities.richText` only when the native protocol accepts ordered text/image content. Its `maxParts` counts text and image parts per chunk; `maxTextLength` limits their aggregate source text using `lengthUnit`. Optional `imageMimeTypes` and `maxImageBytes` restrict inline images. Core sends an image outside those inline limits through standalone media delivery at its original position, once. Normal media and whole-message limits still apply.
+
+Core resolves the Markdown references documented in [Ordered Markdown media](media.md#ordered-markdown-media), checks channel ownership and image kinds, splits balanced text and freezes the delivery plan before enqueueing. `DeliveryChunk.richText` contains ordered `RichTextPart` text/image entries and is mutually exclusive with nonempty `text` and standalone `media`. `SendInput.richMedia` supplies the verified stored images in reading order. Match those bytes to the chunk references and use your platform's native upload or image URL representation; do not fetch the internal Markdown URI. Persist any native upload IDs needed across retries in the channel's state.
+
+Channels without `richText` receive ordered text and standalone media chunks. WeCom HTTP collects one final text-then-images reply, and IRC rejects attachments. `host.status()` exposes the resulting `richText` mode and, for native layouts, `richTextLimits`. Local protocol coverage must verify the actual native payload and any inline-image fallback without claiming live-account compatibility.
+
 ## Extend an agent
 
 Authenticate requests before obtaining an Agent host scoped to the allowed endpoint IDs. `host.status()` lists channels from the current authorized bindings, including native send availability and limits. Incoming data carries `source.channel` and `source.senderId`. Public send and media tools use the channel ID; internal incoming request IDs remain useful for event deduplication and notification recovery.

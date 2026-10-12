@@ -53,9 +53,31 @@ Agent 回复文字统一使用 Markdown，无需选择格式模式。Relanox 使
 | Signal          | 原生文字样式范围，链接保留 URL。                                           |
 | IRC             | 原生格式控制符，完整命令保持在协议长度限制以内。                           |
 
-显示效果因客户端而异。样式较少的平台会保留标题、列表和表格中的文字，代码和链接使用可用的表达方式。Markdown 图片语法不会上传文件，发送媒体请使用附件。企业微信回调等合并回复的限制会在入队前检查。
+显示效果因客户端而异。样式较少的平台会保留标题、列表和表格中的文字，代码和链接使用可用的表达方式。内部 Markdown 媒体引用按阅读顺序放置渠道拥有的文件；普通 HTTPS Markdown 图片按渠道能力显示，不会导入为附件。企业微信回调等合并回复的限制会在入队前检查。
 
 原生协议见[飞书富文本](https://open.feishu.cn/document/server-docs/im-v1/message-content-description/create_json)、[钉钉机器人消息](https://open.dingtalk.com/document/development/robot-message-type)、[Teams 格式](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/format-your-bot-messages)和 [Matrix 格式化消息](https://spec.matrix.org/latest/client-server-api/#mroommessage)。本地 HTTP 与 socket 测试验证实际生成的协议请求，不代表已经验证真实账号兼容性。
+
+### 文字和图片布局 {#rich-media}
+
+通过[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中的内部引用选择文件。`relanox_status.channels[].richText` 返回当前账号可用的布局：
+
+| 渠道                                           | 模式               | 投递方式                                                                    |
+| ---------------------------------------------- | ------------------ | --------------------------------------------------------------------------- |
+| 飞书 / Lark                                    | `native`           | 富文本消息按顺序包含 Markdown 和已上传图片元素。                            |
+| Discord                                        | `native`           | Components V2 按顺序包含文字显示组件和使用附件的媒体画廊。                  |
+| 钉钉                                           | `native`           | Markdown 使用原生上传的图片引用。                                           |
+| QQ                                             | `native`           | 私聊和群聊中的自定义 Markdown 按顺序包含文字和公开 HTTPS 图片 URL。         |
+| Slack                                          | `native`           | 通过原生文件上传，在消息块中按顺序放置文字和图片。                          |
+| Google Chat                                    | `native`           | 卡片中包含文字和图片，图片使用 Relanox 的公开 HTTPS 地址。                  |
+| Microsoft Teams                                | `native`           | 一条 activity 中包含 Markdown 文字和行内图片，图片使用公开 HTTPS 媒体 URL。 |
+| LINE                                           | `native`           | Flex 内容按顺序包含文字和图片组件，图片使用公开 HTTPS 媒体 URL。            |
+| Matrix                                         | `native`           | `formatted_body` 按顺序包含文字和已上传的 `mxc://` 图片引用。               |
+| Mattermost                                     | `native`           | 帖子按顺序包含 Markdown 图片，图片使用公开 HTTPS 媒体 URL。                 |
+| Telegram、企业微信 WebSocket、WhatsApp、Signal | `sequential`       | 按阅读顺序发送独立文字和媒体消息。                                          |
+| 企业微信 HTTP 回调                             | `text-then-images` | 一条最终回复，全部文字在前，支持的图片在后。                                |
+| IRC                                            | `text-only`        | 仅文字，附件被拒绝。                                                        |
+
+原生布局包含图片，音频、视频和文件链接使用独立媒体发送。LINE、Google Chat、Teams、Mattermost 和 QQ 的这些布局需要公开 HTTPS 媒体地址，以当前状态返回的能力为准。原生分块限制通过 `richTextLimits` 返回，其中可包含行内 MIME 和字节限制。超出行内限制的图片在对应位置独立发送，只发送一次。渠道附件支持和单条消息限制仍适用。不同客户端的原生内容显示可能不同。这些布局经过本地协议测试，尚不代表真实账号验证。
 
 ## 钉钉应用机器人 {#dingtalk}
 
