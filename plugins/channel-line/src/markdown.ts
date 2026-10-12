@@ -17,7 +17,7 @@ function paragraph(runs: readonly MarkdownRun[]): Json {
 }
 
 /** Flex provides inline styles; links need their own text component for a URI action. */
-export function lineMarkdown(markdown: string): Json {
+export function lineContents(markdown: string): Json[] {
   const runs = markdownRuns(markdown)
   const contents: Json[] = []
   let paragraphRuns: MarkdownRun[] = []
@@ -40,7 +40,16 @@ export function lineMarkdown(markdown: string): Json {
   if (paragraphRuns.length > 0) {
     contents.push(paragraph(paragraphRuns))
   }
-  const visible = runs.map((run) => run.text).join('')
+  return contents
+}
+
+export function lineMarkdown(markdown: string): Json {
+  const contents = lineContents(markdown)
+
+  const visible = markdownRuns(markdown)
+    .map((run) => run.text)
+    .join('')
+
   const preview = visible.slice(0, 1500)
   return {
     type: 'flex',

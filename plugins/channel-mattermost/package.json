@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@relanox/channel-media": "workspace:*",
+    "@relanox/markdown": "workspace:*",
     "@relanox/sdk": "workspace:*",
     "@relanox/transport": "workspace:*",
     "ws": "8.22.0",

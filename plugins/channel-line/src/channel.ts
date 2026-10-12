@@ -94,10 +94,17 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       return { status: 'unknown', errorCode: 'retry_key_expired' }
     }
 
-    const outgoing = await messages(input, host).catch(() => ({
-      status: 'retryable' as const,
-      errorCode: 'media_publication_failed'
-    }))
+    const outgoing = await messages(input, host).catch(
+      (error: unknown): SendResult => {
+        if (
+          error instanceof Error &&
+          error.message === 'rich_message_limit_exceeded'
+        ) {
+          return { status: 'rejected', errorCode: error.message }
+        }
+        return { status: 'retryable', errorCode: 'media_publication_failed' }
+      }
+    )
 
     if (!Array.isArray(outgoing)) {
       return outgoing
@@ -147,15 +154,20 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
     runtime: 'node',
     kind: 'channel',
     channel: 'line',
-    capabilities: {
-      receive: true,
-      transport: 'http',
-      maxTextLength: 5000,
-      lengthUnit: 'utf16',
-      idempotentSend: false,
-      media: {
-        receive: ['image', 'audio', 'video', 'file'],
-        send: ['image', 'audio', 'video']
+    get capabilities(): ChannelPlugin<LineConfig>['capabilities'] {
+      return {
+        receive: true,
+        transport: 'http',
+        maxTextLength: 5000,
+        lengthUnit: 'utf16',
+        idempotentSend: false,
+        ...(runtime?.host.publicUrl && runtime.host.media
+          ? { richText: { maxParts: 20, maxTextLength: 2000 } }
+          : {}),
+        media: {
+          receive: ['image', 'audio', 'video', 'file'],
+          send: ['image', 'audio', 'video']
+        }
       }
     },
     validateConfig,
