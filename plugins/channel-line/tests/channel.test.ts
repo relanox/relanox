@@ -117,7 +117,7 @@ describe('native LINE', () => {
       expect(
         await plugin.send({
           deliveryId: 'delivery',
-          requestId: 'request',
+          channelId: 'request',
           target: {
             channel: 'line',
             accountId: 'business',
@@ -175,7 +175,7 @@ describe('native LINE', () => {
       expect(
         await changedPlugin.send({
           deliveryId: outbound.deliveryId,
-          requestId: outbound.requestId,
+          channelId: outbound.channelId,
           target,
           chunk: outbound.chunks[0],
           chunkIndex: 0,
@@ -204,7 +204,7 @@ describe('native LINE', () => {
       (
         await restartedPlugin.send({
           deliveryId: outbound.deliveryId,
-          requestId: outbound.requestId,
+          channelId: outbound.channelId,
           target: outbound.target,
           chunk: outbound.chunks[0],
           chunkIndex: 0,
@@ -374,7 +374,7 @@ describe('native LINE', () => {
 
     const send: SendInput = {
       deliveryId: outbound.deliveryId,
-      requestId: outbound.requestId,
+      channelId: outbound.channelId,
       target: outbound.target,
       chunk: outbound.chunks[0],
       chunkIndex: 0,

@@ -19,6 +19,7 @@ export async function mediaFixture(
   publicUrl = 'https://relay.example',
   media?: CoreOptions['media']
 ): Promise<{
+  channelId: string
   storage: ReturnType<typeof createSqliteStorage>
   filename: ReturnType<typeof join>
   close(this: void): Promise<void>
@@ -26,7 +27,7 @@ export async function mediaFixture(
   channel: ChannelHost
   agent: AgentHost
   sent: SendInput[]
-  restart(this: void): Promise<CoreRuntime>
+  restart(this: void, next?: RelanoxConfig): Promise<CoreRuntime>
 }> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-core-media-'))
   const filename = join(directory, 'relay.sqlite')
@@ -57,6 +58,20 @@ export async function mediaFixture(
       media: { receive: ['image', 'file'], send: sendKinds }
     },
     validateConfig: () => null,
+    async resolveChannel(address) {
+      return {
+        status: 'available',
+        target: {
+          channel: address.platform,
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId === undefined
+            ? {}
+            : { threadId: address.threadId }),
+          data: null
+        }
+      }
+    },
     async setup(host) {
       channelHost = host
     },
@@ -118,11 +133,11 @@ export async function mediaFixture(
   }
 
   try {
-    const assemble = async (): Promise<CoreRuntime> =>
+    const assemble = async (relay = config): Promise<CoreRuntime> =>
       createCore({
         publicUrl,
         ...(media ? { media } : {}),
-        config,
+        config: relay,
         storage,
         channels: new Map([['bot', channel]]),
         agents: new Map([['grok', agent]]),
@@ -137,19 +152,36 @@ export async function mediaFixture(
     if (!channelHost || !agentHost) {
       throw new Error('Hosts not initialized')
     }
+
+    const channelId = (
+      await agentHost
+        .forPrincipal({ subject: 'fixture', endpointIds: ['first'] })
+        .status()
+    ).channels[0]?.channel.id
+
+    if (!channelId) {
+      throw new Error('Missing configured channel')
+    }
     return {
-      storage,
+      channelId,
+      get storage() {
+        return storage
+      },
       filename,
       close,
       runtime,
-      channel: requireHost<ChannelHost>(channelHost),
-      agent: requireHost<AgentHost>(agentHost),
+      get channel() {
+        return requireHost<ChannelHost>(channelHost)
+      },
+      get agent() {
+        return requireHost<AgentHost>(agentHost)
+      },
       sent,
-      async restart(): Promise<CoreRuntime> {
+      async restart(next?: RelanoxConfig): Promise<CoreRuntime> {
         await storage.close()
         storage = createSqliteStorage({ filename })
         await storage.initialize()
-        return assemble()
+        return assemble(next)
       }
     }
   } catch (error) {

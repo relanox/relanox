@@ -42,7 +42,7 @@ async function setup(agent: AgentId): Promise<{
     text?: string,
     event?: string,
     attachments?: readonly MediaUpload[]
-  ): Promise<IngestReceipt>
+  ): Promise<IngestReceipt & { channel: string }>
   client(
     this: void,
     token?: string,
@@ -119,7 +119,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
       if (!media) {
         throw new Error('missing_asset')
       }
-      const input = { replyTo: receipt.requestId, mediaId: media.id }
+      const input = { channel: receipt.channel, mediaId: media.id }
       const client = await fx.client()
       expect(
         await client.callTool({ name: 'relanox_read_media', arguments: input })
@@ -166,7 +166,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
       const uri = resourceUri(
         await client.callTool({
           name: 'relanox_read_media',
-          arguments: { replyTo: receipt.requestId, mediaId: media.id }
+          arguments: { channel: receipt.channel, mediaId: media.id }
         })
       )
 
@@ -229,7 +229,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
       throw new Error('missing_assets')
     }
     const client = await fx.client()
-    const common = { replyTo: receipt.requestId }
+    const common = { channel: receipt.channel }
     expect(
       await client.callTool({
         name: 'relanox_read_media',
@@ -275,6 +275,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
 
     const input = {
       ...common,
+      idempotencyKey: 'received-and-generated-media',
       text: 'done',
       attachments: [{ mediaId: document.id }, { mediaId: picture.id }]
     }
@@ -318,7 +319,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
       throw new Error('missing_asset')
     }
     const client = await fx.client()
-    const input = { replyTo: receipt.requestId, mediaId: media.id }
+    const input = { channel: receipt.channel, mediaId: media.id }
     const other = await fx.client(agent === 'dot' ? undefined : 'secret-1', 1)
     expect(
       await other.callTool({ name: 'relanox_read_media', arguments: input })
@@ -364,7 +365,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
         await client.callTool({
           name: 'relanox_send_message',
           arguments: {
-            replyTo: receipt.requestId,
+            channel: receipt.channel,
             attachments: [{ url, kind: 'file' }]
           }
         })

@@ -1,3 +1,4 @@
+import { channelAddressSchema } from './status.js'
 import { z } from 'zod'
 import type { InboundSnapshot } from '@relanox/sdk'
 
@@ -5,27 +6,27 @@ export type AgentRequestPayload = Pick<
   InboundSnapshot,
   'text' | 'context' | 'attachments'
 > & {
-  readonly replyTo: string
-  readonly source: Pick<InboundSnapshot['source'], 'channel' | 'eventId'>
+  readonly source: {
+    readonly channel: InboundSnapshot['channel']
+    readonly senderId: string
+  }
 }
 
 export function projectAgentRequest(
   request: InboundSnapshot
 ): AgentRequestPayload {
   return {
-    replyTo: request.requestId,
     text: request.text,
     context: request.context,
     ...(request.attachments ? { attachments: request.attachments } : {}),
     source: {
-      channel: request.source.channel,
-      eventId: request.source.eventId
+      channel: request.channel,
+      senderId: request.senderId
     }
   }
 }
 
 export const agentRequestSchema = z.strictObject({
-  replyTo: z.string(),
   text: z.string(),
   context: z.json(),
   attachments: z
@@ -42,5 +43,8 @@ export const agentRequestSchema = z.strictObject({
       })
     )
     .optional(),
-  source: z.strictObject({ channel: z.string(), eventId: z.string() })
+  source: z.strictObject({
+    channel: channelAddressSchema,
+    senderId: z.string()
+  })
 })

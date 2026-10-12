@@ -108,7 +108,7 @@ function sendInput(
 ): SendInput {
   return {
     deliveryId: 'delivery',
-    requestId: 'request',
+    channelId: 'request',
     target: {
       channel: 'irc',
       accountId: 'bot',
@@ -327,7 +327,7 @@ it('negotiates SASL and tags, ingests channel/private text and independently wri
   expect(tcp.lines.filter((line) => line.startsWith('PRIVMSG '))).toEqual(
     expect.arrayContaining([
       'PRIVMSG #room :delayed answer with lines',
-      'PRIVMSG Alice :delayed answer with lines'
+      'PRIVMSG alice :delayed answer with lines'
     ])
   )
   await plugin.stop?.()

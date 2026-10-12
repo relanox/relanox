@@ -181,7 +181,7 @@ export function sendInput(
 ): SendInput {
   return {
     deliveryId: 'delivery-1',
-    requestId: 'request-1',
+    channelId: 'request-1',
     chunkIndex: 0,
     chunk: {
       text: 'hello @everyone <@U123>',

@@ -27,20 +27,20 @@ export async function sendChunk(
     if (!channel.capabilities.media?.send.includes(chunk.media.kind)) {
       return { status: 'rejected', errorCode: 'media_not_supported' }
     }
-    const stored = await storage.media?.get(record.requestId, chunk.media.id)
+    const stored = await storage.media?.get(record.channelId, chunk.media.id)
     if (!stored) {
       return { status: 'rejected', errorCode: 'media_not_found' }
     }
     try {
       media = verifiedMedia(stored, chunk.media, maximum)
-      preview = await readPreview(storage, record.requestId, media, maximum)
+      preview = await readPreview(storage, record.channelId, media, maximum)
     } catch {
       return { status: 'rejected', errorCode: 'media_integrity_error' }
     }
   }
   return channel.send({
     deliveryId: record.deliveryId,
-    requestId: record.requestId,
+    channelId: record.channelId,
     target: structuredClone(record.target),
     chunk: structuredClone(chunk),
     chunkIndex: record.currentChunk,

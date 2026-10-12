@@ -191,7 +191,7 @@ function protocolAgent(dispatchUrl: string): AgentPlugin {
 
         const input = z
           .object({
-            replyTo: z.string(),
+            channel: z.string(),
             idempotencyKey: z.string(),
             text: z.string()
           })
@@ -208,7 +208,7 @@ function protocolAgent(dispatchUrl: string): AgentPlugin {
         signal: input.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          requestId: input.request.requestId,
+          channel: input.request.channel.id,
           text: input.request.text
         })
       })
@@ -293,8 +293,13 @@ export async function harness(
         })
       )
 
+    const stored = await storage.getInbound(requestId)
+    if (!stored) {
+      throw new Error('Missing accepted channel')
+    }
+
     const completed = await call({
-      replyTo: requestId,
+      channel: stored.snapshot.channel.id,
       idempotencyKey: `reply:${requestId}`,
       text
     })

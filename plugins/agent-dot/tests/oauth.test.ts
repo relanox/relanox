@@ -86,7 +86,7 @@ it('discovers endpoint OAuth metadata and authenticates an SDK client after owne
 
   const queued = await client.callTool({
     name: 'relanox_send_message',
-    arguments: { replyTo: received.requestId, text: 'OAuth reply' }
+    arguments: { channel: received.channel, text: 'OAuth reply' }
   })
 
   expect(queued.isError).toBe(false)
@@ -94,7 +94,7 @@ it('discovers endpoint OAuth metadata and authenticates an SDK client after owne
   expect(f.sent).toMatchObject([
     {
       chunk: { text: 'OAuth reply' },
-      target: { chatId: 'chat0', replyToId: 'original' }
+      target: { chatId: 'chat0' }
     }
   ])
 

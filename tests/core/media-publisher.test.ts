@@ -65,14 +65,14 @@ it('serves scoped durable capability URLs across SQLite restart and rejects inva
     if (!id || !f.channel.media) {
       throw new Error('Expected publisher')
     }
-    const input = { requestId: receipt.requestId, mediaId: id }
+    const input = { channelId: f.channelId, mediaId: id }
     const url = await f.channel.media.publish(input)
     expect(url).toMatch(
       /^https:\/\/media\.example\/media\/bot\/.+\?token=[a-f0-9]{64}$/u
     )
     expect(await f.channel.media.publish(input)).toBe(url)
     await expect(
-      f.channel.media.publish({ ...input, requestId: crypto.randomUUID() })
+      f.channel.media.publish({ ...input, channelId: crypto.randomUUID() })
     ).rejects.toMatchObject({ code: 'account_scope_mismatch' })
     let runtime = f.runtime
     for (const candidate of [url, url]) {
@@ -127,7 +127,7 @@ it('expires public URLs and prunes expired durable tickets before publishing', a
     }
 
     const url = await f.channel.media.publish({
-      requestId: receipt.requestId,
+      channelId: f.channelId,
       mediaId: id
     })
 
@@ -137,7 +137,7 @@ it('expires public URLs and prunes expired durable tickets before publishing', a
     expect((await f.runtime.fetch(new Request(url))).status).toBe(404)
 
     const renewed = await f.channel.media.publish({
-      requestId: receipt.requestId,
+      channelId: f.channelId,
       mediaId: id
     })
 
@@ -191,7 +191,7 @@ it('uses one explicit loopback deployment origin for plugin hosts and automatic 
     }
     expect(
       await local.channel.media.publish({
-        requestId: receipt.requestId,
+        channelId: local.channelId,
         mediaId: id
       })
     ).toMatch(

@@ -5,7 +5,10 @@ import { configSchema } from './config.js'
 import type { PostgresConfig } from './config.js'
 import { openDatabase } from './database.js'
 import { createLifecycle } from './lifecycle.js'
-import { createRequestOperations } from './requests.js'
+import {
+  createRequestOperations,
+  createConversationOperations
+} from './requests.js'
 import { createWorkOperations } from './work.js'
 import { createStateOperations } from './plugin-state.js'
 import { createInspectionOperations } from './inspection.js'
@@ -21,6 +24,7 @@ export function createPostgresStorage(
   const context = openDatabase(configuration, observe)
   return {
     media: createMediaOperations(context),
+    ...createConversationOperations(context),
     ...createLifecycle(context),
     ...createRequestOperations(context),
     ...createWorkOperations(context),

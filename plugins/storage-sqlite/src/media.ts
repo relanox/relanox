@@ -1,7 +1,7 @@
 import {
   encodeDurableRecord,
   mediaDigest,
-  isRequestInScope,
+  isConversationInScope,
   validateStagedMedia
 } from '@relanox/storage-support'
 import { decodeDurableRecord } from './record-codec.js'
@@ -10,14 +10,14 @@ import type { DatabaseContext } from './database.js'
 
 export function readMedia(
   context: DatabaseContext,
-  requestId: string,
+  channelId: string,
   mediaId: string
 ): StoredMedia | undefined {
   const row = context.db
     .prepare(
-      'SELECT reference,data FROM media WHERE request_id=? AND id=? AND data IS NOT NULL'
+      'SELECT reference,data FROM media WHERE channel_id=? AND id=? AND data IS NOT NULL'
     )
-    .get(requestId, mediaId) as { reference: string; data: Buffer } | undefined
+    .get(channelId, mediaId) as { reference: string; data: Buffer } | undefined
 
   return row
     ? {
@@ -29,54 +29,60 @@ export function readMedia(
 
 export function insertIncomingMedia(
   context: DatabaseContext,
-  requestId: string,
-  assets: readonly StoredMedia[]
+  channelId: string,
+  assets: readonly StoredMedia[],
+  staged = false
 ): void {
   for (const asset of assets) {
     context.db
       .prepare(
-        'INSERT INTO media(id,request_id,reference,data,digest) VALUES(?,?,?,?,?)'
+        'INSERT INTO media(id,channel_id,reference,data,digest,staged,created_at) VALUES(?,?,?,?,?,?,?)'
       )
       .run(
         asset.reference.id,
-        requestId,
+        channelId,
         encodeDurableRecord(asset.reference),
         Buffer.from(asset.data),
-        mediaDigest(asset)
+        mediaDigest(asset),
+        staged ? 1 : 0,
+        Date.now()
       )
   }
 }
 
 export function createMediaOperations(context: DatabaseContext): MediaStorage {
   const reference = (
-    requestId: string,
+    channelId: string,
     id: string
   ): MediaReference | undefined => {
     const row = context.db
       .prepare(
-        'SELECT reference FROM media WHERE request_id=? AND id=? AND data IS NOT NULL'
+        'SELECT reference FROM media WHERE channel_id=? AND id=? AND data IS NOT NULL'
       )
-      .get(requestId, id) as { reference: string } | undefined
+      .get(channelId, id) as { reference: string } | undefined
 
     return row ? decodeDurableRecord(row.reference) : undefined
   }
 
   return {
-    async get(requestId, mediaId) {
-      return readMedia(context, requestId, mediaId)
+    async getReference(channelId, id) {
+      const row = context.db
+        .prepare('SELECT reference FROM media WHERE channel_id=? AND id=?')
+        .get(channelId, id) as { reference: string } | undefined
+
+      return row ? decodeDurableRecord(row.reference) : undefined
+    },
+    async get(channelId, mediaId) {
+      return readMedia(context, channelId, mediaId)
     },
     async put(input) {
       return context.transaction(() => {
-        const request = context.readInbound(input.requestId)
-        if (
-          !request ||
-          !isRequestInScope(request, input) ||
-          request.redactedAt !== undefined
-        ) {
+        const request = context.readConversation(input.channelId)
+        if (!request || !isConversationInScope(request, input)) {
           return { status: 'unauthorized' }
         }
         const id = input.media.reference.id
-        const previous = reference(input.requestId, id)
+        const previous = reference(input.channelId, id)
         if (
           !previous &&
           context.db.prepare('SELECT id FROM media WHERE id=?').get(id) !==
@@ -87,9 +93,9 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
 
         const totals = context.db
           .prepare(
-            'SELECT count(*) AS count, coalesce(sum(length(data)),0) AS bytes FROM media WHERE request_id=? AND data IS NOT NULL'
+            'SELECT count(*) AS count, coalesce(sum(length(data)),0) AS bytes FROM media WHERE channel_id=? AND data IS NOT NULL AND staged=1'
           )
-          .get(input.requestId) as { count: number; bytes: number }
+          .get(input.channelId) as { count: number; bytes: number }
 
         const previewId = input.media.reference.previewMediaId
 
@@ -98,13 +104,13 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
           previous,
           previewId === undefined
             ? undefined
-            : reference(input.requestId, previewId),
+            : reference(input.channelId, previewId),
           totals.count,
           totals.bytes
         )
 
         if (result.status === 'stored' && !previous) {
-          insertIncomingMedia(context, input.requestId, [input.media])
+          insertIncomingMedia(context, input.channelId, [input.media], true)
         }
         return result
       })

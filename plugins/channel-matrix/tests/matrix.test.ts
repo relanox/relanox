@@ -70,7 +70,7 @@ function input(
 ): SendInput {
   return {
     deliveryId: 'delivery',
-    requestId: 'request',
+    channelId: 'request',
     target,
     chunk: { text, idempotencyKey: 'durable-delivery:0', state: null },
     chunkIndex: 0,
@@ -203,7 +203,7 @@ it('persists threaded sync before cursor, filters identities and sends the froze
   expect(JSON.stringify(request.snapshot)).not.toContain('matrix-access-secret')
   await fixture.runtime.processDue()
   expect(dispatches).toEqual([
-    { requestId: request.snapshot.requestId, text: 'question' }
+    { channel: request.snapshot.channel.id, text: 'question' }
   ])
 
   const completed = await fixture.sendReply(
@@ -228,9 +228,7 @@ it('persists threaded sync before cursor, filters identities and sends the froze
       '<p><strong>answer</strong> <a href="https://example.com/">link</a> &lt;script&gt;alert(1)&lt;/script&gt;</p>\n',
     'm.relates_to': {
       rel_type: 'm.thread',
-      event_id: thread,
-      is_falling_back: true,
-      'm.in_reply_to': { event_id: '$incoming' }
+      event_id: thread
     }
   })
   await plugin.send(input(request.snapshot.target))

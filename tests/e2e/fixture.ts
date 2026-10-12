@@ -23,21 +23,21 @@ export const routineSchema = z.strictObject({
 })
 
 export const requestSchema = z.strictObject({
-  replyTo: z.string(),
   text: z.string(),
   context: z.json(),
   source: z.strictObject({
-    channel: z.literal('telegram'),
-    eventId: z.string()
+    channel: z.strictObject({
+      id: z.string(),
+      platform: z.literal('telegram'),
+      accountId: z.string(),
+      chatId: z.string(),
+      threadId: z.string().optional()
+    }),
+    senderId: z.string()
   })
 })
 
-export function dispatched(traffic: Traffic): {
-  replyTo: string
-  text: string
-  context: z.core.util.JSONType
-  source: { channel: 'telegram'; eventId: string }
-} {
+export function dispatched(traffic: Traffic): z.infer<typeof requestSchema> {
   return requestSchema.parse(
     JSON.parse(routineSchema.parse(JSON.parse(traffic.body)).content)
   )
@@ -211,13 +211,13 @@ export async function ingest(
 
 export async function sendMessage(
   client: Client,
-  replyTo: string,
+  channel: string,
   text = '最终 answer 🌍',
-  idempotencyKey = `result-${replyTo}`
+  idempotencyKey = `result-${channel}`
 ): Promise<{ status: 'queued'; deliveryId: string; replay: boolean }> {
   const result = await client.callTool({
     name: 'relanox_send_message',
-    arguments: { replyTo, idempotencyKey, text }
+    arguments: { channel, idempotencyKey, text }
   })
 
   return z

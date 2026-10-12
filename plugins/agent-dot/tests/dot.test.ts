@@ -216,7 +216,7 @@ describe('dot MCP Events and tools', () => {
     const { fx, url } = await setup(undefined, true)
     const client = await fx.client()
     const other = await fx.client(undefined, 1)
-    const tool = { name: 'relanox_connection_status', arguments: {} }
+    const tool = { name: 'relanox_status', arguments: {} }
     expect(
       (await client.listTools()).tools.find((item) => item.name === tool.name)
     ).toMatchObject({
@@ -226,21 +226,27 @@ describe('dot MCP Events and tools', () => {
         openWorldHint: false
       }
     })
-    expect((await client.callTool(tool)).structuredContent).toEqual({
-      endpointId: 'endpoint0',
-      eventName: 'relanox.message_available',
-      activeSubscriptions: 0
+    expect((await client.callTool(tool)).structuredContent).toMatchObject({
+      connection: {
+        endpointId: 'endpoint0',
+        eventName: 'relanox.message_available',
+        activeSubscriptions: 0
+      }
     })
     await client.request(subscribe(url, signingKey, 60_000), subResult)
-    expect((await client.callTool(tool)).structuredContent).toEqual({
-      endpointId: 'endpoint0',
-      eventName: 'relanox.message_available',
-      activeSubscriptions: 1
+    expect((await client.callTool(tool)).structuredContent).toMatchObject({
+      connection: {
+        endpointId: 'endpoint0',
+        eventName: 'relanox.message_available',
+        activeSubscriptions: 1
+      }
     })
-    expect((await other.callTool(tool)).structuredContent).toEqual({
-      endpointId: 'endpoint1',
-      eventName: 'relanox.message_available',
-      activeSubscriptions: 0
+    expect((await other.callTool(tool)).structuredContent).toMatchObject({
+      connection: {
+        endpointId: 'endpoint1',
+        eventName: 'relanox.message_available',
+        activeSubscriptions: 0
+      }
     })
     await client.request(
       {
@@ -253,10 +259,12 @@ describe('dot MCP Events and tools', () => {
       },
       z.object({})
     )
-    expect((await client.callTool(tool)).structuredContent).toEqual({
-      endpointId: 'endpoint0',
-      eventName: 'relanox.message_available',
-      activeSubscriptions: 0
+    expect((await client.callTool(tool)).structuredContent).toMatchObject({
+      connection: {
+        endpointId: 'endpoint0',
+        eventName: 'relanox.message_available',
+        activeSubscriptions: 0
+      }
     })
   })
 
@@ -296,9 +304,9 @@ describe('dot MCP Events and tools', () => {
       'description',
       expect.stringContaining('as Markdown')
     )
-    expect(send?.inputSchema.properties?.replyTo).toHaveProperty(
+    expect(send?.inputSchema.properties?.channel).toHaveProperty(
       'description',
-      expect.stringContaining('Copy replyTo exactly')
+      expect.stringContaining('authorized channel ID')
     )
     expect(send?.inputSchema.properties?.idempotencyKey).toHaveProperty(
       'description',
@@ -335,7 +343,8 @@ describe('dot MCP Events and tools', () => {
     const client = await fx.client()
 
     const input = {
-      replyTo: receipt.requestId,
+      channel: receipt.channel,
+      idempotencyKey: 'generated-files',
       attachments: [{ mediaId: received.id }],
       files: [
         {
@@ -395,7 +404,7 @@ describe('dot MCP Events and tools', () => {
       .parse(fx.sent[1])
 
     const bytes = await fx.storage.media?.get(
-      receipt.requestId,
+      receipt.channel,
       generated.media.reference.id
     )
 
@@ -410,7 +419,7 @@ describe('dot MCP Events and tools', () => {
       await client.callTool({
         name: 'relanox_send_message',
         arguments: {
-          replyTo: receipt.requestId,
+          channel: receipt.channel,
           files: [
             { download_url: 'https://127.0.0.1/private', file_id: 'opaque-id' }
           ]
@@ -434,7 +443,7 @@ describe('dot MCP Events and tools', () => {
       await client.callTool({
         name: 'relanox_send_message',
         arguments: {
-          replyTo: receipt.requestId,
+          channel: receipt.channel,
           attachments: Array.from({ length: 10 }, () => ({
             mediaId: 'received-file'
           })),
@@ -555,21 +564,21 @@ describe('dot MCP Events and tools', () => {
     })
     const tools = await client.listTools()
     expect(tools.tools.map((tool) => tool.name)).toEqual([
+      'relanox_status',
       'relanox_send_message',
-      'relanox_connection_status',
       'relanox_create_upload',
       'relanox_read_media'
     ])
     expect(tools.tools.map((tool) => tool.annotations?.readOnlyHint)).toEqual([
-      false,
       true,
+      false,
       false,
       true
     ])
     expect(
       await client.callTool({
         name: 'relanox_send_message',
-        arguments: { replyTo: other.requestId, text: 'intrusion' }
+        arguments: { channel: other.channel, text: 'intrusion' }
       })
     ).toMatchObject({
       isError: true,
@@ -579,7 +588,7 @@ describe('dot MCP Events and tools', () => {
       await client.callTool({
         name: 'relanox_send_message',
         arguments: {
-          replyTo: first.requestId,
+          channel: first.channel,
           text: 'done',
           endpointIds: ['endpoint1']
         }
@@ -589,7 +598,7 @@ describe('dot MCP Events and tools', () => {
     const { access_token: accessToken } = await authorizeWithSdk(fx.core)
 
     const send = {
-      replyTo: first.requestId,
+      channel: first.channel,
       idempotencyKey: 'result-1',
       text: 'done'
     }
@@ -615,14 +624,14 @@ describe('dot MCP Events and tools', () => {
     expect(
       await client.callTool({
         name: 'relanox_send_message',
-        arguments: { replyTo: first.requestId, text: 'second message' }
+        arguments: { channel: first.channel, text: 'second message' }
       })
     ).toMatchObject({ structuredContent: { status: 'queued', replay: false } })
     expect(
       await client.callTool({
         name: 'relanox_send_message',
         arguments: {
-          replyTo: first.requestId,
+          channel: first.channel,
           text: 'done',
           idempotencyKey: 'result-2'
         }
@@ -697,10 +706,17 @@ describe('dot MCP Events and tools', () => {
       name: 'relanox.message_available',
       timestamp: stringValue,
       data: {
-        replyTo: received.requestId,
         text: '中文\nsecond line',
         context: { thread: 'protocol-context' },
-        source: { channel: 'telegram', eventId: 'event-1' }
+        source: {
+          channel: {
+            id: received.channel,
+            platform: 'telegram',
+            accountId: 'bot',
+            chatId: 'chat0'
+          },
+          senderId: 'alice'
+        }
       },
       cursor: null
     })
@@ -782,7 +798,7 @@ describe('dot MCP Events and tools', () => {
 
     expect(
       Object.keys(catalog.events[0]?.payloadSchema.properties ?? {})
-    ).toEqual(['replyTo', 'text', 'context', 'attachments', 'source'])
+    ).toEqual(['text', 'context', 'attachments', 'source'])
     await client.request(subscribe(url, signingKey, 10_000), subResult)
 
     const receipt = await fx.ingest(0, 'inspect attachment', 'full-media', [
@@ -798,10 +814,17 @@ describe('dot MCP Events and tools', () => {
     await fx.core.processDue()
     expect(parseWire(receiver.traffic[1]?.body ?? '')).toMatchObject({
       data: {
-        replyTo: receipt.requestId,
         text: 'inspect attachment',
         context: { thread: 'protocol-context' },
-        source: { channel: 'telegram', eventId: 'full-media' },
+        source: {
+          channel: {
+            id: receipt.channel,
+            platform: 'telegram',
+            accountId: 'bot',
+            chatId: 'chat0'
+          },
+          senderId: 'alice'
+        },
         attachments: [
           {
             id: stringValue,
@@ -907,10 +930,17 @@ describe('dot MCP Events and tools', () => {
         name: 'relanox.message_available',
         timestamp: new Date(request.acceptedAt).toISOString(),
         data: {
-          replyTo: receipt.requestId,
           text: '中文\nsecond line',
           context: { thread: 'protocol-context' },
-          source: { channel: 'telegram', eventId: 'event-1' }
+          source: {
+            channel: {
+              id: receipt.channel,
+              platform: 'telegram',
+              accountId: 'bot',
+              chatId: 'chat0'
+            },
+            senderId: 'alice'
+          }
         },
         cursor: null
       })

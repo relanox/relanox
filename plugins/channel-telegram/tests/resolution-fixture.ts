@@ -231,7 +231,7 @@ export async function resolutionFixture(
 
 export function resolverInput(target: ReplyTarget): SendInput {
   return {
-    requestId: 'channel',
+    channelId: 'channel',
     deliveryId: 'delivery',
     target,
     chunkIndex: 0,

@@ -1,22 +1,29 @@
+import { createSqliteStorage } from '../../../plugins/storage-sqlite/src/index.js'
 import { noopObservability } from '@relanox/sdk'
 import type {
   AgentHost,
   AgentPlugin,
   ChannelHost,
   ChannelPlugin,
-  EnqueueMessageInput,
   InboundSnapshot,
   RelanoxConfig,
   Settlement,
   Storage
 } from '@relanox/sdk'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   chunkText,
   createCore,
   resolveSecretRef,
   validateConfig
 } from '../src/index.js'
+
+const testStores: Storage[] = []
+afterEach(async () => {
+  for (const storage of testStores.splice(0)) {
+    await storage.close()
+  }
+})
 
 it.each(['before', 'during'])(
   'cancels an inbound body aborted %s reading',
@@ -125,6 +132,12 @@ const incoming = {
 const snapshot: InboundSnapshot = {
   ...incoming,
   requestId: 'req',
+  channel: {
+    id: 'source-channel',
+    platform: 'telegram',
+    accountId: 'bot',
+    chatId: 'chat'
+  },
   endpoint: {
     id: 'first',
     agent: 'grok',
@@ -138,17 +151,20 @@ const snapshot: InboundSnapshot = {
 
 /** Records specified IO only. Any unplanned storage method throws; no storage state machine exists here. */
 function recordingStorage(methods: Partial<Storage>): Storage {
-  return new Proxy(methods, {
-    get(target, key) {
-      const method = target[key as keyof Storage]
-      if (method) {
-        return method
-      }
-      return () => {
-        throw new Error(`Unexpected storage call ${String(key)}`)
+  return new Proxy(
+    { registerConversations: async () => {}, ...methods },
+    {
+      get(target, key) {
+        const method = target[key as keyof Storage]
+        if (method) {
+          return method
+        }
+        return () => {
+          throw new Error(`Unexpected storage call ${String(key)}`)
+        }
       }
     }
-  }) as Storage
+  ) as Storage
 }
 
 function plugins(
@@ -181,6 +197,18 @@ function plugins(
       idempotentSend: false
     },
     validateConfig: (value) => value as never,
+    resolveChannel: async (address) => ({
+      status: 'available',
+      target: {
+        channel: address.platform,
+        accountId: address.accountId,
+        chatId: address.chatId,
+        ...(address.threadId === undefined
+          ? {}
+          : { threadId: address.threadId }),
+        data: { durable: 'address' }
+      }
+    }),
     setup: async (host) => {
       channelHost = host
       host.mountHttp('/webhook', async () => new Response('channel'))
@@ -365,13 +393,17 @@ it.each([
 it('binds accounts, intersects principals, preserves snapshots and isolates routes', async () => {
   const accepted: InboundSnapshot[] = []
 
-  const complete = vi
-    .fn<(input: EnqueueMessageInput) => ReturnType<Storage['enqueueMessage']>>()
-    .mockResolvedValue({
-      status: 'queued',
-      deliveryId: 'recorded',
-      replay: false
-    })
+  const storage = createSqliteStorage({ filename: ':memory:' })
+  await storage.initialize()
+  testStores.push(storage)
+  const complete = vi.spyOn(storage, 'enqueueMessage')
+  const accept = storage.acceptInbound
+  vi.spyOn(storage, 'acceptInbound').mockImplementation(
+    async (value, media) => {
+      accepted.push(value)
+      return accept(value, media)
+    }
+  )
 
   const p = plugins()
 
@@ -394,19 +426,7 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
         }
       }
     },
-    storage: recordingStorage({
-      acceptInbound: async (value) => {
-        accepted.push(value)
-        return { requestId: value.requestId, duplicate: false }
-      },
-      getInbound: async () => ({
-        snapshot,
-
-        version: 2,
-        dispatch: { status: 'accepted', attempts: 1, dueAt: 1 }
-      }),
-      enqueueMessage: complete
-    })
+    storage
   })
 
   await expect(
@@ -440,14 +460,14 @@ it('binds accounts, intersects principals, preserves snapshots and isolates rout
     await p.agentHost
       .forPrincipal({ subject: 'verified', endpointIds: ['other'] })
       .sendMessage({
-        replyTo: 'req',
+        channel: accepted[0]?.channel.id ?? 'missing',
         idempotencyKey: 'final',
         text: 'no authority'
       })
   ).toEqual({ status: 'not_found' })
   expect(complete).not.toHaveBeenCalled()
   await scope.sendMessage({
-    replyTo: 'req',
+    channel: accepted[0]?.channel.id ?? 'missing',
     idempotencyKey: 'final',
     text: 'a😀中b😀'
   })
@@ -544,14 +564,10 @@ it("binds mutations to the principal agent and rejects a reused endpoint's forei
     channels: p.channels,
     agents: p.agents,
     storage: recordingStorage({
-      getInbound: async () => ({
-        snapshot: {
-          ...snapshot,
-          endpoint: { ...snapshot.endpoint, agent: 'dot' }
-        },
-
-        version: 2,
-        dispatch: { status: 'accepted', attempts: 1, dueAt: 1 }
+      getConversation: async () => ({
+        address: snapshot.channel,
+        endpoint: { ...snapshot.endpoint, agent: 'dot' },
+        target: snapshot.target
       })
     })
   })
@@ -563,7 +579,7 @@ it("binds mutations to the principal agent and rejects a reused endpoint's forei
 
   expect(
     await host.sendMessage({
-      replyTo: 'req',
+      channel: 'source-channel',
       idempotencyKey: 'final',
       text: 'answer'
     })

@@ -83,7 +83,7 @@ it.each(cases)(
 
     const input: SendInput = {
       deliveryId: 'delivery',
-      requestId: 'request',
+      channelId: 'request',
       target: {
         channel: plugin.channel,
         accountId: 'bot',
@@ -169,7 +169,7 @@ it.each(discoveredCases)(
 
     const input: SendInput = {
       deliveryId: 'delivery',
-      requestId: 'request',
+      channelId: 'request',
       target: {
         channel: plugin.channel,
         accountId: 'bot',

@@ -7,6 +7,7 @@ import {
   completion,
   required,
   snapshot,
+  testConversations,
   storageContract
 } from '../../../tests/contracts/storage-contract.js'
 import { createPostgresStorage, postgresStoragePlugin } from '../src/index.js'
@@ -66,6 +67,55 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
     }
   })
 
+  it('rejects a request-addressed schema without changing historical data', async () => {
+    const schema = schemaName()
+
+    const pool = new Pool({
+      connectionString: process.env.RELANOX_TEST_POSTGRES_URL
+    })
+
+    const storage = open(schema)
+    try {
+      await pool.query(`CREATE SCHEMA "${schema}"`)
+      await pool.query(
+        `CREATE TABLE "${schema}".outbound(id TEXT PRIMARY KEY,request_id TEXT NOT NULL,record JSONB NOT NULL)`
+      )
+      await pool.query(
+        `INSERT INTO "${schema}".outbound VALUES($1,$2,$3::jsonb)`,
+        [
+          'old-delivery',
+          'old-request',
+          JSON.stringify({ text: 'historical payload' })
+        ]
+      )
+      await expect(storage.initialize()).rejects.toThrow(
+        'Unsupported request-addressed database schema'
+      )
+      expect(
+        (
+          await pool.query(
+            `SELECT request_id,record FROM "${schema}".outbound WHERE id=$1`,
+            ['old-delivery']
+          )
+        ).rows
+      ).toEqual([
+        { request_id: 'old-request', record: { text: 'historical payload' } }
+      ])
+      expect(
+        (
+          await pool.query(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name='conversations'",
+            [schema]
+          )
+        ).rows
+      ).toEqual([])
+    } finally {
+      await storage.close()
+      await pool.end()
+      await drop(schema)
+    }
+  })
+
   it('initializes idempotently and retains fenced leases, media and messages across independent pools and restart', async () => {
     const schema = schemaName()
     let a = open(schema)
@@ -76,7 +126,9 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
         errorCode: 'storage_unavailable'
       })
       await a.initialize()
+      await a.registerConversations(testConversations)
       await a.initialize()
+      await a.registerConversations(testConversations)
       expect(await b.health()).toEqual({ ok: true })
       const incoming = asset()
       await a.acceptInbound(
@@ -86,7 +138,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       const staged = asset('staged')
 
       const stageInput = {
-        requestId: 'r1',
+        channelId: 'channel',
         agent: 'grok' as const,
         endpointIds: ['ep'],
         media: staged,
@@ -117,10 +169,11 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       await a.close()
       a = open(schema)
       await a.initialize()
-      expect(await required(a.media).get('r1', incoming.reference.id)).toEqual(
-        incoming
-      )
-      expect(await required(a.media).get('r1', 'staged')).toEqual(staged)
+      await a.registerConversations(testConversations)
+      expect(
+        await required(a.media).get('channel', incoming.reference.id)
+      ).toEqual(incoming)
+      expect(await required(a.media).get('channel', 'staged')).toEqual(staged)
       expect(await required(a.media).put(stageInput)).toEqual({
         status: 'stored',
         reference: staged.reference
@@ -142,6 +195,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       await a.close()
       a = open(schema)
       await a.initialize()
+      await a.registerConversations(testConversations)
       expect(await b.enqueueMessage(message)).toMatchObject({
         status: 'queued',
         replay: true
@@ -162,6 +216,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
     const b = open(schema)
     try {
       await a.initialize()
+      await a.registerConversations(testConversations)
 
       const receipts = await Promise.all([
         a.acceptInbound(snapshot()),
@@ -170,8 +225,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
 
       expect(receipts.filter((result) => !result.duplicate)).toHaveLength(1)
       expect(new Set(receipts.map((result) => result.requestId)).size).toBe(1)
-      const id = required(receipts[0]).requestId
-      const message = completion(id)
+      const message = completion()
 
       const messages = await Promise.all([
         a.enqueueMessage(message),
@@ -189,7 +243,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       await a.acceptInbound(snapshot('independent', 100, 'ep2'))
       expect(
         await b.enqueueMessage({
-          ...completion('independent'),
+          ...completion('ep2', 'message', 'ep2'),
           endpointIds: ['ep2']
         })
       ).toMatchObject({ status: 'queued', replay: false })
@@ -247,6 +301,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
     const b = open(schema)
     try {
       await a.initialize()
+      await a.registerConversations(testConversations)
       await a.acceptInbound(snapshot())
 
       const dispatch = required(
@@ -287,7 +342,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       expect(
         await b.settleAttempt({
           kind: 'send',
-          id: 'd-r1-message',
+          id: 'd-channel-message',
           lease: first.lease,
           outcome: {
             status: 'sent',
@@ -301,19 +356,20 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       await a.close()
       a = open(schema)
       await a.initialize()
-      expect(await a.getOutbound('d-r1-message')).toMatchObject({
+      await a.registerConversations(testConversations)
+      expect(await a.getOutbound('d-channel-message')).toMatchObject({
         currentChunk: 1,
         attempts: 0,
         receipts: [{ platformMessageId: 'first-chunk' }],
         lease: unsent.lease
       })
       expect(await due(a, 122)).toEqual([])
-      const unknown = required(await a.getOutbound('d-r1-message'))
+      const unknown = required(await a.getOutbound('d-channel-message'))
       expect(unknown.status).toBe('unknown')
       expect(
         await a.requeue({
           kind: 'delivery',
-          id: 'd-r1-message',
+          id: 'd-channel-message',
           expectedVersion: unknown.version,
           now: 123,
           acknowledgeUnknown: true
@@ -331,7 +387,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       expect(
         await b.settleAttempt({
           kind: 'send',
-          id: 'd-r1-message',
+          id: 'd-channel-message',
           lease: unsent.lease,
           outcome: { status: 'sent', receipt: { platformMessageId: 'stale' } },
           now: 124,
@@ -340,7 +396,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
       ).toEqual({ status: 'conflict' })
       await b.settleAttempt({
         kind: 'send',
-        id: 'd-r1-message',
+        id: 'd-channel-message',
         lease: next.lease,
         outcome: {
           status: 'sent',
@@ -349,7 +405,7 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
         now: 124,
         nextDueAt: 125
       })
-      expect(await a.getOutbound('d-r1-message')).toMatchObject({
+      expect(await a.getOutbound('d-channel-message')).toMatchObject({
         status: 'sent',
         currentChunk: 2,
         receipts: [

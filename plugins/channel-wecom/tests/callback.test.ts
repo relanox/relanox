@@ -156,14 +156,14 @@ test('callback rejects an oversized reply atomically before consuming its one re
   }
   await expect(
     host.principal().sendMessage({
-      replyTo: inbound.requestId,
+      channel: inbound.channel.id,
       text: 'x'.repeat(20_481)
     })
   ).rejects.toThrow('reply_exceeds_channel_limit')
   expect(await host.storage.listOutbound({ limit: 10 })).toEqual([])
   await host
     .principal()
-    .sendMessage({ replyTo: inbound.requestId, text: 'short answer' })
+    .sendMessage({ channel: inbound.channel.id, text: 'short answer' })
   await host.runtime.processDue()
   expect(
     await callbackReply(
@@ -298,7 +298,7 @@ test('callback decrypts inbound images and returns a final image through signed 
     throw new Error('missing durable image')
   }
   await host.principal().sendMessage({
-    replyTo: inbound.requestId,
+    channel: inbound.channel.id,
     text: '',
     attachments: [attachment.id]
   })
@@ -358,7 +358,7 @@ test('callback recovers a final Markdown caption with ten images and repeats the
   }))
 
   await original.principal().sendMessage({
-    replyTo: inbound.requestId,
+    channel: inbound.channel.id,
     text: '**caption** [link](https://example.com)',
     attachments
   })
@@ -526,4 +526,58 @@ test('WeCom HTTP resolves only a real unexpired unused authenticated callback ca
   )
 
   expect(final.stream).toMatchObject({ finish: true, content: 'hello_*世界' })
+})
+
+test('recovers an accepted keyed channel send after its authentic callback capability is consumed and expired', async () => {
+  const host = await assemble(createWeComChannel(), callbackConfig, [
+    { chatId: 'user', senderId: 'user' }
+  ])
+
+  await host.start()
+  const principal = host.principal()
+  const before = await principal.status()
+  expect(before.channels).toMatchObject([
+    { send: { status: 'unavailable', reason: 'address_unresolved' } }
+  ])
+  const channel = before.channels[0]?.channel.id
+  if (!channel) {
+    throw new Error('Missing callback channel')
+  }
+
+  const pending = await callbackReply(
+    await host.runtime.fetch(callbackRequest(callbackMessage()))
+  )
+
+  const input = {
+    channel,
+    idempotencyKey: 'callback-send-intent',
+    text: 'final answer'
+  }
+
+  const receipt = await principal.sendMessage(input)
+  expect(receipt).toMatchObject({ status: 'queued', replay: false })
+  await host.runtime.processDue()
+  expect(
+    (
+      await callbackReply(
+        await host.runtime.fetch(streamRefresh(pending.stream.id))
+      )
+    ).stream
+  ).toMatchObject({ finish: true, content: 'final answer' })
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 600_000)
+  try {
+    expect((await principal.status()).channels).toMatchObject([
+      { send: { status: 'unavailable' } }
+    ])
+    expect(await principal.sendMessage(input)).toEqual({
+      ...receipt,
+      replay: true
+    })
+    await expect(
+      principal.sendMessage({ ...input, idempotencyKey: 'new-send' })
+    ).rejects.toMatchObject({ code: 'channel_unavailable' })
+    expect(await host.storage.listOutbound({ limit: 10 })).toHaveLength(1)
+  } finally {
+    clock.mockRestore()
+  }
 })

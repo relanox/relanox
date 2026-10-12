@@ -15,6 +15,7 @@ import type {
   SendResult
 } from './messages.js'
 import type { StateNamespace, StateEntry } from './state.js'
+import type { ConversationStorage } from './conversations.js'
 import type { MediaStorage, StoredMedia } from './media.js'
 
 export type StorageStats = {
@@ -30,7 +31,7 @@ export type Health = {
 }
 
 export type EnqueueMessageInput = {
-  readonly requestId: string
+  readonly channelId: string
   readonly endpointIds: readonly string[]
   readonly agent: AgentId
   readonly message: OutboundMessage
@@ -87,13 +88,20 @@ export type StatusFilter = {
   readonly afterId?: string
 }
 
-export type Storage = {
+export type Storage = ConversationStorage & {
   readonly media?: MediaStorage
   /** Snapshot and all incoming bytes are committed atomically; duplicate input adds no assets. */
   acceptInbound(
     snapshot: InboundSnapshot,
     media?: readonly StoredMedia[]
   ): Promise<IngestReceipt>
+  /** Recover an accepted keyed send before selecting a new native capability. */
+  getMessageReceipt(
+    input: Pick<
+      EnqueueMessageInput,
+      'channelId' | 'endpointIds' | 'agent' | 'message'
+    >
+  ): Promise<MessageReceipt>
   enqueueMessage(input: EnqueueMessageInput): Promise<MessageReceipt>
   requeue(input: {
     readonly kind: 'request' | 'delivery'

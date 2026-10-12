@@ -81,7 +81,7 @@ test('DingTalk downloads a pure picture before durable ACK and uploads original 
   }
   expect(task.text).toBe('')
   await scoped.sendMessage({
-    replyTo: task.requestId,
+    channel: task.channel.id,
     idempotencyKey: 'result',
     text: '**caption** [link](https://example.com)',
     attachments: [task.attachments[0].id]

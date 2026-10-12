@@ -1,5 +1,9 @@
 import { decodeDurableRecord } from './record-codec.js'
-import type { InboundRecord, OutboundRecord } from '@relanox/sdk'
+import type {
+  InboundRecord,
+  OutboundRecord,
+  ConversationRecord
+} from '@relanox/sdk'
 import Database from 'better-sqlite3'
 import type { SqliteConfig } from './config.js'
 import { encodeDurableRecord } from '@relanox/storage-support'
@@ -22,6 +26,19 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
   const readOutbound = (id: string): OutboundRecord | undefined => {
     const row = db.prepare('SELECT record FROM outbound WHERE id=?').get(id) as
       { record: string } | undefined
+
+    return row ? decodeDurableRecord(row.record) : undefined
+  }
+
+  const readConversation = (
+    id: string,
+    includeInactive = false
+  ): ConversationRecord | undefined => {
+    const row = db
+      .prepare(
+        'SELECT record FROM conversations WHERE id=? AND (active=1 OR ?=1)'
+      )
+      .get(id, includeInactive ? 1 : 0) as { record: string } | undefined
 
     return row ? decodeDurableRecord(row.record) : undefined
   }
@@ -50,6 +67,7 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
     db,
     transaction,
     readInbound,
+    readConversation,
     readOutbound,
     saveInbound,
     saveOutbound
@@ -59,6 +77,11 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
 export type DatabaseContext = {
   db: Database.Database
   transaction<T>(this: void, fn: () => T): T
+  readConversation(
+    this: void,
+    id: string,
+    includeInactive?: boolean
+  ): ConversationRecord | undefined
   readInbound(this: void, id: string): InboundRecord | undefined
   readOutbound(this: void, id: string): OutboundRecord | undefined
   saveInbound(this: void, record: InboundRecord): Database.RunResult

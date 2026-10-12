@@ -276,7 +276,7 @@ export function sendInput(
 ): SendInput {
   return {
     deliveryId: 'delivery',
-    requestId: 'request',
+    channelId: 'request',
     chunkIndex: 0,
     signal: new AbortController().signal,
     target: { channel, accountId: 'bot', chatId, data },

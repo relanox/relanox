@@ -16,6 +16,7 @@ import { CoreError } from '../errors.js'
 import { jsonSnapshot } from '../json.js'
 import { ingestSchema, boundedText } from '../validation.js'
 import { inboundMedia } from '../media.js'
+import { conversationAddress } from './conversations.js'
 import { createOperationTracer } from './tracing.js'
 
 type ChannelHostOptions = {
@@ -121,6 +122,7 @@ export function createChannelHost({
                 : {}),
               ...(trace ? { trace } : {}),
               requestId: crypto.randomUUID(),
+              channel: conversationAddress(binding, endpoint, account.channel),
               endpoint,
               acceptedAt: Date.now()
             }),
@@ -146,3 +148,5 @@ export function createChannelHost({
     }
   }
 }
+
+export { configuredConversations } from './conversations.js'

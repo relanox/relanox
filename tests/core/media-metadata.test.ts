@@ -31,14 +31,14 @@ it('preserves duration and generated image previews through atomic enqueue and s
 
     await expect(
       scoped.sendMessage({
-        replyTo: receipt.requestId,
+        channel: f.channelId,
         text: '',
         attachments: [{ ...media, previewMediaId: crypto.randomUUID() }]
       })
     ).rejects.toMatchObject({ code: 'invalid_media_preview' })
     expect(
       await scoped.sendMessage({
-        replyTo: receipt.requestId,
+        channel: f.channelId,
         text: '',
         attachments: [media]
       })
@@ -51,7 +51,7 @@ it('preserves duration and generated image previews through atomic enqueue and s
     expect(f.sent[0]?.preview?.data).toEqual(new Uint8Array([1, 2, 3]))
     expect(
       await scoped.sendMessage({
-        replyTo: receipt.requestId,
+        channel: f.channelId,
         text: '',
         attachments: [
           {

@@ -1,4 +1,3 @@
-import type { ScopedAgentHost } from '../../packages/sdk/src/index.js'
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { expect, it } from 'vitest'
@@ -7,7 +6,7 @@ import { mediaFixture, incoming, picture } from './fixture.js'
 it('authorizes staged uploads, preserves immutable retries and sends the returned ID', async () => {
   const f = await mediaFixture()
   try {
-    const receipt = await f.channel.ingest({ ...incoming, text: 'question' })
+    await f.channel.ingest({ ...incoming, text: 'question' })
 
     const owner = f.agent.forPrincipal({
       subject: 'worker',
@@ -24,7 +23,7 @@ it('authorizes staged uploads, preserves immutable retries and sends the returne
     }
 
     const input = {
-      requestId: receipt.requestId,
+      channelId: f.channelId,
       mediaId: randomUUID(),
       upload: picture
     }
@@ -48,7 +47,7 @@ it('authorizes staged uploads, preserves immutable retries and sends the returne
     ).rejects.toMatchObject({ code: 'media_conflict' })
     expect(
       await owner.sendMessage({
-        replyTo: receipt.requestId,
+        channel: f.channelId,
         text: '',
         attachments: [input.mediaId]
       })
@@ -57,9 +56,12 @@ it('authorizes staged uploads, preserves immutable retries and sends the returne
     expect(f.sent[0]?.media?.data).toEqual(picture.data)
     expect(
       await f.storage.cleanup({ before: Date.now() + 1000, limit: 10 })
-    ).toEqual({ redacted: 1 })
-    expect(await owner.media.authorize(input)).toBe(false)
-    expect(await owner.media.upload(input)).toBeUndefined()
+    ).toEqual({ redacted: 2 })
+    expect(await owner.media.authorize(input)).toBe(true)
+    expect(await owner.media.read(input)).toBeUndefined()
+    await expect(owner.media.upload(input)).rejects.toMatchObject({
+      code: 'media_conflict'
+    })
   } finally {
     await f.close()
   }
@@ -102,7 +104,7 @@ it('persists incoming bytes and sends replayable ordered replies without a claim
       size: 3,
       sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81'
     })
-    const args = { requestId: receipt.requestId, mediaId: ref.id }
+    const args = { channelId: f.channelId, mediaId: ref.id }
     expect((await scoped.media.read(args))?.data).toEqual(
       new Uint8Array([1, 2, 3])
     )
@@ -115,7 +117,7 @@ it('persists incoming bytes and sends replayable ordered replies without a claim
     expect(await other.media?.read(args)).toBeUndefined()
     expect(
       await other.sendMessage({
-        replyTo: receipt.requestId,
+        channel: f.channelId,
         text: 'unauthorized'
       })
     ).toEqual({ status: 'not_found' })
@@ -128,7 +130,7 @@ it('persists incoming bytes and sends replayable ordered replies without a claim
     }
 
     const input = {
-      replyTo: receipt.requestId,
+      channel: f.channelId,
       idempotencyKey: 'answer',
       text: 'abcdef',
       attachments: [generated, ref.id]
@@ -149,14 +151,14 @@ it('persists incoming bytes and sends replayable ordered replies without a claim
     ])
     expect(f.sent[2]?.media?.data).toEqual(new Uint8Array([4, 5]))
     expect(f.sent[3]?.media?.reference.id).toBe(ref.id)
-    const followup = { replyTo: receipt.requestId, text: 'ok' }
+    const followup = { channel: f.channelId, text: 'ok' }
     expect(await scoped.sendMessage(followup)).toMatchObject({
       status: 'queued',
       replay: false
     })
     expect(await scoped.sendMessage(followup)).toMatchObject({
       status: 'queued',
-      replay: true
+      replay: false
     })
     await f.runtime.processDue()
     expect(f.sent.map((item) => item.chunk.text)).toEqual([
@@ -164,15 +166,16 @@ it('persists incoming bytes and sends replayable ordered replies without a claim
       'def',
       '',
       '',
+      'ok',
       'ok'
     ])
-    expect(await f.storage.listOutbound({ limit: 10 })).toHaveLength(2)
+    expect(await f.storage.listOutbound({ limit: 10 })).toHaveLength(3)
   } finally {
     await f.close()
   }
 })
 
-it('retains endpoint media access after notification redispatch and revokes it after redaction', async () => {
+it('retains endpoint media access after notification redispatch and removes expired bytes after redaction', async () => {
   const f = await mediaFixture()
   try {
     const receipt = await f.channel.ingest({
@@ -199,17 +202,17 @@ it('retains endpoint media access after notification redispatch and revokes it a
         acknowledgeUnknown: false
       })
     ).toMatchObject({ status: 'updated' })
-    const input = { requestId: receipt.requestId, mediaId: id }
+    const input = { channelId: f.channelId, mediaId: id }
     expect((await scoped.media.read(input))?.data).toEqual(picture.data)
-    await scoped.sendMessage({ replyTo: receipt.requestId, text: 'ok' })
+    await scoped.sendMessage({ channel: f.channelId, text: 'ok' })
     await f.runtime.processDue()
     expect(
       await f.storage.cleanup({ before: Date.now() + 1000, limit: 10 })
-    ).toEqual({ redacted: 1 })
+    ).toEqual({ redacted: 2 })
     expect(await scoped.media.read(input)).toBeUndefined()
     expect(
-      await scoped.sendMessage({ replyTo: receipt.requestId, text: 'late' })
-    ).toEqual({ status: 'not_found' })
+      await scoped.sendMessage({ channel: f.channelId, text: 'late' })
+    ).toMatchObject({ status: 'queued', replay: false })
   } finally {
     await f.close()
   }
@@ -269,7 +272,7 @@ it('rejects malformed or oversized media and unsupported sends without enqueuein
     }
     await expect(
       scoped.sendMessage({
-        replyTo: receipt.requestId,
+        channel: f.channelId,
         idempotencyKey: 'final',
         text: '',
         attachments: [ref.id]
@@ -350,7 +353,7 @@ it.each(['missing', 'corrupt'])(
       const id = ref.id
       expect(
         await scoped.sendMessage({
-          replyTo: receipt.requestId,
+          channel: f.channelId,
           idempotencyKey: 'final',
           text: '',
           attachments: [id]
@@ -379,53 +382,59 @@ it.each(['missing', 'corrupt'])(
 )
 
 it.each(['count', 'bytes'])(
-  'enforces atomic outgoing media %s budgets across multiple replies',
+  'applies outgoing media %s budgets per send, allowing later sends on the same channel',
   async (budget) => {
     const f = await mediaFixture()
     try {
-      const receipt = await f.channel.ingest({
-        ...incoming,
-        attachments: [picture]
-      })
-
       const scoped = f.agent.forPrincipal({
         subject: 'worker',
         endpointIds: ['first']
       })
 
-      const accepted = budget === 'count' ? 3 : 2
       const size = budget === 'count' ? 3 : 16
 
-      const input = (
-        index: number
-      ): Parameters<ScopedAgentHost['sendMessage']>[0] => ({
-        replyTo: receipt.requestId,
-        text: '',
-        idempotencyKey: `reply-${index}`,
-        attachments: [
-          {
-            kind: 'file' as const,
-            mimeType: 'application/octet-stream',
-            fileName: `asset-${index}.bin`,
-            data: new Uint8Array(size)
-          }
-        ]
-      })
-
-      for (let index = 0; index < accepted; index++) {
-        expect(await scoped.sendMessage(input(index))).toMatchObject({
-          status: 'queued',
-          replay: false
-        })
+      const attachment = {
+        kind: 'file' as const,
+        mimeType: 'application/octet-stream',
+        fileName: 'asset.bin',
+        data: new Uint8Array(size)
       }
-      expect(await scoped.sendMessage(input(accepted))).toEqual({
-        status: 'conflict'
+
+      for (let index = 0; index < 5; index++) {
+        expect(
+          await scoped.sendMessage({
+            channel: f.channelId,
+            text: '',
+            idempotencyKey: `send-${index}`,
+            attachments: [attachment]
+          })
+        ).toMatchObject({ status: 'queued', replay: false })
+      }
+
+      const tooLarge =
+        budget === 'count'
+          ? [attachment, attachment, attachment]
+          : [attachment, { ...attachment, fileName: 'second.bin' }]
+
+      await expect(
+        scoped.sendMessage({
+          channel: f.channelId,
+          text: '',
+          attachments: tooLarge
+        })
+      ).rejects.toMatchObject({
+        code:
+          budget === 'count' ? 'too_many_attachments' : 'media_total_too_large'
       })
-      expect(await scoped.sendMessage(input(0))).toMatchObject({
-        status: 'queued',
-        replay: true
-      })
-      expect(await f.storage.listOutbound({ limit: 10 })).toHaveLength(accepted)
+      expect(
+        await scoped.sendMessage({
+          channel: f.channelId,
+          text: '',
+          idempotencyKey: 'send-0',
+          attachments: [attachment]
+        })
+      ).toMatchObject({ status: 'queued', replay: true })
+      expect(await f.storage.listOutbound({ limit: 10 })).toHaveLength(5)
     } finally {
       await f.close()
     }

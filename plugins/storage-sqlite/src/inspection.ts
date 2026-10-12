@@ -1,5 +1,10 @@
 import { decodeDurableRecord } from './record-codec.js'
-import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
+import type {
+  Storage,
+  InboundRecord,
+  OutboundRecord,
+  MediaReference
+} from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 
 export function createInspectionOperations(
@@ -68,7 +73,7 @@ export function createInspectionOperations(
         params.push(filter.deliveryStatus)
       }
       if (filter.endpointId) {
-        where.push('inbound_request.endpoint=?')
+        where.push("json_extract(outbound_delivery.record,'$.endpoint.id')=?")
         params.push(filter.endpointId)
       }
       if (filter.afterId) {
@@ -81,7 +86,6 @@ export function createInspectionOperations(
             `
               SELECT outbound_delivery.record
               FROM outbound outbound_delivery
-              JOIN inbound inbound_request ON inbound_request.id=outbound_delivery.request_id
               WHERE ${where.join(' AND ')}
               ORDER BY outbound_delivery.id
               LIMIT ?
@@ -134,9 +138,9 @@ export function createInspectionOperations(
       return transaction(() => {
         const rows = db
           .prepare(
-            `SELECT i.record FROM inbound i WHERE i.accepted_at<? AND i.status IN ('accepted','rejected') AND json_extract(i.record,'$.redactedAt') IS NULL AND NOT EXISTS(SELECT 1 FROM outbound o WHERE o.request_id=i.id AND (o.status!='sent' OR json_extract(o.record,'$.createdAt')>=?)) ORDER BY i.accepted_at,i.id LIMIT ?`
+            "SELECT record FROM inbound WHERE accepted_at<? AND status IN ('accepted','rejected') AND json_extract(record,'$.redactedAt') IS NULL ORDER BY accepted_at,id LIMIT ?"
           )
-          .all(input.before, input.before, input.limit) as { record: string }[]
+          .all(input.before, input.limit) as { record: string }[]
 
         for (const row of rows) {
           const record = decodeDurableRecord<InboundRecord>(row.record)
@@ -151,32 +155,91 @@ export function createInspectionOperations(
             },
             redactedAt: input.before
           })
-          db.prepare('UPDATE media SET data=NULL WHERE request_id=?').run(
-            record.snapshot.requestId
+        }
+
+        const deliveries = db
+          .prepare(
+            "SELECT record FROM outbound WHERE status='sent' AND json_extract(record,'$.createdAt')<? AND json_extract(record,'$.redactedAt') IS NULL LIMIT ?"
           )
+          .all(input.before, input.limit) as { record: string }[]
 
-          const deliveries = db
-            .prepare('SELECT record FROM outbound WHERE request_id=?')
-            .all(record.snapshot.requestId) as { record: string }[]
+        for (const row of deliveries) {
+          const record = decodeDurableRecord<OutboundRecord>(row.record)
+          saveOutbound({
+            ...record,
+            version: record.version + 1,
+            chunks: record.chunks.map((chunk) => ({
+              text: '',
+              state: null,
+              idempotencyKey: chunk.idempotencyKey
+            })),
+            receipts: record.receipts.map(() => ({})),
+            redactedAt: input.before
+          })
+        }
+        const retained = new Set<string>()
 
-          for (const deliveryRow of deliveries) {
-            const delivery = decodeDurableRecord<OutboundRecord>(
-              deliveryRow.record
-            )
+        const incoming = db
+          .prepare(
+            "SELECT record FROM inbound WHERE json_extract(record,'$.redactedAt') IS NULL"
+          )
+          .all() as { record: string }[]
 
-            saveOutbound({
-              ...delivery,
-              version: delivery.version + 1,
-              chunks: delivery.chunks.map((chunk) => ({
-                text: '',
-                state: null,
-                idempotencyKey: chunk.idempotencyKey
-              })),
-              receipts: delivery.receipts.map(() => ({}))
-            })
+        for (const row of incoming) {
+          for (const ref of decodeDurableRecord<InboundRecord>(row.record)
+            .snapshot.attachments ?? []) {
+            retained.add(ref.id)
+            if (ref.previewMediaId) {
+              retained.add(ref.previewMediaId)
+            }
           }
         }
-        return { redacted: rows.length }
+
+        const outgoing = db
+          .prepare(
+            "SELECT record FROM outbound WHERE json_extract(record,'$.redactedAt') IS NULL"
+          )
+          .all() as { record: string }[]
+
+        for (const row of outgoing) {
+          for (const chunk of decodeDurableRecord<OutboundRecord>(row.record)
+            .chunks) {
+            if (chunk.media) {
+              retained.add(chunk.media.id)
+              if (chunk.media.previewMediaId) {
+                retained.add(chunk.media.previewMediaId)
+              }
+            }
+          }
+        }
+
+        const staged = db
+          .prepare(
+            'SELECT reference FROM media WHERE staged=1 AND data IS NOT NULL AND created_at>=?'
+          )
+          .all(input.before) as { reference: string }[]
+
+        for (const row of staged) {
+          const ref = decodeDurableRecord<MediaReference>(row.reference)
+          if (ref.previewMediaId) {
+            retained.add(ref.previewMediaId)
+          }
+        }
+
+        const candidates = db
+          .prepare(
+            'SELECT id FROM media WHERE data IS NOT NULL AND created_at<? AND id NOT IN (SELECT value FROM json_each(?)) ORDER BY created_at,id LIMIT ?'
+          )
+          .all(input.before, JSON.stringify([...retained]), input.limit) as {
+          id: string
+        }[]
+
+        for (const { id } of candidates) {
+          if (!retained.has(id)) {
+            db.prepare('UPDATE media SET data=NULL,staged=0 WHERE id=?').run(id)
+          }
+        }
+        return { redacted: rows.length + deliveries.length }
       })
     }
   }

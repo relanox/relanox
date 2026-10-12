@@ -1,5 +1,6 @@
 import type { Json, EpochMs } from './values.js'
 import type { ChannelId, EndpointConfig } from './config.js'
+import type { ChannelAddress } from './conversations.js'
 import type { MediaUpload, MediaReference, StoredMedia } from './media.js'
 
 /** Platform-specific durable address, never a reply closure or ephemeral reply token. */
@@ -35,6 +36,7 @@ export type IngestInput = {
 }
 
 export type InboundSnapshot = {
+  readonly channel: ChannelAddress
   readonly attachments?: readonly MediaReference[]
   readonly requestId: string
   readonly endpoint: EndpointConfig
@@ -88,8 +90,10 @@ export type SendReceipt = {
 export type DeliveryStatus = 'pending' | 'sent' | 'rejected' | 'unknown'
 
 export type OutboundRecord = {
+  readonly redactedAt?: EpochMs
   readonly deliveryId: string
-  readonly requestId: string
+  readonly channelId: string
+  readonly endpoint: EndpointConfig
   readonly messageId: string
   readonly target: ReplyTarget
   readonly chunks: readonly DeliveryChunk[]
@@ -144,15 +148,15 @@ export type SendResult =
 
 export type SendInput = {
   readonly deliveryId: string
-  readonly requestId: string
+  readonly channelId: string
   readonly target: ReplyTarget
   readonly chunk: DeliveryChunk
   readonly chunkIndex: number
   /** Total persisted chunks, allowing callback transports to publish one completed reply. */
   readonly chunkCount?: number
-  /** Resolved by core from durable storage, bound to this request and chunk. */
+  /** Resolved by core from durable storage, bound to this channel and chunk. */
   readonly media?: StoredMedia
-  /** Preview resolved from the same request by core. */
+  /** Preview resolved from the same channel by core. */
   readonly preview?: StoredMedia
   readonly signal: AbortSignal
 }

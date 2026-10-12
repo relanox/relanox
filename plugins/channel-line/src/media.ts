@@ -150,7 +150,7 @@ export async function messages(
   const media = input.media.reference
 
   const originalContentUrl = await host.media.publish({
-    requestId: input.requestId,
+    channelId: input.channelId,
     mediaId: media.id
   })
 
@@ -160,7 +160,7 @@ export async function messages(
   } else {
     message.previewImageUrl = input.preview
       ? await host.media.publish({
-          requestId: input.requestId,
+          channelId: input.channelId,
           mediaId: input.preview.reference.id
         })
       : originalContentUrl

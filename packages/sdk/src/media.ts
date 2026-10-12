@@ -9,7 +9,7 @@ export type MediaUpload = {
   readonly fileName: string
   /** Duration in milliseconds when required by the native platform. */
   readonly durationMs?: number
-  /** Optional image asset owned by the same request, used as a native preview. */
+  /** Optional image asset owned by the same channel, used as a native preview. */
   readonly previewMediaId?: string
   readonly data: Uint8Array
 }
@@ -31,7 +31,7 @@ export type MediaReference = {
   readonly fileName: string
   /** Duration in milliseconds when required by the native platform. */
   readonly durationMs?: number
-  /** Optional image asset owned by the same request, used as a native preview. */
+  /** Optional image asset owned by the same channel, used as a native preview. */
   readonly previewMediaId?: string
   readonly size: number
   readonly sha256: string
@@ -43,7 +43,7 @@ export type StoredMedia = {
 }
 
 export type PutMediaInput = {
-  readonly requestId: string
+  readonly channelId: string
   readonly agent: AgentId
   readonly endpointIds: readonly string[]
   readonly media: StoredMedia
@@ -64,9 +64,14 @@ export type PutMediaResult =
         | 'media_total_too_large'
     }
 
-/** Request-owned bytes are committed atomically with authorization and budgets. */
+/** Channel-owned bytes are committed atomically with authorization and budgets. */
 export type MediaStorage = {
-  get(requestId: string, mediaId: string): Promise<StoredMedia | undefined>
+  /** Immutable metadata survives content retention, allowing accepted keyed-send recovery. */
+  getReference(
+    channelId: string,
+    mediaId: string
+  ): Promise<MediaReference | undefined>
+  get(channelId: string, mediaId: string): Promise<StoredMedia | undefined>
   put(input: PutMediaInput): Promise<PutMediaResult>
 }
 
@@ -75,15 +80,15 @@ export type AgentMediaHost = {
   readonly maxTotalBytes: number
   readonly maxAttachments: number
   /** Check ownership for upload ticket issuance without loading media bytes. */
-  authorize(input: { readonly requestId: string }): Promise<boolean>
-  /** An immutable request-owned ID may be retried with identical metadata and bytes. */
+  authorize(input: { readonly channelId: string }): Promise<boolean>
+  /** An immutable channel-owned ID may be retried with identical metadata and bytes. */
   upload(input: {
-    readonly requestId: string
+    readonly channelId: string
     readonly mediaId: string
     readonly upload: MediaUpload
   }): Promise<MediaReference | undefined>
   read(input: {
-    readonly requestId: string
+    readonly channelId: string
     readonly mediaId: string
   }): Promise<StoredMedia | undefined>
 }
@@ -91,7 +96,7 @@ export type AgentMediaHost = {
 /** Short-lived download URLs for native platforms that fetch outbound bytes themselves. */
 export type ChannelMediaHost = {
   publish(input: {
-    readonly requestId: string
+    readonly channelId: string
     readonly mediaId: string
   }): Promise<string>
 }

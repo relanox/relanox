@@ -16,7 +16,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { startRuntime } from '../src/runtime.js'
 import { deadline } from '../src/deadline.js'
-import { fixture, storage } from './fixture.js'
+import { fixture, storage, seedInbound } from './fixture.js'
 import { redirectRoutine } from '../../../plugins/agent-grok/tests/routine-peer.js'
 import {
   freeManagementPort,
@@ -208,8 +208,14 @@ async function recoveredNotification(): Promise<{
   vi.stubEnv('START_ROUTINE_URL', 'https://routine.test/routine')
   vi.stubEnv('START_ROUTINE_AUTH', 'Bearer secret')
   const agent = endpoint()
-  await value.database.acceptInbound({
+  await seedInbound(value.database, {
     requestId: 'recovered-request',
+    channel: {
+      id: 'recovered-channel',
+      platform: 'telegram',
+      accountId: 'bot',
+      chatId: 'chat'
+    },
     source: { channel: 'telegram', accountId: 'bot', eventId: 'event' },
     senderId: 'user',
     text: 'persisted backlog',
@@ -256,7 +262,15 @@ test('returns from startup before a valid initial backlog receipt and gates read
       .parse(JSON.parse(value.remote.requests[0]?.body ?? 'null') as unknown)
 
     expect(JSON.parse(notification.content) as unknown).toMatchObject({
-      replyTo: 'recovered-request',
+      source: {
+        channel: {
+          id: 'recovered-channel',
+          platform: 'telegram',
+          accountId: 'bot',
+          chatId: 'chat'
+        },
+        senderId: 'user'
+      },
       text: 'persisted backlog'
     })
     value.remote.release()
@@ -280,8 +294,14 @@ test('returns from startup before a valid initial backlog receipt and gates read
 test('shutdown waits for the asynchronously launched first batch to settle in real storage', async () => {
   const value = await recoveredNotification()
   const second = { ...endpoint(), id: 'second' }
-  await value.database.acceptInbound({
+  await seedInbound(value.database, {
     requestId: 'next-process-request',
+    channel: {
+      id: 'next-process-channel',
+      platform: 'telegram',
+      accountId: 'bot',
+      chatId: 'chat'
+    },
     source: { channel: 'telegram', accountId: 'bot', eventId: 'second-event' },
     senderId: 'user',
     text: 'next process backlog',

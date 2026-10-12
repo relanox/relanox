@@ -62,7 +62,8 @@ function deliverySummary(
 ): {
   text?: string
   deliveryId: string
-  requestId: string
+  channelId: string
+  endpointId: string
   status: DeliveryStatus
   version: number
   currentChunk: number
@@ -72,7 +73,8 @@ function deliverySummary(
 } {
   return {
     deliveryId: record.deliveryId,
-    requestId: record.requestId,
+    channelId: record.channelId,
+    endpointId: record.endpoint.id,
     status: record.status,
     version: record.version,
     currentChunk: record.currentChunk,
@@ -108,7 +110,8 @@ export async function readStatus(
   deliveries: {
     text?: string
     deliveryId: string
-    requestId: string
+    channelId: string
+    endpointId: string
     status: DeliveryStatus
     version: number
     currentChunk: number

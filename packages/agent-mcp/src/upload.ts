@@ -83,7 +83,7 @@ export function createUploadTransport(
     if (rejected) {
       return rejected
     }
-    return (await media.authorize({ requestId: ticket.requestId }))
+    return (await media.authorize({ channelId: ticket.channelId }))
       ? undefined
       : Response.json({ error: 'not_found' }, { status: 404 })
   }
@@ -103,7 +103,7 @@ export function createUploadTransport(
     }
     try {
       const reference = await media.upload({
-        requestId: ticket.requestId,
+        channelId: ticket.channelId,
         mediaId: ticket.mediaId,
         upload: {
           kind: ticket.kind,
@@ -138,7 +138,7 @@ export function createUploadTransport(
       'relanox_create_upload',
       {
         description:
-          'Upload a generated local file to the original conversation. Copy replyTo unchanged, supply its exact byte size, filename, MIME type and media kind. Returns a five-minute signed uploadUrl, method and headers. Use a terminal or HTTP tool to PUT raw file bytes (not JSON, Base64 or multipart) with those headers; no MCP password is needed. A successful PUT returns fileId. Only then call relanox_send_message with attachments [{mediaId: fileId}]. Retry an interrupted PUT with the same URL and identical bytes; a different file needs a new upload. Uploading alone does not send a reply. Audio/video may need durationMs or an already uploaded same-message image previewMediaId.',
+          'Upload a generated local file to the selected authorized channel. Copy channel unchanged, supply its exact byte size, filename, MIME type and media kind. Returns a five-minute signed uploadUrl, method and headers. Use a terminal or HTTP tool to PUT raw file bytes (not JSON, Base64 or multipart) with those headers; no MCP password is needed. A successful PUT returns fileId. Only then call relanox_send_message with attachments [{mediaId: fileId}]. Retry an interrupted PUT with the same URL and identical bytes; a different file needs a new upload. Uploading alone does not send a reply. Audio/video may need durationMs or an already uploaded same-channel image previewMediaId.',
         inputSchema: uploadInput,
         annotations: {
           readOnlyHint: false,
@@ -150,23 +150,23 @@ export function createUploadTransport(
       async (input) => {
         if (
           input.size > maximum ||
-          !(await media.authorize({ requestId: input.replyTo }))
+          !(await media.authorize({ channelId: input.channel }))
         ) {
           return {
             isError: true,
             content: [
               {
                 type: 'text',
-                text: 'Upload unavailable: check the original replyTo and file size.'
+                text: 'Upload unavailable: check the authorized channel and file size.'
               }
             ]
           }
         }
-        const { replyTo, ...metadata } = input
+        const { channel, ...metadata } = input
 
         const ticket = {
           ...metadata,
-          requestId: replyTo,
+          channelId: channel,
           mediaId: crypto.randomUUID(),
           endpointId,
           expiresAt: Date.now() + 300_000

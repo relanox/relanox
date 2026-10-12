@@ -66,6 +66,113 @@ async function setup(
 }
 
 describe('grok configured Routine and scoped MCP', () => {
+  it('lists only authorized channels before input, sends identical proactive messages independently and scopes delivery status', async () => {
+    const { fx } = await setup()
+    const first = await fx.client('secret-0', 0)
+    const second = await fx.client('secret-1', 1)
+
+    const statusSchema = z.object({
+      channels: z.array(
+        z.object({
+          channel: z.object({
+            id: z.string(),
+            platform: z.string(),
+            accountId: z.string(),
+            chatId: z.string()
+          }),
+          send: z.object({ status: z.string() }),
+          maxAttachments: z.number()
+        })
+      ),
+      mediaLimits: z.object({
+        maxBytes: z.number(),
+        maxTotalBytes: z.number(),
+        maxAttachments: z.number()
+      }),
+      delivery: z
+        .object({ id: z.string(), channel: z.string(), status: z.string() })
+        .optional()
+    })
+
+    const before = statusSchema.parse(
+      (await first.callTool({ name: 'relanox_status', arguments: {} }))
+        .structuredContent
+    )
+
+    expect(before).toMatchObject({
+      channels: [
+        {
+          channel: { platform: 'telegram', accountId: 'bot', chatId: 'chat0' },
+          send: { status: 'available' },
+          maxAttachments: 10
+        }
+      ],
+      mediaLimits: {
+        maxBytes: 26_214_400,
+        maxTotalBytes: 52_428_800,
+        maxAttachments: 10
+      }
+    })
+    const channel = before.channels[0]?.channel.id
+    if (!channel) {
+      throw new Error('Missing authorized channel')
+    }
+
+    const message = {
+      name: 'relanox_send_message',
+      arguments: { channel, text: 'proactive message' }
+    }
+
+    const receiptSchema = z.object({
+      status: z.literal('queued'),
+      deliveryId: z.string(),
+      replay: z.literal(false)
+    })
+
+    const one = receiptSchema.parse(
+      (await first.callTool(message)).structuredContent
+    )
+
+    const two = receiptSchema.parse(
+      (await first.callTool(message)).structuredContent
+    )
+
+    expect(two.deliveryId).not.toBe(one.deliveryId)
+    expect(await fx.storage.listInbound({ limit: 10 })).toEqual([])
+    expect(
+      statusSchema.parse(
+        (
+          await first.callTool({
+            name: 'relanox_status',
+            arguments: { deliveryId: one.deliveryId }
+          })
+        ).structuredContent
+      ).delivery
+    ).toEqual({ id: one.deliveryId, channel, status: 'pending' })
+
+    const foreign = statusSchema.parse(
+      (
+        await second.callTool({
+          name: 'relanox_status',
+          arguments: { deliveryId: one.deliveryId }
+        })
+      ).structuredContent
+    )
+
+    expect(foreign.delivery).toBeUndefined()
+    expect(foreign.channels).toMatchObject([{ channel: { chatId: 'chat1' } }])
+    expect(foreign.channels).toHaveLength(1)
+    expect(await second.callTool(message)).toMatchObject({
+      isError: true,
+      structuredContent: { status: 'not_found' }
+    })
+    await fx.core.processDue()
+    expect(fx.sent).toMatchObject([
+      { target: { chatId: 'chat0' }, chunk: { text: 'proactive message' } },
+      { target: { chatId: 'chat0' }, chunk: { text: 'proactive message' } }
+    ])
+  })
+
   it('authenticates encoded URL credentials without headers and isolates endpoints', async () => {
     process.env.AGENT_TEST_TOKEN_0 = 'editable /token?中文%'
     const { fx } = await setup(200, {}, 'path')
@@ -84,13 +191,13 @@ describe('grok configured Routine and scoped MCP', () => {
     expect(
       await client.callTool({
         name: 'relanox_send_message',
-        arguments: { replyTo: receipt.requestId, text: 'answer' }
+        arguments: { channel: receipt.channel, text: 'answer' }
       })
     ).toMatchObject({ structuredContent: { status: 'queued' } })
     expect(
       await client.callTool({
         name: 'relanox_send_message',
-        arguments: { replyTo: other.requestId, text: 'answer' }
+        arguments: { channel: other.channel, text: 'answer' }
       })
     ).toMatchObject({ structuredContent: { status: 'not_found' } })
     for (const suffix of [
@@ -148,10 +255,10 @@ describe('grok configured Routine and scoped MCP', () => {
         'description',
         expect.stringContaining('as Markdown')
       )
-      expect(send?.description).toContain('JSON string in Grok Routine content')
-      expect(send?.inputSchema.properties?.replyTo).toHaveProperty(
+      expect(send?.description).toContain('source.channel.id')
+      expect(send?.inputSchema.properties?.channel).toHaveProperty(
         'description',
-        expect.stringContaining('Copy replyTo exactly')
+        expect.stringContaining('authorized channel ID')
       )
       expect(read?.inputSchema.properties?.mediaId).toHaveProperty(
         'description',
@@ -233,21 +340,33 @@ describe('grok configured Routine and scoped MCP', () => {
       const posted = parseWire(trigger?.body ?? '')
       expect(posted).toEqual({
         content: JSON.stringify({
-          replyTo: receipt.requestId,
           text: '中文\nsecond line',
           context: { thread: 'protocol-context' },
-          source: { channel: 'telegram', eventId: 'event-1' }
+          source: {
+            channel: {
+              id: receipt.channel,
+              platform: 'telegram',
+              accountId: 'bot',
+              chatId: 'chat0'
+            },
+            senderId: 'alice'
+          }
         }),
         source: 'relanox',
         sentAt: stringValue
       })
       const client = await fx.client('secret-0', 0, modern)
       expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(
-        ['relanox_send_message', 'relanox_create_upload', 'relanox_read_media']
+        [
+          'relanox_status',
+          'relanox_send_message',
+          'relanox_create_upload',
+          'relanox_read_media'
+        ]
       )
 
       const input = {
-        replyTo: receipt.requestId,
+        channel: receipt.channel,
         text: 'answer',
         idempotencyKey: 'result'
       }
@@ -280,7 +399,7 @@ describe('grok configured Routine and scoped MCP', () => {
       expect(
         await reconnected.callTool({
           name: 'relanox_send_message',
-          arguments: { replyTo: receipt.requestId, text: 'another answer' }
+          arguments: { channel: receipt.channel, text: 'another answer' }
         })
       ).toMatchObject({
         structuredContent: { status: 'queued', replay: false }
@@ -289,7 +408,7 @@ describe('grok configured Routine and scoped MCP', () => {
       expect(fx.sent).toHaveLength(2)
 
       expect(fx.sent[0]).toMatchObject({
-        target: { chatId: 'chat0', replyToId: 'original' },
+        target: { chatId: 'chat0' },
         chunk: { text: 'answer' }
       })
     }
@@ -302,7 +421,7 @@ describe('grok configured Routine and scoped MCP', () => {
     expect(
       await client.callTool({
         name: 'relanox_send_message',
-        arguments: { replyTo: other.requestId, text: 'malicious' }
+        arguments: { channel: other.channel, text: 'malicious' }
       })
     ).toMatchObject({
       isError: true,
@@ -327,14 +446,14 @@ describe('grok configured Routine and scoped MCP', () => {
     await expect(
       client.callTool({
         name: 'relanox_send_message',
-        arguments: { replyTo: first.requestId, text: 'answer' }
+        arguments: { channel: first.channel, text: 'answer' }
       })
     ).rejects.toThrow()
     const rotated = await fx.client('rotated-token')
     expect(
       await rotated.callTool({
         name: 'relanox_send_message',
-        arguments: { replyTo: first.requestId, text: 'answer' }
+        arguments: { channel: first.channel, text: 'answer' }
       })
     ).toMatchObject({
       structuredContent: { status: 'queued' }

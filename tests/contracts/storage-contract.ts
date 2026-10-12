@@ -3,6 +3,7 @@ import type {
   DueWork,
   EnqueueMessageInput,
   InboundSnapshot,
+  ConversationRecord,
   Storage
 } from '../../packages/sdk/src/index.js'
 
@@ -16,16 +17,23 @@ export function required<T>(value: T | undefined): T {
 export const snapshot = (
   id = 'r1',
   at = 100,
-  endpoint = 'ep'
+  endpoint = 'ep',
+  channelId = endpoint === 'ep' ? 'channel' : endpoint
 ): InboundSnapshot => ({
   requestId: id,
+  channel: {
+    id: channelId,
+    platform: 'telegram',
+    accountId: 'a',
+    chatId: `chat-${channelId}`
+  },
   source: { channel: 'telegram', accountId: 'a', eventId: id },
   senderId: 'u',
   text: 'question',
   target: {
     channel: 'telegram',
     accountId: 'a',
-    chatId: 'chat',
+    chatId: `chat-${channelId}`,
     data: { thread: 'original' }
   },
   receivedAt: at,
@@ -39,18 +47,20 @@ export const snapshot = (
 })
 
 export const completion = (
-  id = 'r1',
-  messageId = 'message'
+  channelId = 'channel',
+  messageId = 'message',
+  endpoint = 'ep'
 ): EnqueueMessageInput => ({
-  requestId: id,
+  channelId,
   agent: 'grok',
-  endpointIds: ['ep'],
+  endpointIds: [endpoint],
   message: { messageId, text: 'AB', createdAt: 110 },
   outbound: {
-    deliveryId: `d-${id}-${messageId}`,
-    requestId: id,
+    deliveryId: `d-${channelId}-${messageId}`,
+    channelId,
+    endpoint: snapshot('r1', 100, endpoint, channelId).endpoint,
     messageId,
-    target: snapshot(id).target,
+    target: snapshot('r1', 100, endpoint, channelId).target,
     chunks: [
       { text: 'A', idempotencyKey: 'c1', state: { seq: 1 } },
       { text: 'B', idempotencyKey: 'c2', state: { seq: 2 } }
@@ -65,6 +75,16 @@ export const completion = (
   }
 })
 
+export const testConversations: readonly ConversationRecord[] = [
+  ['channel', 'ep'],
+  ['independent', 'ep'],
+  ['other', 'other'],
+  ['ep2', 'ep2']
+].map(([id, endpoint]) => {
+  const input = snapshot('setup', 100, endpoint, id)
+  return { address: input.channel, endpoint: input.endpoint }
+})
+
 export function storageContract(
   name: string,
   open: () => Promise<Storage>
@@ -74,6 +94,7 @@ export function storageContract(
     beforeEach(async () => {
       s = await open()
       await s.initialize()
+      await s.registerConversations(testConversations)
     })
     afterEach(async () => {
       await s.close()
@@ -109,6 +130,75 @@ export function storageContract(
       })
     }
 
+    it('registers channels independently, learns authenticated targets atomically and revokes removed ownership', async () => {
+      expect(await s.getConversation('channel')).toEqual({
+        address: {
+          id: 'channel',
+          platform: 'telegram',
+          accountId: 'a',
+          chatId: 'chat-channel'
+        },
+        endpoint: {
+          id: 'ep',
+          agent: 'grok',
+          config: { url: 'https://agent.example', secret: { env: 'TOKEN' } }
+        }
+      })
+      await s.acceptInbound(snapshot())
+      expect((await s.getConversation('channel'))?.target).toEqual({
+        channel: 'telegram',
+        accountId: 'a',
+        chatId: 'chat-channel',
+        data: { thread: 'original' }
+      })
+      await s.registerConversations(testConversations)
+      expect((await s.getConversation('channel'))?.target?.data).toEqual({
+        thread: 'original'
+      })
+      await expect(
+        s.acceptInbound({
+          ...snapshot('forged'),
+          target: { ...snapshot().target, chatId: 'other' }
+        })
+      ).rejects.toThrow('Unauthorized inbound conversation')
+      expect(await s.getInbound('forged')).toBeUndefined()
+      expect((await s.getConversation('channel'))?.target?.chatId).toBe(
+        'chat-channel'
+      )
+      const queued = await s.enqueueMessage(completion())
+      expect(queued).toMatchObject({ status: 'queued', replay: false })
+      await s.registerConversations(
+        testConversations.filter((record) => record.address.id !== 'channel')
+      )
+      expect(await s.getConversation('channel')).toBeUndefined()
+      expect(
+        (await s.getConversation('channel', { includeInactive: true }))?.address
+          .chatId
+      ).toBe('chat-channel')
+      expect(await s.enqueueMessage(completion('channel', 'new'))).toEqual({
+        status: 'not_found'
+      })
+      expect(await s.getMessageReceipt(completion())).toEqual({
+        status: 'not_found'
+      })
+      expect((await s.getOutbound('d-channel-message'))?.target.chatId).toBe(
+        'chat-channel'
+      )
+      await s.registerConversations(testConversations)
+      expect((await s.getConversation('channel'))?.target?.data).toEqual({
+        thread: 'original'
+      })
+      await expect(
+        s.registerConversations([
+          {
+            address: snapshot().channel,
+            endpoint: { id: 'foreign', agent: 'dot', config: null }
+          }
+        ])
+      ).rejects.toThrow('Channel identity cannot change ownership')
+      expect((await s.getConversation('channel'))?.endpoint.id).toBe('ep')
+    })
+
     it('deduplicates source keys and freezes serializable input without sharing mutable caller objects', async () => {
       const context = { original: true }
       const original = { ...snapshot(), context }
@@ -130,8 +220,7 @@ export function storageContract(
       })
     })
 
-    it('queues multiple scoped messages per incoming message and replays identical keys but conflicts changed content', async () => {
-      await s.acceptInbound(snapshot())
+    it('queues multiple scoped messages per channel without requiring inbound input and replays identical keys but conflicts changed content', async () => {
       const input = completion()
 
       const results = await Promise.all([
@@ -159,19 +248,24 @@ export function storageContract(
           message: { ...input.message, text: 'different' }
         })
       ).toEqual({ status: 'conflict' })
-      expect(await s.enqueueMessage(completion('r1', 'second'))).toMatchObject({
+      expect(
+        await s.enqueueMessage(completion('channel', 'second'))
+      ).toMatchObject({
         status: 'queued',
         replay: false
       })
       expect(await s.listOutbound({ limit: 10 })).toHaveLength(2)
       expect(
         await s.enqueueMessage({
-          ...completion('r1', 'third'),
+          ...completion('channel', 'third'),
           endpointIds: ['other']
         })
       ).toEqual({ status: 'unauthorized' })
       expect(
-        await s.enqueueMessage({ ...completion('r1', 'third'), agent: 'dot' })
+        await s.enqueueMessage({
+          ...completion('channel', 'third'),
+          agent: 'dot'
+        })
       ).toEqual({ status: 'unauthorized' })
       expect(await s.enqueueMessage(completion('missing'))).toEqual({
         status: 'not_found'
@@ -196,7 +290,7 @@ export function storageContract(
 
       expect(await s.enqueueMessage(input)).toEqual({
         status: 'queued',
-        deliveryId: 'd-r1-message',
+        deliveryId: 'd-channel-message',
         replay: false
       })
       expect((await s.listOutbound({ limit: 10 }))[0]?.chunks).toEqual([
@@ -205,7 +299,7 @@ export function storageContract(
       ])
       expect(await s.enqueueMessage(input)).toEqual({
         status: 'queued',
-        deliveryId: 'd-r1-message',
+        deliveryId: 'd-channel-message',
         replay: true
       })
       expect(
@@ -392,7 +486,7 @@ export function storageContract(
       const first = required((await due(110))[0])
       await s.settleAttempt({
         kind: 'send',
-        id: 'd-r1-message',
+        id: 'd-channel-message',
         lease: first.lease,
         outcome: { status: 'retryable', errorCode: 'temporary_failure' },
         now: 111,
@@ -401,13 +495,13 @@ export function storageContract(
       const pending = required((await due(120))[0])
       await s.settleAttempt({
         kind: 'send',
-        id: 'd-r1-message',
+        id: 'd-channel-message',
         lease: pending.lease,
         outcome: { status: 'pending', retryAfterMs: 30 },
         now: 121,
         nextDueAt: 151
       })
-      expect(await s.getOutbound('d-r1-message')).toMatchObject({
+      expect(await s.getOutbound('d-channel-message')).toMatchObject({
         status: 'pending',
         attempts: 1,
         dueAt: 151,
@@ -418,14 +512,14 @@ export function storageContract(
       expect((await due(151)).map((item) => item.kind)).toEqual(['send'])
     })
 
-    it('sends each request in enqueue order despite reversed IDs and holds later messages behind leased, future or unknown predecessors', async () => {
+    it('sends each channel in enqueue order despite reversed IDs and holds later messages behind leased, future or unknown predecessors', async () => {
       await s.acceptInbound(snapshot())
       await dispatch()
-      const first = completion('r1', 'z-first')
-      const second = completion('r1', 'a-second')
+      const first = completion('channel', 'z-first')
+      const second = completion('channel', 'a-second')
       await s.enqueueMessage(first)
       await s.enqueueMessage(second)
-      await s.acceptInbound(snapshot('independent', 100))
+      await s.acceptInbound(snapshot('independent', 100, 'ep', 'independent'))
       await dispatch('independent')
       const independent = completion('independent')
       await s.enqueueMessage(independent)
@@ -439,7 +533,7 @@ export function storageContract(
 
       const firstWork = required(
         work.find(
-          (item) => item.kind === 'send' && item.record.requestId === 'r1'
+          (item) => item.kind === 'send' && item.record.channelId === 'channel'
         )
       )
 
@@ -494,16 +588,19 @@ export function storageContract(
       )
     })
 
-    it('redacts only old accepted or rejected inputs after every delivery is sent and retains all dedupe identifiers', async () => {
+    it('redacts completed inputs and deliveries independently while preserving pending content and channel dedupe', async () => {
       await s.acceptInbound(snapshot())
       await dispatch()
       const first = completion()
-      const second = completion('r1', 'second')
+      const second = completion('channel', 'second')
       await s.enqueueMessage(first)
       await s.enqueueMessage(second)
       expect(await s.cleanup({ before: 200, limit: 10 })).toEqual({
-        redacted: 0
+        redacted: 1
       })
+      expect(
+        (await s.getOutbound(second.outbound.deliveryId))?.chunks[0]?.text
+      ).toBe('A')
       for (let index = 0; index < 4; index++) {
         const item = required(
           (await due(110)).find((work) => work.kind === 'send')
@@ -524,7 +621,7 @@ export function storageContract(
         redacted: 0
       })
       expect(await s.cleanup({ before: 200, limit: 10 })).toEqual({
-        redacted: 1
+        redacted: 2
       })
       expect((await s.getInbound('r1'))?.snapshot).toMatchObject({
         text: '',
@@ -545,9 +642,9 @@ export function storageContract(
           message: { ...first.message, text: 'changed' }
         })
       ).toEqual({ status: 'conflict' })
-      expect(await s.enqueueMessage(completion('r1', 'new'))).toEqual({
-        status: 'conflict'
-      })
+      expect(
+        await s.enqueueMessage(completion('channel', 'new'))
+      ).toMatchObject({ status: 'queued', replay: false })
     })
 
     it('rejects non-JSON snapshots and rolls back publication on malformed delivery serialization', async () => {
@@ -630,7 +727,7 @@ export function storageContract(
       const first = required((await due(110))[0])
       await s.settleAttempt({
         kind: 'send',
-        id: 'd-r1-message',
+        id: 'd-channel-message',
         lease: first.lease,
         outcome: { status: 'retryable', errorCode: 'rate_limit' },
         now: 111,
@@ -639,24 +736,24 @@ export function storageContract(
       const second = required((await due(112))[0])
       await s.settleAttempt({
         kind: 'send',
-        id: 'd-r1-message',
+        id: 'd-channel-message',
         lease: second.lease,
         outcome: { status: 'rejected', errorCode: 'retry_budget_exhausted' },
         now: 113,
         nextDueAt: 113
       })
-      const rejected = required(await s.getOutbound('d-r1-message'))
+      const rejected = required(await s.getOutbound('d-channel-message'))
       expect(rejected.attempts).toBe(2)
       expect(
         await s.requeue({
           kind: 'delivery',
-          id: 'd-r1-message',
+          id: 'd-channel-message',
           expectedVersion: rejected.version,
           now: 114,
           acknowledgeUnknown: false
         })
       ).toMatchObject({ status: 'updated' })
-      expect(await s.getOutbound('d-r1-message')).toMatchObject({
+      expect(await s.getOutbound('d-channel-message')).toMatchObject({
         attempts: 0,
         currentChunk: 0,
         receipts: [],
@@ -685,7 +782,12 @@ export function storageContract(
       }
 
       const first = completion()
-      const second = { ...completion('r2'), endpointIds: ['other'] }
+
+      const second = {
+        ...completion('other', 'message', 'other'),
+        endpointIds: ['other']
+      }
+
       await s.enqueueMessage(first)
       await s.enqueueMessage(second)
       expect(

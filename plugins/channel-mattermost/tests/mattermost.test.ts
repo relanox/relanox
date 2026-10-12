@@ -53,7 +53,7 @@ function posted(
 function sendInput(base: string): SendInput {
   return {
     deliveryId: 'delivery',
-    requestId: 'request',
+    channelId: 'request',
     target: {
       channel: 'mattermost',
       accountId: 'bot',
@@ -167,7 +167,7 @@ it('authenticates WebSocket, deduplicates posted frames across reconnect and sen
   )
   await fixture.runtime.processDue()
   expect(dispatches).toEqual([
-    { requestId: request.snapshot.requestId, text: 'question' }
+    { channel: request.snapshot.channel.id, text: 'question' }
   ])
 
   const completed = await fixture.sendReply(

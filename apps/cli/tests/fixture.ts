@@ -6,7 +6,12 @@ import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { deadline } from '../src/deadline.js'
 import { noopObservability } from '@relanox/sdk'
-import type { RelanoxConfig, Storage } from '@relanox/sdk'
+import type {
+  RelanoxConfig,
+  Storage,
+  InboundSnapshot,
+  IngestReceipt
+} from '@relanox/sdk'
 import { sqliteStoragePlugin } from '@relanox/storage-sqlite'
 
 export async function fixture(): Promise<{
@@ -141,4 +146,15 @@ export async function runCli(path: string): Promise<{
     await stop()
     throw error
   }
+}
+
+/** A restored backlog was accepted under a real historical channel configuration. */
+export async function seedInbound(
+  database: Storage,
+  snapshot: InboundSnapshot
+): Promise<IngestReceipt> {
+  await database.registerConversations([
+    { address: snapshot.channel, endpoint: snapshot.endpoint }
+  ])
+  return database.acceptInbound(snapshot)
 }

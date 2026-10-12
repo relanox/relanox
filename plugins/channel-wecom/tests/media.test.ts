@@ -109,7 +109,7 @@ test('WeCom decrypts pure-media input into SQLite and uploads original bytes aft
   }
   expect(
     await scoped.sendMessage({
-      replyTo: task.requestId,
+      channel: task.channel.id,
       idempotencyKey: 'media-result',
       text: 'caption',
       attachments: [task.attachments[0].id]
