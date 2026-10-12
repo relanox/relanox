@@ -4,7 +4,7 @@ Use this page when a message is delayed, a reply appears more than once, or you 
 
 ## Received, accepted and delivered are different
 
-Relanox first saves an incoming message, then notifies the selected agent. An agent can accept that notification before it has prepared a reply. When the agent sends a reply, Relanox saves it in a separate delivery record.
+Relanox first saves an incoming message with its source channel, then notifies the selected Agent. The Agent can accept that notification before preparing an answer. Each send to an authorized channel creates a separate delivery record and does not require a preceding incoming message.
 
 | Status                  | What it means                                                           | What to do                                              |
 | ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -27,13 +27,15 @@ An accepted agent notification is not automatically repeated just because the ag
 
 ## Why can a later reply be waiting?
 
-Replies to the same input are sent in the order they were saved. Long text is sent in platform-sized parts, followed by any attachments. An earlier pending or unknown reply holds up later replies to that input. A rejected reply releases later replies.
+Messages to the same channel are sent in the order they were saved. Long text is sent in platform-sized parts, followed by any attachments. An earlier pending or unknown delivery holds up later messages to that channel. A rejected delivery releases later messages.
 
-Messages from separate inputs can proceed independently, including inputs using the same agent.
+Separate channels can proceed independently, including channels using the same Agent.
 
 ## How are duplicates avoided?
 
-The same message arriving again is recognized as a duplicate. By default, an agent submitting the same reply again reuses the reply already queued.
+The same platform event arriving again is recognized as a duplicate. Each Agent send without an `idempotencyKey` creates a new message, even when its content matches an earlier send.
+
+For retries, use the same key, channel, text and ordered attachments. Relanox returns the original delivery ID; changing the content with that key returns `conflict`. Use a fresh key for each new send intent. A `queued` result must not be retried with a new key. The Agent can call `relanox_status` with that `deliveryId` to check delivery without sending again.
 
 If you write an integration, see [Extending Relanox](sdk.md) for sending replies reliably and deliberately sending repeated content.
 

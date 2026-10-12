@@ -1,16 +1,16 @@
 # How messages reach your agent
 
-Relanox connects your messaging accounts to an existing dot or Grok Bot. A person sends a message in a configured conversation, your agent receives it, and the agent's replies return to that same conversation.
+Relanox connects your messaging accounts to an existing dot or Grok Bot. Each bound conversation or thread is an authorized channel. Incoming messages identify their source channel, and the Agent sends messages to a channel it can access.
 
 ## Follow a message
 
 1. **You send a message.** The channel connection receives text and supported attachments from the platform.
 2. **Relanox checks who may use the agent.** The sender must be on the account's allowlist. The conversation must have a binding to an agent; a thread needs its own matching binding. An optional binding allowlist can narrow access further.
-3. **Relanox saves the message.** Text, attachments and the original reply destination are saved in SQLite or PostgreSQL before the input is acknowledged. The same message arriving again is recognized as a duplicate.
-4. **Your agent is notified.** Relanox sends the message and attachment information to dot or Grok. The agent can read the attachments and prepare a reply in its own service.
-5. **The reply returns to the conversation.** The agent asks Relanox to send text or supported media. Relanox saves the reply, splits long text to fit the platform, then sends it and records the result.
+3. **Relanox saves the message.** Text, attachments, the source channel and the receiving Agent are saved in SQLite or PostgreSQL before the input is acknowledged. The same platform event arriving again is recognized as a duplicate.
+4. **Your Agent is notified.** Relanox sends the message, its source channel and attachment information to dot or Grok. The Agent can read the attachments and prepare an answer in its own service.
+5. **The Agent sends to a channel.** It selects the source channel or another authorized channel from `relanox_status`, then submits text or supported media. Relanox saves an independent delivery, splits long text to fit the platform, then sends it and records the result.
 
-Your Agent can send a progress update followed by a final answer where the channel permits multiple replies. WeCom HTTP callback permits one reply per incoming message, so send only the final answer in that mode. After receiving your question, it takes time to prepare a response and send it back to the conversation. See [Message status and recovery](reference/core.md) if a reply is delayed.
+The Agent can also send to an authorized channel before receiving a message, where the native platform permits it. `relanox_status` lists the available channels and explains missing native context or expired send windows. The Agent can send a progress update followed by a final answer where the channel permits multiple replies. WeCom HTTP callback permits one reply per incoming message, so send only the final answer in that mode. After receiving your question, it takes time to prepare a response and send it back to the conversation. See [Message status and recovery](reference/core.md) if a reply is delayed.
 
 ## What happens after a restart?
 
@@ -20,9 +20,9 @@ Keep Relanox running so it can receive new messages. After an interruption, chec
 
 ## Where will an old message be sent?
 
-Each received message keeps its original agent endpoint and reply destination. Changing a binding affects new messages; it does not redirect work already saved. After changing an account key, update its environment variable and restart the service. Saved messages will also use the updated key.
+Received messages keep their selected Agent endpoint. Each queued delivery separately keeps its destination and endpoint. Changing a binding does not redirect those queued deliveries. New sends use the current bindings: removing or reassigning a channel removes the former Agent's access to it and its media.
 
-Relanox uses the original message to choose the reply destination and checks the Agent's access.
+Channel IDs are generated from the binding and Agent endpoint. Use the ID from current status or incoming `source.channel.id`; do not construct one from a message ID. Changing endpoint ownership or configuration can change the channel ID. After rotating a credential under the same bot identity, update its environment variable and restart the service; saved deliveries use the updated credential.
 
 ## What do I need to run?
 

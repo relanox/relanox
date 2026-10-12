@@ -31,7 +31,7 @@ curl http://127.0.0.1:8788/metrics
 
 ## Find why a reply is missing
 
-Look for these log events in the order the message moves through Relanox. Where present, `requestId` connects an input to its later stages and `deliveryId` identifies a saved reply.
+Look for these log events in the order the message moves through Relanox. Incoming notification logs use `requestId`; outgoing queue and delivery logs use `channelId`. Administrative status identifies each saved send with `deliveryId`. A send is independent of any particular incoming request.
 
 | Event                | What to check                                                                 |
 | -------------------- | ----------------------------------------------------------------------------- |
