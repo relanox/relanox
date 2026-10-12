@@ -29,10 +29,6 @@ import {
 
 const maximumBody = 1024 * 1024
 
-const callbackMessageSchema = messageSchema.extend({
-  response_url: z.url().optional()
-})
-
 const callbackTargetSchema = z
   .object({
     chattype: z.enum(['single', 'group']),
@@ -40,16 +36,6 @@ const callbackTargetSchema = z
     eventId: z.string().min(1)
   })
   .strict()
-
-const replyStateSchema = z.object({
-  responseUrl: z.string(),
-  expiresAt: z.number(),
-  chatId: z.string(),
-  eventId: z.string(),
-  botId: z.string(),
-  streamId: z.string().default(''),
-  usedAt: z.number().optional()
-})
 
 function learnedCallback(
   address: ChannelAddress,
@@ -82,41 +68,6 @@ function matchesReply(
   )
 }
 
-function retainedStream(
-  value: unknown,
-  id: string,
-  chatId: string,
-  botId: string
-): string {
-  const previous = replyStateSchema.safeParse(value)
-  if (
-    value !== undefined &&
-    (!previous.success ||
-      previous.data.chatId !== chatId ||
-      previous.data.botId !== botId)
-  ) {
-    throw new Error('callback_identity_mismatch')
-  }
-  return previous.success ? previous.data.streamId : id
-}
-
-function responseUrl(value: string): string {
-  const url = new URL(value)
-  if (
-    url.protocol !== 'https:' ||
-    url.hostname !== 'qyapi.weixin.qq.com' ||
-    url.port ||
-    url.username ||
-    url.password ||
-    url.hash ||
-    url.pathname !== '/cgi-bin/aibot/response' ||
-    !url.searchParams.get('response_code')
-  ) {
-    throw new Error('invalid_response_url')
-  }
-  return url.href
-}
-
 async function requestBody(request: Request): Promise<string> {
   const reader = request.body?.getReader()
   if (!reader) {
@@ -142,55 +93,6 @@ async function requestBody(request: Request): Promise<string> {
   }
 }
 
-function replyBody(input: SendInput): object {
-  if (input.chunk.media || input.media || input.chunkIndex > 0) {
-    throw new Error('unsupported_callback_reply')
-  }
-  if (Buffer.byteLength(input.chunk.text) > 2048) {
-    throw new Error('text_too_long')
-  }
-
-  const content = input.chunk.text
-
-  if (Buffer.byteLength(content) > 4096) {
-    throw new Error('text_too_long')
-  }
-  return {
-    msgtype: 'markdown',
-    markdown: { content }
-  }
-}
-
-async function deliverCallback(
-  url: string,
-  body: object,
-  signal: AbortSignal
-): Promise<SendResult> {
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      redirect: 'error',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal
-    })
-
-    if (!response.ok) {
-      return { status: 'unknown', errorCode: 'callback_http_failure' }
-    }
-
-    const result = z
-      .object({ errcode: z.number().int() })
-      .parse(await response.json())
-
-    return result.errcode === 0
-      ? { status: 'sent', receipt: {} }
-      : { status: 'rejected', errorCode: `wecom_${result.errcode}` }
-  } catch {
-    return { status: 'unknown', errorCode: 'transport_uncertain' }
-  }
-}
-
 export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
   let host: ChannelHost
   let account: AccountConfig
@@ -198,9 +100,6 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
   let controller = new AbortController()
 
   let releaseSignal: (() => void) | undefined
-
-  const stateKey = (eventId: string): string =>
-    `callback:${config.botId}:${eventId}`
 
   async function receive(
     raw: unknown,
@@ -238,7 +137,7 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     ) {
       return undefined
     }
-    const message = callbackMessageSchema.parse(raw)
+    const message = messageSchema.parse(raw)
     if (message.from.userid === config.botId) {
       return undefined
     }
@@ -253,32 +152,7 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       host.discoverConversation({ chatId, senderId: message.from.userid })
       return undefined
     }
-    const url = message.response_url ? responseUrl(message.response_url) : ''
-    const key = stateKey(message.msgid)
     const id = streamId(config.botId, message.msgid)
-    const saved = await host.state.get(key)
-    const passiveId = retainedStream(saved?.value, id, chatId, config.botId)
-    if (!saved) {
-      const expiresAt = Date.now() + 60 * 60 * 1000
-
-      const result = await host.state.compareAndSet({
-        key,
-        expectedVersion: null,
-        expiresAt,
-        value: {
-          responseUrl: url,
-          expiresAt,
-          chatId,
-          eventId: message.msgid,
-          botId: config.botId,
-          streamId: id
-        }
-      })
-
-      if (result.status !== 'updated' && result.status !== 'conflict') {
-        throw new Error('callback_state_unavailable')
-      }
-    }
 
     const { text, attachments } = await receiveParts(
       message,
@@ -291,9 +165,7 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       return undefined
     }
     signal.throwIfAborted()
-    if (passiveId) {
-      await startPassive(host, passiveId, message.msgid, chatId)
-    }
+    await startPassive(host, id, message.msgid, chatId)
     await ingestText(host, {
       source: {
         channel: 'wecom',
@@ -317,7 +189,7 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       receivedAt: Date.now(),
       context: null
     })
-    return passiveId ? passiveResponse(host, passiveId, chatId) : undefined
+    return passiveResponse(host, id, chatId)
   }
 
   async function callback(request: Request): Promise<Response> {
@@ -388,58 +260,13 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     if (!matchesReply(target.data, input, config.botId)) {
       return { status: 'rejected', errorCode: 'target_identity_changed' }
     }
-    const entry = await host.state.get(stateKey(target.data.eventId))
-    const state = replyStateSchema.safeParse(entry?.value)
-    if (!entry || !state.success || state.data.expiresAt <= Date.now()) {
-      return { status: 'rejected', errorCode: 'response_url_expired' }
-    }
-    if (
-      state.data.botId !== config.botId ||
-      state.data.eventId !== target.data.eventId ||
-      state.data.chatId !== input.target.chatId
-    ) {
-      return { status: 'rejected', errorCode: 'target_identity_changed' }
-    }
-    if (state.data.usedAt !== undefined) {
-      return { status: 'rejected', errorCode: 'response_url_used' }
-    }
-    if (state.data.streamId) {
-      if (controller.signal.aborted) {
-        return { status: 'retryable', errorCode: 'callback_stopped' }
-      }
-      return stagePassive(host, state.data.streamId, input)
-    }
-    let body: object
-    let url: string
-    try {
-      body = replyBody(input)
-      url = responseUrl(state.data.responseUrl)
-    } catch {
-      return { status: 'rejected', errorCode: 'unsupported_callback_reply' }
-    }
-    if (input.signal.aborted || controller.signal.aborted) {
+    if (controller.signal.aborted) {
       return { status: 'retryable', errorCode: 'callback_stopped' }
     }
-
-    // Reserve the platform's one-use credential durably before any uncertain I/O.
-    const reserved = await host.state.compareAndSet({
-      key: entry.key,
-      expectedVersion: entry.version,
-      expiresAt: state.data.expiresAt,
-      value: { ...state.data, usedAt: Date.now() }
-    })
-
-    if (reserved.status !== 'updated') {
-      return { status: 'rejected', errorCode: 'response_url_used' }
-    }
-    return deliverCallback(
-      url,
-      body,
-      AbortSignal.any([
-        input.signal,
-        controller.signal,
-        AbortSignal.timeout(10_000)
-      ])
+    return stagePassive(
+      host,
+      streamId(config.botId, target.data.eventId),
+      input
     )
   }
 
@@ -473,38 +300,16 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       if (!prior) {
         return { status: 'unavailable', reason: 'address_unresolved' }
       }
-      const entry = await host.state.get(stateKey(prior.eventId))
-      const state = replyStateSchema.safeParse(entry?.value)
-      if (!state.success || state.data.expiresAt <= Date.now()) {
-        return { status: 'unavailable', reason: 'response_url_expired' }
-      }
-      if (
-        state.data.botId !== config.botId ||
-        state.data.chatId !== address.chatId ||
-        state.data.eventId !== prior.eventId
-      ) {
-        return { status: 'unavailable', reason: 'target_identity_changed' }
-      }
-      if (state.data.usedAt !== undefined) {
-        return { status: 'unavailable', reason: 'response_url_used' }
-      }
-      if (state.data.streamId) {
-        const reason = await passiveAvailability(
-          host,
-          state.data.streamId,
-          prior.eventId,
-          address.chatId
-        )
 
-        if (reason) {
-          return { status: 'unavailable', reason }
-        }
-      } else {
-        try {
-          responseUrl(state.data.responseUrl)
-        } catch {
-          return { status: 'unavailable', reason: 'address_unresolved' }
-        }
+      const reason = await passiveAvailability(
+        host,
+        streamId(config.botId, prior.eventId),
+        prior.eventId,
+        address.chatId
+      )
+
+      if (reason) {
+        return { status: 'unavailable', reason }
       }
       return {
         status: 'available',

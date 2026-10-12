@@ -11,7 +11,7 @@ const streamSchema = z.object({
   expiresAt: z.number(),
   content: z.string(),
   images: z.array(imageSchema),
-  deliveryId: z.string().default(''),
+  deliveryId: z.string(),
   nextChunk: z.number().int(),
   finish: z.boolean(),
   served: z.boolean()
@@ -34,6 +34,14 @@ export async function startPassive(
   const expiresAt = Date.now() + 10 * 60 * 1000
   const saved = await host.state.get(stateKey(id))
   if (saved) {
+    const state = streamSchema.parse(saved.value)
+    if (
+      state.id !== id ||
+      state.eventId !== eventId ||
+      state.chatId !== chatId
+    ) {
+      throw new Error('callback_identity_mismatch')
+    }
     return
   }
 
@@ -48,6 +56,7 @@ export async function startPassive(
       expiresAt,
       content: '',
       images: [],
+      deliveryId: '',
       nextChunk: 0,
       finish: false,
       served: false

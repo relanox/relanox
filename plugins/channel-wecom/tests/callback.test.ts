@@ -173,19 +173,53 @@ test('callback rejects an oversized reply atomically before consuming its one re
   expect(remote.requests).toEqual([])
 })
 
-test('callback rejects reply URL redirection and foreign bot identities without durable messages', async () => {
-  const host = await assemble(createWeComChannel(), callbackConfig, [
-    { chatId: 'user', senderId: 'user' }
-  ])
+test.each(['https://evil.example/steal', 'not-a-url'])(
+  'callback ignores unused response URL %s while keeping authenticated passive replies and bot identity checks',
+  async (responseUrl) => {
+    const remote = await peer(() => ({ body: { errcode: 0 } }))
+    routePlatform('https://qyapi.weixin.qq.com', remote.http)
 
-  for (const message of [
-    { ...callbackMessage(), response_url: 'https://evil.example/steal' },
-    { ...callbackMessage(), aibotid: 'foreign' }
-  ]) {
-    await host.runtime.fetch(callbackRequest(message))
+    const host = await assemble(createWeComChannel(), callbackConfig, [
+      { chatId: 'user', senderId: 'user' }
+    ])
+
+    await host.start()
+
+    const pending = await callbackReply(
+      await host.runtime.fetch(
+        callbackRequest({
+          ...callbackMessage(),
+          response_url: responseUrl
+        })
+      )
+    )
+
+    const inbound = (await records(host.storage))[0]?.snapshot
+
+    if (!inbound) {
+      throw new Error('missing_callback')
+    }
+    await host.principal().sendMessage({
+      channel: inbound.channel.id,
+      text: 'final answer'
+    })
+    await host.runtime.processDue()
+    expect(
+      await callbackReply(
+        await host.runtime.fetch(streamRefresh(pending.stream.id))
+      )
+    ).toMatchObject({ stream: { finish: true, content: 'final answer' } })
+    expect(
+      (
+        await host.runtime.fetch(
+          callbackRequest({ ...callbackMessage('foreign'), aibotid: 'foreign' })
+        )
+      ).status
+    ).toBe(503)
+    expect(await records(host.storage)).toHaveLength(1)
+    expect(remote.requests).toEqual([])
   }
-  expect(await records(host.storage)).toEqual([])
-})
+)
 
 test('callback reserves one final reply across competing deliveries without using the active response URL', async () => {
   const remote = await peer(() => ({ disconnect: true }))
@@ -211,7 +245,7 @@ test('callback reserves one final reply across competing deliveries without usin
   expect(remote.requests).toEqual([])
 })
 
-test('callback refuses changed conversation targets and expired reply credentials', async () => {
+test('callback refuses changed conversation targets, conflicting callback retries and expired passive windows', async () => {
   const remote = await peer(() => ({ body: { errcode: 0 } }))
   routePlatform('https://qyapi.weixin.qq.com', remote.http)
   const plugin = createWeComChannel()
@@ -230,12 +264,23 @@ test('callback refuses changed conversation targets and expired reply credential
   expect(
     await plugin.send({ ...input, target: { ...target, chatId: 'other' } })
   ).toMatchObject({ status: 'rejected', errorCode: 'target_identity_changed' })
+  expect(
+    (
+      await host.runtime.fetch(
+        callbackRequest({
+          ...callbackMessage(),
+          from: { userid: 'other' }
+        })
+      )
+    ).status
+  ).toBe(503)
+  expect(await records(host.storage)).toHaveLength(1)
   vi.useFakeTimers({ toFake: ['Date'] })
   try {
-    vi.setSystemTime(Date.now() + 3_600_001)
+    vi.setSystemTime(Date.now() + 600_001)
     expect(await plugin.send(input)).toMatchObject({
       status: 'rejected',
-      errorCode: 'response_url_expired'
+      errorCode: 'callback_stream_expired'
     })
   } finally {
     vi.useRealTimers()
@@ -425,47 +470,6 @@ test('callback recovers a final Markdown caption with ten images and repeats the
       await restored.runtime.fetch(streamRefresh(pending.stream.id))
     )
   ).toEqual(final)
-})
-
-test('callback preserves an existing one-use active reply credential when a pre-upgrade event is retried', async () => {
-  const remote = await peer(() => ({ body: { errcode: 0 } }))
-  routePlatform('https://qyapi.weixin.qq.com', remote.http)
-  const plugin = createWeComChannel()
-
-  const host = await assemble(plugin, callbackConfig, [
-    { chatId: 'user', senderId: 'user' }
-  ])
-
-  await host.start()
-  const expiresAt = Date.now() + 3_600_000
-  await host.storage.compareAndSetState(
-    { pluginId: 'channel-wecom', ownerId: 'bot' },
-    {
-      key: 'callback:robot:callback-1',
-      expectedVersion: null,
-      expiresAt,
-      value: {
-        responseUrl:
-          'https://qyapi.weixin.qq.com/cgi-bin/aibot/response?response_code=private-reply-key',
-        expiresAt,
-        chatId: 'user',
-        eventId: 'callback-1',
-        botId: 'robot'
-      }
-    }
-  )
-  const response = await host.runtime.fetch(callbackRequest(callbackMessage()))
-  expect(await response.text()).toBe('')
-  const target = (await records(host.storage))[0]?.snapshot.target
-  if (!target) {
-    throw new Error('missing callback')
-  }
-  const input = { ...sendInput('wecom', 'user', target.data), target }
-  expect((await plugin.send(input)).status).toBe('sent')
-  expect((await plugin.send(input)).status).toBe('rejected')
-  expect(remote.requests.map((request) => request.body)).toEqual([
-    { msgtype: 'markdown', markdown: { content: 'hello_*世界' } }
-  ])
 })
 
 test('WeCom HTTP resolves only a real unexpired unused authenticated callback capability', async () => {
