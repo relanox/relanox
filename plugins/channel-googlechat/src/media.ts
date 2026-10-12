@@ -148,9 +148,6 @@ function cardText(markdown: string): string {
   return markdownRuns(markdown)
     .map((run) => {
       let text = escapeHtml(run.text).replaceAll('\n', '<br>')
-      if (run.code || run.pre) {
-        text = `<code>${text}</code>`
-      }
       if (run.bold) {
         text = `<b>${text}</b>`
       }
