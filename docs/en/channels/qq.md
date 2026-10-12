@@ -23,6 +23,8 @@ For private messages, both the allowed sender and binding **Chat ID** use `autho
 
 QQ uses production by default; select sandbox in the configurator for a test account.
 
+For proactive sends to a bound destination, add `recipientTypes` to the downloaded account's `config`: map its **Chat ID** to `c2c` for a private user or `group` for a group. This supplies the native address type; it does not grant permission to send proactively. Enable **Allow proactive messages** only with platform permission and the recipient's receiving preference. Otherwise, a real incoming message and its remaining reply window and quota are required. Leave **Thread ID** empty. See the [manual example](../reference/channels.md#qq).
+
 ## Enable the connection
 
 Relanox connects automatically over WebSocket when it starts. Keep it running with outbound access to QQ’s API and gateway. Keep **Allow proactive messages** disabled when replying to incoming messages.

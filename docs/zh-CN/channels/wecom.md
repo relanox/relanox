@@ -44,7 +44,11 @@ node apps/cli/dist/main.js validate --config relanox.json
 
 使用 WebSocket 模式时，启动 Relanox 后会自动连接机器人。保持进程运行。
 
+需要在 Relanox 收到该会话消息前通过 WebSocket 向已绑定会话发送时，在下载配置的账号 `config` 中加入 `recipientTypes`，将会话的「聊天 ID」映射为 `single` 或 `group`。省略时，Relanox 从已验证的消息事件取得类型。使用准确的成员 userid 或群聊 ID，「话题 / 线程 ID」留空。参见[手写配置示例](../reference/channels.md#wecom)。
+
 使用 HTTP 回调模式时，先通过公网 HTTPS 地址提供 Relanox 服务，再在机器人设置中填写生成的回调 URL：`https://your-host/channels/wecom-main/webhook`。将 `wecom-main` 替换为账号 ID。Token 和 EncodingAESKey 必须与服务环境一致，URL 验证成功后保存平台设置。
+
+HTTP 模式需要真实、已验证的消息回调以及可用的回复窗口。仅配置聊天 ID 无法建立回复目标；`recipientTypes` 只用于 WebSocket 模式。
 
 两种模式都需要公网 HTTPS 地址供 dot 或 Grok 访问 MCP。
 

@@ -27,6 +27,8 @@ Read IDs from a Teams message activity: `from.id` is the allowed sender, `conver
 
 Set the bot messaging endpoint to `https://relay.example.com/channels/msteams-main/activities`, then start Relanox. `trustedServiceOrigins` entries are exact HTTPS origins, such as `https://smba.trafficmanager.net`, without a path or trailing slash; use the values for your deployment.
 
+Sending to a bound conversation also needs its Bot Connector service address and conversation metadata. Relanox records these from authenticated `message`, `conversationUpdate` or `installationUpdate` activities whose sender is allowed and whose bot and tenant match the account. An installation or conversation activity can therefore make the destination available before its first message. A chat ID alone is insufficient; the service address must pass `trustedServiceOrigins` checks.
+
 ## Send your first message
 
 Open the installed bot’s personal chat and send “Hello”. For a group/channel binding, add the bot and mention it in that conversation. Use the tenant and user you configured.

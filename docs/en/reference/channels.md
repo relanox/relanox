@@ -4,6 +4,33 @@ This chapter contains manual configuration and protocol details. For account pre
 
 Merge these fragments into `relay.accounts` and `relay.bindings` in a complete configuration. Replace sample IDs and Agent names and set referenced environment variables in the service environment. See [Configuration schema](configuration.md) for the complete file.
 
+## Destination availability {#destinations}
+
+A binding selects an account, `chatId` and optional `threadId`. The channel resolves that destination using its native protocol. A destination can be addressed without a prior incoming message when the configured IDs, account permissions and platform requirements are sufficient. Event-dependent destinations need authentic platform metadata; entering IDs does not create a message, reply window or thread anchor.
+
+| Channel         | Native destination and requirements                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Telegram        | Chat ID, with a topic ID where applicable; the bot must have access to the chat.                                                                                                     |
+| Discord         | Channel ID, with a thread channel ID where applicable; the bot needs access and send permissions.                                                                                    |
+| Slack           | Conversation ID; omit `threadId` for ordinary messages, or use a real root message timestamp for a thread.                                                                           |
+| Feishu / Lark   | Chat ID; a thread additionally needs a real message anchor from an authenticated event for that destination.                                                                         |
+| WeCom WebSocket | Member userid or group chat ID; `recipientTypes` can specify `single` or `group` before an incoming message.                                                                         |
+| WeCom HTTP      | An authenticated message callback with an available reply window; a configured chat ID alone is insufficient.                                                                        |
+| DingTalk        | Staff user ID or open conversation ID; `recipientTypes` can specify `single` or `group`. Independent message API permissions are required.                                           |
+| QQ              | User or group OpenID and recipient type. Passive sends need a real incoming message with remaining time and quota; proactive sends require `allowProactive` and platform permission. |
+| Microsoft Teams | Conversation ID and authenticated conversation metadata, including a trusted service address; installation or conversation activities can establish it without a message.            |
+| WhatsApp        | Customer number and a real incoming message within the 24-hour service window. Template sends outside that window are unavailable.                                                   |
+| Google Chat     | Full space name and optional thread name; the app must have access to the space.                                                                                                     |
+| LINE            | User, group or room ID with the account's push-message permissions and quota.                                                                                                        |
+| Matrix          | Joined room ID and optional root event ID for a thread; only unencrypted rooms are supported.                                                                                        |
+| Mattermost      | Channel ID and optional root post ID for a thread; the bot needs access to the channel.                                                                                              |
+| Signal          | `direct:` recipient or `group:` ID, using the configured signal-cli account.                                                                                                         |
+| IRC             | Channel or `dm:<folded-nick>` on the configured server; the bot must be connected and join configured channels.                                                                      |
+
+`recipientTypes` is an optional account `config` map keyed by the binding's exact `chatId`. It is supported by WeCom WebSocket, DingTalk and QQ. Without it, those channels can use recipient types learned from authenticated messages. The map does not bypass platform permissions, reply windows or quotas. WeCom, DingTalk, QQ, WhatsApp, LINE, Signal and IRC do not support `threadId`.
+
+Local protocol tests verify address resolution and generated requests; they do not establish live-account compatibility. Use each channel guide to verify the configured account with the platform.
+
 ## Markdown replies {#markdown}
 
 Agent reply text is always Markdown; there is no formatting-mode setting. Relanox uses the platform's native Markdown or converts it to the formatting that platform supports. Long replies are split with complete code fences, emphasis and link destinations, using the destination's size limits. Raw HTML is displayed as text when generating HTML or structured formatting.
@@ -46,7 +73,11 @@ User setup: [Connect DingTalk application robot](../channels/dingtalk.md).
         "clientSecret": {
           "env": "DINGTALK_APP_SECRET"
         },
-        "robotCode": "application-robot-code"
+        "robotCode": "application-robot-code",
+        "recipientTypes": {
+          "staff-user-id": "single",
+          "open-conversation-id": "group"
+        }
       }
     }
   ],
@@ -61,6 +92,8 @@ User setup: [Connect DingTalk application robot](../channels/dingtalk.md).
 ```
 
 Generated audio needs a duration; video also needs an image preview and a duration.
+
+The `recipientTypes` entries let the account address the corresponding bound staff member or group before receiving a message there. Use a staff ID for `single` and an open conversation ID for `group`.
 
 ## Discord {#discord}
 
@@ -138,6 +171,8 @@ Bindings match the exact chat and thread IDs. Include **Thread ID** when your te
 ### Protocol and command details
 
 Relanox discovers the bot open ID at startup.
+
+For a thread, Relanox also needs an anchor message learned from an authenticated event with the same account, chat and thread. A configured `threadId` alone cannot establish it. Ordinary chat sends use the chat ID directly.
 
 Generated audio needs Opus/Ogg and a duration; video needs MP4 and a duration.
 
@@ -358,6 +393,8 @@ Bindings match the exact chat and thread IDs. Include **Thread ID** when your te
 
 For a single-tenant bot, set `tokenUrl` to `https://login.microsoftonline.com/<application-tenant-id>/oauth2/v2.0/token`. This application tenant may differ from the allowed Teams tenant in `tenantId`. The channel uses public-cloud Bot Framework authentication.
 
+Relanox records the conversation's native metadata from authenticated `message`, `conversationUpdate` and `installationUpdate` activities with an allowed sender and matching bot and tenant. Installation or conversation activities can establish the destination before its first message. The stored service URL must still match `trustedServiceOrigins`; a binding does not authorize an arbitrary service URL.
+
 ## QQ robot {#qq}
 
 User setup: [Connect QQ robot](../channels/qq.md).
@@ -374,7 +411,11 @@ User setup: [Connect QQ robot](../channels/qq.md).
         "clientSecret": {
           "env": "QQ_CLIENT_SECRET"
         },
-        "allowProactive": false
+        "allowProactive": false,
+        "recipientTypes": {
+          "user-openid": "c2c",
+          "group-openid": "group"
+        }
       }
     }
   ],
@@ -389,6 +430,8 @@ User setup: [Connect QQ robot](../channels/qq.md).
 ```
 
 QQ uses the production environment by default. For the sandbox, add `"environment": "sandbox"` to the account configuration. Relanox selects the native API and token endpoints automatically.
+
+`recipientTypes` identifies private and group destinations. With `allowProactive: false`, a real incoming message is still required: private replies have a 60-minute window and four slots; group replies have a five-minute window and five slots. Text and each attachment consume separate slots. Sending without an incoming message requires a known recipient type, `allowProactive: true`, platform permission and the recipient's receiving preference.
 
 ## Signal with signal-cli {#signal}
 
@@ -465,6 +508,8 @@ Bindings match the exact chat and thread IDs. Include **Thread ID** when your te
 
 Relanox discovers the workspace and bot user IDs from the bot token at startup. Bot `auth.test` can also identify them.
 
+The example binds a specific thread using its real root timestamp. Omit `threadId` to bind ordinary channel or DM messages and send directly to that conversation. Ordinary incoming messages have no thread ID; only replies carrying `thread_ts` match a thread binding.
+
 ## Telegram {#telegram}
 
 User setup: [Connect Telegram](../channels/telegram.md).
@@ -514,6 +559,10 @@ User setup: [Connect WeCom intelligent robot](../channels/wecom.md).
         "botId": "intelligent-robot-id",
         "secret": {
           "env": "WECOM_BOT_SECRET"
+        },
+        "recipientTypes": {
+          "staff-userid": "single",
+          "group-chatid": "group"
         }
       }
     }
@@ -528,7 +577,7 @@ User setup: [Connect WeCom intelligent robot](../channels/wecom.md).
 }
 ```
 
-Omitting `mode` keeps the existing WebSocket configuration valid. For HTTP callback mode, replace the account `config` above with:
+`mode` defaults to `websocket`. The optional `recipientTypes` map lets WebSocket sends address bound members or groups before a message arrives. For HTTP callback mode, replace the account `config` above with:
 
 ```json
 {
@@ -539,7 +588,7 @@ Omitting `mode` keeps the existing WebSocket configuration valid. For HTTP callb
 }
 ```
 
-Register `/channels/{accountId}/webhook` on your public HTTPS origin. New callbacks use [WeCom passive replies](https://developer.work.weixin.qq.com/document/path/101031): the initial signed encrypted response supplies a `stream.id`, and authenticated `msgtype: "stream"` refresh callbacks retrieve one complete final reply. Relanox persists the reply and its images so refreshes can continue after a process restart. `finish: true` carries Markdown `content` and up to 10 `msg_item` images with Base64 data and the MD5 of the original bytes. Text is limited to 20,480 UTF-8 bytes; this implementation accepts PNG/JPEG images up to 10 MiB and retains the pending reply for ten minutes. Delivery remains pending until a final refresh is served; a repeated refresh returns the same final reply. Audio, video and files cannot be sent through this HTTP reply protocol. Existing saved active-reply destinations remain usable for one text reply within their original one-hour deadline. The WebSocket discovery command below does not apply to callback accounts.
+Register `/channels/{accountId}/webhook` on your public HTTPS origin. An authenticated message callback establishes the reply destination; configuring a chat ID cannot create one. Callbacks use [WeCom passive replies](https://developer.work.weixin.qq.com/document/path/101031): the initial signed encrypted response supplies a `stream.id`, and authenticated `msgtype: "stream"` refresh callbacks retrieve one complete final reply. Relanox persists the reply and its images so refreshes can continue after a process restart. `finish: true` carries Markdown `content` and up to 10 `msg_item` images with Base64 data and the MD5 of the original bytes. Text is limited to 20,480 UTF-8 bytes; this implementation accepts PNG/JPEG images up to 10 MiB and retains the pending reply for ten minutes. Delivery remains pending until a final refresh is served; a repeated refresh returns the same final reply. Audio, video and files cannot be sent through this HTTP reply protocol. `recipientTypes` and the WebSocket discovery command below do not apply to callback accounts.
 
 ### Protocol and command details
 

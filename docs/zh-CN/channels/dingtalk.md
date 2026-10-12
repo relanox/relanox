@@ -21,6 +21,8 @@
 
 允许发送者使用回调中的不透明 `senderId`，包括前缀。私聊 「聊天 ID」使用 `senderStaffId`，群聊使用 `conversationId`（开放会话 ID）。从应用机器人的消息事件取得这些值。发送者 ID 和私聊 ID 用途不同，请分别复制对应字段。
 
+需要在 Relanox 收到该会话消息前向已绑定目标发送时，在下载配置的账号 `config` 中加入 `recipientTypes`：将「聊天 ID」映射为员工单聊的 `single` 或开放会话群聊的 `group`。省略此配置时，Relanox 从已验证的消息事件取得接收方类型。机器人仍需独立发送消息 API 权限和目标访问权限。「话题 / 线程 ID」留空。参见[手写配置示例](../reference/channels.md#dingtalk)。
+
 ## 启用连接
 
 保存账号配置后启动 Relanox。它会使用应用凭据自动建立 Stream 连接，请保持出站 HTTPS 和 WebSocket 可用。

@@ -27,6 +27,8 @@
 
 将机器人消息端点设为 `https://relay.example.com/channels/msteams-main/activities`，然后启动 Relanox。`trustedServiceOrigins` 填完整 HTTPS 来源，如 `https://smba.trafficmanager.net`，不带路径或尾斜杠；使用你所在部署的值。
 
+向已绑定会话发送还需要 Bot Connector 服务地址和会话元数据。Relanox 从已验证的 `message`、`conversationUpdate` 或 `installationUpdate` Activity 保存这些信息，要求发送者已获允许，且机器人和租户与账号匹配。因此，安装或会话事件可以在第一条消息之前建立可用目标。仅有聊天 ID 不足以发送；服务地址还必须通过 `trustedServiceOrigins` 校验。
+
 ## 发送第一条消息
 
 打开已安装机器人的个人聊天，发送“你好”。群聊或频道绑定需加入机器人并在该会话 @ 它。使用配置中的租户和用户。

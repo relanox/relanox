@@ -4,6 +4,33 @@
 
 以下片段需要合并到完整配置的 `relay.accounts` 与 `relay.bindings` 中。替换示例 ID 和 Agent 名称，在服务环境中设置引用的环境变量。完整文件见[配置结构](configuration.md)。
 
+## 目标可用条件 {#destinations}
+
+会话绑定指定账号、`chatId` 和可选的 `threadId`，渠道通过原生协议解析该目标。配置的 ID、账号权限和平台条件充分时，可以在尚无来信的情况下发送。依赖事件的目标必须具备真实平台元数据；填写 ID 不会创建消息、回复窗口或消息串锚点。
+
+| 渠道               | 原生目标和条件                                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Telegram           | 聊天 ID，有话题时还需话题 ID；机器人必须能访问该聊天。                                                         |
+| Discord            | 频道 ID，有消息串时还需消息串频道 ID；机器人需要访问和发送权限。                                               |
+| Slack              | 会话 ID；普通消息省略 `threadId`，消息串使用真实根消息的时间戳。                                               |
+| 飞书 / Lark        | 聊天 ID；消息串还需要该目标已验证事件中的真实消息锚点。                                                        |
+| 企业微信 WebSocket | 成员 userid 或群聊 ID；可通过 `recipientTypes` 在来信前指定 `single` 或 `group`。                              |
+| 企业微信 HTTP      | 已验证的消息回调以及可用回复窗口；仅有聊天 ID 不足以发送。                                                     |
+| 钉钉               | 员工 ID 或开放会话 ID；可通过 `recipientTypes` 指定 `single` 或 `group`，仍需独立发送消息 API 权限。           |
+| QQ                 | 用户或群组 OpenID 及接收方类型。被动回复需真实来信且时间和额度仍有效；主动发送需 `allowProactive` 和平台权限。 |
+| Microsoft Teams    | 会话 ID 和已验证的会话元数据，包括可信服务地址；安装或会话事件可在来信前建立目标。                             |
+| WhatsApp           | 客户号码及 24 小时服务窗口内的真实来信；不支持窗口外的模板发送。                                               |
+| Google Chat        | 完整空间名和可选消息串名；应用必须能访问该空间。                                                               |
+| LINE               | 用户、群组或房间 ID，以及账号的推送消息权限和额度。                                                            |
+| Matrix             | 已加入的房间 ID，以及可选消息串根事件 ID；只支持未加密房间。                                                   |
+| Mattermost         | 频道 ID 和可选消息串根帖 ID；机器人必须能访问该频道。                                                          |
+| Signal             | `direct:` 接收方或 `group:` ID，使用配置的 signal-cli 账号。                                                   |
+| IRC                | 配置服务器上的频道或 `dm:<folded-nick>`；机器人必须已连接并加入配置的频道。                                    |
+
+`recipientTypes` 是可选的账号 `config` 映射，以绑定中的准确 `chatId` 为键。企业微信 WebSocket、钉钉和 QQ 支持此配置；省略时可使用已验证消息中取得的接收方类型。该映射不会绕过平台权限、回复窗口或额度。企业微信、钉钉、QQ、WhatsApp、LINE、Signal 和 IRC 不支持 `threadId`。
+
+本地协议测试验证地址解析和生成请求，不能证明真实账号兼容性。请按各渠道指南在平台上验证配置的账号。
+
 ## Markdown 回复 {#markdown}
 
 Agent 回复文字统一使用 Markdown，无需选择格式模式。Relanox 使用平台原生 Markdown，或转换为该平台支持的格式。长回复按目标平台的长度限制分段，保留完整代码围栏、强调标记和链接地址。生成 HTML 或结构化格式时，原始 HTML 按文字显示。
@@ -46,7 +73,11 @@ Agent 回复文字统一使用 Markdown，无需选择格式模式。Relanox 使
         "clientSecret": {
           "env": "DINGTALK_APP_SECRET"
         },
-        "robotCode": "application-robot-code"
+        "robotCode": "application-robot-code",
+        "recipientTypes": {
+          "staff-user-id": "single",
+          "open-conversation-id": "group"
+        }
       }
     }
   ],
@@ -59,6 +90,8 @@ Agent 回复文字统一使用 Markdown，无需选择格式模式。Relanox 使
   ]
 }
 ```
+
+`recipientTypes` 中的条目使账号能在尚无来信时寻址对应的已绑定员工或群组。`single` 使用员工 ID，`group` 使用开放会话 ID。
 
 ## Discord {#discord}
 
@@ -132,6 +165,8 @@ Relanox 启动时会自动查询机器人身份和 Gateway 地址。
 会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 「话题 / 线程 ID」；省略它时匹配没有消息串 ID 的消息。
 
 Relanox 启动时会自动查询机器人 open ID。
+
+消息串还需要从已验证事件取得的消息锚点，且账号、聊天和消息串必须匹配。仅配置 `threadId` 无法建立锚点；普通会话发送直接使用聊天 ID。
 
 生成的音频需为 Opus/Ogg 并带时长，视频需为 MP4 并带时长。
 
@@ -342,6 +377,8 @@ Relanox 启动时会自动查询机器人用户 ID。
 
 会话绑定按会话和消息串 ID 精确匹配。测试消息包含消息串 ID 时，需要填写 「话题 / 线程 ID」；省略它时匹配没有消息串 ID 的消息。
 
+Relanox 从已验证的 `message`、`conversationUpdate` 和 `installationUpdate` Activity 保存原生会话元数据，要求发送者已获允许，且机器人和租户匹配。安装或会话事件可在第一条消息前建立目标。保存的服务 URL 仍必须匹配 `trustedServiceOrigins`；会话绑定不会授权任意服务 URL。
+
 ## QQ 机器人 {#qq}
 
 用户操作：[配置 QQ 机器人](../channels/qq.md)。
@@ -358,7 +395,11 @@ Relanox 启动时会自动查询机器人用户 ID。
         "clientSecret": {
           "env": "QQ_CLIENT_SECRET"
         },
-        "allowProactive": false
+        "allowProactive": false,
+        "recipientTypes": {
+          "user-openid": "c2c",
+          "group-openid": "group"
+        }
       }
     }
   ],
@@ -373,6 +414,8 @@ Relanox 启动时会自动查询机器人用户 ID。
 ```
 
 QQ 默认使用正式环境。需要沙箱时，在账号配置中加入 `"environment": "sandbox"`。Relanox 会自动选择原生 API 和令牌地址。
+
+`recipientTypes` 标识私聊和群聊目标。`allowProactive: false` 时仍需真实来信：私聊回复窗口为 60 分钟、4 条额度，群聊为 5 分钟、5 条额度。文字和每个附件分别占用额度。没有来信时发送，需已知的接收方类型、`allowProactive: true`、平台权限和目标的接收许可。
 
 ## Signal 与 signal-cli {#signal}
 
@@ -449,6 +492,8 @@ Relanox 启动时会用机器人 Token 自动查询工作区和机器人用户 I
 
 机器人 Token 调用 `auth.test` 可取得工作区和机器人用户身份。
 
+示例使用真实根消息时间戳绑定特定消息串。省略 `threadId` 时，绑定普通频道或私聊消息，直接向该会话发送。普通来信没有消息串 ID；只有带 `thread_ts` 的回复会匹配消息串绑定。
+
 ## Telegram {#telegram}
 
 用户操作：[配置 Telegram](../channels/telegram.md)。
@@ -498,6 +543,10 @@ Relanox 启动时会用机器人 Token 自动查询工作区和机器人用户 I
         "botId": "intelligent-robot-id",
         "secret": {
           "env": "WECOM_BOT_SECRET"
+        },
+        "recipientTypes": {
+          "staff-userid": "single",
+          "group-chatid": "group"
         }
       }
     }
@@ -512,7 +561,7 @@ Relanox 启动时会用机器人 Token 自动查询工作区和机器人用户 I
 }
 ```
 
-省略 `mode` 时仍使用原有 WebSocket 配置。使用 HTTP 回调时，将上方账号的 `config` 替换为：
+`mode` 默认为 `websocket`。可选的 `recipientTypes` 映射让 WebSocket 在来信前寻址已绑定的成员或群组。使用 HTTP 回调时，将上方账号的 `config` 替换为：
 
 ```json
 {
@@ -523,7 +572,7 @@ Relanox 启动时会用机器人 Token 自动查询工作区和机器人用户 I
 }
 ```
 
-在公网 HTTPS 地址下注册 `/channels/{accountId}/webhook`。新的回调使用[企业微信被动回复协议](https://developer.work.weixin.qq.com/document/path/101031)：首次返回签名加密响应并提供 `stream.id`，随后通过已验证的 `msgtype: "stream"` 刷新回调取得一次完整最终回复。回复和图片持久化保存，进程重启后仍可继续刷新。`finish: true` 的响应包含 Markdown `content`，以及最多 10 个带 Base64 图片数据和原始字节 MD5 的 `msg_item`。文字上限为 20,480 个 UTF-8 字节；当前实现接受 10 MiB 内的 PNG/JPEG 图片，等待回复保留十分钟。最终刷新返回前，投递状态保持等待；重复刷新返回同一最终回复。此 HTTP 回复协议不支持发送音频、视频和文件。此前保存的主动回复地址仍可在原有一小时有效期内回复一次文本。下方 WebSocket 发现命令不适用于回调账号。
+在公网 HTTPS 地址下注册 `/channels/{accountId}/webhook`。已验证的消息回调建立回复目标；填写聊天 ID 无法创建该目标。回调使用[企业微信被动回复协议](https://developer.work.weixin.qq.com/document/path/101031)：首次返回签名加密响应并提供 `stream.id`，随后通过已验证的 `msgtype: "stream"` 刷新回调取得一次完整最终回复。回复和图片持久化保存，进程重启后仍可继续刷新。`finish: true` 的响应包含 Markdown `content`，以及最多 10 个带 Base64 图片数据和原始字节 MD5 的 `msg_item`。文字上限为 20,480 个 UTF-8 字节；当前实现接受 10 MiB 内的 PNG/JPEG 图片，等待回复保留十分钟。最终刷新返回前，投递状态保持等待；重复刷新返回同一最终回复。此 HTTP 回复协议不支持发送音频、视频和文件。`recipientTypes` 和下方 WebSocket 发现命令不适用于回调账号。
 
 ### 协议与命令细节
 

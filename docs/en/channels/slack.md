@@ -16,7 +16,9 @@ Open the [connection configurator](../connect.md), select **Slack**, and enter t
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#slack).
 
-Open the member profile and use Copy member ID for **Allowed user IDs**. Open channel details and copy the channel ID for **Chat ID**; for DMs, obtain the conversation ID through the app’s conversation information API. For a specific thread, set **Thread ID** to the root message’s `ts`; replies in that thread carry it as `thread_ts`. Create a root message first and copy its message link. For a link ending in `p1710000000000001`, the root timestamp is `1710000000.000001` (insert a decimal point before the final six digits). Use that timestamp as **Thread ID**, save/restart Relanox, then reply in that thread. Every received Slack message has a thread ID; each thread needs its own exact binding.
+Open the member profile and use Copy member ID for **Allowed user IDs**. Open channel details and copy the channel ID for **Chat ID**; for DMs, obtain the conversation ID through the app’s conversation information API. Leave **Thread ID** empty for ordinary channel or DM messages. Replies to that binding appear directly in the conversation.
+
+For a specific thread, set **Thread ID** to the root message’s `ts`; replies in that thread carry it as `thread_ts`. Create a root message first and copy its message link. For a link ending in `p1710000000000001`, the root timestamp is `1710000000.000001` (insert a decimal point before the final six digits). Use that timestamp as **Thread ID**, save/restart Relanox, then reply in that thread. Each thread needs its own exact binding; a binding without **Thread ID** does not select thread replies.
 
 ## Enable the connection
 
@@ -24,7 +26,7 @@ For HTTP reception, set the Events request URL to `https://relay.example.com/cha
 
 ## Send your first message
 
-Reply “Hello” or mention the app inside the configured thread, depending on your subscribed events. Replies appear in the message thread; follow the thread to see the answer.
+Send “Hello” or mention the app in the configured conversation, depending on your subscribed events. If you configured a thread binding, reply inside that thread and open it to see the answer.
 
 ## Images and files
 
