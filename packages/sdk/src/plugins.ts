@@ -117,6 +117,12 @@ export type ChannelPlugin<C = Json> = {
     /** Reject oversized replies before sending when a platform limits per-message calls. */
     readonly maxChunksPerMessage?: number
     readonly maxAttachmentsPerMessage?: number
+    /** Ordered native text/image blocks; other media use sequential delivery. */
+    readonly richText?: {
+      readonly maxParts: number
+      /** Aggregate source text per rich chunk, measured using lengthUnit. */
+      readonly maxTextLength: number
+    }
     readonly media?: {
       readonly receive: readonly MediaKind[]
       readonly send: readonly MediaKind[]
