@@ -21,6 +21,101 @@ function firstTraffic(traffic: readonly Traffic[]): Traffic {
   return first
 }
 
+// Protect the network MCP/upload-to-channel contract: unit planner and native renderer tests
+// Cannot catch a tool transport dropping Markdown references or appending their media twice.
+test('uploads through MCP and sends an image at its Markdown position over the native channel', async () => {
+  const fx = await fixture(cleanups)
+  const runtime = await fx.start()
+  const client = await fx.client(runtime, 'alpha')
+
+  const status = await client.callTool({
+    name: 'relanox_status',
+    arguments: {}
+  })
+
+  const channels = z
+    .object({
+      channels: z.array(
+        z.object({
+          channel: z.object({ id: z.string() }),
+          richText: z.string()
+        })
+      )
+    })
+    .parse(status.structuredContent).channels
+
+  const channel = channels[0]?.channel.id
+  if (!channel) {
+    throw new Error('Expected authorized channel before first incoming message')
+  }
+  expect(channels[0]?.richText).toBe('sequential')
+  const bytes = new Uint8Array([1, 2, 3])
+
+  const upload = await client.callTool({
+    name: 'relanox_create_upload',
+    arguments: {
+      channel,
+      kind: 'image',
+      mimeType: 'image/png',
+      fileName: 'inline.png',
+      size: bytes.length
+    }
+  })
+
+  const ticket = z
+    .object({
+      uploadUrl: z.string(),
+      headers: z.record(z.string(), z.string())
+    })
+    .parse(upload.structuredContent)
+
+  const uploaded = await fetch(ticket.uploadUrl, {
+    method: 'PUT',
+    headers: ticket.headers,
+    body: bytes
+  })
+
+  expect(uploaded.status).toBe(200)
+
+  const { fileId } = z
+    .object({ fileId: z.string() })
+    .parse(await uploaded.json())
+
+  const text = `Before![inline](relanox://media/${fileId})After`
+  const receipt = await sendMessage(client, channel, text, 'rich-network')
+  expect(receipt.replay).toBe(false)
+  await expect
+    .poll(async () => (await runtime.core.status()).deliveries[0]?.status, {
+      timeout: 5000
+    })
+    .toBe('sent')
+  expect(fx.telegram.traffic.map((item) => item.url)).toEqual([
+    '/bot123:telegram-secret/sendMessage',
+    '/bot123:telegram-secret/sendPhoto',
+    '/bot123:telegram-secret/sendMessage'
+  ])
+  expect(JSON.parse(fx.telegram.traffic[0]?.body ?? '')).toMatchObject({
+    text: 'Before',
+    chat_id: '101',
+    message_thread_id: 9
+  })
+  expect(fx.telegram.traffic[1]?.body).toContain('filename="inline.png"')
+  expect(fx.telegram.traffic[1]?.headers['content-type']).toMatch(
+    /^multipart\/form-data;/u
+  )
+  expect(JSON.parse(fx.telegram.traffic[2]?.body ?? '')).toMatchObject({
+    text: 'After',
+    chat_id: '101',
+    message_thread_id: 9
+  })
+  expect(await sendMessage(client, channel, text, 'rich-network')).toEqual({
+    ...receipt,
+    replay: true
+  })
+  expect(fx.telegram.traffic).toHaveLength(3)
+  expect(fx.routine.traffic).toHaveLength(0)
+})
+
 test('native HTTP, official network MCP and resident worker relay a scoped final to its original Telegram target', async () => {
   const fx = await fixture(cleanups)
   const runtime = await fx.start()
