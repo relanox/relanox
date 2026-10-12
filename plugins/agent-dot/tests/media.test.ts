@@ -12,7 +12,7 @@ import type {
 } from '@relanox/sdk'
 import { createGrokAgentPlugin } from '../../agent-grok/src/index.js'
 import { createDotAgentPlugin } from '../src/index.js'
-import { fixture, mcp } from './fixture.js'
+import { fixture, mcp, dotMcp, password } from './fixture.js'
 
 const cleanups: (() => Promise<void>)[] = []
 beforeEach(() => {
@@ -52,9 +52,15 @@ async function setup(agent: AgentId): Promise<{
   reopen(this: void, next: AgentPlugin<unknown>): Promise<void>
   close(this: void): Promise<void>
 }> {
+  if (agent === 'dot') {
+    process.env.AGENT_TEST_TOKEN_0 = password
+    process.env.AGENT_TEST_TOKEN_1 = `${password}-endpoint1`
+  }
+  const agentMcp = agent === 'dot' ? dotMcp : mcp
+
   const config =
     agent === 'dot'
-      ? { mcp: mcp() }
+      ? { mcp: agentMcp() }
       : {
           mcp: mcp(),
           routineUrl: { env: 'UNUSED_ROUTINE_URL' },
@@ -66,7 +72,7 @@ async function setup(agent: AgentId): Promise<{
 
   const fx = await fixture(agent, plugin, [
     config,
-    { ...config, mcp: mcp('AGENT_TEST_TOKEN_1') }
+    { ...config, mcp: agentMcp('AGENT_TEST_TOKEN_1') }
   ])
 
   cleanups.push(async () => fx.close())
@@ -125,7 +131,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
           }
         ]
       })
-      const other = await fx.client('secret-1', 1)
+      const other = await fx.client(agent === 'dot' ? undefined : 'secret-1', 1)
       expect(
         await other.callTool({ name: 'relanox_read_media', arguments: input })
       ).toMatchObject({
@@ -252,7 +258,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
       })
     )
 
-    expect(uri).not.toContain('secret-0')
+    expect(uri).not.toContain(agent === 'dot' ? password : 'secret-0')
     expect(uri).toMatch(
       /^https:\/\/relanox\.test\/agents\/(?:dot|grok)\/media\/endpoint0\//u
     )
@@ -313,7 +319,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
     }
     const client = await fx.client()
     const input = { replyTo: receipt.requestId, mediaId: media.id }
-    const other = await fx.client('secret-1', 1)
+    const other = await fx.client(agent === 'dot' ? undefined : 'secret-1', 1)
     expect(
       await other.callTool({ name: 'relanox_read_media', arguments: input })
     ).toMatchObject({ isError: true })

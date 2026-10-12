@@ -35,10 +35,7 @@ export function createEventsHandler(
   }
   const publicUrl = agentHost.publicUrl
 
-  const authenticate =
-    config.mcp.auth === 'oauth'
-      ? mountOAuth(agentHost, endpoint.id, config)
-      : undefined
+  const authenticate = mountOAuth(agentHost, endpoint.id, config)
 
   const scopedHost = agentHost.forPrincipal({
     subject: endpoint.id,
@@ -153,7 +150,7 @@ export function createEventsHandler(
         body.result.capabilities.events = {}
         changed = true
       }
-      if (authenticate && body.result?.tools) {
+      if (body.result?.tools) {
         const securitySchemes = [{ type: 'oauth2', scopes: ['relanox'] }]
         for (const tool of body.result.tools) {
           const { _meta: metadata } = tool

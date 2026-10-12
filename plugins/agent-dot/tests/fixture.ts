@@ -24,6 +24,7 @@ import type {
   Storage,
   IngestReceipt
 } from '@relanox/sdk'
+import { authorizeWithSdk } from './oauth-sdk.js'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
 
 export type Traffic = {
@@ -255,10 +256,22 @@ export async function fixture(
       })
     },
     async client(
-      token = 'secret-0',
+      token,
       endpoint = 0,
       modern = agent === 'dot'
     ): Promise<Client> {
+      const accessToken =
+        token ??
+        (agent === 'dot'
+          ? (
+              await authorizeWithSdk(
+                core,
+                endpoint,
+                process.env[`AGENT_TEST_TOKEN_${endpoint}`]
+              )
+            ).access_token
+          : 'secret-0')
+
       const client = new Client(
         { name: 'protocol-test', version: '1.0.0' },
         modern ? { versionNegotiation: { mode: { pin: '2026-07-28' } } } : {}
@@ -268,10 +281,12 @@ export async function fixture(
       await client.connect(
         new StreamableHTTPClientTransport(
           new URL(
-            `http://relanox.test/agents/${agent}/mcp/endpoint${endpoint}`
+            `https://relanox.test/agents/${agent}/mcp/endpoint${endpoint}`
           ),
           {
-            requestInit: { headers: { Authorization: `Bearer ${token}` } },
+            requestInit: {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            },
             fetch: async (input, init): Promise<Response> => {
               const response = await core.fetch(new Request(input, init))
               if (
@@ -323,3 +338,13 @@ export function mcp(token = 'AGENT_TEST_TOKEN_0'): {
     allowedOrigins: []
   }
 }
+
+export function dotMcp(token = 'AGENT_TEST_TOKEN_0'): {
+  token: { env: string }
+  allowedOrigins: never[]
+} {
+  return { token: { env: token }, allowedOrigins: [] }
+}
+
+export { authorizeWithSdk } from './oauth-sdk.js'
+export { password } from './oauth-peer.js'
