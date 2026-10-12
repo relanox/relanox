@@ -24,15 +24,57 @@ Grok Bot 可以调用 `relanox_create_upload`，把云电脑中的文件通过 P
 
 每次新发送使用新的 `idempotencyKey`，例如新生成的 UUID。重试同一次发送时，复用该键、相同文字以及内容和顺序均相同的附件。不提供键时，每次调用都会创建新消息，即使内容完全相同。`queued` 表示已保存等待投递；使用返回的 `deliveryId` 调用 `relanox_status` 查看进度，不要用新键再次发送。
 
+## 按 Markdown 顺序发送媒体 {#ordered-markdown-media}
+
+`relanox_send_message.text` 支持在 Markdown 链接和图片中使用内部媒体引用：
+
+```markdown
+第一个结果：
+
+![结果图片](relanox://media/12345678-1234-1234-1234-123456789abc)
+
+这里继续解释。
+
+[下载报告](relanox://attachment/1)
+```
+
+`relanox://media/<UUID>` 选择发送目标的已授权 `channel` 中收到或上传的媒体。Relanox 自动解析引用，无需为了引用再把它加入 `attachments`。`relanox://attachment/<number>` 选择本次发送提供的文件，先计数 `attachments`，再计数 dot 的 `files`，从 1 开始。序号必须对应已有条目。这些 URI 是内部引用，不是下载地址。
+
+图片使用 `![说明](...)`，独立文件使用 `[文件名](...)`。图片语法要求媒体类型为图片；链接会独立发送对应媒体，把标签作为前置文字。每个文件只能引用一次。重复引用，包括通过 ID 和序号选中同一个文件，会在入队前失败。未引用的附件按提供顺序放在 Markdown 内容之后。
+
+格式错误或越界引用返回 `invalid_media_reference`，图片语法选择其他媒体返回 `invalid_image_reference`，重复文件返回 `duplicate_attachment`。渠道归属和已有媒体限制仍适用。
+
+支持行内链接、图片和引用式定义。代码片段、代码围栏、转义语法和 HTML 标签属性不会创建媒体引用。普通 HTTPS 图片和链接保留 Markdown 含义，不会自动下载。需要 Relanox 下载文件时，明确提供 URL 附件。包含媒体引用时，文字片段会闭合行内格式，列表和引用重新生成，表格转换为以竖线分隔的单元格行。
+
+`relanox_status.channels[].richText` 返回 `native`、`sequential`、`text-then-images` 或 `text-only`。原生布局渠道还返回 `richTextLimits`，包含 `maxParts`、`maxTextLength` 和可选的 `imageMimeTypes`、`maxImageBytes`。文字和图片部分都计入原生布局限制。超出行内 MIME 或字节限制的图片，在对应位置改为该渠道的独立图片发送，只发送一次；普通附件限制仍适用。原生格式和例外见[渠道布局](channels.md#rich-media)。本地协议测试验证生成请求，不代表真实账号兼容性已经验证。
+
+已声明的行内图片限制如下：
+
+| 渠道               | 图片格式                  | 行内图片最大字节数   |
+| ------------------ | ------------------------- | -------------------- |
+| 飞书 / Lark        | PNG、JPEG、GIF、WebP、BMP | 10 MiB               |
+| 钉钉               | PNG、JPEG、GIF、BMP       | 20 MiB               |
+| Slack              | PNG、JPEG、GIF            | 25 MiB               |
+| Google Chat        | PNG、JPEG                 | 2,000,000 字节       |
+| Microsoft Teams    | PNG、JPEG、GIF            | 1,000,000 字节       |
+| LINE               | PNG、JPEG                 | 10,000,000 字节      |
+| QQ                 | PNG、JPEG                 | 20 MiB               |
+| Discord            | 未声明额外 MIME 限制      | 10 MiB               |
+| Matrix、Mattermost | 未声明额外 MIME 限制      | 配置的单文件媒体限制 |
+
+配置的媒体限制可能进一步降低这些值，以状态返回的当前限制为准。钉钉和 QQ 还将包含图片引用的最终 Markdown 分别限制为 4,000 和 2,000 个 UTF-8 字节。原生布局的实际显示仍取决于平台和客户端。
+
 ## 为部分渠道设置文件下载地址
 
 以下发送方式需要 Relanox 提供一个可从公网访问的 HTTPS 地址：
 
-| 渠道            | 使用下载地址的内容                 |
-| --------------- | ---------------------------------- |
-| LINE            | 图片、音频和视频                   |
-| Google Chat     | 图片卡片和文件下载按钮             |
-| Microsoft Teams | 群聊或频道中大于 15,000 字节的图片 |
+| 渠道            | 使用下载地址的内容                                   |
+| --------------- | ---------------------------------------------------- |
+| LINE            | 图片、音频和视频                                     |
+| Google Chat     | 图片卡片和文件下载按钮                               |
+| Microsoft Teams | 原生行内图片；群聊或频道中大于 15,000 字节的独立图片 |
+| Mattermost      | 原生行内图片                                         |
+| QQ              | 原生 Markdown 图片                                   |
 
 在 `relanox.json` 顶层设置 `publicUrl`。如果已经为 Agent 连接配置过，媒体会自动使用同一个地址：
 

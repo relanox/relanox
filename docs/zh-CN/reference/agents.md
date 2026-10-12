@@ -135,6 +135,8 @@ dot 在 `relanox.message_available` 事件的 `data` 中收到以下结构；Gro
 | `channels[].connection`                                     | 渠道连接状态：`connected`、`disconnected` 或 `degraded`。                                                                          |
 | `channels[].send`                                           | `{ "status": "available" }`，或 `{ "status": "unavailable", "reason": "..." }`，说明当前原生地址或发送条件的限制。                 |
 | `channels[].media`                                          | 支持发送的种类：`image`、`audio`、`video` 和/或 `file`。                                                                           |
+| `channels[].richText`                                       | 布局模式：`native`、`sequential`、`text-then-images` 或 `text-only`。                                                              |
+| `channels[].richTextLimits`                                 | 原生布局限制：`maxParts`、`maxTextLength` 和可选的 `imageMimeTypes`、`maxImageBytes`；其他模式省略此字段。                         |
 | `channels[].maxTextLength`、`lengthUnit`                    | 每段文字的限制和计量单位：`utf16`、`codepoint` 或 `utf8`。                                                                         |
 | `channels[].maxTextLengthPerMessage`、`maxChunksPerMessage` | 可选的整条消息文字和分段数量限制。                                                                                                 |
 | `channels[].maxAttachments`                                 | 渠道附件数量限制，同时受配置的单条消息限制约束。                                                                                   |
@@ -167,7 +169,9 @@ dot 在 `relanox.message_available` 事件的 `data` 中收到以下结构；Gro
 
 查看收到的附件时，使用拥有该附件的 `channel` 和附件的 `id` 作为 `mediaId` 调用 `relanox_read_media`。不超过 1 MiB 的图片/音频和不超过 64 KiB 的受支持 UTF-8 文本文件会作为 MCP 内容返回；其他文件返回下载链接，链接五分钟后过期。支持的文本类型和限制见[媒体协议](media.md)。
 
-转发收到或已上传的附件时，在 `attachments` 中放入 `{ "mediaId": "..." }`。生成文件可以使用下方的文件工具，也可以使用公开 HTTPS URL：
+把收到或已上传的图片放在段落之间时，在 `text` 中使用 `![说明](relanox://media/UUID)`，将 `UUID` 替换为该渠道拥有的媒体 ID。Relanox 自动解析引用，无需重复提供 `attachments` 条目。文件使用 `[文件名](relanox://media/UUID)`，在对应位置发送。每个文件只能出现一次。通过 `channels[].richText` 查看布局：顺序发送渠道使用独立消息，企业微信 HTTP 则把文字放在图片之前。代码示例保留字面含义，普通 HTTPS Markdown 图片不会自动下载。见[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)。
+
+把收到或已上传的附件放在文字之后时，在 `attachments` 中放入 `{ "mediaId": "..." }`。生成文件可以使用下方的文件工具，也可以使用公开 HTTPS URL：
 
 ```json
 {
@@ -193,7 +197,7 @@ dot 的 `relanox_send_message` 提供顶层 `files` 数组，并声明 `_meta["o
 ```json
 {
   "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
-  "text": "这是你要的报告。",
+  "text": "这是你要的报告：[下载报告](relanox://attachment/1)",
   "files": [
     {
       "download_url": "COPY_FROM_THE_HOST_FILE_OBJECT",
@@ -205,7 +209,7 @@ dot 的 `relanox_send_message` 提供顶层 `files` 数组，并声明 `_meta["o
 }
 ```
 
-不要把本地路径当作下载地址，也不要把 OpenAI 的 `file_id` 当作 `mediaId`。同时提供两个数组时，先发送 `attachments`，再发送 `files`，合计数量和字节数必须符合消息限制。需要时长或封面参数的音视频应使用上传流程或 URL 附件参数。Grok 的发送工具不声明 OpenAI 文件参数。
+不要把本地路径当作下载地址，也不要把 OpenAI 的 `file_id` 当作 `mediaId`。同时提供两个数组时，`relanox://attachment/1` 从 `attachments` 的第一个条目开始计数，之后继续计数 `files`；合计数量和字节数必须符合消息限制。Markdown 中引用的文件按引用位置发送，未引用的文件按数组顺序放在内容之后。需要时长或封面参数的音视频应使用上传流程或 URL 附件参数。Grok 的发送工具不声明 OpenAI 文件参数。
 
 ## 上传本地文件
 

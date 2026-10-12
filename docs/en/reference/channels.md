@@ -53,9 +53,31 @@ Agent reply text is always Markdown; there is no formatting-mode setting. Relano
 | Signal          | Native text-style ranges; links retain their URL.                                       |
 | IRC             | Native formatting controls, with each complete command kept within the wire limit.      |
 
-Formatting differs between clients. Platforms with limited styles retain the visible text of headings, lists and tables; code and links use the available representation. Markdown image syntax does not upload a file: use attachments to send media. Limits on a combined reply, such as WeCom callback replies, are checked before it is queued.
+Formatting differs between clients. Platforms with limited styles retain the visible text of headings, lists and tables; code and links use the available representation. Internal Markdown media references place channel-owned files in reading order; ordinary HTTPS Markdown images are rendered according to the channel and are not imported as attachments. Limits on a combined reply, such as WeCom callback replies, are checked before it is queued.
 
 See the native protocol references for [Feishu posts](https://open.feishu.cn/document/server-docs/im-v1/message-content-description/create_json), [DingTalk robot messages](https://open.dingtalk.com/document/development/robot-message-type), [Teams formatting](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/format-your-bot-messages), and [Matrix formatted messages](https://spec.matrix.org/latest/client-server-api/#mroommessage). Local HTTP and socket tests verify the generated protocol payloads; they do not establish live-account compatibility.
+
+### Text and image layouts {#rich-media}
+
+Use the internal references in [Ordered Markdown media](media.md#ordered-markdown-media) to select files. `relanox_status.channels[].richText` reports the layout available for the configured account:
+
+| Channels                                    | Mode               | Delivery                                                                                     |
+| ------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------- |
+| Feishu / Lark                               | `native`           | Post content with ordered Markdown and uploaded image elements.                              |
+| Discord                                     | `native`           | Components V2 with ordered text displays and attachment-backed media galleries.              |
+| DingTalk                                    | `native`           | Markdown with native uploaded image references.                                              |
+| QQ                                          | `native`           | Custom Markdown with ordered text and published HTTPS image URLs in private and group chats. |
+| Slack                                       | `native`           | Ordered text and image blocks using native file uploads.                                     |
+| Google Chat                                 | `native`           | Card sections with text and images served through Relanox's public HTTPS address.            |
+| Microsoft Teams                             | `native`           | An activity with Markdown text and inline images served through public HTTPS media URLs.     |
+| LINE                                        | `native`           | Flex content with ordered text and image components using public HTTPS media URLs.           |
+| Matrix                                      | `native`           | `formatted_body` with ordered text and uploaded `mxc://` image references.                   |
+| Mattermost                                  | `native`           | A post with ordered Markdown images served through public HTTPS media URLs.                  |
+| Telegram, WeCom WebSocket, WhatsApp, Signal | `sequential`       | Separate text and media messages in reading order.                                           |
+| WeCom HTTP callback                         | `text-then-images` | One final reply with all text followed by supported images.                                  |
+| IRC                                         | `text-only`        | Text only; attachments are rejected.                                                         |
+
+Native layouts contain images; audio, video and file links use standalone media delivery. LINE, Google Chat, Teams, Mattermost and QQ require the public HTTPS media address for these layouts; the current status is authoritative. Native chunk limits are reported as `richTextLimits`, including optional inline MIME and byte limits. Images outside those inline limits are sent once as standalone media at their position. Channel attachment support and per-message limits still apply. Clients may display native content differently. These layouts are covered by local protocol tests, not live-account validation.
 
 ## DingTalk application robot {#dingtalk}
 

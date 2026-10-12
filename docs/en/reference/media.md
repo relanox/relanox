@@ -24,15 +24,57 @@ Signed upload URLs last five minutes and authorize one immutable file for the se
 
 For a new send, use a fresh `idempotencyKey`, such as a UUID. Retry the same send with that key, identical text and the same attachment content and order. Omitting the key creates a new message on every call, even with identical content. A `queued` result means saved for delivery. Use its `deliveryId` with `relanox_status` to check progress rather than submitting another send with a new key.
 
+## Ordered Markdown media {#ordered-markdown-media}
+
+`relanox_send_message.text` accepts internal media references in Markdown links and images:
+
+```markdown
+The first result:
+
+![Result image](relanox://media/12345678-1234-1234-1234-123456789abc)
+
+The explanation continues here.
+
+[Download report](relanox://attachment/1)
+```
+
+`relanox://media/<UUID>` selects received or uploaded media owned by the send's authorized `channel`. Relanox resolves it automatically; do not add it to `attachments` just to make the reference work. `relanox://attachment/<number>` selects a file supplied in this send, counting `attachments` first, then dot's `files`, starting at 1. The number must select an existing entry. These are internal references, not download URLs.
+
+Use `![label](...)` for an image and `[filename](...)` for a standalone file. Image syntax requires image media; links send the referenced media separately with the label as preceding text. Each file may be referenced once. Repeated references, including selecting the same file by both ID and position, fail before enqueueing. Unreferenced attachments follow the Markdown content in their supplied order.
+
+Malformed or out-of-range references return `invalid_media_reference`; image syntax selecting other media returns `invalid_image_reference`; repeated files return `duplicate_attachment`. Channel ownership and existing media limits still apply.
+
+Inline links, images and reference-style definitions are supported. Code spans, fenced code, escaped syntax and HTML attributes do not create media references. Ordinary HTTPS images and links keep their Markdown meaning and are not automatically downloaded. Use an explicit URL attachment when you want Relanox to download a file. With media references, text fragments keep balanced inline formatting; lists and quotes are rebuilt, and tables become rows of pipe-separated cells.
+
+`relanox_status.channels[].richText` reports `native`, `sequential`, `text-then-images` or `text-only`. Native channels expose `richTextLimits` with `maxParts`, `maxTextLength` and optional `imageMimeTypes` and `maxImageBytes`. Text and image parts count toward the native layout limits. An image outside the inline MIME or byte limits uses the channel's standalone image delivery at that position, once; normal attachment limits still apply. See [Channel layouts](channels.md#rich-media) for native formats and exceptions. Local protocol tests cover the generated requests; they do not establish live-account compatibility.
+
+The declared inline image limits are:
+
+| Channel            | Image formats                           | Maximum inline bytes            |
+| ------------------ | --------------------------------------- | ------------------------------- |
+| Feishu / Lark      | PNG, JPEG, GIF, WebP, BMP               | 10 MiB                          |
+| DingTalk           | PNG, JPEG, GIF, BMP                     | 20 MiB                          |
+| Slack              | PNG, JPEG, GIF                          | 25 MiB                          |
+| Google Chat        | PNG, JPEG                               | 2,000,000 bytes                 |
+| Microsoft Teams    | PNG, JPEG, GIF                          | 1,000,000 bytes                 |
+| LINE               | PNG, JPEG                               | 10,000,000 bytes                |
+| QQ                 | PNG, JPEG                               | 20 MiB                          |
+| Discord            | No additional MIME restriction declared | 10 MiB                          |
+| Matrix, Mattermost | No additional MIME restriction declared | Configured per-file media limit |
+
+Configured media limits may lower these values. Use status for the active limit. DingTalk and QQ also limit the serialized Markdown, including image references, to 4,000 and 2,000 UTF-8 bytes respectively. Native layout support still depends on the platform and client.
+
 ## Set up a file download address for your channel
 
 These delivery methods need a public HTTPS address served by Relanox:
 
-| Channel         | Content using the address                                  |
-| --------------- | ---------------------------------------------------------- |
-| LINE            | Images, audio and video                                    |
-| Google Chat     | Image cards and file download buttons                      |
-| Microsoft Teams | Images larger than 15,000 bytes in group chats or channels |
+| Channel         | Content using the address                                                              |
+| --------------- | -------------------------------------------------------------------------------------- |
+| LINE            | Images, audio and video                                                                |
+| Google Chat     | Image cards and file download buttons                                                  |
+| Microsoft Teams | Native inline images; standalone images larger than 15,000 bytes in groups or channels |
+| Mattermost      | Native inline images                                                                   |
+| QQ              | Native Markdown images                                                                 |
 
 Set top-level `publicUrl` in `relanox.json`. If you already set it for your Agent connection, media uses the same address automatically:
 

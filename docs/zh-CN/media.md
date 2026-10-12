@@ -22,9 +22,15 @@
 
 Grok 可能要求你确认从云电脑上传生成的文件。允许前核对文件名和自己的 Relanox 地址；等待确认期间，原聊天不会收到附件。
 
-LINE、Google Chat 和 Teams 群聊或频道中的大图片还需要 Relanox 的公网 HTTPS 地址。使用配置器中填写的地址，按[部署与日常管理](operations.md)让服务可访问。Teams 私聊可能要求你确认接收文件。IRC 支持文字聊天。
+LINE、Google Chat、Microsoft Teams、Mattermost 和 QQ 的原生图片布局需要 Relanox 的公网 HTTPS 地址。LINE 音视频和 Teams 群聊或频道中的独立大图片也使用该地址。使用配置器中填写的地址，按[部署与日常管理](operations.md)让服务可访问。Teams 私聊可能要求你确认接收文件。IRC 支持文字聊天。
 
 Relanox 下载链接通常有效 24 小时，持有有效链接的人可以下载文件，请只分享给预期收件人。
+
+## 把图片放在段落之间
+
+请 Agent 把图片放在对应的解释旁边。它可以在 Markdown 中引用收到或已上传的文件，也可以放置本次发送提供的生成文件。文件归属于所选聊天，每个文件只发送一次；没有 Markdown 引用的文件放在文字之后。
+
+显示方式取决于渠道。部分渠道提供文字和图片的原生布局，其余渠道按请求顺序发送独立消息。企业微信 HTTP 回调回复先显示文字，再显示图片；IRC 仅支持文字。Agent 可以通过 `relanox_status` 查询布局和限制。语法和渠道细节见[按 Markdown 顺序发送媒体](reference/media.md#ordered-markdown-media)。
 
 ## 选择合适的文件大小
 
