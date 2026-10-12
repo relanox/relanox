@@ -45,6 +45,8 @@ Attachments can refer to received or uploaded media in the selected channel, or 
 
 Register agent HTTP routes through the host beneath `/agents/<agentId>`. Keep endpoint credentials separate from the fields exposed in notifications and tool responses. dot and Grok already share MCP authentication and message tools in `packages/agent-mcp`; reuse those helpers when changing their integration.
 
+Use `host.readMessages({ requestId?, limit? })` to recover retained incoming content. Reads enforce current endpoint and channel ownership and omit redacted records, endpoint configuration and private reply targets. Without an ID, the host inspects the most recent records per scoped endpoint, then filters authorization and returns up to `limit` messages (default 5, maximum 20). Reads do not claim or acknowledge work.
+
 ## Store channels and deliveries
 
 Core registers configured conversations through `registerConversations` before setting up integrations. Storage retains authenticated native targets independently of incoming messages. `enqueueMessage` authorizes the channel and saves the endpoint, resolved destination and rendered parts together. Outbound FIFO and explicit idempotency keys are scoped to the channel.

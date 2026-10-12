@@ -1,6 +1,6 @@
 import { channelAddressSchema } from './status.js'
 import { z } from 'zod'
-import type { InboundSnapshot } from '@relanox/sdk'
+import type { InboundSnapshot, AgentMessage } from '@relanox/sdk'
 
 export type AgentRequestPayload = Pick<
   InboundSnapshot,
@@ -13,7 +13,10 @@ export type AgentRequestPayload = Pick<
 }
 
 export function projectAgentRequest(
-  request: InboundSnapshot
+  request: Pick<
+    AgentMessage,
+    'text' | 'context' | 'attachments' | 'channel' | 'senderId'
+  >
 ): AgentRequestPayload {
   return {
     text: request.text,

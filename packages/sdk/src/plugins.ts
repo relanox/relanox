@@ -13,7 +13,8 @@ import type {
   SendResult,
   SendInput,
   ReplyTarget,
-  DispatchInput
+  DispatchInput,
+  AgentMessage
 } from './messages.js'
 import type { StateStore } from './state.js'
 import type {
@@ -77,6 +78,10 @@ export type AgentPrincipal = {
 
 /** Principal comes only from verified protocol authentication. Core intersects it with this plugin's configured endpoints. */
 export type ScopedAgentHost = {
+  readMessages(input?: {
+    readonly requestId?: string
+    readonly limit?: number
+  }): Promise<readonly AgentMessage[]>
   readonly media?: AgentMediaHost
   status(input?: { readonly deliveryId?: string }): Promise<AgentStatus>
   sendMessage(input: {

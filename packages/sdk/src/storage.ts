@@ -140,7 +140,12 @@ export type Storage = ConversationStorage & {
   ): Promise<MutationResult>
   getInbound(requestId: string): Promise<InboundRecord | undefined>
   getOutbound(deliveryId: string): Promise<OutboundRecord | undefined>
-  listInbound(filter: StatusFilter): Promise<readonly InboundRecord[]>
+  listInbound(
+    filter: StatusFilter & {
+      /** Latest accepted first; incompatible with afterId. */
+      readonly recent?: boolean
+    }
+  ): Promise<readonly InboundRecord[]>
   listOutbound(filter: StatusFilter): Promise<readonly OutboundRecord[]>
   getStats(): Promise<StorageStats>
   cleanup(input: {

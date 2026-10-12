@@ -45,6 +45,18 @@ export type InboundSnapshot = {
 
 export type AttemptStatus = 'due' | 'accepted' | 'rejected' | 'unknown'
 
+/** Persisted user content exposed without endpoint configuration or private reply targets. */
+export type AgentMessage = Pick<
+  InboundSnapshot,
+  | 'requestId'
+  | 'acceptedAt'
+  | 'channel'
+  | 'senderId'
+  | 'text'
+  | 'context'
+  | 'attachments'
+>
+
 export type OutboundMessage = {
   readonly messageId: string
   readonly text: string
