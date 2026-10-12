@@ -8,24 +8,6 @@ export function createLifecycle(
   return {
     async initialize() {
       transaction(() => {
-        const legacy: unknown = db
-          .prepare(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='outbound'"
-          )
-          .get()
-
-        if (
-          legacy !== undefined &&
-          !(
-            db.prepare('PRAGMA table_info(outbound)').all() as {
-              name: string
-            }[]
-          ).some((column) => column.name === 'channel_id')
-        ) {
-          throw new Error(
-            'Unsupported request-addressed database schema; preserve this database and configure a new database'
-          )
-        }
         db.exec(
           `
           CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, active INTEGER NOT NULL, record TEXT NOT NULL);

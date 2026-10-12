@@ -15,22 +15,6 @@ export function createLifecycle(
         )
         await client.query(`CREATE SCHEMA IF NOT EXISTS "${config.schema}"`)
 
-        const legacy = await client.query(
-          "SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='outbound'",
-          [config.schema]
-        )
-
-        if (
-          legacy.rows.length > 0 &&
-          !legacy.rows.some(
-            (column: { column_name: string }) =>
-              column.column_name === 'channel_id'
-          )
-        ) {
-          throw new Error(
-            'Unsupported request-addressed database schema; preserve this database and configure a new database'
-          )
-        }
         await client.query(`
           CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, active BOOLEAN NOT NULL, record JSONB NOT NULL);
           CREATE TABLE IF NOT EXISTS inbound(
