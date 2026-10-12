@@ -7,6 +7,7 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import { receiveFiles, uploadFile } from './media.js'
+import { richError, richMarkdown } from './rich.js'
 import { WebSocket } from 'ws'
 import type { RawData } from 'ws'
 import { z } from 'zod'
@@ -252,7 +253,7 @@ export function createMattermostChannel(
   }
 
   async function send(input: SendInput): Promise<SendResult> {
-    const { account, config, base, botUserId } = configured()
+    const { account, config, base, botUserId, host } = configured()
     const destination = targetSchema.safeParse(input.target.data)
     if (
       input.target.channel !== 'mattermost' ||
@@ -262,6 +263,21 @@ export function createMattermostChannel(
       destination.data.botUserId !== botUserId
     ) {
       return { status: 'rejected', errorCode: 'target_mismatch' }
+    }
+    const errorCode = richError(input, host)
+    if (errorCode) {
+      return { status: 'rejected', errorCode }
+    }
+
+    const message = input.chunk.richText
+      ? await richMarkdown(input, host).catch(() => ({
+          status: 'retryable' as const,
+          errorCode: 'media_publication_failed'
+        }))
+      : input.chunk.text
+
+    if (typeof message !== 'string') {
+      return message
     }
     try {
       const signal = AbortSignal.any([
@@ -289,7 +305,7 @@ export function createMattermostChannel(
         },
         body: JSON.stringify({
           channel_id: input.target.chatId,
-          message: input.chunk.text,
+          message,
           ...(upload && 'fileId' in upload
             ? { file_ids: [upload.fileId] }
             : {}),
@@ -314,15 +330,20 @@ export function createMattermostChannel(
     runtime: 'node',
     kind: 'channel',
     channel: 'mattermost',
-    capabilities: {
-      receive: true,
-      transport: 'connection',
-      maxTextLength: 16_000,
-      lengthUnit: 'codepoint',
-      idempotentSend: false,
-      media: {
-        receive: ['image', 'audio', 'video', 'file'],
-        send: ['image', 'audio', 'video', 'file']
+    get capabilities(): ChannelPlugin<MattermostConfig>['capabilities'] {
+      return {
+        receive: true,
+        transport: 'connection',
+        maxTextLength: 16_000,
+        lengthUnit: 'codepoint',
+        idempotentSend: false,
+        ...(runtime?.host.publicUrl && runtime.host.media
+          ? { richText: { maxParts: 20, maxTextLength: 8000 } }
+          : {}),
+        media: {
+          receive: ['image', 'audio', 'video', 'file'],
+          send: ['image', 'audio', 'video', 'file']
+        }
       }
     },
     validateConfig,

@@ -1,6 +1,7 @@
 import { requestTimeoutMs } from './constants.js'
 import { downloadMedia, mediaBlob } from '@relanox/channel-media'
 import { renderHtml } from '@relanox/markdown'
+import { richContent } from './rich.js'
 import type {
   ChannelHost,
   MediaUpload,
@@ -160,6 +161,22 @@ export async function messageContent(
       }
     }
 > {
+  if (input.chunk.richText) {
+    const urls: string[] = []
+    for (const media of input.richMedia ?? []) {
+      const uploaded = await upload(base, headers, media, signal)
+      if (typeof uploaded !== 'string') {
+        return uploaded
+      }
+      urls.push(uploaded)
+    }
+    const content = richContent(input, urls)
+    // Leave room for the event envelope and thread relation below Matrix's event budget.
+    if (Buffer.byteLength(JSON.stringify(content), 'utf8') > 60_000) {
+      return { status: 'rejected', errorCode: 'rich_message_limit_exceeded' }
+    }
+    return content
+  }
   if (!input.media) {
     return {
       msgtype: 'm.text',

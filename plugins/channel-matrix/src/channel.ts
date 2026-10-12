@@ -3,6 +3,7 @@ import {
   reconnectDelayMs,
   syncTimeoutMs
 } from './constants.js'
+import { richError } from './rich.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -272,7 +273,7 @@ export function createMatrixChannel(
   }
 
   async function send(input: SendInput): Promise<SendResult> {
-    const { account, base, userId } = configured()
+    const { account, base, userId, host } = configured()
     const destination = targetSchema.safeParse(input.target.data)
     if (
       input.target.channel !== 'matrix' ||
@@ -282,6 +283,10 @@ export function createMatrixChannel(
       destination.data.userId !== userId
     ) {
       return { status: 'rejected', errorCode: 'target_mismatch' }
+    }
+    const errorCode = richError(input, host)
+    if (errorCode) {
+      return { status: 'rejected', errorCode }
     }
     const room = encodeURIComponent(input.target.chatId)
 
@@ -346,6 +351,7 @@ export function createMatrixChannel(
       maxTextLength: 16_000,
       lengthUnit: 'utf8',
       idempotentSend: false,
+      richText: { maxParts: 20, maxTextLength: 8000 },
       media: {
         receive: ['image', 'audio', 'video', 'file'],
         send: ['image', 'audio', 'video', 'file']

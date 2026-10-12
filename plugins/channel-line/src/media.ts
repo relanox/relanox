@@ -1,4 +1,5 @@
 import { lineMarkdown } from './markdown.js'
+import { richError, richMessage } from './rich.js'
 import { contentApiBase } from './constants.js'
 import { downloadMedia, mediaKind } from '@relanox/channel-media'
 import type { ChannelHost, Json, MediaUpload, SendInput } from '@relanox/sdk'
@@ -84,6 +85,9 @@ export function mediaError(
   input: SendInput,
   host: ChannelHost
 ): string | undefined {
+  if (input.chunk.richText) {
+    return richError(input, host)
+  }
   if (!input.chunk.media) {
     return undefined
   }
@@ -141,6 +145,9 @@ export async function messages(
   input: SendInput,
   host: ChannelHost
 ): Promise<Json[]> {
+  if (input.chunk.richText) {
+    return [await richMessage(input, host)]
+  }
   if (!input.chunk.media) {
     return [lineMarkdown(input.chunk.text)]
   }
