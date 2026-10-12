@@ -1,6 +1,6 @@
 # 配置参考
 
-本章收录手动 JSON 配置、迁移说明与 CLI 约定。日常修改请使用[修改配置](../configuration.md)。
+本章收录手动 JSON 配置与 CLI 约定。日常修改请使用[修改配置](../configuration.md)。
 
 ## 手动配置 Telegram 与 Grok 示例
 
@@ -168,73 +168,15 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 
 管理端口提供 `/health/live`、`/health/ready` 和开启后的 `/metrics`。[日志与运行状态](observability.md)介绍指标名称。可选的 `media.urlLifetimeMs` 控制下载链接有效期，`mediaLimits` 控制附件大小；下载地址使用 `publicUrl`，见[收发图片和文件](../media.md)。
 
-## 更新旧配置
-
-将公开部署地址移到顶层 `publicUrl`，删除 `mcp.allowedHosts`、`media.publicBaseUrl`、`media.allowInsecureLocalhost` 和 Google Chat 的 `audience`。程序会从新设置推导主机名、媒体来源和 Google Chat 端点地址。不需要覆盖链接有效期时，空的 `media` 对象也可以删除。
-
-连接时序和固定的平台身份现在由程序内部管理。如果旧文件包含下列字段，请删除后再运行 `validate`；校验器会拒绝未知字段。dot 现在只接受原生 OpenAI 回调来源，其他固定时序保留原默认值。
-
-| 配置位置                                                        | 删除字段                                            |
-| --------------------------------------------------------------- | --------------------------------------------------- |
-| Agent 的 `mcp`                                                  | `maxBodyBytes`、`timeoutMs`                         |
-| dot                                                             | `callback`、`subscriptionTtlMs`、`rotationWindowMs` |
-| Grok                                                            | `timeoutMs`、`maxBodyBytes`、`routineTransport`     |
-| Telegram、Slack、Discord、飞书、IRC、Matrix、Mattermost、Signal | `timeoutMs`                                         |
-| Slack、Discord                                                  | `reconnectDelayMs`                                  |
-| IRC、Matrix、Mattermost、Signal                                 | `reconnectMs`                                       |
-| Matrix                                                          | `syncTimeoutMs`                                     |
-| 钉钉、企业微信 WebSocket、QQ                                    | `maxReconnectAttempts`                              |
-| 企业微信 WebSocket                                              | `heartbeatMs`                                       |
-| QQ                                                              | `transport`                                         |
-| Discord                                                         | `intents`                                           |
-| Google Chat                                                     | `callerEmail`、`issuer`                             |
-| Microsoft Teams                                                 | `issuer`                                            |
-
-以下部署内部参数也改为固定默认值，请删除旧覆盖项：
-
-| 配置位置           | 删除字段                                                                    |
-| ------------------ | --------------------------------------------------------------------------- |
-| `server`           | `workerIntervalMs`、`workerStaleMs`                                         |
-| SQLite             | `busyTimeoutMs`                                                             |
-| PostgreSQL         | `connectionTimeoutMs`、`idleTimeoutMs`、`statementTimeoutMs`                |
-| 标准可观测性       | `processMetrics`、`logBufferBytes`、`lifecycleTimeoutMs`                    |
-| 可观测性 `tracing` | `maxQueueSize`、`maxExportBatchSize`、`scheduledDelayMs`、`exportTimeoutMs` |
-| IRC                | `channels`，自动从该账号聊天绑定取得要加入的频道                            |
-
-凭据、发送者白名单、可信来源和部署地址仍可配置。配置器自动使用平台原生地址，自建服务仍需填写地址。服务、数据库、监控和媒体容量等高级选项按部署需要设置即可。
-
 ## 自动查询账号身份
 
 Relanox 启动时使用配置的凭据向 Slack、Discord、飞书/Lark、LINE、Matrix 和 Mattermost 查询所连接的账号。查询失败会导致启动失败，此时应检查凭据和平台连接。`validate` 仍然离线执行，不能验证凭据对应的账号身份。
-
-升级已有配置时，删除以下字段：
-
-| 渠道        | 删除                                 | 替代方式                                                                                  |
-| ----------- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Slack       | `botUserId`、`teamId`、`receiveMode` | 机器人 Token 确定账号；`signingSecret` 和 `appToken` 二选一，分别选择 HTTP 和 Socket Mode |
-| Discord     | `botUserId`                          | 机器人 Token 确定账号并自动查询 Gateway                                                   |
-| 飞书 / Lark | `botOpenId`                          | 应用凭据确定机器人；保留 `tenantKey`                                                      |
-| LINE        | `botUserId`                          | Access Token 确定官方账号                                                                 |
-| Matrix      | `userId`                             | Access Token 确定账号                                                                     |
-| Mattermost  | `botUserId`                          | Token 确定账号                                                                            |
 
 尚有排队回复时，应保持凭据属于原账号。应用 ID、允许发送者和会话绑定仍表达你的接入选择，需要填写。
 
 ### 固定平台地址
 
-删除以下旧覆盖项。原生托管平台现在会自动使用对应协议地址：
-
-| 渠道                        | 删除                                                             |
-| --------------------------- | ---------------------------------------------------------------- |
-| Slack、Discord、飞书 / Lark | `apiBaseUrl`、`allowInsecureLoopback`                            |
-| Discord                     | `gatewayUrl`                                                     |
-| 钉钉                        | `apiBase`、`uploadBase`、`mediaOrigins`、`allowInsecureLoopback` |
-| 企业微信                    | `wsUrl`、`mediaOrigins`、`allowInsecureLoopback`                 |
-| QQ                          | `apiBase`、`mediaOrigins`、`allowInsecureLoopback`               |
-| WhatsApp                    | `apiBase`、`apiVersion`、`allowLoopback`                         |
-| Google Chat                 | `apiBase`、`tokenUrl`、`jwksUrl`、`allowLoopback`                |
-| LINE                        | `apiBase`、`contentApiBase`、`allowLoopback`                     |
-| Teams                       | `jwksUrl`、`allowLoopback`                                       |
+原生托管平台自动使用对应的协议地址。
 
 QQ 默认使用正式环境，需要沙箱时将 `environment` 设为 `"sandbox"`。WhatsApp 的 Graph API 版本由 Relanox 管理，目前为 `v25.0`。Telegram 本地 Bot API 地址，以及 Matrix、Mattermost 和 Signal 自托管地址仍可配置。Teams 保留用于单租户应用认证地址的 `tokenUrl`，以及服务、媒体和上传的可信来源。
 

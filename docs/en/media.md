@@ -16,7 +16,7 @@ Try: “Create a small text file containing today’s checklist and send it as a
 
 Ask the Agent to send its generated file back to the chat. dot can pass files from its workspace through the MCP file parameter. Grok Bot can upload a file from its cloud computer to Relanox, then send it as an attachment. A direct public HTTPS download link also works.
 
-After updating Relanox, refresh or reconnect the Agent's MCP connection so it sees the file tools. The connection supplies the upload instructions; no separate file service or prompt is required. Uploading saves the file, and the Agent must then send it to your chat. If Grok still lists only two tools, its connection has an older tool list; reconnect it and confirm that Create upload appears.
+The connection supplies the upload instructions; no separate file service or prompt is required. Uploading saves the file, and the Agent must then send it to your chat.
 
 Grok may ask you to approve uploading the generated file from its cloud computer. Check the filename and your Relanox address before allowing that upload. While it is waiting for approval, the original chat will not receive the attachment.
 
