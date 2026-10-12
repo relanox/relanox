@@ -2,7 +2,7 @@
 export function agentInstructions(agent: 'dot' | 'grok'): string {
   const incoming =
     agent === 'dot'
-      ? 'For a relanox.message_available event, read the incoming message from data.'
+      ? 'Before subscribing, use relanox_connection_status for a read-only connection check; no message or attachment IDs are needed. Subscribe to relanox.message_available using the host native event subscription. For a relanox.message_available event, read the incoming message from data. Use the current event replyTo and attachment IDs automatically; never ask the user to supply them or reuse IDs from an earlier event.'
       : 'For a Grok Routine webhook, parse the JSON string in content to read the incoming message.'
 
   const generated =
