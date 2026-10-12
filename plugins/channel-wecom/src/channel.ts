@@ -33,11 +33,20 @@ import { JsonSocketConnection, ingestText, secret } from './transport.js'
 
 type Frame = z.infer<typeof frameSchema>
 
+function configuredType(
+  types: WebsocketConfig['recipientTypes'],
+  chatId: string
+): 'single' | 'group' | undefined {
+  return types && Object.hasOwn(types, chatId) ? types[chatId] : undefined
+}
+
 export function createWeComChannel(): ChannelPlugin<WeComConfig> {
   const websocket = createWebsocketChannel()
 
-  let channel: Pick<ChannelPlugin, 'start' | 'stop' | 'send' | 'capabilities'> =
-    websocket
+  let channel: Pick<
+    ChannelPlugin,
+    'start' | 'stop' | 'send' | 'capabilities' | 'resolveChannel'
+  > = websocket
 
   return {
     ...websocket,
@@ -58,6 +67,10 @@ export function createWeComChannel(): ChannelPlugin<WeComConfig> {
     },
     start: async (signal) => channel.start?.(signal),
     stop: async () => channel.stop?.(),
+    resolveChannel: async (address, learned) =>
+      channel.resolveChannel
+        ? channel.resolveChannel(address, learned)
+        : { status: 'unavailable', reason: 'address_unresolved' },
     send: async (input) => channel.send(input)
   }
 }
@@ -219,6 +232,47 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
       }
     },
     validateConfig: (value) => websocketConfigSchema.parse(value),
+    async resolveChannel(address, learned) {
+      if (
+        address.platform !== 'wecom' ||
+        address.accountId !== account.id ||
+        !address.chatId ||
+        address.threadId !== undefined
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      const prior = targetSchema.safeParse(learned?.data)
+
+      const known =
+        learned?.channel === 'wecom' &&
+        learned.accountId === account.id &&
+        learned.chatId === address.chatId &&
+        learned.threadId === undefined &&
+        prior.success &&
+        prior.data.scope.botId === config.botId &&
+        prior.data.scope.wsUrl === new URL(WEBSOCKET_URL).href
+          ? prior.data.chattype
+          : undefined
+
+      const chattype =
+        configuredType(config.recipientTypes, address.chatId) ?? known
+
+      if (!chattype) {
+        return { status: 'unavailable', reason: 'address_unresolved' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'wecom',
+          accountId: account.id,
+          chatId: address.chatId,
+          data: {
+            chattype,
+            scope: { botId: config.botId, wsUrl: new URL(WEBSOCKET_URL).href }
+          }
+        }
+      }
+    },
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount

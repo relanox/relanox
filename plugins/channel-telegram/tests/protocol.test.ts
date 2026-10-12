@@ -283,7 +283,7 @@ describe('telegram native protocol', () => {
       senderId: '42',
       text: 'hello',
       target,
-      context: { messageId: '9' }
+      context: null
     })
   })
 

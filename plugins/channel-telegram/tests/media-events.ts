@@ -205,6 +205,7 @@ export async function httpIngress(
         channel: 'C456',
         user: '42',
         ts: '9.1',
+        thread_ts: '9.1',
         text: caption,
         files: [
           {

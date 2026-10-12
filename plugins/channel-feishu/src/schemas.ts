@@ -5,7 +5,8 @@ export const targetSchema = z.object({
   tenantKey: platformIdSchema,
   appId: platformIdSchema,
   botId: platformIdSchema,
-  apiBaseUrl: z.string()
+  apiBaseUrl: z.string(),
+  threadAnchor: platformIdSchema.optional()
 })
 
 const headerSchema = z.looseObject({

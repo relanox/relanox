@@ -44,6 +44,29 @@ export function createDiscordChannel(
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      if (
+        address.platform !== 'discord' ||
+        address.accountId !== account.id ||
+        !/^\d+$/u.test(address.chatId) ||
+        (address.threadId !== undefined && !/^\d+$/u.test(address.threadId))
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'discord',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: identity()
+        }
+      }
+    },
+
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount

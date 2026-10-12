@@ -647,3 +647,22 @@ describe('slack native protocol', () => {
     })
   })
 })
+
+it('keeps authenticated top-level messages in the configured channel without inventing a thread from the message ID', async () => {
+  const local = await setup()
+  const { thread_ts: _thread, ...topLevel } = event.event
+  expect(
+    (await local.handler(request({ ...event, event: topLevel }))).status
+  ).toBe(204)
+  expect(local.received[0]?.target.chatId).toBe('C7')
+  expect(local.received[0]?.target.threadId).toBeUndefined()
+  expect(
+    await local.plugin.resolveChannel?.(
+      { id: 'channel', platform: 'slack', accountId: 'sl', chatId: 'C7' },
+      local.received[0]?.target
+    )
+  ).toMatchObject({
+    status: 'available',
+    target: { chatId: 'C7' }
+  })
+})

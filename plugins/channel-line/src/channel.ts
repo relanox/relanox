@@ -159,6 +159,34 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      if (
+        !runtime ||
+        address.platform !== 'line' ||
+        address.accountId !== runtime.account.id ||
+        !platformIdSchema.safeParse(address.chatId).success ||
+        address.threadId !== undefined
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'line',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: {
+            destination: address.chatId,
+            botId: runtime.botUserId,
+            apiBaseUrl: new URL(apiBase).toString().replace(/\/$/u, '')
+          }
+        }
+      }
+    },
+
     splitText: splitLineMarkdown,
     async setup(host, account, config) {
       if (runtime) {

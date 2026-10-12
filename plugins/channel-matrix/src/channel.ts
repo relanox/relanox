@@ -36,8 +36,8 @@ function outboundRelation(target: SendInput['target']):
   | {
       rel_type: string
       event_id: string
-      is_falling_back: boolean
-      'm.in_reply_to': { event_id: string }
+      is_falling_back?: boolean
+      'm.in_reply_to'?: { event_id: string }
     }
   | {
       'm.in_reply_to': { event_id: string }
@@ -47,6 +47,9 @@ function outboundRelation(target: SendInput['target']):
     }
   | null {
   if (target.threadId) {
+    if (!target.replyToId) {
+      return { rel_type: 'm.thread', event_id: target.threadId }
+    }
     return {
       rel_type: 'm.thread',
       event_id: target.threadId,
@@ -349,6 +352,31 @@ export function createMatrixChannel(
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      const current = configured()
+      if (
+        address.platform !== 'matrix' ||
+        address.accountId !== current.account.id ||
+        !platformIdSchema.safeParse(address.chatId).success ||
+        (address.threadId !== undefined &&
+          !platformIdSchema.safeParse(address.threadId).success)
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'matrix',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: { homeserver: current.base, userId: current.userId }
+        }
+      }
+    },
+
     async setup(host, account, config) {
       if (runtime) {
         throw new Error('already_setup')

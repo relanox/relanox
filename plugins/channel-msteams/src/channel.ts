@@ -4,12 +4,19 @@ import type {
   ChannelHost,
   ChannelPlugin,
   SendInput,
-  SendResult
+  SendResult,
+  ChannelAddress,
+  ReplyTarget
 } from '@relanox/sdk'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { accessToken, serviceUrl } from './client.js'
-import { validateConfig, validateEndpointUrl } from './config.js'
+import {
+  validateConfig,
+  validateEndpointUrl,
+  platformIdSchema
+} from './config.js'
 import type { TeamsConfig } from './config.js'
+import type { z } from 'zod'
 import { prepareAttachment, consentPosted } from './media.js'
 import { receive } from './inbound.js'
 import { failure, parseBody, rawBody, request, unavailable } from './io.js'
@@ -19,6 +26,79 @@ import {
   keysSchema,
   receiptSchema
 } from './schemas.js'
+
+function matchesTarget(
+  target: z.infer<typeof targetSchema>,
+  input: SendInput,
+  config: TeamsConfig
+): boolean {
+  return (
+    target.appId === config.appId &&
+    target.conversationId === input.target.chatId &&
+    target.tenantId === config.tenantId &&
+    target.botId === config.botId &&
+    (input.target.threadId === undefined ||
+      target.replyToId === input.target.threadId)
+  )
+}
+
+function currentConversation(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  config: TeamsConfig
+): boolean {
+  const parsed = targetSchema.safeParse(learned?.data)
+  return (
+    learned?.channel === 'msteams' &&
+    learned.accountId === address.accountId &&
+    learned.chatId === address.chatId &&
+    learned.threadId === address.threadId &&
+    parsed.success &&
+    parsed.data.appId === config.appId &&
+    parsed.data.tenantId === config.tenantId &&
+    parsed.data.botId === config.botId &&
+    parsed.data.conversationId === address.chatId
+  )
+}
+
+function conversationKey(config: TeamsConfig, chatId: string): string {
+  return `conversation:${JSON.stringify([config.appId, config.tenantId, config.botId, chatId])}`
+}
+
+async function learnConversation(
+  host: ChannelHost,
+  config: TeamsConfig,
+  activity: z.infer<typeof activitySchema>
+): Promise<void> {
+  const key = conversationKey(config, activity.conversation.id)
+
+  const data = {
+    appId: config.appId,
+    serviceUrl: activity.serviceUrl,
+    conversationId: activity.conversation.id,
+    tenantId: config.tenantId,
+    botId: config.botId,
+    userId: activity.from.id,
+    ...(activity.conversation.conversationType
+      ? { personal: activity.conversation.conversationType === 'personal' }
+      : {})
+  }
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const previous = await host.state.get(key)
+
+    const result = await host.state.compareAndSet({
+      key,
+      expectedVersion: previous?.version ?? null,
+      value: data
+    })
+
+    if (result.status === 'updated') {
+      return
+    }
+  }
+  throw new Error('conversation_state_conflict')
+}
 
 export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
   let runtime:
@@ -39,12 +119,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       return { status: 'rejected', errorCode: 'invalid_target' }
     }
     const target = parsed.data
-    if (
-      target.appId !== config.appId ||
-      target.conversationId !== input.target.chatId ||
-      target.tenantId !== config.tenantId ||
-      target.botId !== config.botId
-    ) {
+    if (!matchesTarget(target, input, config)) {
       return { status: 'rejected', errorCode: 'invalid_target' }
     }
     let base: URL
@@ -159,6 +234,71 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       }
     },
     validateConfig,
+    async resolveChannel(address, learned) {
+      if (
+        !runtime ||
+        address.platform !== 'msteams' ||
+        address.accountId !== runtime.account.id ||
+        !platformIdSchema.safeParse(address.chatId).success ||
+        (address.threadId !== undefined &&
+          !platformIdSchema.safeParse(address.threadId).success)
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      const { host, config } = runtime
+
+      let parsed = targetSchema.safeParse(learned?.data)
+      if (!currentConversation(address, learned, config)) {
+        parsed = targetSchema.safeParse(
+          (await host.state.get(conversationKey(config, address.chatId)))?.value
+        )
+      }
+      if (!parsed.success) {
+        return { status: 'unavailable', reason: 'address_unresolved' }
+      }
+      const data = parsed.data
+      if (
+        data.appId !== config.appId ||
+        data.tenantId !== config.tenantId ||
+        data.botId !== config.botId ||
+        data.conversationId !== address.chatId
+      ) {
+        return { status: 'unavailable', reason: 'target_identity_changed' }
+      }
+      try {
+        serviceUrl(data.serviceUrl, config)
+      } catch {
+        return { status: 'unavailable', reason: 'untrusted_service_origin' }
+      }
+
+      const destination = {
+        appId: data.appId,
+        serviceUrl: data.serviceUrl,
+        conversationId: data.conversationId,
+        tenantId: data.tenantId,
+        botId: data.botId,
+        userId: data.userId,
+        ...(data.personal !== undefined ? { personal: data.personal } : {})
+      }
+
+      return {
+        status: 'available',
+        target: {
+          channel: 'msteams',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          ...(address.threadId !== undefined
+            ? { threadId: address.threadId }
+            : {}),
+          data: {
+            ...destination,
+            ...(address.threadId !== undefined
+              ? { replyToId: address.threadId }
+              : {})
+          }
+        }
+      }
+    },
     async setup(host, account, config) {
       runtime = { host, account, config }
 
@@ -219,6 +359,14 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
             activity.conversation.tenantId !== config.tenantId)
         ) {
           return new Response(null, { status: 403 })
+        }
+        if (
+          account.allowedSenders.includes(activity.from.id) &&
+          ['message', 'conversationUpdate', 'installationUpdate'].includes(
+            activity.type
+          )
+        ) {
+          await learnConversation(host, config, activity)
         }
         await receive(host, account, config, activity)
         return Response.json({})

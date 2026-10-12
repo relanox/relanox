@@ -467,3 +467,63 @@ test('callback preserves an existing one-use active reply credential when a pre-
     { msgtype: 'markdown', markdown: { content: 'hello_*世界' } }
   ])
 })
+
+test('WeCom HTTP resolves only a real unexpired unused authenticated callback capability', async () => {
+  const plugin = createWeComChannel()
+
+  const host = await assemble(plugin, callbackConfig, [
+    { chatId: 'user', senderId: 'user' }
+  ])
+
+  await host.start()
+
+  const address = {
+    id: 'channel',
+    platform: 'wecom' as const,
+    accountId: 'bot',
+    chatId: 'user'
+  }
+
+  expect(await plugin.resolveChannel?.(address)).toEqual({
+    status: 'unavailable',
+    reason: 'address_unresolved'
+  })
+  expect(
+    (
+      await host.runtime.fetch(
+        callbackRequest(callbackMessage(), { token: 'forged' })
+      )
+    ).status
+  ).toBeGreaterThanOrEqual(400)
+  expect(await plugin.resolveChannel?.(address)).toEqual({
+    status: 'unavailable',
+    reason: 'address_unresolved'
+  })
+
+  const pending = await callbackReply(
+    await host.runtime.fetch(callbackRequest(callbackMessage()))
+  )
+
+  const learned = (await records(host.storage))[0]?.snapshot.target
+  const resolved = await plugin.resolveChannel?.(address, learned)
+  if (resolved?.status !== 'available') {
+    throw new Error('missing_callback_capability')
+  }
+  expect(resolved.target.replyToId).toBeUndefined()
+  expect(
+    await plugin.send({
+      ...sendInput('wecom', 'user', resolved.target.data),
+      target: resolved.target
+    })
+  ).toMatchObject({ status: 'pending' })
+  expect(await plugin.resolveChannel?.(address, learned)).toEqual({
+    status: 'unavailable',
+    reason: 'callback_reply_used'
+  })
+
+  const final = await callbackReply(
+    await host.runtime.fetch(streamRefresh(pending.stream.id))
+  )
+
+  expect(final.stream).toMatchObject({ finish: true, content: 'hello_*世界' })
+})

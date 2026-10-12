@@ -4,7 +4,9 @@ import type {
   ChannelHost,
   ChannelPlugin,
   SendInput,
-  SendResult
+  SendResult,
+  ChannelAddress,
+  ReplyTarget
 } from '@relanox/sdk'
 import { webhookConfigSchema } from './config.js'
 import type { WebhookConfig } from './config.js'
@@ -19,6 +21,7 @@ import { receiveParts } from './media.js'
 import { ingestText, secret } from './transport.js'
 import {
   passiveResponse,
+  passiveAvailability,
   stagePassive,
   startPassive,
   streamId
@@ -47,6 +50,37 @@ const replyStateSchema = z.object({
   streamId: z.string().default(''),
   usedAt: z.number().optional()
 })
+
+function learnedCallback(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  botId: string
+): z.infer<typeof callbackTargetSchema> | undefined {
+  const prior = callbackTargetSchema.safeParse(learned?.data)
+  if (
+    learned?.channel !== 'wecom' ||
+    learned.accountId !== address.accountId ||
+    learned.chatId !== address.chatId ||
+    learned.threadId !== undefined ||
+    !prior.success ||
+    prior.data.scope.botId !== botId
+  ) {
+    return undefined
+  }
+  return prior.data
+}
+
+function matchesReply(
+  target: z.infer<typeof callbackTargetSchema>,
+  input: SendInput,
+  botId: string
+): boolean {
+  return (
+    target.scope.botId === botId &&
+    (input.target.replyToId === undefined ||
+      target.eventId === input.target.replyToId)
+  )
+}
 
 function retainedStream(
   value: unknown,
@@ -351,10 +385,7 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     ) {
       return { status: 'rejected', errorCode: 'invalid_target' }
     }
-    if (
-      target.data.scope.botId !== config.botId ||
-      target.data.eventId !== input.target.replyToId
-    ) {
+    if (!matchesReply(target.data, input, config.botId)) {
       return { status: 'rejected', errorCode: 'target_identity_changed' }
     }
     const entry = await host.state.get(stateKey(target.data.eventId))
@@ -430,6 +461,61 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       media: { receive: ['image', 'video', 'file'], send: ['image'] }
     },
     validateConfig: (value) => webhookConfigSchema.parse(value),
+    async resolveChannel(address, learned) {
+      if (
+        address.platform !== 'wecom' ||
+        address.accountId !== account.id ||
+        address.threadId !== undefined
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      const prior = learnedCallback(address, learned, config.botId)
+      if (!prior) {
+        return { status: 'unavailable', reason: 'address_unresolved' }
+      }
+      const entry = await host.state.get(stateKey(prior.eventId))
+      const state = replyStateSchema.safeParse(entry?.value)
+      if (!state.success || state.data.expiresAt <= Date.now()) {
+        return { status: 'unavailable', reason: 'response_url_expired' }
+      }
+      if (
+        state.data.botId !== config.botId ||
+        state.data.chatId !== address.chatId ||
+        state.data.eventId !== prior.eventId
+      ) {
+        return { status: 'unavailable', reason: 'target_identity_changed' }
+      }
+      if (state.data.usedAt !== undefined) {
+        return { status: 'unavailable', reason: 'response_url_used' }
+      }
+      if (state.data.streamId) {
+        const reason = await passiveAvailability(
+          host,
+          state.data.streamId,
+          prior.eventId,
+          address.chatId
+        )
+
+        if (reason) {
+          return { status: 'unavailable', reason }
+        }
+      } else {
+        try {
+          responseUrl(state.data.responseUrl)
+        } catch {
+          return { status: 'unavailable', reason: 'address_unresolved' }
+        }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'wecom',
+          accountId: account.id,
+          chatId: address.chatId,
+          data: prior
+        }
+      }
+    },
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount

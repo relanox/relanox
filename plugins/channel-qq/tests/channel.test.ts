@@ -14,6 +14,7 @@ import {
   temporaryDatabase
 } from '../../channel-wecom/tests/test-support.js'
 import { createQqChannel } from '../src/index.js'
+import type { Json } from '@relanox/sdk'
 
 installPeerNetwork()
 
@@ -643,3 +644,107 @@ test.each([
     ])
   }
 )
+
+test('QQ resolution discovers the real passive window and durable quota without inventing message IDs', async () => {
+  vi.stubEnv('QQ_SECRET', 'secret')
+  let socketAddress = ''
+
+  const remote = await peer(
+    (request) => {
+      if (request.path === '/app/getAppAccessToken') {
+        return { body: { access_token: 'token', expires_in: 7200 } }
+      }
+      if (request.path === '/gateway') {
+        return { body: { url: socketAddress } }
+      }
+      return { body: { id: 'sent' } }
+    },
+    (socket) => {
+      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 30_000 } }))
+      socket.on('message', (bytes) => {
+        const message = z
+          .object({ op: z.number() })
+          .parse(JSON.parse(wireText(bytes)))
+
+        if (message.op === 2) {
+          socket.send(frame(1, 'READY', { session_id: 'session' }))
+          socket.send(frame(2, 'C2C_MESSAGE_CREATE', createEvent('source')))
+        }
+      })
+    }
+  )
+
+  socketAddress = remote.ws
+  const plugin = createQqChannel()
+
+  const host = await assemble(
+    plugin,
+    { appId: 'app', clientSecret: { env: 'QQ_SECRET' } },
+    [{ chatId: 'user', senderId: 'user' }]
+  )
+
+  const address = {
+    id: 'channel',
+    platform: 'qq' as const,
+    accountId: 'bot',
+    chatId: 'user'
+  }
+
+  expect(await plugin.resolveChannel?.(address)).toEqual({
+    status: 'unavailable',
+    reason: 'address_unresolved'
+  })
+  await host.start()
+  await expect.poll(async () => (await records(host.storage)).length).toBe(1)
+  const learned = (await records(host.storage))[0]?.snapshot.target
+  const resolved = await plugin.resolveChannel?.(address, learned)
+  if (resolved?.status !== 'available') {
+    throw new Error('missing_passive_context')
+  }
+  expect(resolved.target.replyToId).toBeUndefined()
+  for (let sequence = 1; sequence <= 4; sequence += 1) {
+    expect(
+      await plugin.send({
+        ...sendInput('qq', 'user', resolved.target.data, `reply:${sequence}`),
+        target: resolved.target
+      })
+    ).toMatchObject({ status: 'sent' })
+  }
+  expect(
+    remote.requests
+      .filter((request) => request.path === '/v2/users/user/messages')
+      .map((request) => request.body)
+  ).toEqual([
+    expect.objectContaining({ msg_id: 'source', msg_seq: 1 }),
+    expect.objectContaining({ msg_id: 'source', msg_seq: 2 }),
+    expect.objectContaining({ msg_id: 'source', msg_seq: 3 }),
+    expect.objectContaining({ msg_id: 'source', msg_seq: 4 })
+  ])
+  expect(await plugin.resolveChannel?.(address, learned)).toEqual({
+    status: 'unavailable',
+    reason: 'passive_reply_limit'
+  })
+  expect(
+    await plugin.send({
+      ...sendInput('qq', 'user', resolved.target.data, 'fifth'),
+      target: resolved.target
+    })
+  ).toEqual({ status: 'rejected', errorCode: 'passive_reply_limit' })
+  expect(
+    await plugin.resolveChannel?.(
+      { ...address, chatId: 'another_user' },
+      learned
+    )
+  ).toEqual({ status: 'unavailable', reason: 'address_unresolved' })
+
+  const invalid: Record<string, Json> = {
+    ...(resolved.target.data as Record<string, Json>),
+    msgId: 'forged'
+  }
+
+  delete invalid.messageAt
+  expect(await plugin.send(sendInput('qq', 'user', invalid))).toEqual({
+    status: 'rejected',
+    errorCode: 'invalid_target'
+  })
+})

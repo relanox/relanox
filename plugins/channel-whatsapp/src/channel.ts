@@ -3,7 +3,8 @@ import {
   API_VERSION,
   API_BASE,
   validateConfig,
-  validateEndpointUrl
+  validateEndpointUrl,
+  platformIdSchema
 } from './config.js'
 import type {
   AccountConfig,
@@ -164,10 +165,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
     }
     const latest = await host.state.get(windowKey(config, target.customer))
 
-    const until = Math.max(
-      target.windowUntil,
-      latest ? z.number().int().parse(latest.value) : 0
-    )
+    const until = latest ? z.number().int().parse(latest.value) : 0
 
     if (Date.now() >= until) {
       return { status: 'rejected', errorCode: 'customer_window_expired' }
@@ -241,6 +239,38 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       }
     },
     validateConfig,
+    async resolveChannel(address) {
+      if (
+        !runtime ||
+        address.platform !== 'whatsapp' ||
+        address.accountId !== runtime.account.id ||
+        !platformIdSchema.safeParse(address.chatId).success ||
+        address.threadId !== undefined
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      const { host, config } = runtime
+      const latest = await host.state.get(windowKey(config, address.chatId))
+      const window = z.number().int().nonnegative().safeParse(latest?.value)
+      if (!window.success || Date.now() >= window.data) {
+        return { status: 'unavailable', reason: 'customer_window_expired' }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'whatsapp',
+          accountId: address.accountId,
+          chatId: address.chatId,
+          data: {
+            phoneNumberId: config.phoneNumberId,
+            businessAccountId: config.businessAccountId,
+            apiBase: API_BASE,
+            customer: address.chatId,
+            windowUntil: window.data
+          }
+        }
+      }
+    },
     splitText: splitWhatsAppMarkdown,
     async setup(host, account, config) {
       runtime = { host, account, config }

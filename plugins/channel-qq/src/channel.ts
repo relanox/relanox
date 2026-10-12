@@ -13,7 +13,9 @@ import type {
   ChannelHost,
   ChannelPlugin,
   SendInput,
-  SendResult
+  SendResult,
+  ChannelAddress,
+  ReplyTarget
 } from '@relanox/sdk'
 import type { WebSocket } from 'ws'
 import type { z } from 'zod'
@@ -43,6 +45,39 @@ import {
 type ReplyAllocation = {
   mode: 'passive' | 'proactive'
   seq: number
+}
+
+function learnedTarget(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  config: QqConfig
+): z.infer<typeof targetSchema> | undefined {
+  const prior = targetSchema.safeParse(learned?.data)
+  if (
+    learned?.channel !== 'qq' ||
+    learned.accountId !== address.accountId ||
+    learned.chatId !== address.chatId ||
+    learned.threadId !== undefined ||
+    !prior.success ||
+    prior.data.scope.appId !== config.appId ||
+    prior.data.scope.apiBase !== new URL(apiBase(config)).href
+  ) {
+    return undefined
+  }
+  return prior.data
+}
+
+function proactiveAllocation(config: QqConfig): ReplyAllocation | SendResult {
+  return config.allowProactive
+    ? { mode: 'proactive', seq: 1 }
+    : { status: 'rejected', errorCode: 'passive_context_required' }
+}
+
+function configuredType(
+  types: QqConfig['recipientTypes'],
+  chatId: string
+): 'c2c' | 'group' | undefined {
+  return types && Object.hasOwn(types, chatId) ? types[chatId] : undefined
 }
 
 export function createQqChannel(): ChannelPlugin<QqConfig> {
@@ -264,6 +299,9 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     input: SendInput,
     target: z.infer<typeof targetSchema>
   ): Promise<ReplyAllocation | SendResult> {
+    if (target.messageAt === undefined) {
+      return proactiveAllocation(config)
+    }
     const key = `reply:${JSON.stringify([target.type, input.target.chatId, target.msgId])}`
     const max = target.type === 'c2c' ? 4 : 5
     const windowMs = target.type === 'c2c' ? 3_600_000 : 300_000
@@ -433,6 +471,66 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       }
     },
     validateConfig: (value) => configSchema.parse(value),
+    async resolveChannel(address, learned) {
+      if (
+        address.platform !== 'qq' ||
+        address.accountId !== account.id ||
+        !address.chatId ||
+        address.threadId !== undefined
+      ) {
+        return { status: 'unavailable', reason: 'invalid_address' }
+      }
+      const known = learnedTarget(address, learned, config)
+
+      const type =
+        configuredType(config.recipientTypes, address.chatId) ?? known?.type
+
+      if (!type) {
+        return { status: 'unavailable', reason: 'address_unresolved' }
+      }
+
+      const data = {
+        type,
+        scope: { appId: config.appId, apiBase: new URL(apiBase(config)).href },
+        ...(known?.type === type &&
+        known.msgId !== undefined &&
+        known.messageAt !== undefined
+          ? { msgId: known.msgId, messageAt: known.messageAt }
+          : {})
+      }
+
+      if (!config.allowProactive) {
+        if (data.messageAt === undefined) {
+          return { status: 'unavailable', reason: 'passive_context_required' }
+        }
+        if (
+          Date.now() >=
+          data.messageAt + (type === 'c2c' ? 3_600_000 : 300_000)
+        ) {
+          return { status: 'unavailable', reason: 'passive_window_expired' }
+        }
+
+        const entry = await host.state.get(
+          `reply:${JSON.stringify([type, address.chatId, data.msgId])}`
+        )
+
+        if (
+          entry &&
+          allocationSchema.parse(entry.value).next > (type === 'c2c' ? 4 : 5)
+        ) {
+          return { status: 'unavailable', reason: 'passive_reply_limit' }
+        }
+      }
+      return {
+        status: 'available',
+        target: {
+          channel: 'qq',
+          accountId: account.id,
+          chatId: address.chatId,
+          data
+        }
+      }
+    },
     async setup(nextHost, nextAccount, nextConfig) {
       host = nextHost
       account = nextAccount
