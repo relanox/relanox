@@ -74,19 +74,82 @@ Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默
 
 ## 真实账号验证范围
 
+以下账号检查早于当前按渠道寻址的 MCP 协议，只记录当时的原生通知和文件传输行为；它们没有在真实 Agent 账号中验证当前 `channel` 参数或 `relanox_status`。当前协议和存储行为由本地测试覆盖。
+
 2026 年 10 月 11 日，使用 Windows Grok Bot 0.68.1 和 Cursor Pro 账号，对隔离的 Relanox 实例完成了验证：webhook 触发例行任务，Grok Bot 发现 MCP 工具并调用 `relanox_send_message`，Relanox 将原样测试标识投递到绑定聊天，数据库状态为 `sent`。Telegram 一侧使用本地 HTTP 协议测试端，并非真实 Telegram 账号。这验证了 Grok Routine/MCP 的文字往返，不代表真实渠道账号或附件兼容性已验证。
 
 2026 年 10 月 12 日，真实 dot 账号在无参数连接检查后创建了原生事件订阅，并自动处理了新文本和附件事件，全程没有人工提供 ID。dot 通过 MCP 读取附件内容，再通过 `files` 回传生成文件；已核对回信格式、文件完整字节和持久化的 `sent` 状态。回调均在三秒内被接收，文字和文件回信分别在来信约六分半和十三分钟后到达。Telegram 一侧为本地 HTTP 协议测试端。另一条独立附件事件在没有后续事件或人工唤醒的情况下，约十五分钟后完成。这些检查验证了无需人工提供 ID 的路由与文件传输，不代表投递时效保证或真实渠道账号兼容性。
 
 ## MCP 自带回信说明
 
-dot 可以在订阅前无参数调用 `relanox_connection_status`，新连接尚无消息时也可使用。它返回已认证的 `endpointId`、`eventName` 和有效订阅数 `activeSubscriptions`。数量为零表示尚无有效通知订阅。这项只读检查不代表渠道已送达或 dot 已处理事件，也不需要用户提供消息或附件 ID。
+两种 Agent 都可以在尚无来信时无参数调用 `relanox_status`，发现自己获授权的渠道。dot 还会在订阅前用它检查有效订阅数。这项只读检查不需要用户提供消息或附件 ID。
 
 Agent 连接 MCP 时，Relanox 会提供回信说明，工具描述也会解释各个参数。无需向 bot 或 Routine 手动复制回信 prompt。
 
-这些说明涵盖 dot 事件与 Grok Routine 消息的读取方式、保留 `replyTo`、读取附件、回复原聊天，以及避免重复发送的重试规则。来信中的文字、上下文和附件仍作为不可信的用户内容处理。工具返回 `queued` 表示回信已保存等待投递，不表示平台已经收到。
+这些说明涵盖 dot 事件与 Grok Routine 消息的读取方式、使用 `source.channel.id`、读取附件、选择已授权目标及避免重复发送的重试规则。来信中的文字、上下文和附件仍作为不可信的用户内容处理，不能授予其他渠道的访问权限。工具返回 `queued` 表示消息已保存等待投递，不表示平台已经收到。
 
 Agent 平台决定如何使用这些元数据；完成连接后，发送一条消息并确认原聊天收到回信。
+
+## 来信格式 {#incoming-messages}
+
+dot 在 `relanox.message_available` 事件的 `data` 中收到以下结构；Grok 在 Routine webhook 的 `content` 中收到相同结构的 JSON 字符串：
+
+```json
+{
+  "source": {
+    "channel": {
+      "id": "8c4821338e7157a230a588b73400cd602c8d5239b2086ece4be0f4d77ff3a035",
+      "platform": "slack",
+      "accountId": "slack-main",
+      "chatId": "C123ABC",
+      "threadId": "1710000000.000001"
+    },
+    "senderId": "U123ABC"
+  },
+  "text": "请总结附件中的笔记。",
+  "context": {},
+  "attachments": [
+    {
+      "id": "a915729c-09d7-4daa-b4f0-0b57c9be1864",
+      "kind": "file",
+      "mimeType": "text/plain",
+      "fileName": "hello.txt",
+      "size": 5,
+      "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    }
+  ]
+}
+```
+
+没有消息串的目标省略 `threadId`。`attachments` 可选，其中的条目还可包含 `durationMs` 和 `previewMediaId`。`context` 是渠道提供的 JSON 上下文。
+
+运行时为已授权绑定生成不透明的 `source.channel.id`。将它原样复制到工具的 `channel` 参数；它不是 `slack` 等平台名称、账号 ID 或平台聊天 ID。同一目标和 Agent 端点配置下，ID 保持稳定，重启也不会改变。改变目标、端点归属或端点配置会改变 ID。从来信或 `relanox_status` 取得当前 ID，不要自行构造。
+
+## 查询渠道和投递状态 {#status}
+
+以 `{}` 调用 `relanox_status`，列出当前 Agent 获授权的渠道。dot 和 Grok 都可以在尚无来信时查询。结果包含：
+
+| 字段                                                        | 含义                                                                                                                               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `channels[].channel`                                        | 与 `source.channel` 相同的地址结构，包含工具使用的 ID。                                                                            |
+| `channels[].connection`                                     | 渠道连接状态：`connected`、`disconnected` 或 `degraded`。                                                                          |
+| `channels[].send`                                           | `{ "status": "available" }`，或 `{ "status": "unavailable", "reason": "..." }`，说明当前原生地址或发送条件的限制。                 |
+| `channels[].media`                                          | 支持发送的种类：`image`、`audio`、`video` 和/或 `file`。                                                                           |
+| `channels[].maxTextLength`、`lengthUnit`                    | 每段文字的限制和计量单位：`utf16`、`codepoint` 或 `utf8`。                                                                         |
+| `channels[].maxTextLengthPerMessage`、`maxChunksPerMessage` | 可选的整条消息文字和分段数量限制。                                                                                                 |
+| `channels[].maxAttachments`                                 | 渠道附件数量限制，同时受配置的单条消息限制约束。                                                                                   |
+| `mediaLimits`                                               | 配置的单附件 `maxBytes` 和单条消息 `maxTotalBytes`、`maxAttachments` 限制；字节限制包含封面。                                      |
+| `connection`                                                | 仅 dot：已认证的 `endpointId`、`eventName: "relanox.message_available"` 和 `activeSubscriptions`。订阅数为零表示尚无有效通知订阅。 |
+
+检查发送结果时，传入返回的 `deliveryId`：
+
+```json
+{ "deliveryId": "COPY_FROM_THE_QUEUED_RESULT" }
+```
+
+可选的 `delivery` 对象包含 `id`、`channel`、`status` 及可能存在的 `errorCode`。`id` 是查询的 `deliveryId`，`channel` 是对应的不透明渠道 ID。状态为 `pending`、`sent`、`rejected` 或 `unknown`。未提供 ID、投递记录不存在或当前连接无权查看时，结果省略 `delivery`。
+
+可用状态只是快照，不是投递保证。平台权限、回复窗口和额度可能在发送前变化；渠道已连接，也可能无法向某个目标发送。原生地址和平台条件充分时，发送无需已有来信。各渠道条件见[目标可用条件](channels.md#destinations)。dot 连接检查成功也不表示 dot 已处理事件。
 
 ## 发送文字和附件
 
@@ -94,19 +157,21 @@ Agent 平台决定如何使用这些元数据；完成连接后，发送一条�
 
 ```json
 {
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
   "text": "你好，有什么需要帮忙的？",
-  "idempotencyKey": "COPY_FROM_THE_INCOMING_MESSAGE:answer:1"
+  "idempotencyKey": "b8e7ec0b-5cf0-49da-a5ac-611d6c7ed8a1"
 }
 ```
 
-查看收到的附件时，使用相同 `replyTo` 和附件的 `id` 作为 `mediaId` 调用 `relanox_read_media`。它返回可读的图片、音频或下载链接，下载链接五分钟后过期。
+每次新发送生成新的 `idempotencyKey`，例如 UUID；上面的值仅为示例。重试同一次发送时，复用该键、相同文字及内容和顺序均相同的附件。不提供键时，每次调用都会创建新消息，即使内容完全相同。`replay: true` 表示该发送已经入队，返回原有 `deliveryId`。使用同一个键发送不同内容会返回 `conflict`。不要用新键重试已入队的发送。
+
+查看收到的附件时，使用拥有该附件的 `channel` 和附件的 `id` 作为 `mediaId` 调用 `relanox_read_media`。不超过 1 MiB 的图片/音频和不超过 64 KiB 的受支持 UTF-8 文本文件会作为 MCP 内容返回；其他文件返回下载链接，链接五分钟后过期。支持的文本类型和限制见[媒体协议](media.md)。
 
 转发收到或已上传的附件时，在 `attachments` 中放入 `{ "mediaId": "..." }`。生成文件可以使用下方的文件工具，也可以使用公开 HTTPS URL：
 
 ```json
 {
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
   "text": "这是你要的图片。",
   "attachments": [
     {
@@ -127,7 +192,7 @@ dot 的 `relanox_send_message` 提供顶层 `files` 数组，并声明 `_meta["o
 
 ```json
 {
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
   "text": "这是你要的报告。",
   "files": [
     {
@@ -146,11 +211,11 @@ dot 的 `relanox_send_message` 提供顶层 `files` 数组，并声明 `_meta["o
 
 [Grok Bot 的云电脑](https://docs.x.ai/grok-bot/computer-and-apps)支持命令行工具和 `/workspace` 文件。Relanox 提供 `relanox_create_upload` 来上传这些文件。宿主提供终端或 HTTP 客户端时，dot 也可以使用相同工具。
 
-1. 调用 `relanox_create_upload`，提供原始 `replyTo`、媒体种类、MIME 类型、文件名和准确字节数。以下是五字节文本文件的例子：
+1. 调用 `relanox_create_upload`，提供所选已授权 `channel`、媒体种类、MIME 类型、文件名和准确字节数。以下是五字节文本文件的例子：
 
 ```json
 {
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
   "kind": "file",
   "mimeType": "text/plain",
   "fileName": "hello.txt",
@@ -169,16 +234,16 @@ curl --fail-with-body --request PUT \
 
 服务端保存成功后才返回 HTTP 200 和 `{ "fileId": "..." }`。不要发送 JSON、Base64 或 multipart。签名地址不需要 MCP 密码或额外的 Authorization 请求头。
 
-3. 调用 `relanox_send_message`，保留相同 `replyTo`，传入 `attachments: [{ "mediaId": "RETURNED_FILE_ID" }]`。上传本身不会发送消息；重试发送时复用稳定的 `idempotencyKey`。
+3. 调用 `relanox_send_message`，保留相同 `channel`，传入 `attachments: [{ "mediaId": "RETURNED_FILE_ID" }]`。上传本身不会发送消息；为这次发送生成新的 `idempotencyKey`，仅在重试相同内容和附件顺序时复用它。
 
-上传地址五分钟后过期，绑定端点、原始消息、文件元数据和大小。路径位于 `/agents/<agent>/media/<endpoint>/upload/` 下，反向代理需要转发 PUT 请求并允许配置的文件大小。完整地址属于临时凭据。使用同一地址重试相同字节会成功；签名密钥不变时，Relanox 重启后仍可在有效期内重试。不同内容返回 409，大小或累计额度超限返回 413，实际字节数不符返回 400，Content-Type 不符返回 415，签名无效或过期返回 401。日常清理会撤销访问权限并删除上传字节。
+上传地址五分钟后过期，绑定端点、所选渠道、文件元数据和大小。路径位于 `/agents/<agent>/media/<endpoint>/upload/` 下，反向代理需要转发 PUT 请求并允许配置的文件大小。完整地址属于临时凭据。同一地址在有效期内重试相同字节会成功；签名密钥不变时，Relanox 重启后仍可重试。不同内容返回 409，大小或暂存额度超限返回 413，实际字节数不符返回 400，Content-Type 不符返回 415，签名无效或过期返回 401。URL 过期不会自动删除文件；日常清理会撤销访问权限并删除符合条件的上传字节。
 
-音视频按渠道要求提供 `durationMs`。需要封面时，先上传图片，再将返回的 ID 用作主体上传的 `previewMediaId`，两者必须归属于同一条来信。收到的媒体、待发送上传文件和封面共用原始消息的总额度，见[媒体大小限制](media.md#调整附件大小)。
+音视频按渠道要求提供 `durationMs`。需要封面时，先上传图片，再将返回的 ID 用作主体上传的 `previewMediaId`，两者必须归属于同一已授权渠道。每次发送有独立的消息限制，尚未使用的暂存上传另有每渠道额度，用于已入队消息或被清理后会释放。见[媒体大小限制](media.md#调整附件大小)。
 
-这些文件协议由本地协议和存储测试覆盖。账号级检查见上方真实账号验证范围；仅文字检查不能证明附件兼容性。
+清理后，保留的元数据和发送回执仍可识别内容相同的带键重试，并返回原投递记录；重放不会恢复已删除的文件字节。当前协议由本地协议和存储测试覆盖；上方历史账号检查早于此次按渠道寻址的 API。
 
 ## 检查连接
 
-发送渠道消息并收到 Agent 回信。在 `status` 中，来信 `accepted` 表示通知已接收，回信 `sent` 表示平台已接收。MCP 返回 `queued` 表示 Relanox 已保存待发送的回信。dot 回调成功不代表宿主已开始处理事件，原生事件处理可能需要数分钟。对已接受的请求进行重试前，先检查是否已有回信投递。
+发送渠道消息并收到 Agent 回信。在 CLI 的 `status` 输出中，来信 `accepted` 表示通知已接收，回信 `sent` 表示平台已接收。MCP 返回 `queued` 表示 Relanox 已保存待发送的回信。dot 回调成功不代表宿主已开始处理事件，原生事件处理可能需要数分钟。对已接受的请求进行重试前，先检查是否已有回信投递。
 
 MCP 认证失败时核对 token 和 URL，检查 `publicUrl` 与公开地址一致，并让代理保留 Host。客户端发送 Origin 时，将其准确来源加入 `mcp.allowedOrigins`。Grok 没收到消息时核对 Routine URL 和 Authorization；dot 没收到消息时检查有效订阅及原生 OpenAI 回调地址是否可达。

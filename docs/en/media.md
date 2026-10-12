@@ -18,6 +18,8 @@ Ask the Agent to send its generated file back to the chat. dot can pass files fr
 
 The connection supplies the upload instructions; no separate file service or prompt is required. Uploading saves the file, and the Agent must then send it to your chat.
 
+Files belong to the chat selected when they are received or uploaded. Ask the Agent to upload a generated file to the chat where you want it sent. It can check the available chats and supported media with `relanox_status` before sending.
+
 Grok may ask you to approve uploading the generated file from its cloud computer. Check the filename and your Relanox address before allowing that upload. While it is waiting for approval, the original chat will not receive the attachment.
 
 LINE, Google Chat and large images in Teams groups or channels also need Relanox's public HTTPS address for delivery. Use the address entered in the configurator and follow [Deployment and daily use](operations.md) to make it reachable. Teams personal chats may ask you to accept the file. IRC supports text conversations.

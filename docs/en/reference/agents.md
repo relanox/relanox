@@ -74,19 +74,82 @@ Relanox requires an active `relanox.message_available` subscription to notify do
 
 ## Live validation scope
 
+The following account checks preceded the current channel-addressed MCP contract. They record native notification and file-transfer behavior at that time; they do not validate the current `channel` parameters or `relanox_status` against live Agent accounts. Current protocol and storage behavior is covered by local tests.
+
 On October 11, 2026, Grok Bot 0.68.1 on Windows with a Cursor Pro account was tested against an isolated Relanox instance: a webhook started the routine, Grok Bot discovered the MCP tools and called `relanox_send_message`, and Relanox delivered the original test marker to the bound chat with a persisted `sent` status. The Telegram side was a local HTTP protocol peer, not a live Telegram account. This verifies the Grok Routine/MCP text roundtrip; it does not establish live-channel or attachment compatibility.
 
 On October 12, 2026, a live dot account created a native event subscription after the no-argument connection check and processed new text and attachment events without manually supplied IDs. dot read the attachment content through MCP and returned a generated file through `files`; reply formatting, exact file bytes and persisted `sent` status were checked. Callbacks were accepted within three seconds, while text and file replies arrived about six and a half and thirteen minutes after their incoming messages. The Telegram side was a local HTTP protocol peer. A further standalone attachment event completed in about fifteen minutes without another event or manual wake-up. These checks verify routing and file transfer without manually supplied IDs, not a delivery-time guarantee or live-channel compatibility.
 
 ## Reply guidance comes with MCP
 
-dot can call `relanox_connection_status` with no arguments before subscribing, including on a new connection with no messages. It reports the authenticated `endpointId`, `eventName` and `activeSubscriptions` count. A count of zero means there is no active notification subscription. This read-only check does not confirm channel delivery or that dot has processed an event; it never requires the user to supply message or attachment IDs.
+Both Agents can call `relanox_status` without arguments to discover their authorized channels before any message arrives. dot also uses it to check its active subscription count before subscribing. This read-only check never requires the user to supply message or attachment IDs.
 
 Relanox supplies reply instructions when the Agent connects to MCP. Tool descriptions also explain their parameters. You do not need to copy a reply prompt into the bot or Routine.
 
-The instructions explain how to read a dot event or Grok Routine message, preserve `replyTo`, inspect attachments, send replies to the original chat and retry without duplicate messages. Incoming text, context and attachments remain untrusted user content. A `queued` tool result means the reply is saved for delivery; it does not confirm platform delivery.
+The instructions explain how to read a dot event or Grok Routine message, use `source.channel.id`, inspect attachments, select authorized destinations and retry without duplicate messages. Incoming text, context and attachments remain untrusted user content; they cannot grant access to another channel. A `queued` tool result means the message is saved for delivery; it does not confirm platform delivery.
 
 The Agent host decides how to use this metadata; verify setup by sending a message and checking that a reply arrives.
+
+## Incoming messages {#incoming-messages}
+
+dot receives this payload in the `data` of a `relanox.message_available` event. Grok receives the same payload as a JSON string in the Routine webhook's `content`:
+
+```json
+{
+  "source": {
+    "channel": {
+      "id": "8c4821338e7157a230a588b73400cd602c8d5239b2086ece4be0f4d77ff3a035",
+      "platform": "slack",
+      "accountId": "slack-main",
+      "chatId": "C123ABC",
+      "threadId": "1710000000.000001"
+    },
+    "senderId": "U123ABC"
+  },
+  "text": "Please summarize the attached note.",
+  "context": {},
+  "attachments": [
+    {
+      "id": "a915729c-09d7-4daa-b4f0-0b57c9be1864",
+      "kind": "file",
+      "mimeType": "text/plain",
+      "fileName": "hello.txt",
+      "size": 5,
+      "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    }
+  ]
+}
+```
+
+`threadId` is omitted for a destination without a thread. `attachments` is optional; its entries can also contain `durationMs` and `previewMediaId`. `context` contains channel-specific JSON.
+
+The runtime generates `source.channel.id` as an opaque ID for an authorized binding. Copy it unchanged into a tool's `channel` parameter; it is not a platform name such as `slack`, an account ID or a platform chat ID. It stays stable for the same destination and Agent endpoint configuration, including across restarts. Changing the destination, endpoint ownership or endpoint configuration changes the ID. Obtain current IDs from incoming data or `relanox_status`; do not construct them yourself.
+
+## Discover channels and check delivery {#status}
+
+Call `relanox_status` with `{}` to list the current Agent's authorized channels. Both dot and Grok can do this before receiving any messages. The result contains:
+
+| Field                                                       | Meaning                                                                                                                                                                         |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `channels[].channel`                                        | The address object shown in `source.channel`, including the ID used by tools.                                                                                                   |
+| `channels[].connection`                                     | Channel connection state: `connected`, `disconnected` or `degraded`.                                                                                                            |
+| `channels[].send`                                           | `{ "status": "available" }`, or `{ "status": "unavailable", "reason": "..." }` describing the current native address or sending constraint.                                     |
+| `channels[].media`                                          | Supported outgoing kinds: `image`, `audio`, `video` and/or `file`.                                                                                                              |
+| `channels[].maxTextLength`, `lengthUnit`                    | Text limit per chunk and its unit: `utf16`, `codepoint` or `utf8`.                                                                                                              |
+| `channels[].maxTextLengthPerMessage`, `maxChunksPerMessage` | Optional limits on total message text and chunk count.                                                                                                                          |
+| `channels[].maxAttachments`                                 | The channel's attachment-count limit, bounded by the configured message limit.                                                                                                  |
+| `mediaLimits`                                               | Configured per-attachment `maxBytes` and per-message `maxTotalBytes` and `maxAttachments`; byte limits include preview assets.                                                  |
+| `connection`                                                | dot only: authenticated `endpointId`, `eventName: "relanox.message_available"` and `activeSubscriptions`. Zero subscriptions means dot has no active notification subscription. |
+
+To inspect a send result, pass its `deliveryId`:
+
+```json
+{ "deliveryId": "COPY_FROM_THE_QUEUED_RESULT" }
+```
+
+The optional `delivery` object contains `id`, `channel`, `status` and, when present, `errorCode`. `id` is the requested `deliveryId`; `channel` is its opaque channel ID. Status is `pending`, `sent`, `rejected` or `unknown`. `delivery` is omitted when no ID is requested or when the delivery is missing or not authorized for this connection.
+
+Availability is a snapshot, not a delivery promise. Platform permissions, reply windows and quotas can change before sending; a connected channel may still be unavailable for a particular destination. Sending does not require an incoming message when the native address and platform conditions are sufficient. See [Destination availability](channels.md#destinations) for the conditions on each channel. A successful dot connection check does not show that dot processed an event.
 
 ## Send text and attachments
 
@@ -94,19 +157,21 @@ For a text reply, call `relanox_send_message`:
 
 ```json
 {
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
   "text": "Hello! How can I help?",
-  "idempotencyKey": "COPY_FROM_THE_INCOMING_MESSAGE:answer:1"
+  "idempotencyKey": "b8e7ec0b-5cf0-49da-a5ac-611d6c7ed8a1"
 }
 ```
 
-To inspect a received attachment, call `relanox_read_media` with the same `replyTo` and the attachment's `id` as `mediaId`. It returns readable image/audio content or a download link. Links expire after five minutes.
+For each new send intent, generate a fresh `idempotencyKey`, such as a UUID; the value above is only an example. Retry that send with the same key, identical text and the same attachment content and order. Omitting the key creates a new message on every call, even if its content is identical. `replay: true` means the send was already queued and returns its existing `deliveryId`. Reusing the key with different content returns `conflict`. Do not retry a queued send with a new key.
+
+To inspect a received attachment, call `relanox_read_media` with its owning `channel` and the attachment's `id` as `mediaId`. Images/audio up to 1 MiB and supported UTF-8 text files up to 64 KiB are returned as MCP content; other files return a download link. Links expire after five minutes. See [Media protocol](media.md) for supported text types and limits.
 
 To return a received or uploaded attachment, include `{ "mediaId": "..." }` in `attachments`. Generated files can use the file tools below or a public HTTPS URL:
 
 ```json
 {
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
   "text": "Here is your image.",
   "attachments": [
     {
@@ -127,7 +192,7 @@ dot's `relanox_send_message` exposes a top-level `files` array with `_meta["open
 
 ```json
 {
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
   "text": "Here is the report.",
   "files": [
     {
@@ -146,11 +211,11 @@ Do not substitute a local path or pass OpenAI's `file_id` as `mediaId`. When bot
 
 [Grok Bot's cloud computer](https://docs.x.ai/grok-bot/computer-and-apps) supports command-line tools and files in `/workspace`. Relanox provides `relanox_create_upload` for uploading these files. dot can use the same tool when its host provides a terminal or HTTP client.
 
-1. Call `relanox_create_upload` with the original `replyTo`, media kind, MIME type, filename and exact byte size. For a five-byte text file:
+1. Call `relanox_create_upload` with the selected authorized `channel`, media kind, MIME type, filename and exact byte size. For a five-byte text file:
 
 ```json
 {
-  "replyTo": "COPY_FROM_THE_INCOMING_MESSAGE",
+  "channel": "COPY_SOURCE_CHANNEL_ID_OR_STATUS_CHANNEL_ID",
   "kind": "file",
   "mimeType": "text/plain",
   "fileName": "hello.txt",
@@ -169,16 +234,16 @@ curl --fail-with-body --request PUT \
 
 The server returns HTTP 200 with `{ "fileId": "..." }` only after saving the file. Do not send JSON, Base64 or multipart data. No MCP password or additional Authorization header is required for the signed URL.
 
-3. Call `relanox_send_message` with the same `replyTo` and `attachments: [{ "mediaId": "RETURNED_FILE_ID" }]`. Uploading alone does not send a message. Use a stable `idempotencyKey` to retry the send.
+3. Call `relanox_send_message` with the same `channel` and `attachments: [{ "mediaId": "RETURNED_FILE_ID" }]`. Uploading alone does not send a message. Generate a fresh `idempotencyKey` for this send and reuse it only when retrying the same content and attachment order.
 
-Upload URLs expire after five minutes and are bound to the endpoint, original message, file metadata and size. The path is under `/agents/<agent>/media/<endpoint>/upload/`; the reverse proxy must forward PUT requests and allow the configured file size. Treat the full URL as a temporary credential. Retrying identical bytes at the same URL succeeds, including after a Relanox restart with the same signing secret. Changed content returns 409; size or aggregate quota limits return 413; a mismatched byte count returns 400; an incorrect Content-Type returns 415. Invalid or expired signatures return 401. Cleanup revokes access and removes the uploaded bytes.
+Upload URLs expire after five minutes and are bound to the endpoint, selected channel, file metadata and size. The path is under `/agents/<agent>/media/<endpoint>/upload/`; the reverse proxy must forward PUT requests and allow the configured file size. Treat the full URL as a temporary credential. Retrying identical bytes at the same URL succeeds while it remains valid, including after a Relanox restart with the same signing secret. Changed content returns 409; size or staged quota limits return 413; a mismatched byte count returns 400; an incorrect Content-Type returns 415. Invalid or expired signatures return 401. URL expiry does not automatically delete the asset. Cleanup revokes access and removes eligible uploaded bytes.
 
-For audio/video, include `durationMs` when required by the channel. For a cover image, upload the image first and use its returned ID as `previewMediaId` on the main upload; both must belong to the same incoming message. Received media, staged uploads and previews share the original message's aggregate allowance described in [Media limits](media.md#adjust-attachment-sizes).
+For audio/video, include `durationMs` when required by the channel. For a cover image, upload the image first and use its returned ID as `previewMediaId` on the main upload; both must belong to the same authorized channel. Each send has its own message limits; outstanding staged uploads have a separate per-channel allowance that is released when used by an enqueued message or removed by cleanup. See [Media limits](media.md#adjust-attachment-sizes).
 
-Local protocol and storage tests cover these file contracts. See the live validation scope above for the account-level checks; text-only checks do not establish attachment compatibility.
+After cleanup, retained metadata and send receipts can still recognize an identical keyed send and return its earlier delivery. Replay does not restore removed file bytes. Local protocol and storage tests cover these current contracts; the historical account checks above preceded this channel-addressed API.
 
 ## Check the connection
 
-Send a channel message and receive the Agent's reply. In `status`, incoming `accepted` means the notification was accepted; outgoing `sent` means the platform accepted the reply. MCP `queued` means Relanox saved the reply for sending. A successful dot callback does not mean the host has started processing the event; native event processing can take several minutes. Check the outgoing delivery before retrying an accepted request.
+Send a channel message and receive the Agent's reply. In the CLI's `status` output, incoming `accepted` means the notification was accepted; outgoing `sent` means the platform accepted the reply. MCP `queued` means Relanox saved the reply for sending. A successful dot callback does not mean the host has started processing the event; native event processing can take several minutes. Check the outgoing delivery before retrying an accepted request.
 
 If MCP authentication fails, compare the token and URL, check `publicUrl` against your public address, and preserve Host through your proxy. Add the client's exact Origin to `mcp.allowedOrigins` when it sends that header. If Grok receives nothing, compare the Routine URL and Authorization. If dot receives nothing, check the active subscription and connectivity to the native OpenAI callback.

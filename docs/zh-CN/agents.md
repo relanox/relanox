@@ -13,7 +13,7 @@
 3. 点击 Bot 名称，在 **详情 → 例行任务** 中打开该任务。**Webhook** 区域包含 **POST 到、密钥、标头**。Routine URL 使用“POST 到”的值；Routine Authorization 环境变量填写 `Bearer <密钥>`。如果复制的是“标头”，去掉开头的 `Authorization:` 字段名。
 4. 打开生成的接入教程，保存 MCP 密码、设置列出的环境变量，并让 Relanox 在公开 HTTPS 地址运行。启动步骤见[快速开始](getting-started.md)。
 5. 在同一 Cursor 账号的控制台打开 **Plugins & MCPs → Add → Custom MCP**。填写名称，类型保持 **URL**，把教程生成的完整 Grok MCP 地址粘贴到 **Server URL**。**HTTP headers、Client ID、Client Secret** 留空，点击 **Add MCP**。
-6. 回到 Grok Bot，打开 **连接应用 → 你的插件**，确认连接已就绪，并能看到 `relanox_send_message`、`relanox_read_media` 和 `relanox_create_upload`。插件连接由账号共享，例行任务使用前面选定的 Bot。
+6. 回到 Grok Bot，打开 **连接应用 → 你的插件**，确认连接已就绪，并能看到 `relanox_status`、`relanox_send_message`、`relanox_read_media` 和 `relanox_create_upload`。插件连接由账号共享，例行任务使用前面选定的 Bot。
 7. 用允许的发送者在绑定聊天发一条短消息，确认回信出现在原聊天，而不只是 Grok Bot 对话里。
 
 这里没有统一的“MCP 回调”字段：Relanox 调用例行任务的 webhook 唤醒 Bot，Bot 再通过 MCP 连接把回复交回 Relanox。请妥善保存 Routine URL、密钥和完整 MCP 地址。
@@ -27,11 +27,13 @@
 5. 在 dot 对话中启用 Relanox 插件，然后发送：“订阅 Relanox 的来信。每次收到事件时读取其中的消息，使用 Relanox 工具回复原聊天。”允许 dot 创建订阅。
 6. 用允许的发送者在选定聊天发一条短消息，确认回信出现在同一个聊天。OAuth 登录成功或通知被接收，并不代表 dot 已经回信。
 
-首次连接检查不需要消息或附件 ID，dot 会随每次事件自动收到这些 ID。修改授权密码后，重启 Relanox 并重新连接 dot。如果 dot 停止接收新消息，检查插件连接和 Relanox 的消息状态。
+首次连接检查无参数调用 `relanox_status`。即使尚无来信，它也会列出 dot 可用的聊天和有效订阅数。每次事件会自动提供来源聊天和附件 ID。修改授权密码后，重启 Relanox 并重新连接 dot。如果 dot 停止接收新消息，检查插件连接和 Relanox 的消息状态。
 
 ## 检查连接
 
 无需给 Bot 或 Routine 另写回信 prompt。
+
+两种 Agent 都可以先查询 Relanox 中可用的聊天，再按平台权限和发送条件向已授权聊天发送，即使 Relanox 尚未收到该聊天的消息。部分平台需要近期客户来信、回调或会话元数据，见[目标可用条件](reference/channels.md#destinations)。消息入队表示已保存等待发送；要求重发前，先检查投递结果。
 
 没有回信时，先检查聊天是否选对 Agent、发送者是否在允许名单中，再按生成教程核对连接地址和密码。Grok 还需核对 Routine URL 和完整 Authorization；dot 则检查插件连接与授权。通过[消息状态与恢复](reference/core.md)查看消息停在哪一步。
 

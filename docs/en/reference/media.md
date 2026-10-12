@@ -6,7 +6,11 @@ Start with a small picture and ask, “Please describe this image.” Once the A
 
 ## Let the Agent read attachments
 
-The MCP connection provides attachment instructions and the `relanox_read_media`, `relanox_send_message` and `relanox_create_upload` tools. The Agent uses the incoming attachment `id` as `mediaId` and keeps the message’s `replyTo` when reading or replying. No separate attachment prompt is needed. You can continue sending attachments normally in your chat. See [Connect an Agent](../agents.md) for setup.
+The MCP connection provides attachment instructions and the `relanox_read_media`, `relanox_send_message` and `relanox_create_upload` tools. The Agent uses `source.channel.id` as `channel` and the incoming attachment `id` as `mediaId`. These IDs arrive with the message; no separate attachment prompt is needed. See [Connect an Agent](../agents.md) for setup and [Agent protocol](agents.md#incoming-messages) for the payload.
+
+Media is owned by an authorized channel. Read, upload and send calls must select that channel. A `mediaId` from another channel cannot be used, including as a preview. Use `relanox_status` to discover authorized channels and their supported media before uploading or sending.
+
+`relanox_read_media` returns images and audio up to 1 MiB as MCP content. UTF-8 plain text, Markdown, CSV, TSV and JSON files up to 64 KiB are returned as embedded text resources. Other files return download resource links valid for five minutes. That link lifetime controls access, not asset retention. If the Agent cannot read the returned content or download it, it should explain the limitation.
 
 ## Receive files created by the Agent
 
@@ -16,7 +20,9 @@ Grok Bot can call `relanox_create_upload`, PUT a file from its cloud computer to
 
 A direct public HTTPS URL is also accepted in `attachments`. It must return the file itself. Audio/video destinations may require `durationMs` and a cover image; use the upload tool or URL attachment parameters for this metadata. Check the [channel guide](../channels/index.md) before sending.
 
-Signed upload URLs last five minutes and authorize one immutable file for the original `replyTo`. Retrying the same URL with identical bytes succeeds; different bytes cannot overwrite the file. Uploading saves the file but does not send it. Keep the returned file ID to retry the send without uploading again. Treat upload URLs as temporary credentials.
+Signed upload URLs last five minutes and authorize one immutable file for the selected `channel`. Retrying the same URL with identical bytes succeeds while it is valid; different bytes cannot overwrite the file. Uploading saves the file but does not send it. Keep the returned file ID for the send call. Treat upload URLs as temporary credentials. The five-minute lifetime limits access through that URL; it does not automatically delete the uploaded asset.
+
+For a new send, use a fresh `idempotencyKey`, such as a UUID. Retry the same send with that key, identical text and the same attachment content and order. Omitting the key creates a new message on every call, even with identical content. A `queued` result means saved for delivery. Use its `deliveryId` with `relanox_status` to check progress rather than submitting another send with a new key.
 
 ## Set up a file download address for your channel
 
@@ -58,13 +64,17 @@ The defaults allow 25 MiB per attachment, 50 MiB in one message and up to 10 att
 
 The first two values are measured in bytes: the size of one attachment and the combined size for one message. Both can be set up to 200 MiB. `maxAttachments` can be set up to 10. Restart Relanox after editing the settings.
 
-Chat platforms have their own file requirements too. Check the type and size before sending. For a size error, try compressing the file, sending smaller batches or adjusting Relanox's settings. Received attachments, generated files and cover images for one incoming message also share an overall allowance of twice the configured attachment count and total size.
+Chat platforms have their own file requirements too. Check the type and size before sending. `relanox_status.mediaLimits` reports the configured per-message limits as `maxBytes`, `maxTotalBytes` and `maxAttachments`; each channel also reports its supported media and attachment limit. Cover-image bytes count toward the message's total size. For a size error, try compressing the file, sending smaller batches or adjusting Relanox's settings.
+
+Outstanding staged uploads have a separate per-channel allowance of twice `maxAttachments` and twice `maxTotalMediaBytes`. This bounds files waiting to be used; it is not a cumulative lifetime limit for the chat. Enqueueing a message releases the staged allowance for the assets it uses, and cleanup releases it for removed uploads. Each send still has to fit the per-message limits. Previews must be image assets owned by the same channel.
 
 ## Where files are stored
 
-Relanox saves received attachments and Agent uploads in your configured database. Uploads count toward the original message's overall attachment allowance even before they are sent. A database backup includes those files, so allow enough storage for pictures and videos.
+Relanox saves received attachments and Agent uploads in your configured database. Staged uploads occupy the per-channel allowance until used by an enqueued message or removed by cleanup. A database backup includes those files, so allow enough storage for pictures and videos.
 
 Routine cleanup removes eligible old attachments, which also expires their download links. Leave enough time for recipients to download their files before cleaning up. See [Backups and cleanup](../operations.md) for the commands.
+
+Retained media metadata and send receipts allow an identical keyed send to return its previous delivery after cleanup. This replay does not restore deleted file bytes or make a cleaned attachment readable again. A new send needs available bytes.
 
 ## If an attachment does not arrive
 
