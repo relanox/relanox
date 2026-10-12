@@ -37,4 +37,6 @@ With either Agent, ask it to check Relanox's available chats. It can then send t
 
 If no reply arrives, first check that the chat uses the intended Agent and that the sender is allowed. Compare the connection address and password with the generated guide. For Grok, also compare the Routine URL and complete Authorization value; for dot, check the plugin connection and authorization. Use [message status and recovery](reference/core.md) to find where a message stopped.
 
+If the Agent still offers `replyTo` or lacks current tools after an upgrade, refresh or reconnect its MCP connection. A live Grok check retained old tool parameters after changing the server URL; creating a connection with a new name and selecting it for the Routine loaded the current definitions. If refreshing does not help, use a new connection and update the test Routine to use it before sending another message. Do not reuse old message IDs as channel IDs.
+
 For manual JSON setup, authentication details and MCP tool contracts, see [Agent configuration and protocol](reference/agents.md). For attachments, see [Send pictures and files](media.md).

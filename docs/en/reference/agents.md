@@ -74,11 +74,13 @@ Relanox requires an active `relanox.message_available` subscription to notify do
 
 ## Live validation scope
 
-The following account checks preceded the current channel-addressed MCP contract. They record native notification and file-transfer behavior at that time; they do not validate the current `channel` parameters or `relanox_status` against live Agent accounts. Current protocol and storage behavior is covered by local tests.
+The earlier notification checks below preceded the channel-addressed MCP contract. A later rich-media check verified the current `channel` parameters and `relanox_status` with both live Agent accounts. All checks used an isolated Relanox instance and a local Telegram HTTP protocol peer; they do not establish live Telegram account or client-rendering compatibility.
 
 On October 11, 2026, Grok Bot 0.68.1 on Windows with a Cursor Pro account was tested against an isolated Relanox instance: a webhook started the routine, Grok Bot discovered the MCP tools and called `relanox_send_message`, and Relanox delivered the original test marker to the bound chat with a persisted `sent` status. The Telegram side was a local HTTP protocol peer, not a live Telegram account. This verifies the Grok Routine/MCP text roundtrip; it does not establish live-channel or attachment compatibility.
 
 On October 12, 2026, a live dot account created a native event subscription after the no-argument connection check and processed new text and attachment events without manually supplied IDs. dot read the attachment content through MCP and returned a generated file through `files`; reply formatting, exact file bytes and persisted `sent` status were checked. Callbacks were accepted within three seconds, while text and file replies arrived about six and a half and thirteen minutes after their incoming messages. The Telegram side was a local HTTP protocol peer. A further standalone attachment event completed in about fifteen minutes without another event or manual wake-up. These checks verify routing and file transfer without manually supplied IDs, not a delivery-time guarantee or live-channel compatibility.
+
+Later on October 12, 2026, both dot and Grok Bot read a channel-owned PNG and sent Markdown containing a `relanox://media/UUID` image and a generated text file at `relanox://attachment/1`. dot supplied the file through `files`; Grok used a signed PUT upload and the returned media ID. The receiver verified the exact order of leading text, image, middle text, file label, file and trailing text, matching image bytes and exact file contents. Each case made one send call and reached persisted `sent` status. The dot case was continued manually after its native event arrived, so this rich-media check does not establish unattended event timing.
 
 ## Reply guidance comes with MCP
 

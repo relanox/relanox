@@ -74,11 +74,13 @@ Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默
 
 ## 真实账号验证范围
 
-以下账号检查早于当前按渠道寻址的 MCP 协议，只记录当时的原生通知和文件传输行为；它们没有在真实 Agent 账号中验证当前 `channel` 参数或 `relanox_status`。当前协议和存储行为由本地测试覆盖。
+下方较早的通知检查发生在按渠道寻址的 MCP 协议之前。后续图文检查已通过两个真实 Agent 账号验证当前 `channel` 参数和 `relanox_status`。所有检查均使用隔离的 Relanox 实例和本地 Telegram HTTP 协议测试端，不代表真实 Telegram 账号或客户端显示兼容性已验证。
 
 2026 年 10 月 11 日，使用 Windows Grok Bot 0.68.1 和 Cursor Pro 账号，对隔离的 Relanox 实例完成了验证：webhook 触发例行任务，Grok Bot 发现 MCP 工具并调用 `relanox_send_message`，Relanox 将原样测试标识投递到绑定聊天，数据库状态为 `sent`。Telegram 一侧使用本地 HTTP 协议测试端，并非真实 Telegram 账号。这验证了 Grok Routine/MCP 的文字往返，不代表真实渠道账号或附件兼容性已验证。
 
 2026 年 10 月 12 日，真实 dot 账号在无参数连接检查后创建了原生事件订阅，并自动处理了新文本和附件事件，全程没有人工提供 ID。dot 通过 MCP 读取附件内容，再通过 `files` 回传生成文件；已核对回信格式、文件完整字节和持久化的 `sent` 状态。回调均在三秒内被接收，文字和文件回信分别在来信约六分半和十三分钟后到达。Telegram 一侧为本地 HTTP 协议测试端。另一条独立附件事件在没有后续事件或人工唤醒的情况下，约十五分钟后完成。这些检查验证了无需人工提供 ID 的路由与文件传输，不代表投递时效保证或真实渠道账号兼容性。
+
+2026 年 10 月 12 日稍后，dot 和 Grok Bot 均读取了渠道内的 PNG，并发送包含 `relanox://media/UUID` 图片和 `relanox://attachment/1` 生成文本文件的 Markdown。dot 通过 `files` 提交文件；Grok 使用签名 PUT 上传和返回的媒体 ID。接收端核对了前文、图片、中间文字、文件标签、文件、后文的完整顺序，图片字节及文件内容均一致。每个用例只调用一次发送工具，持久化状态均为 `sent`。dot 在原生事件到达后由人工继续，因此这项图文检查不验证无人干预的事件时效。
 
 ## MCP 自带回信说明
 

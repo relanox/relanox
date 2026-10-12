@@ -37,4 +37,6 @@
 
 没有回信时，先检查聊天是否选对 Agent、发送者是否在允许名单中，再按生成教程核对连接地址和密码。Grok 还需核对 Routine URL 和完整 Authorization；dot 则检查插件连接与授权。通过[消息状态与恢复](reference/core.md)查看消息停在哪一步。
 
+升级后，如果 Agent 仍提供 `replyTo` 参数或缺少当前工具，先刷新或重新连接 MCP。一次 Grok 实测中，修改服务器地址后仍保留旧工具参数；使用新名称创建连接，并让 Routine 选择新连接后，才加载当前定义。若刷新无效，建立新连接并更新测试 Routine 使用的连接，再发送新消息。不要把旧消息 ID 当作 channel ID。
+
 手动 JSON 配置、认证细节和 MCP 工具约定见 [Agent 配置与协议](reference/agents.md)。附件使用见[收发图片和文件](media.md)。
