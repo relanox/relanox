@@ -91,7 +91,7 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 }
 ```
 
-绑定按聊天和话题精确匹配。省略 `threadId` 时仅匹配没有线程的消息。每个话题分别添加绑定。Slack 将根消息时间戳作为 `threadId`，因此每个根线程也需要独立绑定。账号的 `allowedSenders` 必填，至少包含一人；绑定中的可选 `allowedSenders` 进一步限制该聊天，发送者必须同时出现在两个名单中。ID 格式请按[对应平台的接入指南](../channels/index.md)填写。
+绑定按聊天和话题精确匹配。省略 `threadId` 时仅匹配没有线程的消息。每个话题分别添加绑定。普通 Slack 频道或私聊消息省略 `threadId`；消息串内的回复使用该串真实根消息的时间戳作为 `threadId`，并为它配置精确绑定。账号的 `allowedSenders` 必填，至少包含一人；绑定中的可选 `allowedSenders` 进一步限制该聊天，发送者必须同时出现在两个名单中。ID 格式请按[对应平台的接入指南](../channels/index.md)填写。
 
 [完整示例](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) 包含十五个渠道和两种 Agent。复制需要的条目，然后替换其中的 ID、凭据和绑定。
 
