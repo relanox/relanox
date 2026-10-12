@@ -30,6 +30,8 @@ export type AgentChannelStatus = {
     | { readonly status: 'available' }
     | { readonly status: 'unavailable'; readonly reason: string }
   readonly media: readonly MediaKind[]
+  /** How Markdown image references appear on this configured transport. */
+  readonly richText?: 'native' | 'sequential' | 'text-only' | 'text-then-images'
   readonly maxTextLength: number
   readonly lengthUnit: 'utf16' | 'codepoint' | 'utf8'
   readonly maxTextLengthPerMessage?: number

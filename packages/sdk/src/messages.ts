@@ -73,11 +73,22 @@ export type InboundRecord = {
   readonly redactedAt?: EpochMs
 }
 
+/** Native rich layouts contain text and images in reading order. */
+export type RichTextPart =
+  | { readonly type: 'text'; readonly text: string }
+  | {
+      readonly type: 'image'
+      readonly media: MediaReference
+      readonly label: string
+    }
+
 export type DeliveryChunk = {
   /** Destination-ready Markdown; closed formatting means chunks need not concatenate to the source. */
   readonly text: string
   /** A media chunk has empty text; preceding text chunks preserve the caption. */
   readonly media?: MediaReference
+  /** Native rich layout; mutually exclusive with text and standalone media. */
+  readonly richText?: readonly RichTextPart[]
   readonly idempotencyKey: string
   readonly state: Json
 }
@@ -158,6 +169,8 @@ export type SendInput = {
   readonly media?: StoredMedia
   /** Preview resolved from the same channel by core. */
   readonly preview?: StoredMedia
+  /** Verified channel-owned images referenced by richText, in reading order. */
+  readonly richMedia?: readonly StoredMedia[]
   readonly signal: AbortSignal
 }
 
