@@ -16,6 +16,7 @@ import type {
   DispatchInput
 } from './messages.js'
 import type { StateStore } from './state.js'
+import type { ChannelAddress, ChannelResolution } from './conversations.js'
 import type { Storage } from './storage.js'
 import type { Observability } from './observability.js'
 import type {
@@ -117,6 +118,11 @@ export type ChannelPlugin<C = Json> = {
     }
   }
   validateConfig(config: unknown): C
+  /** Resolve a configured conversation without requiring a triggering message. */
+  resolveChannel?(
+    address: ChannelAddress,
+    learned?: ReplyTarget
+  ): Promise<ChannelResolution>
   /** Split Markdown against rendered platform limits, retaining complete formatting. */
   splitText?(markdown: string, target: ReplyTarget): readonly string[]
   setup(host: ChannelHost, account: AccountConfig, config: C): Promise<void>
