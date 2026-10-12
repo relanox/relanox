@@ -162,7 +162,10 @@ function linkParts(
       }
     ]
   }
-  const parts = children(token.tokens, depth)
+
+  const parts =
+    token.type === 'image' ? [text(token.text)] : children(token.tokens, depth)
+
   const prefix = token.type === 'image' ? '![' : '['
 
   const href = token.href

@@ -38,6 +38,7 @@ test('ordinary Markdown, escaped syntax, code and HTML remain byte exact', () =>
   for (const markdown of [
     '',
     '[site](https://example.com) ![external](https://example.com/a.png)',
+    '![alt [literal](relanox://attachment/0)](https://example.com/image.png)',
     `\`![literal](${uri})\``,
     `\`\`\`md\n![literal](${uri})\n\`\`\``,
     String.raw`\!\[literal](relanox://attachment/0)`,
@@ -111,4 +112,23 @@ test('mixed media never reinterprets decoded or escaped literal Markdown', () =>
       image: true
     }
   ])
+})
+
+test('ordinary image alt remains literal beside a native image reference', () => {
+  const parts = parseRichMarkdown(
+    `![alt [literal](relanox://attachment/0)][external]\n\n![real](${uri})\n\n[external]: https://example.com/image.png`
+  )
+
+  expect(parts.filter((part) => part.type === 'media')).toEqual([
+    {
+      type: 'media',
+      reference: { kind: 'media', id },
+      label: 'real',
+      image: true
+    }
+  ])
+  expect(parts[0]).toEqual({
+    type: 'text',
+    text: '![alt [literal](relanox://attachment/0)](<https://example.com/image.png>)\n\n'
+  })
 })
