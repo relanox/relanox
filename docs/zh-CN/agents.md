@@ -27,11 +27,11 @@
 5. 在 dot 对话中启用 Relanox 插件，然后发送：“订阅 Relanox 的来信。每次收到事件时读取其中的消息，使用 Relanox 工具回复原聊天。”允许 dot 创建订阅。
 6. 用允许的发送者在选定聊天发一条短消息，确认回信出现在同一个聊天。OAuth 登录成功或通知被接收，并不代表 dot 已经回信。
 
-修改授权密码后，重启 Relanox 并重新连接 dot。如果 dot 停止接收新消息，检查插件连接和 Relanox 的消息状态。
+首次连接检查不需要消息或附件 ID，dot 会随每次事件自动收到这些 ID。修改授权密码后，重启 Relanox 并重新连接 dot。如果 dot 停止接收新消息，检查插件连接和 Relanox 的消息状态。
 
 ## 检查连接
 
-无需给 Bot 或 Routine 另写回信 prompt。更新 Relanox 后，刷新或重新连接 Agent 的 MCP 连接，再发一条消息确认回信。
+无需给 Bot 或 Routine 另写回信 prompt。
 
 没有回信时，先检查聊天是否选对 Agent、发送者是否在允许名单中，再按生成教程核对连接地址和密码。Grok 还需核对 Routine URL 和完整 Authorization；dot 则检查插件连接与授权。通过[消息状态与恢复](reference/core.md)查看消息停在哪一步。
 

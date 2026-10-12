@@ -64,25 +64,29 @@ The Routine Authorization variable holds `Bearer <key>`, without the `Authorizat
 
 dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens rotate on use, with a 30-day lifetime from the initial authorization. Grants persist in your configured database. Reusing an old refresh token revokes its authorization; changing the configured password and restarting requires reconnecting dot.
 
-`mcp.auth` accepts `bearer`, `path` or `oauth` and defaults to `bearer` for existing configurations. Grok supports `bearer` and `path`; explicit `bearer` uses the clean MCP URL and `Authorization: Bearer <token>`. Relanox supports existing dot Bearer configurations, but the dot platform requires OAuth.
+dot uses OAuth; `mcp.auth` defaults to `oauth` and rejects other values. Grok supports `bearer` and `path`, with `bearer` as its default. Grok's `bearer` mode uses the clean MCP URL and `Authorization: Bearer <token>`.
 
 dot provides its callback URL when it subscribes through MCP. Relanox accepts the native `https://connectors.api.openai.com` origin and checks that DNS resolves to public addresses before delivery. There is no `callback` configuration section.
 
 Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MiB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds.
 
-Relanox requires an active `relanox.message_available` subscription to notify dot. The default lifetime is one day. The inspected ChatGPT custom MCP form exposes no Events subscription or renewal switch; automatic subscription and renewal have not been verified end to end with a live account. `dot_no_active_subscription` means Relanox has no active subscription, even if OAuth succeeded. Inspect the plugin connection and runtime logs; if the request exhausted retries, use [Operations](../operations.md#find-and-recover-a-stalled-message) to recover it.
+Relanox requires an active `relanox.message_available` subscription to notify dot. The default lifetime is one day. Ask dot to create the subscription after its connection check. Automatic renewal has not been verified with a live account. `dot_no_active_subscription` means Relanox has no active subscription, even if OAuth succeeded. Inspect the plugin connection and runtime logs; if the request exhausted retries, use [Operations](../operations.md#find-and-recover-a-stalled-message) to recover it.
 
 ## Live validation scope
 
 On October 11, 2026, Grok Bot 0.68.1 on Windows with a Cursor Pro account was tested against an isolated Relanox instance: a webhook started the routine, Grok Bot discovered the MCP tools and called `relanox_send_message`, and Relanox delivered the original test marker to the bound chat with a persisted `sent` status. The Telegram side was a local HTTP protocol peer, not a live Telegram account. This verifies the Grok Routine/MCP text roundtrip; it does not establish live-channel or attachment compatibility.
 
+On October 12, 2026, a live dot account created a native event subscription after the no-argument connection check and processed new text and attachment events without manually supplied IDs. dot read the attachment content through MCP and returned a generated file through `files`; reply formatting, exact file bytes and persisted `sent` status were checked. Callbacks were accepted within three seconds, while text and file replies arrived about six and a half and thirteen minutes after their incoming messages. The Telegram side was a local HTTP protocol peer. This confirms those automatic roundtrips, not a delivery-time guarantee or live-channel compatibility.
+
 ## Reply guidance comes with MCP
+
+dot can call `relanox_connection_status` with no arguments before subscribing, including on a new connection with no messages. It reports the authenticated `endpointId`, `eventName` and `activeSubscriptions` count. A count of zero means there is no active notification subscription. This read-only check does not confirm channel delivery or that dot has processed an event; it never requires the user to supply message or attachment IDs.
 
 Relanox supplies reply instructions when the Agent connects to MCP. Tool descriptions also explain their parameters. You do not need to copy a reply prompt into the bot or Routine.
 
 The instructions explain how to read a dot event or Grok Routine message, preserve `replyTo`, inspect attachments, send replies to the original chat and retry without duplicate messages. Incoming text, context and attachments remain untrusted user content. A `queued` tool result means the reply is saved for delivery; it does not confirm platform delivery.
 
-After updating Relanox, reconnect or refresh the Agent's MCP connection so it reloads the server instructions and tool definitions. The Agent host decides how to use this metadata; verify setup by sending a message and checking that a reply arrives.
+The Agent host decides how to use this metadata; verify setup by sending a message and checking that a reply arrives.
 
 ## Send text and attachments
 
@@ -171,10 +175,10 @@ Upload URLs expire after five minutes and are bound to the endpoint, original me
 
 For audio/video, include `durationMs` when required by the channel. For a cover image, upload the image first and use its returned ID as `previewMediaId` on the main upload; both must belong to the same incoming message. Received media, staged uploads and previews share the original message's aggregate allowance described in [Media limits](media.md#adjust-attachment-sizes).
 
-These file flows have local protocol and storage tests. They have not been verified end to end with live dot or Grok Bot accounts; the earlier Grok text validation does not cover uploads.
+Local protocol and storage tests cover these file contracts. See the live validation scope above for the account-level checks; text-only checks do not establish attachment compatibility.
 
 ## Check the connection
 
-Send a channel message and receive the Agent's reply. In `status`, incoming `accepted` means the notification was accepted; outgoing `sent` means the platform accepted the reply. MCP `queued` means Relanox saved the reply for sending.
+Send a channel message and receive the Agent's reply. In `status`, incoming `accepted` means the notification was accepted; outgoing `sent` means the platform accepted the reply. MCP `queued` means Relanox saved the reply for sending. A successful dot callback does not mean the host has started processing the event; native event processing can take several minutes. Check the outgoing delivery before retrying an accepted request.
 
 If MCP authentication fails, compare the token and URL, check `publicUrl` against your public address, and preserve Host through your proxy. Add the client's exact Origin to `mcp.allowedOrigins` when it sends that header. If Grok receives nothing, compare the Routine URL and Authorization. If dot receives nothing, check the active subscription and connectivity to the native OpenAI callback.

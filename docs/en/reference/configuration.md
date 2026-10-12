@@ -1,6 +1,6 @@
 # Configuration reference
 
-Manual JSON settings, migration notes and CLI contracts. For everyday changes, use [Change settings](../configuration.md).
+Manual JSON settings and CLI contracts. For everyday changes, use [Change settings](../configuration.md).
 
 ## Manual Telegram and Grok example
 
@@ -168,73 +168,15 @@ Logs and metrics are enabled by default. Add `relay.observability` only to chang
 
 Management serves `/health/live`, `/health/ready`, and `/metrics` when enabled. [Observability](observability.md) describes metric names. Optional `media.urlLifetimeMs` controls download-link lifetime; `mediaLimits` controls attachment sizes. Download URLs use `publicUrl`; see [Media transfer](../media.md).
 
-## Update an older configuration
-
-Move your public deployment address into top-level `publicUrl`. Remove `mcp.allowedHosts`, `media.publicBaseUrl`, `media.allowInsecureLocalhost` and Google Chat's `audience`: Relanox derives the host, media origin and Google Chat endpoint URL from the new setting. Remove an empty `media` object unless you want to override link lifetime.
-
-Connection timing and fixed platform identities are now managed internally. If an older file includes any of the fields below, delete them before running `validate`; unknown fields are rejected. dot now accepts only its native OpenAI callback origin. Other fixed timing defaults remain in effect.
-
-| Configuration                                                     | Remove                                              |
-| ----------------------------------------------------------------- | --------------------------------------------------- |
-| Agent `mcp`                                                       | `maxBodyBytes`, `timeoutMs`                         |
-| dot                                                               | `callback`, `subscriptionTtlMs`, `rotationWindowMs` |
-| Grok                                                              | `timeoutMs`, `maxBodyBytes`, `routineTransport`     |
-| Telegram, Slack, Discord, Feishu, IRC, Matrix, Mattermost, Signal | `timeoutMs`                                         |
-| Slack, Discord                                                    | `reconnectDelayMs`                                  |
-| IRC, Matrix, Mattermost, Signal                                   | `reconnectMs`                                       |
-| Matrix                                                            | `syncTimeoutMs`                                     |
-| DingTalk, WeCom WebSocket, QQ                                     | `maxReconnectAttempts`                              |
-| WeCom WebSocket                                                   | `heartbeatMs`                                       |
-| QQ                                                                | `transport`                                         |
-| Discord                                                           | `intents`                                           |
-| Google Chat                                                       | `callerEmail`, `issuer`                             |
-| Microsoft Teams                                                   | `issuer`                                            |
-
-The following deployment internals also use fixed defaults; remove their overrides:
-
-| Configuration           | Remove                                                                      |
-| ----------------------- | --------------------------------------------------------------------------- |
-| `server`                | `workerIntervalMs`, `workerStaleMs`                                         |
-| SQLite                  | `busyTimeoutMs`                                                             |
-| PostgreSQL              | `connectionTimeoutMs`, `idleTimeoutMs`, `statementTimeoutMs`                |
-| Standard observability  | `processMetrics`, `logBufferBytes`, `lifecycleTimeoutMs`                    |
-| Observability `tracing` | `maxQueueSize`, `maxExportBatchSize`, `scheduledDelayMs`, `exportTimeoutMs` |
-| IRC                     | `channels` — channel subscriptions come from this account's bindings        |
-
-Credentials, sender allowlists, trusted origins and deployment addresses remain configurable. The configurator uses native platform addresses automatically; self-hosted services still need their addresses. Advanced server, storage, monitoring and media limits are optional deployment settings.
-
 ## Automatically discovered account identities
 
 Relanox queries Slack, Discord, Feishu/Lark, LINE, Matrix and Mattermost with the configured credential at startup to identify the connected account. If discovery fails, startup fails; check the credential and platform connectivity. `validate` stays offline and cannot verify a credential’s account identity.
-
-Remove these fields from existing configurations:
-
-| Channel       | Remove                               | Replacement                                                                                                |
-| ------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Slack         | `botUserId`, `teamId`, `receiveMode` | Bot token identifies the account; exactly one of `signingSecret` or `appToken` selects HTTP or Socket Mode |
-| Discord       | `botUserId`                          | Bot token identifies the account and discovers its Gateway                                                 |
-| Feishu / Lark | `botOpenId`                          | App credentials identify the bot; retain `tenantKey`                                                       |
-| LINE          | `botUserId`                          | Access token identifies the Official Account                                                               |
-| Matrix        | `userId`                             | Access token identifies the account                                                                        |
-| Mattermost    | `botUserId`                          | Token identifies the account                                                                               |
 
 Keep the credential attached to the original account while replies remain queued. Application IDs, allowed senders and conversation bindings still describe your intended setup and must be filled in.
 
 ### Fixed platform endpoints
 
-Remove these obsolete overrides. Native hosted platforms now use their protocol endpoints automatically:
-
-| Channel                       | Remove                                                           |
-| ----------------------------- | ---------------------------------------------------------------- |
-| Slack, Discord, Feishu / Lark | `apiBaseUrl`, `allowInsecureLoopback`                            |
-| Discord                       | `gatewayUrl`                                                     |
-| DingTalk                      | `apiBase`, `uploadBase`, `mediaOrigins`, `allowInsecureLoopback` |
-| WeCom                         | `wsUrl`, `mediaOrigins`, `allowInsecureLoopback`                 |
-| QQ                            | `apiBase`, `mediaOrigins`, `allowInsecureLoopback`               |
-| WhatsApp                      | `apiBase`, `apiVersion`, `allowLoopback`                         |
-| Google Chat                   | `apiBase`, `tokenUrl`, `jwksUrl`, `allowLoopback`                |
-| LINE                          | `apiBase`, `contentApiBase`, `allowLoopback`                     |
-| Teams                         | `jwksUrl`, `allowLoopback`                                       |
+Native hosted platforms use their protocol endpoints automatically.
 
 QQ defaults to production; set `environment` to `"sandbox"` for its sandbox. Relanox manages WhatsApp's Graph API version, currently `v25.0`. Telegram's local Bot API address and the self-hosted Matrix, Mattermost and Signal addresses remain configurable. Teams retains `tokenUrl` for a single-tenant application authority, along with its trusted service, media and upload origins.
 

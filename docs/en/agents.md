@@ -27,11 +27,11 @@ There is no single “MCP callback” field: Relanox calls the Routine webhook t
 5. In your dot conversation, enable the Relanox plugin and ask: “Subscribe to incoming messages from Relanox. For each event, read its message and reply to the original chat using the Relanox tools.” Allow dot to set up the subscription.
 6. Send a short message from an allowed sender in the selected chat and check that the answer arrives there. A successful OAuth login or accepted notification alone does not confirm that dot has replied.
 
-If you change the authorization password, restart Relanox and reconnect dot. If dot stops receiving new messages, check the plugin connection and Relanox message status.
+The initial connection check does not need message or attachment IDs. dot receives those IDs automatically with each event. If you change the authorization password, restart Relanox and reconnect dot. If dot stops receiving new messages, check the plugin connection and Relanox message status.
 
 ## Check the connection
 
-You do not need to copy a separate reply prompt into the Bot or Routine. After updating Relanox, refresh or reconnect the Agent's MCP connection, then send another message to check the reply.
+You do not need to copy a separate reply prompt into the Bot or Routine.
 
 If no reply arrives, first check that the chat uses the intended Agent and that the sender is allowed. Compare the connection address and password with the generated guide. For Grok, also compare the Routine URL and complete Authorization value; for dot, check the plugin connection and authorization. Use [message status and recovery](reference/core.md) to find where a message stopped.
 

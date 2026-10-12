@@ -30,4 +30,4 @@
 2. 按配置器的“接入教程”更新服务器上的配置和凭据，然后重启 Relanox。
 3. 用允许的账号在新增聊天中发送一条消息，确认回信到达。
 
-更换 Agent 密码后，还需按[连接 Agent](agents.md)重新连接。已有配置需要手动调整数据库、端口或升级旧字段时，查看[配置参考](reference/configuration.md)。
+更换 Agent 密码后，还需按[连接 Agent](agents.md)重新连接。需要手动调整数据库或端口时，查看[配置参考](reference/configuration.md)。

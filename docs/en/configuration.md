@@ -30,4 +30,4 @@ The configurator generates an MCP password for each Agent; you can edit it. Copy
 2. Follow **Setup guide** to update the server configuration and credentials, then restart Relanox.
 3. Send a message from an allowed account in the newly connected chat and confirm the reply arrives.
 
-After changing an Agent password, follow [Connect an Agent](agents.md) to reconnect. For manual database or port settings and older configuration migrations, see [Configuration reference](reference/configuration.md).
+After changing an Agent password, follow [Connect an Agent](agents.md) to reconnect. For manual database or port settings, see [Configuration reference](reference/configuration.md).

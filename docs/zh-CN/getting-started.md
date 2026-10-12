@@ -96,6 +96,6 @@ Telegram 应返回 `ok: true`。共享截图和输出前去掉 token。
 node apps/cli/dist/main.js status --config relanox.json --endpoint-id agent-1
 ```
 
-来信记录的 `accepted` 表示 Routine 已接收通知；回信记录的 `sent` 表示 Telegram 已接收回信。如果只看到来信，检查 Grok MCP 连接和 Routine 执行情况；更新 Relanox 后刷新 MCP 连接。如果没有来信记录，检查 webhook、用户 ID 和聊天绑定。[部署与备份](operations.md#查找并恢复卡住的消息)介绍其他状态和恢复方法。
+来信记录的 `accepted` 表示 Routine 已接收通知；回信记录的 `sent` 表示 Telegram 已接收回信。如果只看到来信，检查 Grok MCP 连接和 Routine 执行情况。如果没有来信记录，检查 webhook、用户 ID 和聊天绑定。[部署与备份](operations.md#查找并恢复卡住的消息)介绍其他状态和恢复方法。
 
 按[修改配置](configuration.md)添加聊天，在[渠道接入](channels/index.md)选择平台，按[收发图片和文件](media.md)配置附件。

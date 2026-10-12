@@ -96,6 +96,6 @@ Start a private conversation with the Telegram bot and send `Hello, please reply
 node apps/cli/dist/main.js status --config relanox.json --endpoint-id agent-1
 ```
 
-An incoming request marked `accepted` means the Routine accepted the notification. An outgoing delivery marked `sent` means Telegram accepted the reply. If only the incoming record appears, check Grok's MCP connection and Routine execution; refresh the connection after updating Relanox. If no incoming record appears, check the webhook, user ID and chat binding. [Operations](operations.md#find-and-recover-a-stalled-message) covers other states and recovery.
+An incoming request marked `accepted` means the Routine accepted the notification. An outgoing delivery marked `sent` means Telegram accepted the reply. If only the incoming record appears, check Grok's MCP connection and Routine execution. If no incoming record appears, check the webhook, user ID and chat binding. [Operations](operations.md#find-and-recover-a-stalled-message) covers other states and recovery.
 
 Add more conversations with [Configuration](configuration.md), choose a platform in [Channels](channels/index.md), and set up attachments with [Media transfer](media.md).

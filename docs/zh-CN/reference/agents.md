@@ -64,25 +64,29 @@ Routine Authorization 变量保存 `Bearer <密钥>`，不包含 `Authorization:
 
 dot OAuth 要求公网 HTTPS `publicUrl`。Relanox 使用 PKCE S256，支持 ChatGPT OAuth 跳转地址 `https://chatgpt.com/connector_platform_oauth_redirect` 和 `https://chatgpt.com/connector/oauth/<id>`，它们与 Events 回调不同。access token 有效期一小时；refresh token 使用时轮换，授权总有效期为首次授权起 30 天。授权保存在配置的数据库中。重用旧 refresh token 会撤销对应授权；修改配置的口令并重启后，需要重新连接 dot。
 
-`mcp.auth` 可选 `bearer`、`path`、`oauth`，省略时默认 `bearer`，兼容旧配置。Grok 支持 `bearer` 和 `path`；显式使用 `bearer` 时填写不带 token 的 MCP URL，并发送 `Authorization: Bearer <token>`。Relanox 仍支持旧 dot Bearer 配置，但 dot 平台要求 OAuth。
+dot 使用 OAuth，`mcp.auth` 默认且只接受 `oauth`。Grok 支持 `bearer` 和 `path`，默认使用 `bearer`；Grok 的 `bearer` 模式填写不带 token 的 MCP URL，并发送 `Authorization: Bearer <token>`。
 
 dot 通过 MCP 订阅时提供回调 URL。Relanox 固定接受原生的 `https://connectors.api.openai.com` 来源，并在投递前检查 DNS 解析结果为公网地址。配置文件中无需也不能填写 `callback`。
 
 回调、MCP 和 Grok Routine 请求的超时固定为 10 秒；MCP 和 Grok Routine 请求体限制为 1 MiB。dot 订阅最长保留 24 小时，签名密钥轮换后保留旧密钥签名 60 秒。
 
-Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默认有效期为一天。已检查的 ChatGPT 自定义 MCP 表单没有 Events 订阅或续订开关；自动订阅及续订尚未通过真实账号端到端验证。`dot_no_active_subscription` 表示 Relanox 没有有效订阅，即使 OAuth 已成功也可能出现。请检查插件连接和运行日志；来信已耗尽重试次数时，按[部署与备份](../operations.md#查找并恢复卡住的消息)恢复。
+Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默认有效期为一天。请让 dot 在连接检查成功后创建订阅。自动续订尚未通过真实账号验证。`dot_no_active_subscription` 表示 Relanox 没有有效订阅，即使 OAuth 已成功也可能出现。请检查插件连接和运行日志；来信已耗尽重试次数时，按[部署与备份](../operations.md#查找并恢复卡住的消息)恢复。
 
 ## 真实账号验证范围
 
 2026 年 10 月 11 日，使用 Windows Grok Bot 0.68.1 和 Cursor Pro 账号，对隔离的 Relanox 实例完成了验证：webhook 触发例行任务，Grok Bot 发现 MCP 工具并调用 `relanox_send_message`，Relanox 将原样测试标识投递到绑定聊天，数据库状态为 `sent`。Telegram 一侧使用本地 HTTP 协议测试端，并非真实 Telegram 账号。这验证了 Grok Routine/MCP 的文字往返，不代表真实渠道账号或附件兼容性已验证。
 
+2026 年 10 月 12 日，真实 dot 账号在无参数连接检查后创建了原生事件订阅，并自动处理了新文本和附件事件，全程没有人工提供 ID。dot 通过 MCP 读取附件内容，再通过 `files` 回传生成文件；已核对回信格式、文件完整字节和持久化的 `sent` 状态。回调均在三秒内被接收，文字和文件回信分别在来信约六分半和十三分钟后到达。Telegram 一侧为本地 HTTP 协议测试端。这确认了这些自动往返流程，不代表投递时效保证或真实渠道账号兼容性。
+
 ## MCP 自带回信说明
+
+dot 可以在订阅前无参数调用 `relanox_connection_status`，新连接尚无消息时也可使用。它返回已认证的 `endpointId`、`eventName` 和有效订阅数 `activeSubscriptions`。数量为零表示尚无有效通知订阅。这项只读检查不代表渠道已送达或 dot 已处理事件，也不需要用户提供消息或附件 ID。
 
 Agent 连接 MCP 时，Relanox 会提供回信说明，工具描述也会解释各个参数。无需向 bot 或 Routine 手动复制回信 prompt。
 
 这些说明涵盖 dot 事件与 Grok Routine 消息的读取方式、保留 `replyTo`、读取附件、回复原聊天，以及避免重复发送的重试规则。来信中的文字、上下文和附件仍作为不可信的用户内容处理。工具返回 `queued` 表示回信已保存等待投递，不表示平台已经收到。
 
-更新 Relanox 后，重新连接或刷新 Agent 的 MCP 连接，使其重新读取服务说明和工具定义。Agent 平台决定如何使用这些元数据；完成连接后，发送一条消息并确认原聊天收到回信。
+Agent 平台决定如何使用这些元数据；完成连接后，发送一条消息并确认原聊天收到回信。
 
 ## 发送文字和附件
 
@@ -171,10 +175,10 @@ curl --fail-with-body --request PUT \
 
 音视频按渠道要求提供 `durationMs`。需要封面时，先上传图片，再将返回的 ID 用作主体上传的 `previewMediaId`，两者必须归属于同一条来信。收到的媒体、待发送上传文件和封面共用原始消息的总额度，见[媒体大小限制](media.md#调整附件大小)。
 
-这些文件流程已覆盖本地协议和存储测试，尚未用真实 dot 或 Grok Bot 账号完成端到端验证；此前 Grok 文字往返验证不涵盖上传。
+这些文件协议由本地协议和存储测试覆盖。账号级检查见上方真实账号验证范围；仅文字检查不能证明附件兼容性。
 
 ## 检查连接
 
-发送渠道消息并收到 Agent 回信。在 `status` 中，来信 `accepted` 表示通知已接收，回信 `sent` 表示平台已接收。MCP 返回 `queued` 表示 Relanox 已保存待发送的回信。
+发送渠道消息并收到 Agent 回信。在 `status` 中，来信 `accepted` 表示通知已接收，回信 `sent` 表示平台已接收。MCP 返回 `queued` 表示 Relanox 已保存待发送的回信。dot 回调成功不代表宿主已开始处理事件，原生事件处理可能需要数分钟。对已接受的请求进行重试前，先检查是否已有回信投递。
 
 MCP 认证失败时核对 token 和 URL，检查 `publicUrl` 与公开地址一致，并让代理保留 Host。客户端发送 Origin 时，将其准确来源加入 `mcp.allowedOrigins`。Grok 没收到消息时核对 Routine URL 和 Authorization；dot 没收到消息时检查有效订阅及原生 OpenAI 回调地址是否可达。
