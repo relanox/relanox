@@ -91,7 +91,7 @@ Add a binding for each conversation. Topics or threads need their exact `threadI
 }
 ```
 
-Bindings match the exact chat and thread. Omitting `threadId` matches messages with no thread. Configure separate bindings for each topic. Slack uses the root message timestamp as `threadId`, so bind each root thread separately. Account `allowedSenders` is required and contains at least one person. An optional binding `allowedSenders` further restricts the conversation: a sender must appear in both lists. Follow [your channel's guide](../channels/index.md) for ID formats.
+Bindings match the exact chat and thread. Omitting `threadId` matches messages with no thread. Configure separate bindings for each topic. For ordinary Slack channel or DM messages, omit `threadId`. For replies inside a Slack thread, use that thread's real root message timestamp as `threadId` and configure an exact binding for it. Account `allowedSenders` is required and contains at least one person. An optional binding `allowedSenders` further restricts the conversation: a sender must appear in both lists. Follow [your channel's guide](../channels/index.md) for ID formats.
 
 [The complete example](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) contains fifteen channels and both agents. Copy the entries you need, then replace their IDs, credentials and bindings.
 
