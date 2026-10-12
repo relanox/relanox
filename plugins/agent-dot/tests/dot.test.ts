@@ -197,6 +197,54 @@ async function setup(
 }
 
 describe('dot MCP Events and tools', () => {
+  it('checks a new connection without message IDs and reports only its active subscriptions', async () => {
+    const { fx, url } = await setup(undefined, true)
+    const client = await fx.client()
+    const other = await fx.client('secret-1', 1)
+    const tool = { name: 'relanox_connection_status', arguments: {} }
+    expect(
+      (await client.listTools()).tools.find((item) => item.name === tool.name)
+    ).toMatchObject({
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false
+      }
+    })
+    expect((await client.callTool(tool)).structuredContent).toEqual({
+      endpointId: 'endpoint0',
+      eventName: 'relanox.message_available',
+      activeSubscriptions: 0
+    })
+    await client.request(subscribe(url, signingKey, 60_000), subResult)
+    expect((await client.callTool(tool)).structuredContent).toEqual({
+      endpointId: 'endpoint0',
+      eventName: 'relanox.message_available',
+      activeSubscriptions: 1
+    })
+    expect((await other.callTool(tool)).structuredContent).toEqual({
+      endpointId: 'endpoint1',
+      eventName: 'relanox.message_available',
+      activeSubscriptions: 0
+    })
+    await client.request(
+      {
+        method: 'events/unsubscribe',
+        params: {
+          name: 'relanox.message_available',
+          arguments: {},
+          delivery: { mode: 'webhook', url }
+        }
+      },
+      z.object({})
+    )
+    expect((await client.callTool(tool)).structuredContent).toEqual({
+      endpointId: 'endpoint0',
+      eventName: 'relanox.message_available',
+      activeSubscriptions: 0
+    })
+  })
+
   it('delivers reply guidance and parameter descriptions through MCP discovery', async () => {
     const { fx } = await setup()
     const client = await fx.client()
@@ -493,11 +541,13 @@ describe('dot MCP Events and tools', () => {
     const tools = await client.listTools()
     expect(tools.tools.map((tool) => tool.name)).toEqual([
       'relanox_send_message',
+      'relanox_connection_status',
       'relanox_create_upload',
       'relanox_read_media'
     ])
     expect(tools.tools.map((tool) => tool.annotations?.readOnlyHint)).toEqual([
       false,
+      true,
       false,
       true
     ])
