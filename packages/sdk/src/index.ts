@@ -1,6 +1,7 @@
 /** Public SDK contracts. Implementations depend on this entrypoint, never sibling plugins. */
 export * from './values.js'
 export type * from './config.js'
+export type * from './conversations.js'
 export type * from './messages.js'
 export type * from './media.js'
 export type * from './state.js'
