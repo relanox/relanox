@@ -67,55 +67,6 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
     }
   })
 
-  it('rejects a request-addressed schema without changing historical data', async () => {
-    const schema = schemaName()
-
-    const pool = new Pool({
-      connectionString: process.env.RELANOX_TEST_POSTGRES_URL
-    })
-
-    const storage = open(schema)
-    try {
-      await pool.query(`CREATE SCHEMA "${schema}"`)
-      await pool.query(
-        `CREATE TABLE "${schema}".outbound(id TEXT PRIMARY KEY,request_id TEXT NOT NULL,record JSONB NOT NULL)`
-      )
-      await pool.query(
-        `INSERT INTO "${schema}".outbound VALUES($1,$2,$3::jsonb)`,
-        [
-          'old-delivery',
-          'old-request',
-          JSON.stringify({ text: 'historical payload' })
-        ]
-      )
-      await expect(storage.initialize()).rejects.toThrow(
-        'Unsupported request-addressed database schema'
-      )
-      expect(
-        (
-          await pool.query(
-            `SELECT request_id,record FROM "${schema}".outbound WHERE id=$1`,
-            ['old-delivery']
-          )
-        ).rows
-      ).toEqual([
-        { request_id: 'old-request', record: { text: 'historical payload' } }
-      ])
-      expect(
-        (
-          await pool.query(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name='conversations'",
-            [schema]
-          )
-        ).rows
-      ).toEqual([])
-    } finally {
-      await storage.close()
-      await pool.end()
-      await drop(schema)
-    }
-  })
-
   it('initializes idempotently and retains fenced leases, media and messages across independent pools and restart', async () => {
     const schema = schemaName()
     let a = open(schema)

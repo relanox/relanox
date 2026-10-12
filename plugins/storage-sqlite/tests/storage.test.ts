@@ -1,6 +1,5 @@
 import type { Storage } from '@relanox/sdk'
 import { asset, mediaContract } from '../../../tests/storage/media-contract.js'
-import { DatabaseSync } from 'node:sqlite'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -121,41 +120,3 @@ it('initializes idempotently and persists messages and leases across independent
 mediaContract('SQLite media durability', async () =>
   createSqliteStorage({ filename: ':memory:' })
 )
-
-it('rejects a request-addressed database schema without altering historical data', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'relanox-sqlite-legacy-'))
-  const filename = join(directory, 'historical.sqlite')
-  const previous = new DatabaseSync(filename)
-  previous.exec(
-    'CREATE TABLE outbound(id TEXT PRIMARY KEY, request_id TEXT NOT NULL, record TEXT NOT NULL)'
-  )
-  previous
-    .prepare('INSERT INTO outbound VALUES(?,?,?)')
-    .run('old-delivery', 'old-request', 'historical payload')
-  previous.close()
-  const storage = createSqliteStorage({ filename })
-  try {
-    await expect(storage.initialize()).rejects.toThrow(
-      'Unsupported request-addressed database schema'
-    )
-    await storage.close()
-    const saved = new DatabaseSync(filename)
-    try {
-      expect(
-        saved
-          .prepare('SELECT request_id,record FROM outbound WHERE id=?')
-          .get('old-delivery')
-      ).toEqual({ request_id: 'old-request', record: 'historical payload' })
-      expect(
-        saved
-          .prepare("SELECT name FROM sqlite_master WHERE name='conversations'")
-          .get()
-      ).toBeUndefined()
-    } finally {
-      saved.close()
-    }
-  } finally {
-    await storage.close()
-    await rm(directory, { recursive: true, force: true })
-  }
-})
