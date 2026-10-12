@@ -32,7 +32,9 @@ it('sends ordered Flex text and images and reuses the stored LINE retry key afte
   await plugin.setup(host, account, plugin.validateConfig(config))
   expect(plugin.capabilities.richText).toEqual({
     maxParts: 20,
-    maxTextLength: 2000
+    maxTextLength: 2000,
+    imageMimeTypes: ['image/jpeg', 'image/png'],
+    maxImageBytes: 10_000_000
   })
 
   const input = richInput({

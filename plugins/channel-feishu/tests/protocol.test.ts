@@ -703,3 +703,113 @@ it('resolves authenticated Feishu threads through their real root message while 
     )
   ).toEqual({ status: 'unavailable', reason: 'address_unresolved' })
 })
+
+const richImage = {
+  reference: {
+    id: 'image-1',
+    kind: 'image' as const,
+    mimeType: 'image/png',
+    fileName: 'photo.png',
+    size: 5,
+    sha256: '0'.repeat(64)
+  },
+  data: new Uint8Array([1, 2, 3, 4, 5])
+}
+
+it('uploads an image key and sends ordered Markdown/image post rows to Feishu', async () => {
+  const remote = await peer((input) => {
+    if (input.path.includes('tenant_access_token')) {
+      return {
+        body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+      }
+    }
+    if (input.path === '/open-apis/im/v1/images') {
+      return { body: { code: 0, data: { image_key: 'img_uploaded' } } }
+    }
+    return { body: { code: 0, data: { message_id: 'om_sent' } } }
+  })
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+
+  const input = {
+    ...sendInput(local.target),
+    chunk: {
+      text: '',
+      state: null,
+      idempotencyKey: 'rich',
+      richText: [
+        { type: 'text' as const, text: '**before**' },
+        { type: 'image' as const, media: richImage.reference, label: 'photo' },
+        { type: 'text' as const, text: 'after' }
+      ]
+    },
+    richMedia: [richImage]
+  }
+
+  expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+  expect(remote.requests).toHaveLength(2)
+  expect(remote.requests[0]).toMatchObject({
+    path: '/open-apis/im/v1/images',
+    headers: { authorization: 'Bearer tenant-token' }
+  })
+  expect(remote.requests[0]?.body).toContain('name="image_type"')
+  expect(remote.requests[1]).toMatchObject({
+    path: '/open-apis/im/v1/messages/om_message/reply',
+    body: {
+      msg_type: 'post',
+      reply_in_thread: true,
+      content:
+        '{"zh_cn":{"content":[[{"tag":"md","text":"**before**"}],[{"tag":"img","image_key":"img_uploaded"}],[{"tag":"md","text":"after"}]]}}'
+    }
+  })
+  const count = remote.requests.length
+  expect(await local.plugin.send({ ...input, richMedia: [] })).toMatchObject({
+    status: 'rejected',
+    errorCode: 'invalid_rich_media'
+  })
+  expect(
+    await local.plugin.send({
+      ...input,
+      chunk: {
+        ...input.chunk,
+        richText: [
+          { type: 'text', text: 'a'.repeat(8001) },
+          { type: 'image', media: richImage.reference, label: 'photo' }
+        ]
+      }
+    })
+  ).toMatchObject({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
+  expect(remote.requests).toHaveLength(count)
+})
+
+it('does not post a rich Feishu message without a successful uploaded image key', async () => {
+  const remote = await peer((captured) => ({
+    body: captured.path.includes('tenant_access_token')
+      ? { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+      : { code: 999, msg: 'upload unavailable' }
+  }))
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+  expect(
+    await local.plugin.send({
+      ...sendInput(local.target),
+      chunk: {
+        text: '',
+        state: null,
+        idempotencyKey: 'rich-failure',
+        richText: [
+          { type: 'image', media: richImage.reference, label: 'photo' }
+        ]
+      },
+      richMedia: [richImage]
+    })
+  ).toMatchObject({
+    status: 'retryable',
+    errorCode: 'media_upload_transport_error'
+  })
+  expect(remote.requests.map((captured) => captured.path)).toEqual([
+    '/open-apis/im/v1/images'
+  ])
+})

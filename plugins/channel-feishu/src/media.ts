@@ -177,6 +177,35 @@ export async function messageContent(
   base: string,
   access: string
 ): Promise<{ msg_type: string; content: string }> {
+  if (input.chunk.richText) {
+    const rows: Record<string, string>[][] = []
+    let imageIndex = 0
+    for (const part of input.chunk.richText) {
+      if (part.type === 'text') {
+        rows.push([{ tag: 'md', text: part.text }])
+      } else {
+        const media = input.richMedia?.[imageIndex++]
+        if (!media) {
+          throw new Error('missing_media')
+        }
+
+        const key = await uploadAsset(
+          media,
+          host,
+          config,
+          base,
+          access,
+          input.signal
+        )
+
+        rows.push([{ tag: 'img', image_key: key }])
+      }
+    }
+    return {
+      msg_type: 'post',
+      content: JSON.stringify({ zh_cn: { content: rows } })
+    }
+  }
   if (!input.chunk.media) {
     return {
       msg_type: 'post',

@@ -351,7 +351,13 @@ export function createMatrixChannel(
       maxTextLength: 16_000,
       lengthUnit: 'utf8',
       idempotentSend: false,
-      richText: { maxParts: 20, maxTextLength: 8000 },
+      get richText() {
+        return {
+          maxParts: 20,
+          maxTextLength: 8000,
+          maxImageBytes: runtime?.host.maxMediaBytes ?? 16_777_216
+        }
+      },
       media: {
         receive: ['image', 'audio', 'video', 'file'],
         send: ['image', 'audio', 'video', 'file']

@@ -28,7 +28,8 @@ it('publishes scoped inline images in one ordered Mattermost Markdown post', asy
   )
   expect(plugin.capabilities.richText).toEqual({
     maxParts: 20,
-    maxTextLength: 8000
+    maxTextLength: 8000,
+    maxImageBytes: 16_777_216
   })
 
   const input = richInput({
