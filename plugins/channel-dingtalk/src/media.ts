@@ -1,4 +1,5 @@
 import { API_BASE, UPLOAD_BASE } from './config.js'
+import { richError } from './rich.js'
 import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -116,11 +117,53 @@ async function upload(
   return result.media_id
 }
 
-export async function mediaMessage(
+async function richMessage(
   input: SendInput,
   config: DingTalkConfig,
   credential: string
 ): Promise<{ msgKey: string; msgParam: string }> {
+  const fragments: string[] = []
+  let imageIndex = 0
+  for (const part of input.chunk.richText ?? []) {
+    if (part.type === 'text') {
+      fragments.push(part.text)
+    } else {
+      const media = input.richMedia?.[imageIndex++]
+      if (!media) {
+        throw new Error('missing_media')
+      }
+      const mediaId = await upload(media, config, credential, input.signal)
+      if (!/^[-@A-Za-z0-9_=]+$/u.test(mediaId) || mediaId.length > 256) {
+        throw new Error('invalid_media_id')
+      }
+      fragments.push(
+        `![${(part.label || part.media.fileName).replaceAll(/[\\[\]\r\n]/gu, ' ')}](${mediaId})`
+      )
+    }
+  }
+  const text = fragments.join('\n\n')
+  if (Buffer.byteLength(text, 'utf8') > 4000) {
+    throw new Error('rich_text_limit_exceeded')
+  }
+  return {
+    msgKey: 'sampleMarkdown',
+    msgParam: JSON.stringify({ title: 'Relanox', text })
+  }
+}
+
+export async function mediaMessage(
+  input: SendInput,
+  config: DingTalkConfig,
+  credential: string,
+  host: ChannelHost
+): Promise<{ msgKey: string; msgParam: string }> {
+  const invalid = richError(input, host)
+  if (invalid) {
+    throw new Error(invalid)
+  }
+  if (input.chunk.richText) {
+    return richMessage(input, config, credential)
+  }
   if (!input.chunk.media) {
     return {
       msgKey: 'sampleMarkdown',
@@ -223,11 +266,15 @@ export async function receiveParts(
 
 export function uploadFailure(error: unknown): SendResult {
   const invalid = new Set([
+    'invalid_rich_text',
+    'invalid_rich_media',
     'unsupported_media_format_or_size',
     'missing_media',
     'missing_media_duration',
     'missing_video_preview',
-    'unsupported_file_format'
+    'unsupported_file_format',
+    'rich_text_limit_exceeded',
+    'invalid_media_id'
   ])
 
   if (error instanceof Error && invalid.has(error.message)) {

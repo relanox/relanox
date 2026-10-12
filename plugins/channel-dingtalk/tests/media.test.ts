@@ -1,5 +1,6 @@
 import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
 import { expect, test, vi } from 'vitest'
+import type { SendInput } from '@relanox/sdk'
 import { createDingTalkChannel } from '../src/index.js'
 import {
   assemble,
@@ -122,4 +123,108 @@ test('DingTalk downloads a pure picture before durable ACK and uploads original 
       }
     })
   )
+})
+
+test('DingTalk sends uploaded images between Markdown fragments and rejects mismatched rich media before upload', async () => {
+  vi.stubEnv('DING_RICH_SECRET', 'secret')
+  const bytes = new Uint8Array([1, 2, 3, 4, 5])
+
+  const image = {
+    reference: {
+      id: 'image',
+      kind: 'image' as const,
+      mimeType: 'image/png',
+      fileName: 'image.png',
+      size: 5,
+      sha256: '0'.repeat(64)
+    },
+    data: bytes
+  }
+
+  const remote = await peer((request) => {
+    if (request.path === '/v1.0/oauth2/accessToken') {
+      return { body: { accessToken: 'rich-token', expireIn: 7200 } }
+    }
+    if (request.path.startsWith('/media/upload?')) {
+      return { body: { errcode: 0, media_id: '@native_image==' } }
+    }
+    return { body: { processQueryKey: 'rich-sent' } }
+  })
+
+  const plugin = createDingTalkChannel()
+  await assemble(
+    plugin,
+    {
+      clientId: 'app',
+      robotCode: 'robot',
+      clientSecret: { env: 'DING_RICH_SECRET' },
+      recipientTypes: { staff: 'single' }
+    },
+    [{ chatId: 'staff', senderId: 'sender' }]
+  )
+
+  const resolved = await plugin.resolveChannel?.({
+    platform: 'dingtalk',
+    accountId: 'bot',
+    chatId: 'staff',
+    id: 'channel'
+  })
+
+  if (resolved?.status !== 'available') {
+    throw new Error('missing_target')
+  }
+
+  const input: SendInput = {
+    deliveryId: 'rich',
+    channelId: 'channel',
+    target: resolved.target,
+    chunkIndex: 0,
+    signal: new AbortController().signal,
+    chunk: {
+      text: '',
+      state: null,
+      idempotencyKey: 'rich',
+      richText: [
+        { type: 'text', text: '**before**' },
+        { type: 'image', media: image.reference, label: 'photo' },
+        { type: 'text', text: 'after' }
+      ]
+    },
+    richMedia: [image]
+  }
+
+  expect(await plugin.send(input)).toMatchObject({ status: 'sent' })
+
+  const upload = remote.requests.find((request) =>
+    request.path.startsWith('/media/upload?')
+  )
+
+  expect(upload?.path).toContain('access_token=rich-token')
+  expect(Buffer.isBuffer(upload?.body) && upload.body.includes(bytes)).toBe(
+    true
+  )
+
+  const richHeaders: unknown = expect.objectContaining({
+    'x-acs-dingtalk-access-token': 'rich-token'
+  })
+
+  expect(remote.requests).toContainEqual(
+    expect.objectContaining({
+      path: '/v1.0/robot/oToMessages/batchSend',
+      headers: richHeaders,
+      body: {
+        robotCode: 'robot',
+        userIds: ['staff'],
+        msgKey: 'sampleMarkdown',
+        msgParam:
+          '{"title":"Relanox","text":"**before**\\n\\n![photo](@native_image==)\\n\\nafter"}'
+      }
+    })
+  )
+  const count = remote.requests.length
+  expect(await plugin.send({ ...input, richMedia: [] })).toEqual({
+    status: 'rejected',
+    errorCode: 'invalid_rich_media'
+  })
+  expect(remote.requests).toHaveLength(count)
 })

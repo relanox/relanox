@@ -8,6 +8,7 @@ import {
 import { downloadAttachments } from './media.js'
 import { apiError } from './api-error.js'
 import { uploadMedia } from './upload.js'
+import { richCapabilities, richError, richMarkdown } from './rich.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -388,6 +389,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       if (typeof media !== 'string' && media !== undefined) {
         return media
       }
+      const markdown = await richMarkdown(input, host)
       transmitting = true
 
       const raw = await httpJson(
@@ -402,7 +404,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
                   content: input.chunk.text,
                   media: { file_info: media }
                 }
-              : { msg_type: 2, markdown: { content: input.chunk.text } }),
+              : { msg_type: 2, markdown: { content: markdown } }),
             ...(allocation.mode === 'passive'
               ? { msg_id: target.msgId, msg_seq: allocation.seq }
               : {})
@@ -419,6 +421,16 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       const response = sendResponseSchema.parse(raw)
       return { status: 'sent', receipt: { platformMessageId: response.id } }
     } catch (error) {
+      if (
+        error instanceof Error &&
+        [
+          'media_publication_unavailable',
+          'invalid_publication_url',
+          'rich_text_limit_exceeded'
+        ].includes(error.message)
+      ) {
+        return { status: 'rejected', errorCode: error.message }
+      }
       if (
         error instanceof RemoteError &&
         error.result.errorCode === 'http_401'
@@ -459,16 +471,21 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     runtime: 'node',
     kind: 'channel',
     channel: 'qq',
-    capabilities: {
-      receive: true,
-      transport: 'connection',
-      maxTextLength: 2000,
-      lengthUnit: 'utf8',
-      idempotentSend: false,
-      media: {
-        receive: ['image', 'audio', 'video', 'file'],
-        send: ['image', 'audio', 'video', 'file']
-      }
+    get capabilities() {
+      return {
+        receive: true,
+        transport: 'connection',
+        maxTextLength: 2000,
+        ...(host?.media && host.publicUrl?.startsWith('https://')
+          ? { richText: richCapabilities }
+          : {}),
+        lengthUnit: 'utf8',
+        idempotentSend: false,
+        media: {
+          receive: ['image', 'audio', 'video', 'file'],
+          send: ['image', 'audio', 'video', 'file']
+        }
+      } as const
     },
     validateConfig: (value) => configSchema.parse(value),
     async resolveChannel(address, learned) {
@@ -595,6 +612,19 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         return { status: 'rejected', errorCode: 'target_identity_changed' }
       }
       let allocation: ReplyAllocation | SendResult
+      const invalid = richError(input, host)
+      if (invalid) {
+        return { status: 'rejected', errorCode: invalid }
+      }
+      if (
+        input.chunk.richText &&
+        (!host.media || !host.publicUrl?.startsWith('https://'))
+      ) {
+        return {
+          status: 'rejected',
+          errorCode: 'media_publication_unavailable'
+        }
+      }
       try {
         allocation = await allocateReplySequence(input, target.data)
       } catch {

@@ -6,6 +6,7 @@ import {
   MAX_RECONNECT_ATTEMPTS
 } from './config.js'
 import { receiveParts, mediaMessage, uploadFailure } from './media.js'
+import { richCapabilities } from './rich.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -35,6 +36,10 @@ import {
 } from './transport.js'
 
 const topic = '/v1.0/im/bot/messages/get'
+
+function hasMedia(input: SendInput): boolean {
+  return input.chunk.media !== undefined || input.chunk.richText !== undefined
+}
 
 function matchesScope(
   scope: z.infer<typeof scopeSchema>,
@@ -216,6 +221,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       receive: true,
       transport: 'connection',
       maxTextLength: 4000,
+      richText: richCapabilities,
       lengthUnit: 'utf8',
       idempotentSend: false,
       media: {
@@ -333,7 +339,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         return { status: 'rejected', errorCode: 'invalid_target' }
       }
       const data = target.data
-      if (!matchesScope(data.scope, config, input.chunk.media !== undefined)) {
+      if (!matchesScope(data.scope, config, hasMedia(input))) {
         return { status: 'rejected', errorCode: 'target_identity_changed' }
       }
       if (
@@ -353,7 +359,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       }
       let transmitting = false
       try {
-        const payload = await mediaMessage(input, config, credential)
+        const payload = await mediaMessage(input, config, credential, host)
         transmitting = true
 
         const body = sendResponse.parse(

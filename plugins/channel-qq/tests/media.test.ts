@@ -13,6 +13,104 @@ import {
 
 installPeerNetwork()
 
+test.each([false, true])(
+  'QQ rich Markdown preserves image order and reuses the passive sequence for group=%s',
+  async (group) => {
+    const { remote, local, plugin, base } = await fixture(group)
+    await local.start()
+    await expect.poll(() => remote.frames.length).toBeGreaterThan(0)
+    remote.sockets[0]?.send(
+      JSON.stringify({
+        op: 0,
+        s: 2,
+        t: group ? 'GROUP_AT_MESSAGE_CREATE' : 'C2C_MESSAGE_CREATE',
+        d: {
+          id: 'rich-in',
+          content: '',
+          timestamp: new Date().toISOString(),
+          message_type: 7,
+          author: group ? { member_openid: 'member' } : { user_openid: 'user' },
+          ...(group ? { group_openid: 'group' } : {}),
+          attachments: [
+            {
+              url: `${remote.http}/attachment`,
+              filename: 'image.png',
+              content_type: 'image/png'
+            }
+          ]
+        }
+      })
+    )
+    await expect.poll(async () => (await records(local.storage)).length).toBe(1)
+    const item = (await records(local.storage))[0]?.snapshot
+    if (!item?.attachments?.[0] || !local.principal().media) {
+      throw new Error('missing_media')
+    }
+
+    const image = await local.principal().media?.read({
+      channelId: item.channel.id,
+      mediaId: item.attachments[0].id
+    })
+
+    if (!image) {
+      throw new Error('missing_bytes')
+    }
+
+    const input: SendInput = {
+      ...sendInput('qq', item.target.chatId, item.target.data, 'rich-one'),
+      channelId: item.channel.id,
+      chunk: {
+        text: '',
+        state: null,
+        idempotencyKey: 'rich-one',
+        richText: [
+          { type: 'text', text: '**before**' },
+          { type: 'image', media: image.reference, label: 'photo' },
+          { type: 'text', text: 'after' }
+        ]
+      },
+      richMedia: [image]
+    }
+
+    expect(plugin.capabilities.richText).toBeDefined()
+    expect(await plugin.send(input)).toMatchObject({ status: 'sent' })
+    expect(await plugin.send(input)).toMatchObject({ status: 'sent' })
+
+    const messages = remote.requests.filter(
+      (request) => request.path === `${base}/messages`
+    )
+
+    expect(messages).toHaveLength(2)
+    for (const message of messages) {
+      expect(message.headers.authorization).toBe('QQBot native-token')
+
+      const richContent: unknown = expect.stringMatching(
+        /^\*\*before\*\*\n\n!\[photo\]\(https:\/\/relay\.example\/[^\s]+\)\n\nafter$/u
+      )
+
+      expect(message.body).toEqual({
+        msg_type: 2,
+        markdown: {
+          content: richContent
+        },
+        msg_id: 'rich-in',
+        msg_seq: 1
+      })
+    }
+    expect(
+      remote.requests.some((request) =>
+        request.path.includes('/upload_prepare')
+      )
+    ).toBe(false)
+    const count = remote.requests.length
+    expect(await plugin.send({ ...input, richMedia: [] })).toEqual({
+      status: 'rejected',
+      errorCode: 'invalid_rich_media'
+    })
+    expect(remote.requests).toHaveLength(count)
+  }
+)
+
 const smallBytes = Buffer.from([10, 20, 30, 40, 50])
 
 const formats = [
