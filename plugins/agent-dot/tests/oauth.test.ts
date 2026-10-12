@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createDotAgentPlugin } from '../src/index.js'
-import { fixture, mcp } from './fixture.js'
+import { fixture, dotMcp } from './fixture.js'
 import { authorizeWithSdk } from './oauth-sdk.js'
 import {
   approve,
@@ -34,8 +34,8 @@ afterEach(async () => {
 
 async function start(): Promise<Awaited<ReturnType<typeof fixture>>> {
   runtime = await fixture('dot', createDotAgentPlugin(), [
-    { mcp: { ...mcp(), auth: 'oauth' } },
-    { mcp: { ...mcp('AGENT_TEST_TOKEN_1'), auth: 'oauth' } }
+    { mcp: dotMcp() },
+    { mcp: dotMcp('AGENT_TEST_TOKEN_1') }
   ])
   return runtime
 }

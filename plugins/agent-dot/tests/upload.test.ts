@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createDotAgentPlugin } from '../src/index.js'
 import { createGrokAgentPlugin } from '../../agent-grok/src/index.js'
-import { fixture, mcp } from './fixture.js'
+import { fixture, mcp, dotMcp, password } from './fixture.js'
 
 const cleanups: (() => Promise<void>)[] = []
 
@@ -26,6 +26,12 @@ const plugin = (agent: AgentId): AgentPlugin<unknown> =>
   agent === 'dot' ? createDotAgentPlugin() : createGrokAgentPlugin()
 
 async function setup(agent: AgentId): ReturnType<typeof fixture> {
+  if (agent === 'dot') {
+    process.env.AGENT_TEST_TOKEN_0 = password
+    process.env.AGENT_TEST_TOKEN_1 = `${password}-endpoint1`
+  }
+  const agentMcp = agent === 'dot' ? dotMcp : mcp
+
   const base =
     agent === 'dot'
       ? {}
@@ -35,8 +41,8 @@ async function setup(agent: AgentId): ReturnType<typeof fixture> {
         }
 
   const fx = await fixture(agent, plugin(agent), [
-    { ...base, mcp: mcp() },
-    { ...base, mcp: mcp('AGENT_TEST_TOKEN_1') }
+    { ...base, mcp: agentMcp() },
+    { ...base, mcp: agentMcp('AGENT_TEST_TOKEN_1') }
   ])
 
   cleanups.push(async () => fx.close())
@@ -114,7 +120,9 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
     ).toMatchObject({ status: 'updated' })
     const client = await fx.client()
     const ticket = await offer(client, receipt.requestId)
-    expect(ticket.uploadUrl).not.toContain('secret-0')
+    expect(ticket.uploadUrl).not.toContain(
+      agent === 'dot' ? password : 'secret-0'
+    )
     expect(Date.parse(ticket.expiresAt) - Date.now()).toBeGreaterThan(290_000)
     const uploaded = await fx.core.fetch(put(ticket))
     expect(uploaded.status).toBe(200)
@@ -183,7 +191,7 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
     const fx = await setup(agent)
     const receipt = await fx.ingest()
     const client = await fx.client()
-    const other = await fx.client('secret-1', 1)
+    const other = await fx.client(agent === 'dot' ? undefined : 'secret-1', 1)
     expect(
       await other.callTool({
         name: 'relanox_create_upload',

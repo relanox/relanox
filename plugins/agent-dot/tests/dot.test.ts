@@ -10,8 +10,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { callbackUrl, isPublicAddress } from '../src/callback.js'
 import { createDotAgentPlugin } from '../src/index.js'
-import { guard } from '@relanox/agent-mcp'
-import { fixture, mcp, parseWire, peer } from './fixture.js'
+import {
+  fixture,
+  dotMcp,
+  mcp,
+  parseWire,
+  peer,
+  authorizeWithSdk,
+  password
+} from './fixture.js'
 import type { Traffic } from './fixture.js'
 
 const callbackNetwork = vi.hoisted(() => ({
@@ -88,8 +95,8 @@ const stringValue: unknown = expect.any(String)
 beforeEach(() => {
   callbackNetwork.addresses = [{ address: '8.8.8.8', family: 4 }]
   callbackNetwork.calls = []
-  process.env.AGENT_TEST_TOKEN_0 = 'secret-0'
-  process.env.AGENT_TEST_TOKEN_1 = 'secret-1'
+  process.env.AGENT_TEST_TOKEN_0 = password
+  process.env.AGENT_TEST_TOKEN_1 = `${password}-endpoint1`
 })
 afterEach(async () => {
   vi.useRealTimers()
@@ -177,14 +184,14 @@ async function setup(
   cleanups.push(receiver.close)
 
   callbackNetwork.origin = receiver.origin
-  const config = { mcp: mcp() }
+  const config = { mcp: dotMcp() }
 
   const plugin = createDotAgentPlugin()
 
   const fx = await fixture(
     'dot',
     plugin,
-    two ? [config, { ...config, mcp: mcp('AGENT_TEST_TOKEN_1') }] : [config]
+    two ? [config, { ...config, mcp: dotMcp('AGENT_TEST_TOKEN_1') }] : [config]
   )
 
   cleanups.push(async () => fx.close())
@@ -197,10 +204,18 @@ async function setup(
 }
 
 describe('dot MCP Events and tools', () => {
+  it('defaults native dot connections to OAuth and rejects static bearer authentication', () => {
+    const plugin = createDotAgentPlugin()
+    expect(plugin.validateConfig({ mcp: dotMcp() })).toMatchObject({
+      mcp: { auth: 'oauth' }
+    })
+    expect(() => plugin.validateConfig({ mcp: mcp() })).toThrow()
+  })
+
   it('checks a new connection without message IDs and reports only its active subscriptions', async () => {
     const { fx, url } = await setup(undefined, true)
     const client = await fx.client()
-    const other = await fx.client('secret-1', 1)
+    const other = await fx.client(undefined, 1)
     const tool = { name: 'relanox_connection_status', arguments: {} }
     expect(
       (await client.listTools()).tools.find((item) => item.name === tool.name)
@@ -442,7 +457,7 @@ describe('dot MCP Events and tools', () => {
       callbackUrl('https://connectors.api.openai.com/events/callback').href
     ).toBe('https://connectors.api.openai.com/events/callback')
     expect(() =>
-      createDotAgentPlugin().validateConfig({ mcp: mcp(), callback: {} })
+      createDotAgentPlugin().validateConfig({ mcp: dotMcp(), callback: {} })
     ).toThrow()
   })
 
@@ -503,21 +518,21 @@ describe('dot MCP Events and tools', () => {
   })
 
   it('rejects an already-aborted request without waiting for its stalled body', async () => {
+    const { fx } = await setup()
+    const { access_token: accessToken } = await authorizeWithSdk(fx.core)
     const controller = new AbortController()
     controller.abort()
 
     const init: RequestInit & { duplex: 'half' } = {
       method: 'POST',
-      headers: { Authorization: 'Bearer secret-0' },
+      headers: { Authorization: `Bearer ${accessToken}` },
       body: new ReadableStream<Uint8Array>(),
       duplex: 'half',
       signal: controller.signal
     }
 
-    const response = await guard(
-      new Request('https://relanox.test/agents/dot/mcp/endpoint0', init),
-      mcp(),
-      'https://relanox.test'
+    const response = await fx.core.fetch(
+      new Request('https://relanox.test/agents/dot/mcp/endpoint0', init)
     )
 
     if (!(response instanceof Response)) {
@@ -571,6 +586,8 @@ describe('dot MCP Events and tools', () => {
       })
     ).toMatchObject({ isError: true })
 
+    const { access_token: accessToken } = await authorizeWithSdk(fx.core)
+
     const send = {
       replyTo: first.requestId,
       idempotencyKey: 'result-1',
@@ -616,8 +633,12 @@ describe('dot MCP Events and tools', () => {
     for (const [headers, expected] of [
       [{}, 401],
       [{ Authorization: 'Bearer wrong' }, 401],
-      [{ Authorization: 'Bearer secret-0', Origin: 'https://evil.test' }, 403],
-      [{ Authorization: 'Bearer secret-0', Host: 'evil.test' }, 403]
+      [{ Authorization: `Bearer ${password}` }, 401],
+      [
+        { Authorization: `Bearer ${accessToken}`, Origin: 'https://evil.test' },
+        403
+      ],
+      [{ Authorization: `Bearer ${accessToken}`, Host: 'evil.test' }, 403]
     ] as const) {
       expect(
         (
@@ -636,7 +657,7 @@ describe('dot MCP Events and tools', () => {
         await fx.core.fetch(
           new Request('https://relanox.test/agents/dot/mcp/endpoint0', {
             method: 'POST',
-            headers: { Authorization: 'Bearer secret-0' },
+            headers: { Authorization: `Bearer ${accessToken}` },
             body: 'x'.repeat(1_048_577)
           })
         )
@@ -963,7 +984,7 @@ describe('dot MCP Events and tools', () => {
   it('cannot unsubscribe another owner and stops signing with a rotated old key after overlap', async () => {
     const { fx, url, receiver } = await setup(undefined, true)
     const first = await fx.client()
-    const second = await fx.client('secret-1', 1)
+    const second = await fx.client(undefined, 1)
 
     const firstSub = await first.request(
       subscribe(url, signingKey, 120_000),

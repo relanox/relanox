@@ -7,19 +7,16 @@ import type {
 } from '@modelcontextprotocol/client'
 import type { CoreRuntime } from '@relanox/core'
 import { expect } from 'vitest'
-import {
-  issuer,
-  origin,
-  password,
-  postForm,
-  redirectUri,
-  resource
-} from './oauth-peer.js'
+import { origin, password, postForm, redirectUri } from './oauth-peer.js'
 
 /** Only the external client's credential storage and browser consent; SDK drives discovery, DCR and PKCE. */
 export async function authorizeWithSdk(
-  core: CoreRuntime
+  core: CoreRuntime,
+  endpoint = 0,
+  ownerPassword = password
 ): Promise<StoredOAuthTokens> {
+  const resource = `${origin}/agents/dot/mcp/endpoint${endpoint}`
+  const issuer = `${origin}/agents/dot/oauth/endpoint${endpoint}`
   let client: StoredOAuthClientInformation | undefined
   let tokens: StoredOAuthTokens | undefined
   let discovery: OAuthDiscoveryState | undefined
@@ -80,7 +77,7 @@ export async function authorizeWithSdk(
   const consent = await postForm(
     core,
     `${issuer}/authorize`,
-    { request, password, decision: 'allow' },
+    { request, password: ownerPassword, decision: 'allow' },
     { Origin: origin, Cookie: cookie }
   )
 
