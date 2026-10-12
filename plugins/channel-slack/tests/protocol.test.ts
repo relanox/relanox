@@ -666,3 +666,134 @@ it('keeps authenticated top-level messages in the configured channel without inv
     target: { chatId: 'C7' }
   })
 })
+
+const richImage = {
+  reference: {
+    id: 'image-1',
+    kind: 'image' as const,
+    mimeType: 'image/png',
+    fileName: 'photo.png',
+    size: 5,
+    sha256: '0'.repeat(64)
+  },
+  data: new Uint8Array([1, 2, 3, 4, 5])
+}
+
+it('uploads images privately and posts ordered rich blocks in the same Slack thread', async () => {
+  const remote = await peer((input) => {
+    if (input.path === '/files.getUploadURLExternal') {
+      return {
+        body: {
+          ok: true,
+          upload_url: 'https://slack.com/api/upload',
+          file_id: 'F1'
+        }
+      }
+    }
+    if (input.path === '/upload') {
+      return { body: {} }
+    }
+    if (input.path === '/files.completeUploadExternal') {
+      return { body: { ok: true, files: [{ id: 'F1' }] } }
+    }
+    return { body: { ok: true, ts: 'sent' } }
+  })
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+
+  const input = {
+    ...sendInput(local.target),
+    chunk: {
+      text: '',
+      state: null,
+      idempotencyKey: 'rich',
+      richText: [
+        { type: 'text' as const, text: '**before**' },
+        { type: 'image' as const, media: richImage.reference, label: 'photo' },
+        { type: 'text' as const, text: 'after' }
+      ]
+    },
+    richMedia: [richImage]
+  }
+
+  expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+  expect(remote.requests.map((item) => item.path)).toEqual([
+    '/files.getUploadURLExternal',
+    '/upload',
+    '/files.completeUploadExternal',
+    '/chat.postMessage'
+  ])
+  expect(remote.requests[2]?.body).toEqual({
+    files: [{ id: 'F1', title: 'photo.png' }]
+  })
+  expect(remote.requests[3]).toMatchObject({
+    headers: { authorization: 'Bearer xoxb-secret' },
+    body: {
+      thread_ts: '1700000000.001',
+      blocks: [
+        { type: 'rich_text' },
+        { type: 'image', slack_file: { id: 'F1' }, alt_text: 'photo' },
+        { type: 'rich_text' }
+      ]
+    }
+  })
+  const count = remote.requests.length
+  expect(await local.plugin.send({ ...input, richMedia: [] })).toEqual({
+    status: 'rejected',
+    errorCode: 'invalid_rich_media'
+  })
+  expect(
+    await local.plugin.send({
+      ...input,
+      chunk: {
+        ...input.chunk,
+        richText: [
+          { type: 'text', text: 'a'.repeat(2501) },
+          { type: 'image', media: richImage.reference, label: 'photo' }
+        ]
+      }
+    })
+  ).toEqual({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
+  expect(remote.requests).toHaveLength(count)
+})
+
+it('does not post a rich Slack message when native file completion is rejected', async () => {
+  const remote = await peer((captured) => {
+    if (captured.path === '/files.getUploadURLExternal') {
+      return {
+        body: {
+          ok: true,
+          upload_url: 'https://slack.com/api/upload',
+          file_id: 'F1'
+        }
+      }
+    }
+    if (captured.path === '/upload') {
+      return { body: {} }
+    }
+    return { body: { ok: false, error: 'file_type_not_allowed' } }
+  })
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+  expect(
+    await local.plugin.send({
+      ...sendInput(local.target),
+      chunk: {
+        text: '',
+        state: null,
+        idempotencyKey: 'rich-failure',
+        richText: [
+          { type: 'image', media: richImage.reference, label: 'photo' }
+        ]
+      },
+      richMedia: [richImage]
+    })
+  ).toMatchObject({ status: 'rejected' })
+  expect(remote.requests.map((captured) => captured.path)).toEqual([
+    '/files.getUploadURLExternal',
+    '/upload',
+    '/files.completeUploadExternal'
+  ])
+})

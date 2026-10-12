@@ -356,3 +356,68 @@ async function imageAttachment(
   }
   return { attachment: { contentType: mimeType, name: fileName, contentUrl } }
 }
+
+export async function richMarkdown(
+  input: SendInput,
+  host: ChannelHost
+): Promise<string> {
+  if (!input.chunk.richText) {
+    return input.chunk.text
+  }
+  if (!host.media || !host.publicUrl) {
+    throw new Error('media_publication_unavailable')
+  }
+  const parts: string[] = []
+  for (const part of input.chunk.richText) {
+    if (part.type === 'text') {
+      parts.push(part.text)
+    } else {
+      const url = new URL(
+        await host.media.publish({
+          channelId: input.channelId,
+          mediaId: part.media.id
+        })
+      )
+
+      if (
+        url.protocol !== 'https:' ||
+        url.username ||
+        url.password ||
+        url.hash
+      ) {
+        throw new Error('invalid_publication_url')
+      }
+
+      const label = (part.label || part.media.fileName)
+        .replaceAll('\\', String.raw`\\`)
+        .replaceAll('[', String.raw`\[`)
+        .replaceAll(']', String.raw`\]`)
+        .replaceAll('\n', ' ')
+
+      parts.push(
+        `![${label}](${url.href.replaceAll('(', '%28').replaceAll(')', '%29')})`
+      )
+    }
+  }
+  const text = parts.join('\n\n')
+  if (Buffer.byteLength(text, 'utf8') > 24_000) {
+    throw new Error('rich_text_limit_exceeded')
+  }
+  return text
+}
+
+export { richError } from './rich.js'
+
+export function richPreparationFailure(error: unknown): SendResult {
+  if (
+    error instanceof Error &&
+    [
+      'media_publication_unavailable',
+      'invalid_publication_url',
+      'rich_text_limit_exceeded'
+    ].includes(error.message)
+  ) {
+    return { status: 'rejected', errorCode: error.message }
+  }
+  return { status: 'retryable', errorCode: 'media_preparation_unavailable' }
+}

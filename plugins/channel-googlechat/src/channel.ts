@@ -1,3 +1,4 @@
+import { richError } from './rich.js'
 import { apiBase, jwksUrl } from './constants.js'
 import type {
   AccountConfig,
@@ -67,6 +68,10 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     ) {
       return { status: 'rejected', errorCode: 'target_identity_changed' }
     }
+    const errorCode = richError(input, runtime.host)
+    if (errorCode) {
+      return { status: 'rejected', errorCode }
+    }
     let token: string | SendResult
     try {
       token = await accessToken(config, input.signal)
@@ -135,6 +140,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       receive: true,
       transport: 'http',
       maxTextLength: 30_000,
+      richText: { maxParts: 20, maxTextLength: 2000 },
       lengthUnit: 'utf8',
       idempotentSend: false,
       media: {
@@ -239,9 +245,13 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
 function preparationFailure(error: unknown): SendResult {
   if (
     error instanceof Error &&
-    error.message === 'media_publication_unavailable'
+    [
+      'media_publication_unavailable',
+      'invalid_publication_url',
+      'rich_text_limit_exceeded'
+    ].includes(error.message)
   ) {
-    return { status: 'rejected', errorCode: 'media_publication_unavailable' }
+    return { status: 'rejected', errorCode: error.message }
   }
   return { status: 'retryable', errorCode: 'media_preparation_unavailable' }
 }

@@ -17,7 +17,13 @@ import {
 } from './config.js'
 import type { TeamsConfig } from './config.js'
 import type { z } from 'zod'
-import { prepareAttachment, consentPosted } from './media.js'
+import {
+  prepareAttachment,
+  consentPosted,
+  richMarkdown,
+  richPreparationFailure,
+  richError
+} from './media.js'
 import { receive } from './inbound.js'
 import { failure, parseBody, rawBody, request, unavailable } from './io.js'
 import {
@@ -128,6 +134,10 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     } catch {
       return { status: 'rejected', errorCode: 'untrusted_service_origin' }
     }
+    const errorCode = richError(input, runtime.host)
+    if (errorCode) {
+      return { status: 'rejected', errorCode }
+    }
     let token: string | SendResult
     try {
       token = await accessToken(config, input.signal)
@@ -137,8 +147,10 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     if (typeof token !== 'string') {
       return token
     }
+    let text: string
     let prepared: Awaited<ReturnType<typeof prepareAttachment>>
     try {
+      text = await richMarkdown(input, runtime.host)
       prepared = await prepareAttachment(
         runtime.host,
         config,
@@ -150,8 +162,8 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
         },
         target.personal === true
       )
-    } catch {
-      return { status: 'retryable', errorCode: 'media_preparation_unavailable' }
+    } catch (error) {
+      return richPreparationFailure(error)
     }
     if (prepared.outcome) {
       return prepared.outcome
@@ -176,7 +188,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
           body: JSON.stringify({
             type: 'message',
             textFormat: 'extendedmarkdown',
-            text: input.chunk.text,
+            text,
             ...(prepared.attachment !== undefined
               ? { attachments: [prepared.attachment] }
               : {}),
@@ -222,15 +234,20 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     runtime: 'node',
     kind: 'channel',
     channel: 'msteams',
-    capabilities: {
-      receive: true,
-      transport: 'http',
-      maxTextLength: 12_000,
-      lengthUnit: 'utf16',
-      idempotentSend: false,
-      media: {
-        receive: ['image', 'audio', 'video', 'file'],
-        send: ['image', 'audio', 'video', 'file']
+    get capabilities(): ChannelPlugin<TeamsConfig>['capabilities'] {
+      return {
+        receive: true,
+        transport: 'http',
+        maxTextLength: 12_000,
+        ...(runtime?.host.publicUrl?.startsWith('https://')
+          ? { richText: { maxParts: 20, maxTextLength: 2000 } }
+          : {}),
+        lengthUnit: 'utf16',
+        idempotentSend: false,
+        media: {
+          receive: ['image', 'audio', 'video', 'file'],
+          send: ['image', 'audio', 'video', 'file']
+        }
       }
     },
     validateConfig,
