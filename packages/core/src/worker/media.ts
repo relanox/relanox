@@ -2,10 +2,32 @@ import type {
   OutboundRecord,
   ChannelPlugin,
   Storage,
-  SendResult
+  SendResult,
+  DeliveryChunk,
+  StoredMedia
 } from '@relanox/sdk'
 import { readPreview } from '../hosts/media.js'
 import { verifiedMedia } from '../media.js'
+
+async function richAssets(
+  storage: Storage,
+  channelId: string,
+  chunk: DeliveryChunk,
+  maximum: number
+): Promise<StoredMedia[]> {
+  const images: StoredMedia[] = []
+  for (const part of chunk.richText ?? []) {
+    if (part.type !== 'image') {
+      continue
+    }
+    const stored = await storage.media?.get(channelId, part.media.id)
+    if (!stored) {
+      throw new Error('media_not_found')
+    }
+    images.push(verifiedMedia(stored, part.media, maximum))
+  }
+  return images
+}
 
 export async function sendChunk(
   storage: Storage,
@@ -23,6 +45,17 @@ export async function sendChunk(
   }
   let media
   let preview
+  let richMedia
+  if (chunk.richText) {
+    if (!channel.capabilities.richText) {
+      return { status: 'rejected', errorCode: 'rich_text_not_supported' }
+    }
+    try {
+      richMedia = await richAssets(storage, record.channelId, chunk, maximum)
+    } catch {
+      return { status: 'rejected', errorCode: 'media_integrity_error' }
+    }
+  }
   if (chunk.media) {
     if (!channel.capabilities.media?.send.includes(chunk.media.kind)) {
       return { status: 'rejected', errorCode: 'media_not_supported' }
@@ -47,6 +80,7 @@ export async function sendChunk(
     chunkCount: record.chunks.length,
     ...(media ? { media } : {}),
     ...(preview ? { preview } : {}),
+    ...(richMedia ? { richMedia } : {}),
     signal
   })
 }

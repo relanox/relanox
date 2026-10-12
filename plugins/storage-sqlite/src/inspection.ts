@@ -1,3 +1,4 @@
+import { chunkMediaReferences } from '@relanox/storage-support'
 import { decodeDurableRecord } from './record-codec.js'
 import type {
   Storage,
@@ -204,10 +205,10 @@ export function createInspectionOperations(
         for (const row of outgoing) {
           for (const chunk of decodeDurableRecord<OutboundRecord>(row.record)
             .chunks) {
-            if (chunk.media) {
-              retained.add(chunk.media.id)
-              if (chunk.media.previewMediaId) {
-                retained.add(chunk.media.previewMediaId)
+            for (const reference of chunkMediaReferences(chunk)) {
+              retained.add(reference.id)
+              if (reference.previewMediaId) {
+                retained.add(reference.previewMediaId)
               }
             }
           }

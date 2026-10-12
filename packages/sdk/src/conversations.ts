@@ -32,6 +32,12 @@ export type AgentChannelStatus = {
   readonly media: readonly MediaKind[]
   /** How Markdown image references appear on this configured transport. */
   readonly richText?: 'native' | 'sequential' | 'text-only' | 'text-then-images'
+  readonly richTextLimits?: {
+    readonly maxParts: number
+    readonly maxTextLength: number
+    readonly imageMimeTypes?: readonly string[]
+    readonly maxImageBytes?: number
+  }
   readonly maxTextLength: number
   readonly lengthUnit: 'utf16' | 'codepoint' | 'utf8'
   readonly maxTextLengthPerMessage?: number
