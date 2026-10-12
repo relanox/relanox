@@ -4,16 +4,13 @@ import type {
   AgentPrincipal,
   ChannelPlugin,
   CommonHost,
-  DeliveryChunk,
   EndpointConfig,
   ConversationRecord,
   Observability,
-  ReplyTarget,
   ScopedAgentHost,
-  Storage,
-  StoredMedia
+  Storage
 } from '@relanox/sdk'
-import { splitMarkdown, textLength } from '@relanox/markdown'
+import { richMessage, orderedReferences, richChunks } from './rich-message.js'
 import { CoreError } from '../errors.js'
 import { jsonSnapshot } from '../json.js'
 import { textId, boundedText } from '../validation.js'
@@ -40,59 +37,6 @@ export type AgentHostOptions = {
 
 type MessageInput = Parameters<ScopedAgentHost['sendMessage']>[0]
 
-function chunksFor(
-  plugin: ChannelPlugin<unknown>,
-  deliveryId: string,
-  text: string,
-  media: readonly StoredMedia[],
-  target: ReplyTarget
-): readonly DeliveryChunk[] {
-  if (
-    media.length > (plugin.capabilities.maxAttachmentsPerMessage ?? Infinity) ||
-    media.some(
-      (item) => !plugin.capabilities.media?.send.includes(item.reference.kind)
-    )
-  ) {
-    throw new CoreError('media_not_supported')
-  }
-
-  if (
-    textLength(text, plugin.capabilities.lengthUnit) >
-    (plugin.capabilities.maxTextLengthPerMessage ?? Infinity)
-  ) {
-    throw new CoreError('reply_exceeds_channel_limit')
-  }
-
-  const chunks: DeliveryChunk[] = (
-    text
-      ? (plugin.splitText?.(text, target) ??
-        splitMarkdown(text, {
-          maxLength: plugin.capabilities.maxTextLength,
-          unit: plugin.capabilities.lengthUnit
-        }))
-      : []
-  ).map((part, index) => ({
-    text: part,
-    idempotencyKey: `${deliveryId}:${index}`,
-    state: null
-  }))
-
-  const result = [
-    ...chunks,
-    ...media.map((item, index) => ({
-      text: '',
-      media: item.reference,
-      idempotencyKey: `${deliveryId}:${chunks.length + index}`,
-      state: null
-    }))
-  ]
-
-  if (result.length > (plugin.capabilities.maxChunksPerMessage ?? Infinity)) {
-    throw new CoreError('reply_exceeds_channel_limit')
-  }
-  return result
-}
-
 async function enqueue(
   options: AgentHostOptions,
   scope: readonly string[],
@@ -103,17 +47,19 @@ async function enqueue(
 
   const messageId = input.idempotencyKey ?? crypto.randomUUID()
 
+  const rich = richMessage(input.text, input.attachments)
+
   const prepared = await prepareMessageMedia(
     storage,
     input.channel,
     messageId,
-    input.attachments,
+    rich.attachments,
     worker,
     input.idempotencyKey !== undefined
   )
 
   const now = Date.now()
-  const references = prepared.references
+  const references = orderedReferences(rich, prepared.references)
 
   const message = {
     messageId,
@@ -168,11 +114,11 @@ async function enqueue(
           messageId,
           endpoint: conversation.endpoint,
           target: jsonSnapshot(target),
-          chunks: chunksFor(
+          chunks: richChunks(
             plugin,
             deliveryId,
-            input.text,
-            media.attachments,
+            rich,
+            prepared.references,
             target
           ),
           currentChunk: 0,

@@ -1,3 +1,4 @@
+import { chunkMediaReferences } from '@relanox/storage-support'
 import type {
   Storage,
   InboundRecord,
@@ -207,10 +208,10 @@ export function createInspectionOperations(
 
         for (const { record } of outgoing) {
           for (const chunk of record.chunks) {
-            if (chunk.media) {
-              retained.add(chunk.media.id)
-              if (chunk.media.previewMediaId) {
-                retained.add(chunk.media.previewMediaId)
+            for (const reference of chunkMediaReferences(chunk)) {
+              retained.add(reference.id)
+              if (reference.previewMediaId) {
+                retained.add(reference.previewMediaId)
               }
             }
           }

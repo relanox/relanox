@@ -3,9 +3,38 @@ import type {
   InboundSnapshot,
   OutboundRecord,
   Lease,
-  Storage
+  Storage,
+  DeliveryChunk,
+  MediaReference
 } from '@relanox/sdk'
 import { equalDurableValues } from './record-codec.js'
+
+export function chunkMediaReferences(
+  chunk: DeliveryChunk
+): readonly MediaReference[] {
+  return chunk.media
+    ? [chunk.media]
+    : (chunk.richText ?? []).flatMap((part) =>
+        part.type === 'image' ? [part.media] : []
+      )
+}
+
+function validChunk(chunk: DeliveryChunk): boolean {
+  if (chunk.richText !== undefined) {
+    return (
+      chunk.text === '' &&
+      chunk.media === undefined &&
+      chunk.richText.length > 0 &&
+      chunk.richText.some((part) => part.type === 'image') &&
+      chunk.richText.every((part) =>
+        part.type === 'text'
+          ? part.text.length > 0
+          : part.media.kind === 'image'
+      )
+    )
+  }
+  return chunk.media === undefined || chunk.text === ''
+}
 
 /** Core owns the rendered chunk plan; storage validates scope, identity and publication state. */
 export function matchesInitialMessage(
@@ -26,11 +55,9 @@ export function matchesInitialMessage(
     outbound.attempts === 0 &&
     outbound.lease === undefined &&
     outbound.chunks.length > 0 &&
-    outbound.chunks.every(
-      (chunk) => chunk.media === undefined || chunk.text === ''
-    ) &&
+    outbound.chunks.every(validChunk) &&
     equalDurableValues(
-      outbound.chunks.flatMap((chunk) => (chunk.media ? [chunk.media] : [])),
+      outbound.chunks.flatMap(chunkMediaReferences),
       input.message.attachments ?? []
     )
   )
