@@ -28,6 +28,8 @@ Replies use Markdown automatically. Ask for a heading, list, code block or forma
 
 In your [settings](../configuration.md), choose the allowed users, conversations or groups and the Agent that receives their messages. Complete the [Agent setup](../agents.md) for dot or Grok Bot, then send a message in the chosen conversation and check its reply.
 
+A binding identifies a destination by account, chat and, where supported, thread. Sending to that destination uses the channel's native address and permissions. Some channels also need information from authenticated platform events: Teams needs conversation metadata, Feishu threads need a real message anchor, WeCom HTTP replies need a callback, and QQ and WhatsApp replies follow their platform windows. See [Destination availability](../reference/channels.md#destinations) before setting up sends to other bound conversations.
+
 Each platform handles pictures and files in its own way. Read the file section in your channel guide, then use [Send pictures and files](../media.md) to configure download addresses and sizes as needed.
 
 For manual configuration and protocol parameters, see the [channel technical reference](../reference/channels.md).

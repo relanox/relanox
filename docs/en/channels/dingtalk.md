@@ -21,6 +21,8 @@ Ask the bot administrator to provide the user and conversation IDs listed below 
 
 The sender allowlist uses the callback’s opaque `senderId`, including any prefix. A direct-chat **Chat ID** uses `senderStaffId`; a group **Chat ID** uses `conversationId` (the open conversation ID). Read these values from an application-robot message event. The sender and direct-chat identifiers serve different purposes, so copy each exact field.
 
+To send to a bound destination before Relanox receives a message there, add `recipientTypes` to the downloaded account's `config`: map its **Chat ID** to `single` for a staff member or `group` for an open conversation. Without this setting, Relanox learns the recipient type from authenticated message events. The robot still needs the independent message API permissions and access to that recipient. Leave **Thread ID** empty. See the [manual example](../reference/channels.md#dingtalk).
+
 ## Enable the connection
 
 Start Relanox after saving the account configuration. It opens the Stream connection automatically using the application credentials. Keep outbound HTTPS and WebSocket access available.

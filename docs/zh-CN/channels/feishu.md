@@ -22,6 +22,8 @@
 
 消息事件的发送者 `open_id` 填入 「允许使用的用户 ID」，`message.chat_id` 填入 「聊天 ID」。事件头中可取得 `tenant_key`。消息串绑定使用 `message.thread_id`；事件以 `root_id` 标识消息串时使用该值。
 
+普通会话目标使用配置的聊天 ID 和应用权限。向消息串内发送还需要已验证事件中的真实消息锚点，且账号、聊天和消息串必须匹配。Relanox 连接后，在所选消息串内发送一条消息以建立锚点；仅填写消息串 ID 不足以发送。
+
 ## 启用连接
 
 使用事件订阅 v2.0，将地址填为 `https://relay.example.com/channels/feishu-main/events`，订阅 `im.message.receive_v1`，并配置相同的 Verification Token 和 Encrypt Key。验证回调前启动 Relanox，然后发布应用变更，向使用者开放机器人。

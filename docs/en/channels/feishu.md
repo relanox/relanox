@@ -22,6 +22,8 @@ Ask the bot administrator to provide the user and conversation IDs listed below 
 
 Use the message event’s sender `open_id` for **Allowed user IDs** and `message.chat_id` for **Chat ID**. The event header supplies `tenant_key`. A thread binding uses `message.thread_id`, or `root_id` when that is the supplied thread reference.
 
+An ordinary chat destination uses the configured chat ID and app permissions. Sending inside a thread also requires a real message anchor received in an authenticated event for that account, chat and thread. Send a message in the chosen thread while Relanox is connected to establish it; a thread ID alone cannot supply that anchor.
+
 ## Enable the connection
 
 Configure event subscription v2.0 with `https://relay.example.com/channels/feishu-main/events`, subscribe to `im.message.receive_v1`, and configure the same verification token and encryption key. Start Relanox before verifying the callback, then publish the app changes and make the bot available to your users.

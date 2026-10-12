@@ -44,7 +44,11 @@ node apps/cli/dist/main.js validate --config relanox.json
 
 In WebSocket mode, start Relanox to connect automatically to the robot. Keep the process running.
 
+For WebSocket sends before Relanox receives a message in a bound conversation, add `recipientTypes` to the downloaded account's `config`: map the conversation's **Chat ID** to `single` or `group`. Otherwise, Relanox learns the type from authenticated message events. Use the exact member userid or group chat ID and keep **Thread ID** empty. See the [manual example](../reference/channels.md#wecom).
+
 For HTTP callback mode, start Relanox behind your public HTTPS address, then enter the generated callback URL in the robot settings: `https://your-host/channels/wecom-main/webhook`. Replace `wecom-main` with your account ID. Use the same Token and EncodingAESKey as the service environment, and save the platform settings after URL verification succeeds.
+
+HTTP mode needs a real authenticated message callback and an available reply window. Configuring a chat ID alone cannot open a reply destination; `recipientTypes` applies only to WebSocket mode.
 
 Both modes require a public HTTPS address for dot or Grok MCP access.
 
