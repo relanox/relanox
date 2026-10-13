@@ -1115,3 +1115,91 @@ test.each([false, true])(
     host.controller.abort()
   }
 )
+
+// Uses the same documented QQ Gateway/C2C protocol peer as the tests above:
+// https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html
+// https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/send-receive/send.html
+test('QQ keeps an associated reply on the original passive message after newer input arrives', async () => {
+  vi.stubEnv('QQ_SECRET', 'secret')
+  let socketAddress = ''
+
+  const remote = await peer(
+    (request) => {
+      if (request.path === '/app/getAppAccessToken') {
+        return { body: { access_token: 'token', expires_in: 7200 } }
+      }
+      if (request.path === '/gateway') {
+        return { body: { url: socketAddress } }
+      }
+      return { body: { id: 'sent' } }
+    },
+    (socket) => {
+      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 30_000 } }))
+      socket.on('message', (bytes) => {
+        const message = z
+          .object({ op: z.number() })
+          .parse(JSON.parse(wireText(bytes)))
+
+        if (message.op === 2) {
+          socket.send(frame(1, 'READY', { session_id: 'session' }))
+          socket.send(
+            frame(
+              2,
+              'C2C_MESSAGE_CREATE',
+              createEvent('original', false, { content: 'original question' })
+            )
+          )
+          socket.send(frame(3, 'C2C_MESSAGE_CREATE', createEvent('newer')))
+        }
+      })
+    }
+  )
+
+  socketAddress = remote.ws
+
+  const host = await assemble(
+    createQqChannel(),
+    { appId: 'app', clientSecret: { env: 'QQ_SECRET' } },
+    [{ chatId: 'user', senderId: 'user' }]
+  )
+
+  await host.start()
+  await expect.poll(async () => (await records(host.storage)).length).toBe(2)
+
+  const original = (await records(host.storage)).find(
+    (record) => record.snapshot.text === 'original question'
+  )
+
+  if (!original) {
+    throw new Error('Missing original input')
+  }
+
+  const input = {
+    channel: original.snapshot.channel.id,
+    text: 'answer',
+    reply: { requestId: original.snapshot.requestId, kind: 'final' as const }
+  }
+
+  const final = await host.principal().sendMessage(input)
+  expect(final.status).toBe('queued')
+  await host.runtime.processDue()
+  expect(
+    remote.requests
+      .filter((request) => request.path === '/v2/users/user/messages')
+      .map((request) => request.body)
+  ).toEqual([
+    expect.objectContaining({
+      msg_id: 'original',
+      msg_seq: 1,
+      markdown: { content: 'answer' }
+    })
+  ])
+  expect(await host.principal().sendMessage(input)).toEqual({
+    ...final,
+    replay: true
+  })
+  expect(
+    (await host.principal().status({ requestId: original.snapshot.requestId }))
+      .request?.reply.status
+  ).toBe('sent')
+})

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { AgentMessage, InboundRecord, ScopedAgentHost } from '@relanox/sdk'
 import type { AgentHostOptions } from './agent.js'
 import { authorizedConversation } from './conversations.js'
+import { replyStatus } from './reply-status.js'
 import { textId } from '../validation.js'
 
 const inputSchema = z.strictObject({
@@ -29,7 +30,7 @@ export async function readMessages(
           (record): record is InboundRecord => record !== undefined
         )
 
-  return records
+  const visible = records
     .filter(
       (record) =>
         record.redactedAt === undefined &&
@@ -49,7 +50,14 @@ export async function readMessages(
         b.snapshot.requestId.localeCompare(a.snapshot.requestId)
     )
     .slice(0, limit)
-    .map(({ snapshot }) => projectMessage(snapshot))
+
+  return Promise.all(
+    visible.map(async (record) =>
+      Object.assign(projectMessage(record.snapshot), {
+        reply: await replyStatus(options.storage, record)
+      })
+    )
+  )
 }
 
 function projectMessage(snapshot: AgentMessage): AgentMessage {

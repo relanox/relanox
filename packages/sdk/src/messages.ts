@@ -55,9 +55,22 @@ export type AgentMessage = Pick<
   | 'text'
   | 'context'
   | 'attachments'
->
+> & { readonly reply?: ReplyStatus }
+
+/** Progress never completes a request; a request has at most one final delivery. */
+export type ReplyReference = {
+  readonly requestId: string
+  readonly kind: 'progress' | 'final'
+}
+
+export type ReplyStatus = {
+  readonly status: 'awaiting_final' | 'expired' | DeliveryStatus
+  readonly deliveryId?: string
+  readonly errorCode?: string
+}
 
 export type OutboundMessage = {
+  readonly reply?: ReplyReference
   readonly messageId: string
   readonly text: string
   readonly attachments?: readonly MediaReference[]
@@ -79,6 +92,8 @@ export type Lease = {
 }
 
 export type InboundRecord = {
+  /** Absent on historical records; webhook acceptance does not complete work. */
+  readonly reply?: { readonly finalDeliveryId?: string }
   readonly snapshot: InboundSnapshot
   readonly version: number
   readonly dispatch: AttemptState
@@ -113,6 +128,7 @@ export type SendReceipt = {
 export type DeliveryStatus = 'pending' | 'sent' | 'rejected' | 'unknown'
 
 export type OutboundRecord = {
+  readonly reply?: ReplyReference
   readonly redactedAt?: EpochMs
   readonly deliveryId: string
   readonly channelId: string

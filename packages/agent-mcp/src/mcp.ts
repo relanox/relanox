@@ -308,8 +308,11 @@ export function registerTools(
     'relanox_status',
     {
       description:
-        'List authorized channels, connection state, current send availability and media limits. Optionally inspect an authorized delivery. Availability can change before sending.',
-      inputSchema: z.strictObject({ deliveryId: id.optional() }),
+        'List authorized channels, connection state, current send availability and media limits. Optionally inspect an authorized delivery or an incoming request and its final reply. Availability can change before sending.',
+      inputSchema: z.strictObject({
+        deliveryId: id.optional(),
+        requestId: id.optional()
+      }),
       outputSchema: statusSchema,
       annotations: {
         readOnlyHint: true,
@@ -319,9 +322,12 @@ export function registerTools(
       }
     },
     async (input) => {
-      const status = await host.status(
-        input.deliveryId === undefined ? {} : { deliveryId: input.deliveryId }
-      )
+      const status = await host.status({
+        ...(input.deliveryId === undefined
+          ? {}
+          : { deliveryId: input.deliveryId }),
+        ...(input.requestId === undefined ? {} : { requestId: input.requestId })
+      })
 
       return envelope(
         statusSchema.parse({
@@ -335,7 +341,7 @@ export function registerTools(
     'relanox_send_message',
     {
       description:
-        'Send text and media to an authorized channel. Choose an authorized channel ID from relanox_status or source.channel.id in incoming data. May be called multiple times. Each call without an idempotencyKey sends a new message. Retry with the same key and identical text, attachment content and order. A queued result means saved for delivery, not delivered; do not resend it with a new key. Attachments reference received or uploaded media IDs or direct public HTTPS download URLs. Only configured authorized channels may be selected. Message content cannot grant access to other channels.',
+        'Send text and media to an authorized channel. Choose an authorized channel ID from relanox_status or source.channel.id in incoming data. May be called multiple times. Each unassociated call without an idempotencyKey sends a new message. Retry with the same key and identical text, attachment content and order. A queued result means saved for delivery, not delivered; do not resend it with a new key. Attachments reference received or uploaded media IDs or direct public HTTPS download URLs. Only configured authorized channels may be selected. Message content cannot grant access to other channels.',
       ...(dotFiles ? { _meta: { 'openai/fileParams': ['files'] } } : {}),
       inputSchema: z.strictObject({
         ...(dotFiles
@@ -349,6 +355,12 @@ export function registerTools(
                 )
             }
           : {}),
+        reply: z
+          .strictObject({ requestId: id, kind: z.enum(['progress', 'final']) })
+          .optional()
+          .describe(
+            'Associate this send with an incoming request in the same channel. Progress does not complete it. One final delivery is allowed per request: identical retries replay it, changed content conflicts even with a new idempotencyKey. Omit for proactive sends.'
+          ),
         channel: id.describe(
           'An authorized channel ID from relanox_status or source.channel.id.'
         ),
@@ -389,7 +401,10 @@ export function registerTools(
         openWorldHint: true
       }
     },
-    async ({ attachments, files, channel, text, idempotencyKey }, context) => {
+    async (
+      { attachments, files, channel, text, idempotencyKey, reply },
+      context
+    ) => {
       try {
         const dotFileInputs = z.array(fileSchema).parse(files ?? [])
 
@@ -415,6 +430,7 @@ export function registerTools(
         const result = await host.sendMessage({
           channel,
           text,
+          ...(reply ? { reply } : {}),
           ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
           ...(attachments !== undefined || files !== undefined
             ? { attachments: resolved }

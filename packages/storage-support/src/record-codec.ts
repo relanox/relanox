@@ -49,7 +49,10 @@ export const messageDigest = (message: OutboundMessage): string =>
           ref.sha256,
           ref.durationMs ?? null,
           ref.previewMediaId ?? null
-        ])
+        ]),
+        ...(message.reply
+          ? [[message.reply.requestId, message.reply.kind]]
+          : [])
       ])
     )
     .digest('hex')

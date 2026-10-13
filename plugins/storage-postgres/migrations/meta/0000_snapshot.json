@@ -69,6 +69,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "final_delivery_id": {
+          "name": "final_delivery_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "endpoint": {
           "name": "endpoint",
           "type": "text",

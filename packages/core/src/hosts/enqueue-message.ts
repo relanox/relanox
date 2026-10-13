@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { ScopedAgentHost, ConversationRecord } from '@relanox/sdk'
 import type { AgentHostOptions } from './agent.js'
 import { richMessage, orderedReferences, richChunks } from './rich-message.js'
@@ -18,15 +19,25 @@ export async function enqueue(
 
   const messageId = input.idempotencyKey ?? crypto.randomUUID()
 
+  const recovery =
+    input.idempotencyKey !== undefined || input.reply?.kind === 'final'
+
+  const mediaIntent =
+    input.reply?.kind === 'final'
+      ? createHash('sha256')
+          .update(JSON.stringify(['final', input.reply.requestId]))
+          .digest('hex')
+      : messageId
+
   const rich = richMessage(input.text, input.attachments)
 
   const prepared = await prepareMessageMedia(
     storage,
     input.channel,
-    messageId,
+    mediaIntent,
     rich.attachments,
     worker,
-    input.idempotencyKey !== undefined
+    recovery
   )
 
   const now = Date.now()
@@ -35,11 +46,12 @@ export async function enqueue(
   const message = {
     messageId,
     text: input.text,
+    ...(input.reply ? { reply: input.reply } : {}),
     ...(references.length > 0 ? { attachments: references } : {}),
     createdAt: now
   }
 
-  if (input.idempotencyKey !== undefined) {
+  if (recovery) {
     const receipt = await storage.getMessageReceipt({
       channelId: input.channel,
       endpointIds: scope,
@@ -81,6 +93,7 @@ export async function enqueue(
         maxTotalBytes: worker.maxTotalMediaBytes * 2,
         outbound: {
           deliveryId,
+          ...(input.reply ? { reply: input.reply } : {}),
           channelId: input.channel,
           messageId,
           endpoint: conversation.endpoint,

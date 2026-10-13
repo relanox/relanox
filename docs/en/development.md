@@ -26,7 +26,7 @@ If you update dependencies, keep versions exact, update the lockfile, review ins
 
 Storage queries use Drizzle’s typed schemas, query builders and transaction APIs. Generate schema migrations from those schemas and ship them with the storage packages. Do not handwrite runtime data queries or schema DDL. Keep database-specific expressions and function calls narrow and parameterized, and preserve database filtering, ordering and limits.
 
-Run `pnpm --filter @relanox/storage-sqlite db:generate` or `pnpm --filter @relanox/storage-postgres db:generate` after changing a storage schema. Review the generated migration before committing it. PostgreSQL supports a configured schema through `search_path`; table and foreign-key references must resolve there rather than be fixed to `public`. The initial migrations use `IF NOT EXISTS` to adopt pre-ORM databases, with PostgreSQL foreign keys declared inside table creation so adoption does not add duplicate constraints. Later migrations must upgrade the existing schema rather than repeat that baseline.
+Run `pnpm --filter @relanox/storage-sqlite db:generate` or `pnpm --filter @relanox/storage-postgres db:generate` after changing a storage schema. Review the generated migration before committing it. PostgreSQL supports a configured schema through `search_path`; table and foreign-key references must resolve there rather than be fixed to `public`. During development, regenerate the initial schema and its snapshot when the schema changes; no upgrade path for older development databases is maintained. Use a fresh disposable database when switching schema versions. Initialization and reopening the same schema remain idempotent.
 
 ## Choose tests that catch a real regression
 
