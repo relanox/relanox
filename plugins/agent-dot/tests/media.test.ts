@@ -105,7 +105,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
     ['text/plain', 'bom.txt', '\uFEFF中文'],
     ['text/plain', 'limit.txt', 'a'.repeat(65_536)]
   ])(
-    'returns readable %s files as scoped embedded text',
+    'returns %s files as scoped download links',
     async (mimeType, fileName, text) => {
       const fx = await setup(agent)
 
@@ -121,16 +121,28 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
       }
       const input = { channel: receipt.channel, mediaId: media.id }
       const client = await fx.client()
-      expect(
-        await client.callTool({ name: 'relanox_read_media', arguments: input })
-      ).toMatchObject({
+
+      const result = await client.callTool({
+        name: 'relanox_read_media',
+        arguments: input
+      })
+
+      expect(result).toMatchObject({
         content: [
           {
-            type: 'resource',
-            resource: { uri: expect.any(String) as unknown, mimeType, text }
+            type: 'resource_link',
+            name: fileName,
+            mimeType,
+            size: Buffer.byteLength(text)
           }
         ]
       })
+      const downloaded = await fx.core.fetch(new Request(resourceUri(result)))
+      expect(downloaded.status).toBe(200)
+      expect(downloaded.headers.get('content-type')).toBe(mimeType)
+      expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(
+        new Uint8Array(Buffer.from(text))
+      )
       const other = await fx.client(agent === 'dot' ? undefined : 'secret-1', 1)
       expect(
         await other.callTool({ name: 'relanox_read_media', arguments: input })
@@ -259,26 +271,32 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
     }
     const client = await fx.client()
     const common = { channel: receipt.channel }
-    expect(
-      await client.callTool({
+    for (const [media, data, fileName, mimeType] of [
+      [picture, image, 'pixel.png', 'image/png'],
+      [sound, audio, 'voice.wav', 'audio/wav']
+    ] as const) {
+      const result = await client.callTool({
         name: 'relanox_read_media',
-        arguments: { ...common, mediaId: picture.id }
+        arguments: { ...common, mediaId: media.id }
       })
-    ).toMatchObject({
-      content: [
-        { type: 'image', data: image.toString('base64'), mimeType: 'image/png' }
-      ]
-    })
-    expect(
-      await client.callTool({
-        name: 'relanox_read_media',
-        arguments: { ...common, mediaId: sound.id }
+
+      expect(result).toMatchObject({
+        content: [
+          {
+            type: 'resource_link',
+            name: fileName,
+            mimeType,
+            size: data.byteLength
+          }
+        ]
       })
-    ).toMatchObject({
-      content: [
-        { type: 'audio', data: audio.toString('base64'), mimeType: 'audio/wav' }
-      ]
-    })
+      const downloaded = await fx.core.fetch(new Request(resourceUri(result)))
+      expect(downloaded.status).toBe(200)
+      expect(downloaded.headers.get('content-type')).toBe(mimeType)
+      expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(
+        new Uint8Array(data)
+      )
+    }
 
     const uri = resourceUri(
       await client.callTool({
