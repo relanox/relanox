@@ -146,6 +146,26 @@ async function setup(filename = ':memory:'): Promise<{
 }
 
 describe('native Google Chat', () => {
+  it('accepts both Google OAuth ID token issuers before persisting an authorized message', async () => {
+    // Google OAuth verifier accepts both issuer spellings:
+    // https://github.com/googleapis/google-auth-library-nodejs/blob/a95b8272197f35453d1647eed85be475d51474c9/src/auth/oauth2client.ts#L620-L623
+    // Chat endpoint URL mode uses this verifier:
+    // https://developers.google.com/workspace/chat/verify-requests-from-chat
+    const local = await setup()
+    expect(
+      (
+        await local.core.fetch(
+          await local.incoming({ iss: 'accounts.google.com' })
+        )
+      ).status
+    ).toBe(200)
+    expect(
+      (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot.text
+    ).toBe('hello')
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    expect((await local.storage.getStats()).pending).toBe(1)
+  })
+
   it('verifies caller JWT then persists, deduplicates, obtains service-account OAuth and sends to the frozen thread', async () => {
     const local = await setup()
     expect(
