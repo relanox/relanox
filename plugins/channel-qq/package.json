@@ -18,12 +18,14 @@
   "dependencies": {
     "@relanox/channel-media": "workspace:*",
     "@relanox/sdk": "workspace:*",
+    "mime-types": "3.0.2",
     "ws": "8.22.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@relanox/core": "workspace:*",
     "@relanox/storage-sqlite": "workspace:*",
+    "@types/mime-types": "3.0.1",
     "@types/ws": "8.18.2"
   },
   "engines": {

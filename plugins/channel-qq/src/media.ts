@@ -3,6 +3,7 @@ import {
   mediaKind,
   MediaDownloadError
 } from '@relanox/channel-media'
+import { attachmentMimeType } from './mime.js'
 import type { ChannelHost, MediaUpload } from '@relanox/sdk'
 import type { z } from 'zod'
 import type { QqConfig } from './config.js'
@@ -32,22 +33,23 @@ export async function downloadAttachments(
         allowInsecureLocalhost: false
       })
 
-      // QQ uses voice/file as native labels, not MIME types. Keep unknown voice bytes opaque.
-      const nativeType = attachment.content_type
+      const fileName =
+        attachment.filename ??
+        new URL(url).pathname.split('/').at(-1) ??
+        'attachment.bin'
 
-      const mimeType =
-        nativeType === 'voice' || nativeType === 'file'
-          ? downloaded.mimeType
-          : (nativeType ?? downloaded.mimeType)
+      const mimeType = attachmentMimeType(
+        attachment.content_type,
+        downloaded.mimeType,
+        fileName,
+        downloaded.data
+      )
 
       uploads.push({
         data: downloaded.data,
         mimeType,
-        kind: nativeType === 'file' ? 'file' : mediaKind(mimeType),
-        fileName:
-          attachment.filename ??
-          new URL(url).pathname.split('/').at(-1) ??
-          'attachment.bin'
+        kind: mediaKind(mimeType),
+        fileName
       })
     }
   } catch (error) {
