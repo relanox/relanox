@@ -11,6 +11,7 @@ import type {
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createCore } from '@relanox/core'
+import type { WorkerOptions } from '@relanox/core'
 import type {
   AgentHost,
   AgentPlugin,
@@ -124,7 +125,7 @@ export async function harness(
   sender: string,
   thread?: string,
   filename = ':memory:',
-  maxMediaBytes?: number
+  worker?: WorkerOptions
 ): Promise<{
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
@@ -167,7 +168,7 @@ export async function harness(
     storage,
     channels: new Map([['business', plugin]]),
     agents: new Map([['dot', agent]]),
-    ...(maxMediaBytes === undefined ? {} : { worker: { maxMediaBytes } }),
+    ...(worker === undefined ? {} : { worker }),
     config: {
       accounts: [
         {

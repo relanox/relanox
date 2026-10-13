@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, expect, it, vi } from 'vitest'
+import type { WorkerOptions } from '@relanox/core'
 import {
   cleanup,
   databaseFile,
@@ -89,7 +90,10 @@ function incoming(encoded: string): Request {
   })
 }
 
-async function setup(initial: Failure): Promise<{
+async function setup(
+  initial: Failure,
+  worker?: WorkerOptions
+): Promise<{
   local: Awaited<ReturnType<typeof harness>>
   traffic: { path: string; authorization: string | undefined }[]
   recover(this: void): void
@@ -163,7 +167,7 @@ async function setup(initial: Failure): Promise<{
     '15551234567',
     undefined,
     filename,
-    maximum
+    worker ?? { maxMediaBytes: maximum }
   )
 
   cleanup(local.close)
@@ -247,6 +251,35 @@ it.each([
       fileName: 'report.txt',
       size: 27
     })
+  }
+)
+
+it.each([
+  [26, ['later legal text']],
+  [27, ['document caption', 'later legal text']]
+] as const)(
+  'acknowledges an ordinary 27-byte document under aggregate limit %s without blocking later text',
+  async (maxTotalMediaBytes, expected) => {
+    const { local, traffic } = await setup('none', {
+      maxMediaBytes: maximum,
+      maxTotalMediaBytes
+    })
+
+    const encoded = envelope()
+    expect((await local.core.fetch(incoming(encoded))).status).toBe(200)
+    expect((await local.core.fetch(incoming(encoded))).status).toBe(200)
+    await local.core.processDue()
+    const records = await local.storage.listInbound({ limit: 10 })
+    expect(records.map((record) => record.snapshot.text).toSorted()).toEqual(
+      expected
+    )
+    expect(local.dispatches.toSorted()).toEqual(expected)
+    expect(
+      records.every((record) => record.dispatch.status === 'accepted')
+    ).toBe(true)
+    expect(
+      traffic.filter((request) => request.path === '/binary')
+    ).toHaveLength(2)
   }
 )
 
