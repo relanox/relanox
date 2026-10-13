@@ -59,6 +59,12 @@ export type Traffic = {
   headers: IncomingHttpHeaders
 }
 
+type ContentResponse = {
+  status: number
+  data: Uint8Array
+  mimeType: string
+}
+
 export async function peer(): Promise<{
   base: string
   traffic: Traffic[]
@@ -72,6 +78,7 @@ export async function peer(): Promise<{
   keys(this: void, value: Json): void
   identity(this: void, id: string): void
   identityResponse(this: void, status: number, body: Json): void
+  content(this: void, ...responses: ContentResponse[]): void
   close(this: void): Promise<void>
 }> {
   const traffic: Traffic[] = []
@@ -82,6 +89,7 @@ export async function peer(): Promise<{
   let jwks: Json = {}
   let identityBody: Json = { userId: 'bot' }
   let identityStatus = 200
+  let contentResponses: ContentResponse[] = []
 
   async function receive(
     incoming: IncomingMessage,
@@ -108,6 +116,17 @@ export async function peer(): Promise<{
       body: Buffer.concat(parts).toString('utf8'),
       headers: incoming.headers
     })
+    const contentResponse = contentResponses[0]
+    if (contentResponse && path.endsWith('/content')) {
+      if (contentResponses.length > 1) {
+        contentResponses.shift()
+      }
+      response.writeHead(contentResponse.status, {
+        'content-type': contentResponse.mimeType
+      })
+      response.end(contentResponse.data)
+      return
+    }
     response.setHeader('content-type', 'application/json')
     if (path === '/v1/.well-known/keys') {
       response.end(JSON.stringify(jwks))
@@ -173,6 +192,9 @@ export async function peer(): Promise<{
     identityResponse(code: number, body: Json): void {
       identityStatus = code
       identityBody = body
+    },
+    content(...responses: ContentResponse[]): void {
+      contentResponses = responses
     },
     keys(value: Json): void {
       jwks = value

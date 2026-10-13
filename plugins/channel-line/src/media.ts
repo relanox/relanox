@@ -2,6 +2,8 @@ import { lineMarkdown } from './markdown.js'
 import { richError, richMessage } from './rich.js'
 import { contentApiBase } from './constants.js'
 import { downloadMedia, mediaKind } from '@relanox/channel-media'
+import type { DownloadedMedia } from '@relanox/channel-media'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { ChannelHost, Json, MediaUpload, SendInput } from '@relanox/sdk'
 import type { z } from 'zod'
 import type { LineConfig } from './config.js'
@@ -16,6 +18,33 @@ const fallbackMime: Readonly<Record<string, string>> = {
 }
 
 type Message = NonNullable<z.infer<typeof eventSchema>['message']>
+
+async function nativeContent(
+  url: string,
+  maximum: number,
+  config: LineConfig,
+  signal: AbortSignal
+): Promise<DownloadedMedia> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const content = await downloadMedia(url, {
+      maxBytes: maximum,
+      signal,
+      trustedOrigins: [new URL(contentApiBase).origin],
+      headers: { authorization: `Bearer ${secret(config.accessToken)}` }
+    })
+
+    if (content.status === 200) {
+      return content
+    }
+    if (content.status !== 202) {
+      throw new Error('media_content_unavailable')
+    }
+    if (attempt < 2) {
+      await delay(500, undefined, { signal })
+    }
+  }
+  throw new Error('media_content_preparing')
+}
 
 export async function receiveMedia(
   message: Message,
@@ -39,16 +68,11 @@ export async function receiveMedia(
     throw new Error('missing_content_url')
   }
 
-  const downloaded = await downloadMedia(url, {
-    maxBytes: maximum,
-    signal: AbortSignal.timeout(10_000),
-    ...(!external
-      ? {
-          trustedOrigins: [new URL(contentApiBase).origin],
-          headers: { authorization: `Bearer ${secret(config.accessToken)}` }
-        }
-      : {})
-  })
+  const signal = AbortSignal.timeout(10_000)
+
+  const downloaded = external
+    ? await downloadMedia(url, { maxBytes: maximum, signal })
+    : await nativeContent(url, maximum, config, signal)
 
   const mimeType =
     downloaded.mimeType === 'application/octet-stream'
