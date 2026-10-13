@@ -73,6 +73,40 @@ it('downloads exact binary bytes from an explicitly configured native API origin
   expect(authorization).toBe('Bearer native-test')
 })
 
+// RFC 6266 sections 4.3 and 5: prefer UTF-8 filename*, preserve quoted names,
+// Discard path segments, and ignore unusable filename metadata.
+// https://www.rfc-editor.org/rfc/rfc6266#section-4.3
+// WeCom returns native attachment names in this header, not its message object:
+// https://github.com/WecomTeam/aibot-node-sdk/blob/80615b987ef69c6028ad764924609247c0725955/src/api.ts#L26-L52
+it.each([
+  ['attachment; filename=report.pdf', 'report.pdf'],
+  ['attachment; filename="report; Q4.pdf"', 'report; Q4.pdf'],
+  [
+    "attachment; filename=report.pdf; filename*=UTF-8'zh'%E6%8A%A5%E5%91%8A.pdf",
+    '报告.pdf'
+  ],
+  ['attachment; filename="100%25.pdf"', '100%25.pdf'],
+  ['attachment; filename="../../budget.pdf"', 'budget.pdf'],
+  ["attachment; filename=report.pdf; filename*=UTF-8''%ZZ", 'report.pdf'],
+  ["attachment; filename*=UTF-8''%0A.pdf", undefined],
+  ['attachment; filename=".."', undefined]
+])(
+  'preserves safe response filenames from %s',
+  async (disposition, expected) => {
+    const { origin, options } = await peer((_request, response) => {
+      response.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-disposition': disposition
+      })
+      response.end('file')
+    })
+
+    const downloaded = await downloadMedia(`${origin}/file`, options)
+    expect(downloaded.fileName).toBe(expected)
+    expect(Buffer.from(downloaded.data).toString()).toBe('file')
+  }
+)
+
 it('rejects message-controlled loopback URLs before contacting them', async () => {
   let requests = 0
 

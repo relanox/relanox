@@ -3,6 +3,7 @@ import { request as httpsRequest } from 'node:https'
 import type { IncomingMessage } from 'node:http'
 import { resolveMediaAddress } from './address.js'
 import { MediaDownloadError } from './errors.js'
+import { responseFileName } from './filename.js'
 
 export type DownloadMediaOptions = {
   readonly maxBytes: number
@@ -17,6 +18,7 @@ export type DownloadMediaOptions = {
 export type DownloadedMedia = {
   readonly data: Uint8Array
   readonly mimeType: string
+  readonly fileName?: string
 }
 
 function validateUrl(
@@ -72,8 +74,10 @@ async function consume(
     }
     chunks.push(bytes)
   }
+  const fileName = responseFileName(response.headers['content-disposition'])
   return {
     data: Buffer.concat(chunks, size),
+    ...(fileName === undefined ? {} : { fileName }),
     mimeType:
       (response.headers['content-type'] ?? 'application/octet-stream')
         .split(';')[0]
