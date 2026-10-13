@@ -62,7 +62,8 @@ export async function downloadAttachment(
   })
 
   return {
-    ...downloaded,
+    data: downloaded.data,
+    mimeType: downloaded.mimeType,
     kind: mediaKind(downloaded.mimeType),
     fileName:
       content.fileName ??
