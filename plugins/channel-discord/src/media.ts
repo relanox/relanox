@@ -6,6 +6,10 @@ import type { DiscordConfig } from './config.js'
 import { postJson } from './transport.js'
 import { richComponents, richFileName } from './rich.js'
 
+// Native bot file uploads default to 20 MiB since 2026-09-03.
+// https://docs.discord.com/developers/reference#uploading-files
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
 export function mediaError(
   input: SendInput,
   host: ChannelHost
@@ -46,7 +50,7 @@ export function mediaError(
     input.chunk.media &&
     (!input.media ||
       input.media.data.byteLength >
-        Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, 10 * 1024 * 1024))
+        Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, MAX_UPLOAD_BYTES))
   ) {
     return 'media_limit_exceeded'
   }
@@ -109,7 +113,7 @@ export async function sendMessage(
   if (
     !media ||
     media.data.byteLength >
-      Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, 10 * 1024 * 1024)
+      Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, MAX_UPLOAD_BYTES)
   ) {
     throw new Error('media_limit_exceeded')
   }
