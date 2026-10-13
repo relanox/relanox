@@ -1,4 +1,5 @@
 import { lookup } from 'mime-types'
+import { isSilk } from 'silk-wasm'
 
 function normalizeSpecificMime(value: string | undefined): string | undefined {
   const mime = value?.split(';')[0]?.trim().toLowerCase()
@@ -18,8 +19,7 @@ export function attachmentMimeType(
   data: Uint8Array
 ): string {
   // QQ voice bytes can be Tencent SILK despite an .amr name or AMR metadata.
-  const start = data[0] === 0x02 ? 1 : 0
-  if (Buffer.from(data.subarray(start, start + 9)).toString() === '#!SILK_V3') {
+  if (isSilk(data)) {
     return 'audio/silk'
   }
   const inferred = lookup(fileName)
