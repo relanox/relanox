@@ -74,10 +74,12 @@ async function run(command: Command): Promise<void> {
 function addStatus(program: Command): void {
   program
     .command('status')
-    .description('Read persisted work; content requires explicit opt-in')
-    .option('--limit <number>', 'Page size', '100')
-    .option('--after-id <id>', 'Exclusive ID cursor')
-    .option('--endpoint-id <id>', 'Endpoint scope')
+    .description(
+      'Show message and delivery status; use --include-content to show text'
+    )
+    .option('--limit <number>', 'Maximum records to show', '100')
+    .option('--after-id <id>', 'Show records after this ID')
+    .option('--endpoint-id <id>', 'Show records for this Agent')
     .option('--dispatch-status <status>', 'due, accepted, rejected, unknown')
     .option('--delivery-status <status>', 'pending, sent, rejected, unknown')
     .option(
@@ -129,14 +131,17 @@ function addRecovery(program: Command): void {
   program
     .command('requeue')
     .description(
-      'Recover local persisted state with version fencing; unknown effects may duplicate'
+      'Retry a saved notification or reply; uncertain results may cause duplicates'
     )
     .requiredOption('--kind <kind>', 'request or delivery')
     .requiredOption('--id <id>', 'Record ID')
-    .requiredOption('--expected-version <number>', 'Current durable version')
+    .requiredOption(
+      '--expected-version <number>',
+      'Current version shown by status'
+    )
     .option(
       '--acknowledge-unknown',
-      'Acknowledge possible duplicate external effects',
+      'Allow a retry that may repeat Agent work or send a duplicate reply',
       false
     )
     .action(async (_options: unknown, command: Command) => {
@@ -163,9 +168,12 @@ function addRecovery(program: Command): void {
   program
     .command('cleanup')
     .description(
-      'Redact eligible terminal text while preserving deduplication and unfinished work'
+      'Remove eligible completed message content and old attachments'
     )
-    .requiredOption('--before <epoch-ms>', 'Exclusive retention boundary')
+    .requiredOption(
+      '--before <epoch-ms>',
+      'Clean content older than this Unix timestamp in milliseconds'
+    )
     .option('--limit <number>', 'Maximum records', '100')
     .action(async (_options: unknown, command: Command) => {
       const config = await configFrom(command)
@@ -186,13 +194,11 @@ function addRecovery(program: Command): void {
 function addDiscovery(program: Command): void {
   program
     .command('discover')
-    .description(
-      'Discover authenticated WeCom conversation IDs without relaying messages'
-    )
+    .description('Find WeCom chat IDs without forwarding messages to an Agent')
     .requiredOption('--account <id>', 'WeCom account ID from relay.accounts')
     .option(
       '--timeout <seconds>',
-      'Bounded discovery duration (1–600 seconds)',
+      'Stop discovery after this many seconds (1–600)',
       '120'
     )
     .action(async (_options: unknown, command: Command) => {
@@ -231,14 +237,16 @@ export function createProgram(): Command {
   const program = new Command()
     .name('relanox')
     .version('0.1.0')
-    .description('Resident native text relay')
+    .description('Connect chat apps to dot or Grok Bot')
     .requiredOption('-c, --config <path>', 'JSON configuration path')
     .exitOverride()
     .configureOutput({ writeErr() {} })
 
   program
     .command('validate')
-    .description('Validate all schemas without opening resources')
+    .description(
+      'Check configuration without connecting to accounts or storage'
+    )
     .action(async (_options: unknown, command: Command) => {
       const config = await configFrom(command)
       printJson({
@@ -249,16 +257,16 @@ export function createProgram(): Command {
     })
   program
     .command('run')
-    .description('Start listeners, connections, and durable worker')
+    .description('Start Relanox and process messages')
     .action(async (_options: unknown, command: Command) => run(command))
   program
     .command('doctor')
     .description(
-      'Check storage/secrets without schema initialization or connection startup'
+      'Check the database and required credentials without starting the service'
     )
     .option(
       '--management-url <url>',
-      'Explicit running loopback management origin'
+      'Local management address of the running service'
     )
     .action(async (_options: unknown, command: Command) => {
       const config = await configFrom(command)
@@ -288,7 +296,7 @@ export function createProgram(): Command {
         missingSecrets: missing,
         running,
         connections:
-          'Use runtime metrics for current connection state; offline doctor does not start connections'
+          'Check the running service metrics for account connections; doctor does not connect to chat platforms'
       })
       if (!ok) {
         process.exitCode = 2

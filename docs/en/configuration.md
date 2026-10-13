@@ -16,7 +16,7 @@ Under **Allowed user IDs**, enter the people who may chat with the bot. Separate
 
 To connect a topic or thread, enter its thread ID. Leaving it blank receives messages in the main chat only; it does not include every child thread. Add each thread you want to connect.
 
-Several chats can use the same Agent. The Agent can query `relanox_status` to find its authorized channels and select one when sending; incoming messages identify their source channel.
+Several chats can use the same Agent. It can reply to the chat where a message arrived or send to another chat you assigned to it.
 
 ## Set the service address and passwords
 
@@ -26,8 +26,10 @@ The configurator generates an MCP password for each Agent; you can edit it. Copy
 
 ## Apply your changes
 
-1. Download `relanox.json`, keeping the account settings and passwords you already use.
-2. Follow **Setup guide** to update the server configuration and credentials, then restart Relanox.
+The configurator creates a new configuration each time you open it. It cannot import your existing file, and refreshing loses your entries. To update an existing installation, back up its configuration and copy only the changed settings into that file. Keep existing account IDs, Agent IDs and credential variable names.
+
+1. Download the generated `relanox.json` and compare it with your current configuration. For a new installation, use the downloaded file directly.
+2. Follow **Setup guide** to set any new credentials, validate the updated configuration and restart Relanox.
 3. Send a message from an allowed account in the newly connected chat and confirm the reply arrives.
 
 After changing an Agent password, follow [Connect an Agent](agents.md) to reconnect. For manual database or port settings, see [Configuration reference](reference/configuration.md).

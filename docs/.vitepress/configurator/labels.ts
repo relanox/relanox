@@ -62,8 +62,8 @@ export const channelSetup: Record<string, [string, string]> = {
     '通过 BotFather 创建机器人，从 updates 获取发送者和会话 ID，并使用密钥令牌注册 Webhook。'
   ],
   discord: [
-    'Invite the bot with message access and enable Message Content Intent. Use user and channel snowflake IDs.',
-    '邀请机器人并授予消息访问权限，启用 Message Content Intent，填写用户和频道的 snowflake ID。'
+    'Invite the bot with message access and enable Message Content Intent. Copy the user and channel IDs from Discord.',
+    '邀请机器人并授予消息访问权限，启用 Message Content Intent，从 Discord 复制用户和频道 ID。'
   ],
   slack: [
     'Create a Slack app, grant bot scopes, and configure Events API HTTP delivery. Use workspace user and conversation IDs.',
@@ -78,7 +78,7 @@ export const channelSetup: Record<string, [string, string]> = {
     '创建智能机器人并获取 bot ID，选择使用密钥的 WebSocket，或使用 Token 和 EncodingAESKey 的 HTTP 回调，填写平台发送者和会话 ID。'
   ],
   dingtalk: [
-    'Create a DingTalk app with Stream delivery and obtain the client ID and robot code. Copy the exact opaque sender and conversation IDs from events.',
+    'Create a DingTalk app with Stream delivery and obtain the client ID and robot code. Copy the complete sender and conversation IDs from events.',
     '创建使用 Stream 投递的钉钉应用，获取 client ID 和 robot code，从事件复制完整发送者和会话 ID。'
   ],
   qq: [
@@ -86,8 +86,8 @@ export const channelSetup: Record<string, [string, string]> = {
     '创建 QQ 机器人应用并授权 WebSocket 连接，使用平台用户/成员 open ID 和会话 open ID。'
   ],
   msteams: [
-    'Register the bot application and Teams tenant, then set the messaging endpoint. Authorize exact service origins and use Teams user/conversation IDs.',
-    '注册机器人应用和 Teams 租户，设置消息端点，授权准确的服务源并填写 Teams 用户/会话 ID。'
+    'Register the bot application and Teams tenant, then set the messaging endpoint. Allow the service addresses listed in the Teams guide and copy the user and conversation IDs.',
+    '注册机器人应用和 Teams 租户，设置消息端点，按 Teams 指南填写允许的服务地址，以及用户和会话 ID。'
   ],
   whatsapp: [
     'Configure a Meta WhatsApp Business app and subscribe to messages. Set the callback and verification token; use the sender phone number as the direct chat ID.',

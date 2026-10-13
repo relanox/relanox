@@ -16,7 +16,7 @@ Connect one chat account first. Once you receive your first reply, you can add m
 
 Channels include Telegram, Discord, Slack, Feishu, WeCom, DingTalk, QQ, Microsoft Teams, WhatsApp Business Cloud, Google Chat, LINE, Matrix, Mattermost, Signal and IRC. Each guide explains account setup, configuration and how to send files.
 
-## Run it your way
+## Deployment
 
 Use Node.js or deploy with Docker Compose. SQLite is a straightforward starting point; you can also use PostgreSQL. Messages, attachments and delivery progress stay in the database you configure.
 
