@@ -89,6 +89,49 @@ async function setup(filename?: string): Promise<{
 }
 
 describe('native LINE', () => {
+  it.each(['group', 'room'] as const)(
+    'acknowledges %s messages without a sender while persisting subsequent authorized events',
+    async (type) => {
+      const local = await setup()
+
+      // LINE explicitly makes group/room userId optional:
+      // https://developers.line.biz/en/reference/messaging-api/#source-group
+      // https://developers.line.biz/en/reference/messaging-api/#source-room
+      const body = JSON.stringify({
+        destination: 'bot',
+        events: [
+          {
+            type: 'message',
+            webhookEventId: 'anonymous-event',
+            timestamp: 1,
+            source: { type, [`${type}Id`]: 'group' },
+            message: { id: 'anonymous-image', type: 'image' }
+          },
+          {
+            type: 'message',
+            webhookEventId: 'authorized-event',
+            timestamp: 2,
+            source: { type, [`${type}Id`]: 'group', userId: 'user' },
+            message: { id: 'authorized-message', type: 'text', text: 'hello' }
+          }
+        ]
+      })
+
+      expect((await local.core.fetch(incoming(body))).status).toBe(200)
+      expect((await local.core.fetch(incoming(body))).status).toBe(200)
+      const records = await local.storage.listInbound({ limit: 10 })
+      expect(records).toHaveLength(1)
+      expect(records[0]?.snapshot).toMatchObject({
+        source: { eventId: 'authorized-event' },
+        senderId: 'user',
+        text: 'hello'
+      })
+      expect(local.remote.traffic).toHaveLength(0)
+      await local.core.processDue()
+      expect(local.dispatches).toEqual(['hello'])
+    }
+  )
+
   it('discovers bot identity with the account token before accepting signed webhooks', async () => {
     const local = await setup()
     expect(local.remote.identities).toHaveLength(1)
