@@ -26,7 +26,12 @@ import {
   signed,
   unavailable
 } from './io.js'
-import { webhookSchema, targetSchema, responseSchema } from './schemas.js'
+import {
+  webhookSchema,
+  targetSchema,
+  responseSchema,
+  valueSchema
+} from './schemas.js'
 import type { messageSchema } from './schemas.js'
 
 function windowKey(config: WhatsAppConfig, customer: string): string {
@@ -116,16 +121,17 @@ async function receive(
 ): Promise<void> {
   for (const entry of body.entry) {
     if (entry.id !== config.businessAccountId) {
-      throw new Error('wrong_business_account')
+      continue
     }
     for (const change of entry.changes) {
       if (change.field !== 'messages') {
         continue
       }
-      if (change.value.metadata.phone_number_id !== config.phoneNumberId) {
-        throw new Error('wrong_phone_account')
+      const value = valueSchema.parse(change.value)
+      if (value.metadata.phone_number_id !== config.phoneNumberId) {
+        continue
       }
-      for (const message of change.value.messages ?? []) {
+      for (const message of value.messages ?? []) {
         await receiveMessage(host, account, config, message, signal)
       }
     }

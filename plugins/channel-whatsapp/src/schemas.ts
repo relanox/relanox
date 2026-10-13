@@ -20,17 +20,25 @@ export const messageSchema = z.object({
   document: mediaSchema.optional()
 })
 
-const valueSchema = z.object({
+export const valueSchema = z.object({
   metadata: z.object({ phone_number_id: platformIdSchema }),
   messages: z.array(messageSchema).optional()
 })
+
+const changeSchema = z.union([
+  z.object({ field: z.literal('messages'), value: valueSchema }),
+  z.object({
+    field: z.string().refine((field) => field !== 'messages'),
+    value: z.record(z.string(), z.unknown())
+  })
+])
 
 export const webhookSchema = z.object({
   object: z.literal('whatsapp_business_account'),
   entry: z.array(
     z.object({
       id: platformIdSchema,
-      changes: z.array(z.object({ field: z.string(), value: valueSchema }))
+      changes: z.array(changeSchema)
     })
   )
 })

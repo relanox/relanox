@@ -127,6 +127,110 @@ async function setup(filename = ':memory:'): Promise<{
 }
 
 describe('native WhatsApp Cloud', () => {
+  // Meta's account_update ACCOUNT_DELETED example has no messages metadata:
+  // https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_update
+  // Fields share the configured endpoint when subscribed in the App Dashboard:
+  // https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview
+  it('acknowledges account updates without losing relevant messages in the same envelope', async () => {
+    const local = await setup()
+
+    const update = {
+      field: 'account_update',
+      value: { event: 'ACCOUNT_DELETED' }
+    }
+
+    const envelope = {
+      object: 'whatsapp_business_account',
+      entry: [{ id: 'business-1', time: 1_743_451_903, changes: [update] }]
+    }
+
+    expect(
+      (await local.core.fetch(incoming(JSON.stringify(envelope)))).status
+    ).toBe(200)
+    expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+
+    const messageEnvelope = JSON.parse(webhook()) as {
+      entry: { changes: unknown[] }[]
+    }
+
+    messageEnvelope.entry[0]?.changes.unshift(update)
+    expect(
+      (await local.core.fetch(incoming(JSON.stringify(messageEnvelope)))).status
+    ).toBe(200)
+    const accepted = await local.storage.listInbound({ limit: 10 })
+    expect(accepted.map((record) => record.snapshot.text)).toEqual(['hello'])
+    expect((await local.sendReply()).delivery?.status).toBe('sent')
+  })
+
+  // Cloud messages identify WABA in entry.id and the business phone in metadata:
+  // https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview
+  // Hermes Cloud (not Baileys) independently skips siblings in _dispatch_payload:
+  // NousResearch/hermes-agent@09e2ffcab79322cdd9037660fe87004bbd8fd18f gateway/platforms/whatsapp_cloud.py
+  it.each(['business', 'phone'] as const)(
+    'ignores a sibling %s without blocking the configured account',
+    async (identity) => {
+      const local = await setup()
+
+      const sibling = {
+        id: identity === 'business' ? 'other-business' : 'business-1',
+        changes: [
+          {
+            field: 'messages',
+            value: {
+              metadata: {
+                phone_number_id: identity === 'phone' ? 'other-phone' : 'phone'
+              },
+              messages: [
+                {
+                  id: 'wamid.foreign',
+                  from: 'customer',
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: 'text',
+                  text: { body: 'foreign' }
+                }
+              ]
+            }
+          }
+        ]
+      }
+
+      const envelope = { object: 'whatsapp_business_account', entry: [sibling] }
+      expect(
+        (await local.core.fetch(incoming(JSON.stringify(envelope)))).status
+      ).toBe(200)
+      expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+      expect((await local.principal().status()).channels).toMatchObject([
+        { send: { status: 'unavailable', reason: 'customer_window_expired' } }
+      ])
+      const relevant = JSON.parse(webhook()) as { entry: unknown[] }
+      relevant.entry.unshift(sibling)
+      expect(
+        (await local.core.fetch(incoming(JSON.stringify(relevant)))).status
+      ).toBe(200)
+      const accepted = await local.storage.listInbound({ limit: 10 })
+      expect(accepted.map((record) => record.snapshot.text)).toEqual(['hello'])
+      expect((await local.sendReply()).delivery?.status).toBe('sent')
+      expect(local.dispatches).toEqual(['hello'])
+    }
+  )
+
+  it('still rejects malformed messages notifications rather than treating them as unrelated fields', async () => {
+    const local = await setup()
+
+    const malformed = JSON.stringify({
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'business-1',
+          changes: [{ field: 'messages', value: { event: 'ACCOUNT_DELETED' } }]
+        }
+      ]
+    })
+
+    expect((await local.core.fetch(incoming(malformed))).status).toBe(400)
+    expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+  })
+
   it('converts Markdown to WhatsApp styles and preserves explicit link targets', async () => {
     const local = await setup()
     await local.core.fetch(incoming(webhook()))
@@ -352,7 +456,7 @@ describe('native WhatsApp Cloud', () => {
     expect(
       (await local.core.fetch(incoming(webhook(undefined, 'other-phone'))))
         .status
-    ).toBe(500)
+    ).toBe(200)
     const body = `${webhook()}\n`
     expect((await local.core.fetch(incoming(body))).status).toBe(200)
     expect((await local.core.fetch(incoming(body))).status).toBe(200)
