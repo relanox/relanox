@@ -215,7 +215,8 @@ async function fixture(
   group = false,
   bytes = smallBytes,
   fault?: Fault,
-  nativeShape = false
+  nativeShape = false,
+  downloadType = 'application/octet-stream'
 ): Promise<{
   remote: Awaited<ReturnType<typeof peer>>
   local: Awaited<ReturnType<typeof assemble>>
@@ -241,7 +242,7 @@ async function fixture(
       if (request.path === '/attachment') {
         return {
           body: bytes,
-          headers: { 'content-type': 'application/octet-stream' }
+          headers: { 'content-type': downloadType }
         }
       }
       if (request.path === `${base}/upload_prepare`) {
@@ -634,5 +635,139 @@ test.each([false, true])(
       remote.requests.find((request) => request.path === `${base}/messages`)
         ?.body
     ).toMatchObject({ media: { file_info: 'opaque-file-info' }, msg_type: 7 })
+  }
+)
+
+// QQ acceptance capture on 2026-10-13 returned content_type=file for MP4 and
+// UTF-8 TXT attachments with application/octet-stream downloads. The remaining
+// Cases vary MIME metadata to protect precedence, normalization and fallback.
+// Native attachment labels: https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html
+const receivedMedia = [
+  {
+    name: 'native MP4 labeled file',
+    contentType: 'file',
+    fileName: 'VIDEO-1013.MP4',
+    bytes: Buffer.from(
+      '000000186674797069736f6d0000020069736f6d6d703432',
+      'hex'
+    ),
+    mimeType: 'video/mp4',
+    kind: 'video',
+    fileType: 2
+  },
+  {
+    name: 'UTF-8 text labeled file',
+    contentType: 'file',
+    fileName: 'FILE-1013.txt',
+    bytes: Buffer.from('RELANOX-FILE-1013\n青山不改，绿水长流。'),
+    mimeType: 'text/plain',
+    kind: 'file',
+    fileType: 4
+  },
+  {
+    name: 'HTTP MIME without a known extension',
+    contentType: 'file',
+    downloadType: 'video/mp4',
+    fileName: 'download.bin',
+    bytes: smallBytes,
+    mimeType: 'video/mp4',
+    kind: 'video',
+    fileType: 2
+  },
+  {
+    name: 'parameterized event MIME',
+    contentType: 'Text/Plain; charset=utf-8',
+    fileName: 'download',
+    bytes: Buffer.from('known text'),
+    mimeType: 'text/plain',
+    kind: 'file',
+    fileType: 4
+  },
+  {
+    name: 'unknown file with invalid MIME metadata',
+    contentType: 'file',
+    downloadType: 'unknown',
+    fileName: 'download.bin',
+    bytes: smallBytes,
+    mimeType: 'application/octet-stream',
+    kind: 'file',
+    fileType: 4
+  }
+] as const
+
+test.each(
+  [false, true].flatMap((group) =>
+    receivedMedia.map((media) => ({ group, media }))
+  )
+)(
+  'QQ persists and returns $media.name without changing bytes, group=$group',
+  async ({ group, media }) => {
+    const { remote, local, base, blockSize } = await fixture(
+      group,
+      media.bytes,
+      undefined,
+      true,
+      'downloadType' in media ? media.downloadType : undefined
+    )
+
+    await local.start()
+    await expect.poll(() => remote.frames.length).toBeGreaterThan(0)
+    remote.sockets[0]?.send(
+      JSON.stringify({
+        op: 0,
+        s: 2,
+        t: group ? 'GROUP_AT_MESSAGE_CREATE' : 'C2C_MESSAGE_CREATE',
+        d: {
+          id: 'native-media',
+          timestamp: new Date().toISOString(),
+          message_type: 0,
+          author: group ? { member_openid: 'member' } : { user_openid: 'user' },
+          ...(group ? { group_openid: 'group' } : {}),
+          attachments: [
+            {
+              url: `${remote.http}/attachment`,
+              filename: media.fileName,
+              content_type: media.contentType
+            }
+          ]
+        }
+      })
+    )
+    await expect.poll(async () => (await records(local.storage)).length).toBe(1)
+    const item = (await records(local.storage))[0]?.snapshot
+    const attachment = item?.attachments?.[0]
+    if (!item || !attachment) {
+      throw new Error('missing_media')
+    }
+    expect(attachment).toMatchObject({
+      kind: media.kind,
+      mimeType: media.mimeType,
+      fileName: media.fileName,
+      size: media.bytes.length
+    })
+
+    const stored = await local.principal().media?.read({
+      channelId: item.channel.id,
+      mediaId: attachment.id
+    })
+
+    expect(stored?.data).toEqual(new Uint8Array(media.bytes))
+    await local.principal().sendMessage({
+      channel: item.channel.id,
+      idempotencyKey: 'native-media-reply',
+      text: '',
+      attachments: [attachment.id]
+    })
+    await local.runtime.processDue()
+    assertUpload(remote, base, media.bytes, blockSize)
+    expect(
+      remote.requests.find(
+        (request) => request.path === `${base}/upload_prepare`
+      )?.body
+    ).toMatchObject({ file_type: media.fileType })
+    expect(
+      remote.requests.find((request) => request.path === `${base}/messages`)
+        ?.body
+    ).toMatchObject({ msg_type: 7, media: { file_info: 'opaque-file-info' } })
   }
 )

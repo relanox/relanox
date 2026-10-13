@@ -1,4 +1,5 @@
 import { downloadMedia, mediaKind } from '@relanox/channel-media'
+import { attachmentMimeType } from './mime.js'
 import type { ChannelHost, MediaUpload } from '@relanox/sdk'
 import type { z } from 'zod'
 import type { QqConfig } from './config.js'
@@ -27,15 +28,22 @@ export async function downloadAttachments(
       allowInsecureLocalhost: false
     })
 
-    const mimeType = attachment.content_type ?? downloaded.mimeType
+    const fileName =
+      attachment.filename ??
+      new URL(url).pathname.split('/').at(-1) ??
+      'attachment.bin'
+
+    const mimeType = attachmentMimeType(
+      attachment.content_type,
+      downloaded.mimeType,
+      fileName
+    )
+
     uploads.push({
       data: downloaded.data,
       mimeType,
       kind: mediaKind(mimeType),
-      fileName:
-        attachment.filename ??
-        new URL(url).pathname.split('/').at(-1) ??
-        'attachment.bin'
+      fileName
     })
   }
   return uploads
