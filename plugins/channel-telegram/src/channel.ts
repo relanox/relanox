@@ -119,6 +119,12 @@ export function createTelegramChannel(
           })
           return new Response(null, { status: 204 })
         }
+        if (!account.allowedSenders.includes(String(message.from.id))) {
+          host.observe.log('info', 'channel_policy_rejection', {
+            errorCode: 'sender_not_allowed'
+          })
+          return new Response(null, { status: 204 })
+        }
         try {
           await ingest(host, {
             source: {
