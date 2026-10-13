@@ -25,12 +25,21 @@ export function secret(ref: { env: string }): string {
 export async function ingestText(
   host: ChannelHost,
   input: IngestInput
-): Promise<void> {
+): Promise<boolean> {
   try {
     await host.ingest(input)
+    return true
   } catch (error) {
     const rejection = z
-      .object({ code: z.enum(['sender_not_allowed', 'unbound_conversation']) })
+      .object({
+        code: z.enum([
+          'sender_not_allowed',
+          'unbound_conversation',
+          'media_too_large',
+          'too_many_attachments',
+          'media_total_too_large'
+        ])
+      })
       .safeParse(error)
 
     if (!rejection.success) {
@@ -39,6 +48,7 @@ export async function ingestText(
     host.observe.log('info', 'channel_input_discarded', {
       errorCode: rejection.data.code
     })
+    return false
   }
 }
 

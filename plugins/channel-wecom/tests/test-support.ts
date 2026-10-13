@@ -171,7 +171,8 @@ export async function assemble<C>(
   config: Json,
   bindings: readonly { chatId: string; senderId: string }[],
   filename = ':memory:',
-  publicUrl?: string
+  publicUrl?: string,
+  worker?: Parameters<typeof createCore>[0]['worker']
 ): Promise<{
   storage: Storage
   runtime: Awaited<ReturnType<typeof createCore>>
@@ -214,6 +215,7 @@ export async function assemble<C>(
   }
 
   const runtime = await createCore({
+    ...(worker === undefined ? {} : { worker }),
     publicUrl: publicUrl ?? 'https://relay.example',
     config: {
       accounts: [

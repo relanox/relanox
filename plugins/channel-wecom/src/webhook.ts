@@ -172,7 +172,8 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     }
     signal.throwIfAborted()
     await startPassive(host, id, message.msgid, chatId)
-    await ingestText(host, {
+
+    const accepted = await ingestText(host, {
       source: {
         channel: 'wecom',
         accountId: account.id,
@@ -195,7 +196,8 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       receivedAt: Date.now(),
       context: null
     })
-    return passiveResponse(host, id, chatId)
+
+    return accepted ? passiveResponse(host, id, chatId) : undefined
   }
 
   async function callback(request: Request): Promise<Response> {

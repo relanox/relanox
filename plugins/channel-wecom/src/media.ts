@@ -1,5 +1,5 @@
 import { createDecipheriv } from 'node:crypto'
-import { downloadMedia } from '@relanox/channel-media'
+import { downloadMedia, MediaDownloadError } from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,
@@ -75,7 +75,7 @@ export async function receiveResource(
   }
   const data = padded.subarray(0, -padding)
   if (data.byteLength > maximum) {
-    throw new Error('media_too_large')
+    throw new MediaDownloadError('media_too_large')
   }
   const mimeType = contentType(data, kind)
   const extension = mimeType.split('/')[1] ?? 'bin'
@@ -171,6 +171,28 @@ export async function uploadResource(
 }
 
 export async function receiveParts(
+  message: z.infer<typeof messageSchema>,
+  host: ChannelHost,
+  signal: AbortSignal,
+  fallbackKey?: string
+): Promise<{ text: string; attachments: MediaUpload[] }> {
+  try {
+    return await downloadParts(message, host, signal, fallbackKey)
+  } catch (error) {
+    if (
+      !(error instanceof MediaDownloadError) ||
+      error.code !== 'media_too_large'
+    ) {
+      throw error
+    }
+    host.observe.log('info', 'channel_input_discarded', {
+      errorCode: error.code
+    })
+    return { text: '', attachments: [] }
+  }
+}
+
+async function downloadParts(
   message: z.infer<typeof messageSchema>,
   host: ChannelHost,
   signal: AbortSignal,
