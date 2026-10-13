@@ -614,6 +614,116 @@ export function storageContract(
       )
     })
 
+    it.each(['qq_duplicate_effect', 'lease_expired'])(
+      'releases later QQ deliveries after %s without retrying the uncertain reply',
+      async (errorCode) => {
+        const input = snapshot('r1', 100, 'ep', 'qq-channel')
+
+        const incoming: InboundSnapshot = {
+          ...input,
+          channel: { ...input.channel, platform: 'qq' },
+          source: { ...input.source, channel: 'qq' },
+          target: { ...input.target, channel: 'qq' }
+        }
+
+        await s.registerConversations([
+          { address: incoming.channel, endpoint: incoming.endpoint }
+        ])
+        await s.acceptInbound(incoming)
+        await dispatch()
+        for (const messageId of ['z-first', 'a-second']) {
+          const message = completion('qq-channel', messageId)
+          expect(
+            await s.enqueueMessage({
+              ...message,
+              outbound: { ...message.outbound, target: incoming.target }
+            })
+          ).toMatchObject({ status: 'queued' })
+        }
+        const first = required((await due(110))[0])
+        expect(first).toMatchObject({
+          kind: 'send',
+          record: { deliveryId: 'd-qq-channel-z-first', currentChunk: 0 }
+        })
+        expect(await due(111)).toEqual([])
+        await s.settleAttempt({
+          kind: 'send',
+          id: 'd-qq-channel-z-first',
+          lease: first.lease,
+          outcome: {
+            status: 'sent',
+            receipt: { platformMessageId: 'qq-text' }
+          },
+          now: 111,
+          nextDueAt: 120
+        })
+        expect(await due(119)).toEqual([])
+        const unfinished = required((await due(120))[0])
+        if (errorCode === 'qq_duplicate_effect') {
+          await s.settleAttempt({
+            kind: 'send',
+            id: 'd-qq-channel-z-first',
+            lease: unfinished.lease,
+            outcome: { status: 'unknown', errorCode },
+            now: 121,
+            nextDueAt: 121
+          })
+        }
+        // SQLite expires a lease before making the next delivery eligible on the next tick.
+        const released = [...(await due(130)), ...(await due(131))]
+        expect(released).toMatchObject([
+          {
+            kind: 'send',
+            record: { deliveryId: 'd-qq-channel-a-second', currentChunk: 0 }
+          }
+        ])
+        expect(await due(132)).toEqual([])
+        const uncertain = required(await s.getOutbound('d-qq-channel-z-first'))
+        expect(uncertain).toMatchObject({
+          status: 'unknown',
+          errorCode,
+          currentChunk: 1,
+          receipts: [{ platformMessageId: 'qq-text' }]
+        })
+        expect(
+          await s.requeue({
+            kind: 'delivery',
+            id: uncertain.deliveryId,
+            expectedVersion: uncertain.version,
+            now: 132,
+            acknowledgeUnknown: false
+          })
+        ).toEqual({ status: 'conflict' })
+        await s.settleAttempt({
+          kind: 'send',
+          id: 'd-qq-channel-a-second',
+          lease: required(released[0]).lease,
+          outcome: { status: 'rejected', errorCode: 'test_finished' },
+          now: 132,
+          nextDueAt: 132
+        })
+        expect(
+          await s.requeue({
+            kind: 'delivery',
+            id: uncertain.deliveryId,
+            expectedVersion: uncertain.version,
+            now: 133,
+            acknowledgeUnknown: true
+          })
+        ).toMatchObject({ status: 'updated' })
+        expect(await due(133)).toMatchObject([
+          {
+            kind: 'send',
+            record: {
+              deliveryId: 'd-qq-channel-z-first',
+              currentChunk: 1,
+              receipts: [{ platformMessageId: 'qq-text' }]
+            }
+          }
+        ])
+      }
+    )
+
     it('redacts completed inputs and deliveries independently while preserving pending content and channel dedupe', async () => {
       await s.acceptInbound(snapshot())
       await dispatch()
