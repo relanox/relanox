@@ -43,6 +43,54 @@ const robotFrame = (
   data: JSON.stringify(body)
 })
 
+test('DingTalk acknowledges the native disconnect frame before closing the Stream socket', async () => {
+  vi.stubEnv('DING_SECRET', 'secret')
+  let address = ''
+
+  const remote = await peer(() => ({
+    body: { endpoint: address, ticket: 'ticket' }
+  }))
+
+  address = remote.ws
+  const plugin = createDingTalkChannel()
+
+  const host = await assemble(
+    plugin,
+    {
+      clientId: 'app',
+      clientSecret: { env: 'DING_SECRET' },
+      robotCode: 'robot-code'
+    },
+    [{ chatId: 'staff', senderId: 'platform-sender' }]
+  )
+
+  await host.start()
+  const socket = remote.sockets[0]
+  if (!socket) {
+    throw new Error('Peer not connected')
+  }
+  // Official SDK: open-dingtalk/dingtalk-stream-sdk-nodejs@e7fe301d9afdcc1d62d2b7ffeba6fe7768b6489c
+  // Src/client.ts onSystem('disconnect') echoes the payload with code 200 before close.
+  socket.send(
+    JSON.stringify({
+      type: 'SYSTEM',
+      headers: { topic: 'disconnect', messageId: 'disconnect-request' },
+      data: '{"reason":"server rotation"}'
+    })
+  )
+  await expect.poll(() => socket.readyState).toBe(3)
+  expect(remote.frames).toContainEqual({
+    code: 200,
+    headers: {
+      contentType: 'application/json',
+      messageId: 'disconnect-request'
+    },
+    message: 'OK',
+    data: '{"reason":"server rotation"}'
+  })
+  host.controller.abort()
+})
+
 test('DingTalk authenticates Stream, ACKs durable stable messages and sends to staff/group via OpenAPI', async () => {
   vi.stubEnv('DING_SECRET', 'first-secret')
   let address = ''
