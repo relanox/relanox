@@ -844,6 +844,50 @@ it('accepts native Markdown post rows in authenticated inbound events', async ()
   expect(local.received[0]?.text).toBe('Question\n**Please** explain this.')
 })
 
+it.each([false, true])(
+  'preserves labeled native post link destinations (localized=%s)',
+  async (localized) => {
+    // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
+    // Channel/normalize/converters/post.ts renders a elements from their text and href.
+    const local = await setup()
+
+    const post = {
+      title: 'Question',
+      content: [
+        [
+          { tag: 'text', text: 'Analyze ' },
+          {
+            tag: 'a',
+            text: 'the report',
+            href: 'https://example.com/report?version=2#summary'
+          },
+          { tag: 'text', text: ' and explain the findings.' }
+        ]
+      ]
+    }
+
+    const response = await local.handler(
+      request({
+        ...event,
+        event: {
+          ...event.event,
+          message: {
+            ...event.event.message,
+            message_type: 'post',
+            content: JSON.stringify(localized ? { zh_cn: post } : post)
+          }
+        }
+      })
+    )
+
+    expect(response.status).toBe(204)
+    expect(local.received).toHaveLength(1)
+    expect(local.received[0]?.text).toBe(
+      'Question\nAnalyze [the report](https://example.com/report?version=2#summary) and explain the findings.'
+    )
+  }
+)
+
 it.each([
   { message_type: 'text', content: { text: '@_user_1 asks @_user_10' } },
   {
