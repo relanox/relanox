@@ -2,9 +2,11 @@ import { registerPeer } from '../../channel-wecom/tests/network.js'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 
+export { mediaPeer } from '../../channel-telegram/tests/media-peer.js'
+
 export async function discordPeer(): Promise<{
   url: string
-  message(this: void, data: unknown): void
+  message(this: void, data: unknown, sequence?: number): void
   connected(this: void): boolean
   close(this: void): Promise<void>
 }> {
@@ -62,11 +64,13 @@ export async function discordPeer(): Promise<{
   })
   return {
     url,
-    message(data: unknown): void {
+    message(data: unknown, sequence = 2): void {
       if (!active) {
         throw new Error('gateway_not_connected')
       }
-      active.send(JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', s: 2, d: data }))
+      active.send(
+        JSON.stringify({ op: 0, t: 'MESSAGE_CREATE', s: sequence, d: data })
+      )
     },
     connected: () => active !== undefined,
     close: async () =>
