@@ -138,16 +138,23 @@ const formats = [
 type Fault =
   | 'missing'
   | 'duplicate'
+  | 'gap'
+  | 'zero'
   | 'length'
   | 'redirect'
   | 'transient'
   | 'prepare_timeout'
   | 'message_timeout'
 
+// Tencent's native prepare contract uses one-based indices and numeric block_size;
+// UploadPart has no required block_size. Keep both native and sized wire fixtures.
+// https://github.com/tencent-connect/qqbot-nodejs/blob/f77fab29e78f5c69a4194237aab81e12f41afb3e/src/protocol/types.ts#L119-L130
+// https://github.com/tencent-connect/qqbot-nodejs/blob/f77fab29e78f5c69a4194237aab81e12f41afb3e/src/protocol/api/media-chunked.ts#L159-L180
 function prepareResponse(
   origin: string,
   size: number,
-  fault?: Fault
+  fault?: Fault,
+  nativeShape = false
 ):
   | {
       body: {
@@ -160,8 +167,8 @@ function prepareResponse(
   | {
       body: {
         upload_id: string
-        block_size: string
-        parts: { index: number; presigned_url: string; block_size: string }[]
+        block_size: string | number
+        parts: { index: number; presigned_url: string; block_size?: string }[]
         code?: never
       }
     } {
@@ -171,7 +178,7 @@ function prepareResponse(
   const blockSize = Math.ceil(size / 2)
 
   const parts = [0, 1].map((index) => ({
-    index,
+    index: index + 1,
     presigned_url: `${origin}/signed/${index}?signature=opaque`,
     block_size: String(Math.min(blockSize, size - index * blockSize))
   }))
@@ -180,20 +187,35 @@ function prepareResponse(
     parts.pop()
   }
   if (fault === 'duplicate' && parts[1]) {
-    parts[1].index = 0
+    parts[1].index = 1
+  }
+  if (fault === 'gap' && parts[1]) {
+    parts[1].index = 3
+  }
+  if (fault === 'zero' && parts[0]) {
+    parts[0].index = 0
   }
   if (fault === 'length' && parts[1]) {
     parts[1].block_size = String(blockSize)
   }
   return {
-    body: { upload_id: 'native-upload', block_size: String(blockSize), parts }
+    body: {
+      upload_id: 'native-upload',
+      block_size: nativeShape ? blockSize : String(blockSize),
+      parts: nativeShape
+        ? parts
+            .toReversed()
+            .map(({ index, presigned_url }) => ({ index, presigned_url }))
+        : parts
+    }
   }
 }
 
 async function fixture(
   group = false,
   bytes = smallBytes,
-  fault?: Fault
+  fault?: Fault,
+  nativeShape = false
 ): Promise<{
   remote: Awaited<ReturnType<typeof peer>>
   local: Awaited<ReturnType<typeof assemble>>
@@ -226,7 +248,8 @@ async function fixture(
         return prepareResponse(
           remote.http,
           bytes.length,
-          failing ? fault : undefined
+          failing ? fault : undefined,
+          nativeShape
         )
       }
       if (request.path.startsWith('/signed/')) {
@@ -421,13 +444,13 @@ test.each(
     ).toEqual([
       {
         upload_id: 'native-upload',
-        part_index: 0,
+        part_index: 1,
         block_size: '3',
         md5: '7f49b84d0bbc38e96493718013baace6'
       },
       {
         upload_id: 'native-upload',
-        part_index: 1,
+        part_index: 2,
         block_size: '2',
         md5: 'ed670cfb05a638ac7bf9be8a09775e91'
       }
@@ -462,7 +485,7 @@ test.each(
   }
 )
 
-function outbound(bytes: Buffer): SendInput {
+function outbound(bytes: Buffer, group = false): SendInput {
   const reference = {
     id: 'asset',
     kind: 'file' as MediaKind,
@@ -473,8 +496,8 @@ function outbound(bytes: Buffer): SendInput {
   }
 
   return {
-    ...sendInput('qq', 'user', {
-      type: 'c2c',
+    ...sendInput('qq', group ? 'group' : 'user', {
+      type: group ? 'group' : 'c2c',
       msgId: 'original',
       messageAt: Date.now(),
       scope: { appId: 'app', apiBase: 'https://api.sgroup.qq.com/' }
@@ -510,6 +533,8 @@ test('QQ uploads beyond direct JSON size limits and hashes exactly the first 100
 test.each([
   'missing',
   'duplicate',
+  'gap',
+  'zero',
   'length',
   'redirect',
   'transient',
@@ -540,7 +565,7 @@ test.each([
         (request) => request.path === `${base}/upload_part_finish`
       )
     ).toEqual([])
-    if (['missing', 'duplicate', 'length'].includes(fault)) {
+    if (['missing', 'duplicate', 'gap', 'zero', 'length'].includes(fault)) {
       expect(
         remote.requests.filter((request) => request.path.startsWith('/signed/'))
       ).toEqual([])
@@ -570,3 +595,44 @@ test('QQ upload retry classification does not change final message error handlin
     errorCode: 'qq_850027'
   })
 })
+
+test.each([false, true])(
+  'QQ accepts native numeric prepare sizes and unordered parts without individual sizes for group=%s',
+  async (group) => {
+    const { remote, plugin, base, blockSize } = await fixture(
+      group,
+      smallBytes,
+      undefined,
+      true
+    )
+
+    const input = outbound(smallBytes, group)
+
+    expect(await plugin.send(input)).toMatchObject({
+      status: 'sent'
+    })
+    assertUpload(remote, base, smallBytes, blockSize)
+    expect(
+      remote.requests
+        .filter((request) => request.path === `${base}/upload_part_finish`)
+        .map((request) => request.body)
+    ).toEqual([
+      {
+        upload_id: 'native-upload',
+        part_index: 1,
+        block_size: '3',
+        md5: '7f49b84d0bbc38e96493718013baace6'
+      },
+      {
+        upload_id: 'native-upload',
+        part_index: 2,
+        block_size: '2',
+        md5: 'ed670cfb05a638ac7bf9be8a09775e91'
+      }
+    ])
+    expect(
+      remote.requests.find((request) => request.path === `${base}/messages`)
+        ?.body
+    ).toMatchObject({ media: { file_info: 'opaque-file-info' }, msg_type: 7 })
+  }
+)
