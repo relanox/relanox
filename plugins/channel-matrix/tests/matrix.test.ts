@@ -448,6 +448,57 @@ it('refuses to advance a limited timeline from an existing checkpoint', async ()
   expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([])
 })
 
+// /sync includes every joined room, even rooms without a local binding.
+// Matrix JS SDK d633e7c1954a6b92597fbc3f8a95f183789a8d40 src/sync.ts:processSyncResponse.
+// https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3sync
+it('ignores history gaps in unbound joined rooms while persisting a configured room', async () => {
+  const syncs: (string | null)[] = []
+
+  const peer = await httpPeer((request, response) => {
+    const url = new URL(request.url ?? '/', 'http://peer')
+    syncs.push(url.searchParams.get('since'))
+    json(response, {
+      next_batch: 'after-bound-room',
+      rooms: {
+        join: {
+          '!unbound:example.org': {
+            timeline: { limited: true, events: [event('$unbound', 'unbound')] }
+          },
+          [room]: {
+            timeline: { events: [event('$bound', 'bound message')] }
+          }
+        }
+      }
+    })
+  })
+
+  const plugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
+
+  const fixture = await harness(
+    plugin,
+    config(peer.base),
+    [{ chatId: room, threadId: thread }],
+    [user],
+    `${peer.base}/dispatch`
+  )
+
+  await fixture.storage.compareAndSetState(
+    { pluginId: 'channel-matrix', ownerId: 'bot' },
+    { key: 'sync', expectedVersion: null, value: 'older' }
+  )
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(() => syncs.length >= 2)
+  await plugin.stop?.()
+  expect(syncs.slice(0, 2)).toEqual(['older', 'after-bound-room'])
+  const records = await fixture.storage.listInbound({ limit: 10 })
+  expect(records).toHaveLength(1)
+  expect(records[0]?.snapshot).toMatchObject({
+    source: { eventId: '$bound' },
+    text: 'bound message',
+    target: { chatId: room, threadId: thread }
+  })
+})
+
 it.each([
   [429, 'retryable'],
   [403, 'rejected'],
