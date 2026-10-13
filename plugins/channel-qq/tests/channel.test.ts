@@ -896,6 +896,10 @@ test.each([false, true])(
   async (group) => {
     vi.stubEnv('QQ_SECRET', 'secret')
     let address = ''
+    const heartbeatIntervalMs = 1000
+    // Observe a native heartbeat over two protocol intervals plus bounded scheduler slack.
+    // The default 1000ms poll budget races the first 1000ms heartbeat on Windows CI.
+    const heartbeatObservationMs = 2 * heartbeatIntervalMs + 1000
 
     const remote = await peer(
       (request) => {
@@ -911,7 +915,12 @@ test.each([false, true])(
         return { body: { url: address } }
       },
       (socket) => {
-        socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
+        socket.send(
+          JSON.stringify({
+            op: 10,
+            d: { heartbeat_interval: heartbeatIntervalMs }
+          })
+        )
         socket.on('message', (data) => {
           const received = z
             .object({ op: z.number() })
@@ -972,7 +981,9 @@ test.each([false, true])(
         })
       )
     )
-    await expect.poll(() => remote.frames).toContainEqual({ op: 1, d: 2 })
+    await expect
+      .poll(() => remote.frames, { timeout: heartbeatObservationMs })
+      .toContainEqual({ op: 1, d: 2 })
     expect(
       remote.requests.filter((request) => request.path === '/attachment')
     ).toHaveLength(0)
@@ -994,7 +1005,9 @@ test.each([false, true])(
     expect(
       remote.requests.filter((request) => request.path === '/attachment')
     ).toHaveLength(1)
-    await expect.poll(() => remote.frames).toContainEqual({ op: 1, d: 3 })
+    await expect
+      .poll(() => remote.frames, { timeout: heartbeatObservationMs })
+      .toContainEqual({ op: 1, d: 3 })
     host.controller.abort()
   }
 )
