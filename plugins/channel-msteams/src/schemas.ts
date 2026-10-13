@@ -17,7 +17,7 @@ export const activitySchema = z.object({
         contentType: z.string(),
         contentUrl: z.url().optional(),
         name: z.string().optional(),
-        content: z.object({ downloadUrl: z.url().optional() }).optional()
+        content: z.unknown().optional()
       })
     )
     .optional(),

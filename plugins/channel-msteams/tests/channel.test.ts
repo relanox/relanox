@@ -148,6 +148,63 @@ async function setup(
 }
 
 describe('native Microsoft Teams', () => {
+  it('checks the account sender allowlist before authenticated attachment downloads', async () => {
+    const local = await setup()
+    // Bot Connector image contentUrl contract:
+    // Microsoft/botbuilder-js@63ebf76bff71db0f7dad067624e2fc3faf342898
+    // Libraries/botframework-schema/src/index.ts:382-403 (Attachment)
+    local.remote.route('/image', new Uint8Array([1, 2, 3]), {
+      'content-type': 'image/png'
+    })
+
+    const incoming = {
+      ...local.activity,
+      from: { id: 'unauthorized-user' },
+      attachments: [
+        { contentType: 'image/png', contentUrl: `${local.remote.base}/image` }
+      ]
+    }
+
+    expect(
+      (await local.core.fetch(await local.incoming({}, incoming))).status
+    ).toBe(200)
+    expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+    expect(local.remote.traffic.map((request) => request.path)).toEqual([
+      '/v1/.well-known/keys'
+    ])
+  })
+
+  // Microsoft Teams wire example: attachments contain the HTML representation of text.
+  // https://learn.microsoft.com/en-us/microsoftteams/platform/bots/build-conversational-capability#receive-a-message-activity
+  it('accepts native HTML message representations without downloading them as files', async () => {
+    const local = await setup()
+
+    const incoming = {
+      ...local.activity,
+      text: 'Hello Teams TestAgent.Sending bold-italic rich text',
+      attachments: [
+        {
+          contentType: 'text/html',
+          content:
+            '<div>Hello Teams TestAgent. Sending <strong>bold</strong>-<em>italic</em> rich text.</div>'
+        }
+      ]
+    }
+
+    expect(
+      (await local.core.fetch(await local.incoming({}, incoming))).status
+    ).toBe(200)
+    const completed = await local.sendReply()
+    expect(local.dispatches).toEqual([
+      'Hello Teams TestAgent.Sending bold-italic rich text'
+    ])
+    expect(completed.request.attachments).toBeUndefined()
+    expect(completed.delivery?.status).toBe('sent')
+    expect(local.remote.traffic.map((request) => request.path)).not.toContain(
+      '/file'
+    )
+  })
+
   it('uses the application registration authority independently of the allowed inbound tenant', async () => {
     const local = await setup(
       ['msteams'],
@@ -627,6 +684,18 @@ it.each([
       signal: new AbortController().signal
     }
 
+    // Connector 429 and Retry-After contract:
+    // https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/rate-limit
+    local.remote.respond(
+      429,
+      { error: { code: 'Throttled' } },
+      { 'retry-after': '1' }
+    )
+    expect(await local.plugin.send(input)).toMatchObject({
+      status: 'retryable',
+      errorCode: 'rate_limited'
+    })
+    local.remote.respond(200, { id: 'activity-sent' })
     expect(await local.plugin.send(input)).toMatchObject({
       status: 'retryable',
       errorCode: 'file_consent_pending'
@@ -639,7 +708,7 @@ it.each([
       local.remote.traffic.filter((request) =>
         request.path.includes('/activities/')
       )
-    ).toHaveLength(1)
+    ).toHaveLength(2)
     await local.close()
     const plugin = createTeamsChannel()
 
@@ -696,7 +765,7 @@ it.each([
       local.remote.traffic.filter((request) =>
         request.path.includes('/activities/')
       )
-    ).toHaveLength(1)
+    ).toHaveLength(2)
     expect(await plugin.send(resumedInput)).toMatchObject({ status: 'sent' })
 
     const uploaded = local.remote.traffic.find(
@@ -715,7 +784,7 @@ it.each([
       request.path.includes('/activities/')
     )
 
-    expect(JSON.parse(sent[1]?.body ?? 'null') as unknown).toMatchObject({
+    expect(JSON.parse(sent[2]?.body ?? 'null') as unknown).toMatchObject({
       attachments: [
         {
           contentType: 'application/vnd.microsoft.teams.card.file.info',
@@ -866,13 +935,31 @@ it('publishes verified images and preserves text/image/text order in native rich
     replyToId: 'root-1'
   })
 
-  const payload = z
-    .object({ text: z.string() })
-    .parse(JSON.parse(sent[0]?.body ?? 'null'))
-
-  expect(payload.text).toMatch(
-    /^\*\*before\*\*\n\n!\[photo\]\(https:\/\/relay\.example\/media\/[^\n]+\)\n\nafter$/u
-  )
+  // Native card body and attachment envelope documented by Microsoft:
+  // https://learn.microsoft.com/en-us/microsoftteams/platform/task-modules-and-cards/cards/cards-reference#adaptive-card
+  expect(JSON.parse(sent[0]?.body ?? 'null') as unknown).toMatchObject({
+    text: '',
+    attachments: [
+      {
+        contentType: 'application/vnd.microsoft.card.adaptive',
+        content: {
+          type: 'AdaptiveCard',
+          version: '1.2',
+          body: [
+            { type: 'TextBlock', text: '**before**', wrap: true },
+            {
+              type: 'Image',
+              altText: 'photo',
+              url: expect.stringMatching(
+                /^https:\/\/relay\.example\/media\//u
+              ) as unknown
+            },
+            { type: 'TextBlock', text: 'after', wrap: true }
+          ]
+        }
+      }
+    ]
+  })
   const count = local.remote.traffic.length
   expect(await local.plugin.send({ ...input, richMedia: [] })).toMatchObject({
     status: 'rejected',

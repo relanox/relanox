@@ -20,7 +20,8 @@ import type { z } from 'zod'
 import {
   prepareAttachment,
   consentPosted,
-  richMarkdown,
+  consentThrottled,
+  richAttachment,
   richPreparationFailure,
   richError,
   richCapabilities
@@ -107,6 +108,17 @@ async function learnConversation(
   throw new Error('conversation_state_conflict')
 }
 
+async function sendFailure(
+  host: ChannelHost,
+  response: Response,
+  consentKey: string | undefined
+): Promise<SendResult> {
+  if (consentKey && response.status === 429) {
+    await consentThrottled(host, consentKey)
+  }
+  return failure(response)
+}
+
 export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
   let runtime:
     | { host: ChannelHost; account: AccountConfig; config: TeamsConfig }
@@ -148,10 +160,10 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     if (typeof token !== 'string') {
       return token
     }
-    let text: string
+    let rich: Awaited<ReturnType<typeof richAttachment>>
     let prepared: Awaited<ReturnType<typeof prepareAttachment>>
     try {
-      text = await richMarkdown(input, runtime.host)
+      rich = await richAttachment(input, runtime.host)
       prepared = await prepareAttachment(
         runtime.host,
         config,
@@ -189,9 +201,9 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
           body: JSON.stringify({
             type: 'message',
             textFormat: 'extendedmarkdown',
-            text,
-            ...(prepared.attachment !== undefined
-              ? { attachments: [prepared.attachment] }
+            text: input.chunk.text,
+            ...((rich ?? prepared.attachment) !== undefined
+              ? { attachments: [rich ?? prepared.attachment] }
               : {}),
             channelId: 'msteams',
             from: { id: target.botId },
@@ -208,7 +220,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       )
 
       if (!response.ok) {
-        return failure(response)
+        return await sendFailure(runtime.host, response, prepared.consentKey)
       }
       if (prepared.consentKey) {
         await consentPosted(runtime.host, prepared.consentKey)
