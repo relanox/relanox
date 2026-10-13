@@ -217,7 +217,9 @@ it.each([
     })
     expect(uploaded[0]?.payload).toHaveProperty(
       'nonce',
-      expect.stringMatching(/^[a-f\d]{24}$/u)
+      // Native nonce strings contain up to 25 characters; representation is internal.
+      // https://docs.discord.com/developers/resources/message#create-message
+      expect.stringMatching(/^.{1,25}$/su)
     )
     expect(uploaded[0]?.payload).not.toHaveProperty('flags')
     expect(uploaded[0]?.payload).not.toHaveProperty('components')
