@@ -232,6 +232,7 @@ describe('dot MCP Events and tools', () => {
           requestId: own.requestId,
           acceptedAt: numberValue,
           text: 'recover this',
+          reply: { status: 'awaiting_final' },
           context: { thread: 'protocol-context' },
           source: {
             channel: {
@@ -256,6 +257,57 @@ describe('dot MCP Events and tools', () => {
         })
       ).isError
     ).toBe(true)
+
+    const send = {
+      name: 'relanox_send_message',
+      arguments: {
+        channel: own.channel,
+        text: 'final answer',
+        reply: { requestId: own.requestId, kind: 'final' }
+      }
+    }
+
+    const queued = await client.callTool(send)
+
+    const final = z
+      .object({
+        status: z.literal('queued'),
+        deliveryId: z.string(),
+        replay: z.literal(false)
+      })
+      .parse(queued.structuredContent)
+
+    expect((await client.callTool(send)).structuredContent).toEqual({
+      ...final,
+      replay: true
+    })
+    expect(
+      (
+        await client.callTool({
+          name: 'relanox_status',
+          arguments: { requestId: own.requestId }
+        })
+      ).structuredContent
+    ).toMatchObject({
+      request: {
+        id: own.requestId,
+        reply: { status: 'pending', deliveryId: final.deliveryId }
+      }
+    })
+    expect(await read({ requestId: own.requestId })).toMatchObject({
+      messages: [{ reply: { status: 'pending', deliveryId: final.deliveryId } }]
+    })
+    expect(
+      (
+        await client.callTool({
+          name: 'relanox_send_message',
+          arguments: {
+            ...send.arguments,
+            reply: { requestId: other.requestId, kind: 'final' }
+          }
+        })
+      ).structuredContent
+    ).toEqual({ status: 'not_found' })
     fx.endpoints[0] = {
       id: 'endpoint0',
       agent: 'dot',

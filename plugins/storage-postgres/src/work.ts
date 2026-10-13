@@ -225,7 +225,7 @@ export function createWorkOperations(
             return { status: 'not_found' }
           }
           if (
-            record.version !== input.lease.version ||
+            // Reply correlation can advance the record version while this dispatch is in flight.
             !isActiveLease(record.dispatch.lease, input.lease, input.now)
           ) {
             return { status: 'conflict' }

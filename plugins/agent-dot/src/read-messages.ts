@@ -1,6 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import type { ScopedAgentHost } from '@relanox/sdk'
-import { agentRequestSchema, projectAgentRequest } from '@relanox/agent-mcp'
+import {
+  agentRequestSchema,
+  projectAgentRequest,
+  replyStatusSchema
+} from '@relanox/agent-mcp'
 import { z } from 'zod'
 
 export const dotMessageSchema = agentRequestSchema.extend({
@@ -21,7 +25,11 @@ export function registerReadMessages(
         requestId: z.string().min(1).max(512).optional(),
         limit: z.number().int().min(1).max(20).optional()
       }),
-      outputSchema: z.strictObject({ messages: z.array(dotMessageSchema) }),
+      outputSchema: z.strictObject({
+        messages: z.array(
+          dotMessageSchema.extend({ reply: replyStatusSchema.optional() })
+        )
+      }),
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -40,6 +48,7 @@ export function registerReadMessages(
       const result = {
         messages: records.map((record) =>
           Object.assign(projectAgentRequest(record), {
+            reply: record.reply,
             requestId: record.requestId,
             acceptedAt: record.acceptedAt
           })
