@@ -24,6 +24,10 @@ Keep secrets as environment references and out of saved messages, logs and tool 
 
 If you update dependencies, keep versions exact, update the lockfile, review install scripts and licenses, and refresh shipped notices when production dependencies change. Review narrow exceptions in `pnpm-workspace.yaml` rather than disabling the shared install policy.
 
+Storage queries use Drizzle’s typed schemas, query builders and transaction APIs. Generate schema migrations from those schemas and ship them with the storage packages. Do not handwrite runtime data queries or schema DDL. Keep database-specific expressions and function calls narrow and parameterized, and preserve database filtering, ordering and limits.
+
+Run `pnpm --filter @relanox/storage-sqlite db:generate` or `pnpm --filter @relanox/storage-postgres db:generate` after changing a storage schema. Review the generated migration before committing it. PostgreSQL supports a configured schema through `search_path`; table and foreign-key references must resolve there rather than be fixed to `public`. The initial migrations use `IF NOT EXISTS` to adopt pre-ORM databases, with PostgreSQL foreign keys declared inside table creation so adoption does not add duplicate constraints. Later migrations must upgrade the existing schema rather than repeat that baseline.
+
 ## Choose tests that catch a real regression
 
 Use Vitest. Before adding or changing a test, explain in the pull request:
@@ -34,6 +38,8 @@ Use Vitest. Before adding or changing a test, explain in the pull request:
 - Does it require a production interface that no production caller uses?
 
 Use real storage for recovery tests. Local HTTP or socket peers can model the external platform's responses, but must not implement Relanox's routing, permissions, persistence or retries. Test public behavior rather than private code structure. New test directories need a discoverable TypeScript configuration for type-aware linting.
+
+Build external response fixtures from platform documentation, a recorded response or a verified SDK implementation. Record the source beside the fixture. Keep native identifiers, numbering, field types and optional fields distinct from local array positions. When references disagree, verify the response before changing the contract. A peer that mirrors Relanox’s assumptions cannot establish platform compatibility.
 
 For PostgreSQL tests, set `RELANOX_TEST_POSTGRES_URL` to a disposable database whose user can create and drop schemas. The suite uses isolated schemas and removes them. Without this setting, PostgreSQL tests are skipped. In PowerShell:
 

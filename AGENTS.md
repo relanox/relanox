@@ -8,6 +8,8 @@ Supported components are the 15 native channels with text and media according to
 
 Every implementation task uses a new branch/worktree under `.worktree/`. GPT-6.1 Sol subagents work only in assigned worktrees and file scopes. Root reviews, integrates to master, pushes, and removes completed worktrees. Do not delete another task's checkout. Start dependent work only after prerequisite commits land; parallelize independent tasks.
 
+Storage queries use typed Drizzle schemas, query builders and transaction APIs. Generate and ship ORM migrations; do not handwrite runtime data queries or schema DDL. Keep dialect expressions and database function calls narrow and parameterized, and preserve database-side filtering, ordering and bounds.
+
 ## Tests
 
 Use Vitest. Before adding or changing tests, establish the following and explain the rationale in the pull request, without creating task-specific Markdown reports:
@@ -18,6 +20,8 @@ Use Vitest. Before adding or changing tests, establish the following and explain
 4. Does it need a production seam no production caller uses?
 
 If any answer is missing, do not add the test. Reject assertion-free tests, self-comparisons, expected values computed by code under test, mocks implementing the asserted behavior, source greps, and refactor-sensitive assertions. Protect public API, protocol, config, migration, security, and release contracts. Slow or static is not a reason to delete a meaningful test.
+
+External response fixtures must cite platform documentation, recorded traffic or a verified SDK implementation. Preserve native numbering, identifiers, types and optionality rather than copying local implementation assumptions. Resolve contradictory reference contracts before changing behavior.
 
 External protocol peers may record real HTTP/socket traffic, but must not implement Relanox routing/persistence/retry/authorization. Recovery tests use real storage. Dependency injection must have a production purpose. Keep test rationale current when changing existing tests.
 
