@@ -43,6 +43,117 @@ const robotFrame = (
   data: JSON.stringify(body)
 })
 
+test.each([
+  { field: 'empty', senderStaffId: '' },
+  { field: 'absent', senderStaffId: undefined }
+])(
+  'DingTalk routes allowed group members with $field staff IDs by the native conversation ID',
+  async ({ senderStaffId }) => {
+    vi.stubEnv('DING_GROUP_SECRET', 'secret')
+    let websocket = ''
+
+    const remote = await peer((request) => {
+      if (request.path === '/v1.0/gateway/connections/open') {
+        return { body: { endpoint: websocket, ticket: 'ticket' } }
+      }
+      if (request.path === '/v1.0/oauth2/accessToken') {
+        return { body: { accessToken: 'token', expireIn: 7200 } }
+      }
+      return { body: { processQueryKey: 'group-response' } }
+    })
+
+    websocket = remote.ws
+    const plugin = createDingTalkChannel()
+
+    const local = await assemble(
+      plugin,
+      {
+        clientId: 'app',
+        clientSecret: { env: 'DING_GROUP_SECRET' },
+        robotCode: 'robot-code'
+      },
+      [{ chatId: 'external-group', senderId: 'external-opaque-sender' }]
+    )
+
+    await local.start()
+    const socket = remote.sockets[0]
+    if (!socket) {
+      throw new Error('missing_stream_socket')
+    }
+    // Official callback contract: senderStaffId is empty for a sender outside
+    // The robot's enterprise; senderId remains the opaque native sender ID.
+    // https://open.dingtalk.com/document/development/robot-message-type
+    socket.send(
+      JSON.stringify(
+        robotFrame('external-group-message', {
+          ...message,
+          msgId: 'external-message',
+          conversationType: '2',
+          conversationId: 'external-group',
+          senderId: 'external-opaque-sender',
+          senderStaffId,
+          isInAtList: true
+        })
+      )
+    )
+    await expect
+      .poll(() => remote.frames)
+      .toContainEqual({
+        code: 200,
+        headers: {
+          contentType: 'application/json',
+          messageId: 'external-group-message'
+        },
+        message: 'OK',
+        data: '{"response":null}'
+      })
+    const saved = await records(local.storage)
+    expect(saved).toHaveLength(1)
+    expect(saved[0]?.snapshot.senderId).toBe('external-opaque-sender')
+    const channelId = saved[0]?.snapshot.channel.id
+    if (!channelId) {
+      throw new Error('missing_durable_channel')
+    }
+    await local
+      .principal()
+      .sendMessage({ channel: channelId, text: 'group reply' })
+    await local.runtime.processDue()
+    expect(remote.requests).toContainEqual(
+      expect.objectContaining({
+        path: '/v1.0/robot/groupMessages/send',
+        body: {
+          robotCode: 'robot-code',
+          openConversationId: 'external-group',
+          msgKey: 'sampleMarkdown',
+          msgParam: '{"title":"Relanox","text":"group reply"}'
+        }
+      })
+    )
+    socket.send(
+      JSON.stringify(
+        robotFrame('missing-direct-staff', {
+          ...message,
+          msgId: 'direct-without-staff',
+          senderId: 'external-opaque-sender',
+          senderStaffId
+        })
+      )
+    )
+    await expect
+      .poll(() => remote.frames)
+      .toContainEqual({
+        code: 404,
+        headers: {
+          contentType: 'application/json',
+          messageId: 'missing-direct-staff'
+        },
+        message: 'Unsupported',
+        data: '{"response":null}'
+      })
+    expect(await records(local.storage)).toHaveLength(1)
+  }
+)
+
 test('DingTalk acknowledges the native disconnect frame before closing the Stream socket', async () => {
   vi.stubEnv('DING_SECRET', 'secret')
   let address = ''

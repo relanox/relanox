@@ -200,7 +200,9 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       ack(404, '{"response":null}')
       return
     }
-    if (!message.senderStaffId) {
+    const group = message.conversationType === '2'
+    const chatId = group ? message.conversationId : message.senderStaffId
+    if (!chatId) {
       ack(404, '{"response":null}')
       host.observe.log('warn', 'channel_unsupported_sender', {
         errorCode: 'missing_staff_id'
@@ -222,8 +224,6 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       uploadBase: new URL(UPLOAD_BASE).href
     }
 
-    const group = message.conversationType === '2'
-    const chatId = group ? message.conversationId : message.senderStaffId
     await ingestText(host, {
       source: {
         channel: 'dingtalk',
@@ -240,7 +240,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         replyToId: message.msgId,
         data: group
           ? { type: 'group', openConversationId: message.conversationId, scope }
-          : { type: 'single', staffId: message.senderStaffId, scope }
+          : { type: 'single', staffId: chatId, scope }
       },
       receivedAt: Date.now(),
       context: null
