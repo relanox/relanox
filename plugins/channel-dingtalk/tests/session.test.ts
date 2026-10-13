@@ -6,6 +6,7 @@ import {
   records
 } from '../../channel-wecom/tests/test-support.js'
 import { createDingTalkChannel } from '../src/index.js'
+import { limitsRuntime } from './limits-runtime.js'
 
 installPeerNetwork()
 
@@ -134,7 +135,13 @@ test('DingTalk keeps delayed callback ACKs on their originating Stream session',
 })
 
 test('DingTalk ACKs a known media size rejection and keeps accepting text on the same session', async () => {
-  vi.stubEnv('DING_SIZE_SECRET', 'secret')
+  vi.stubEnv('DING_LIMIT_SECRET', 'secret')
+
+  const bytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6dKQAAAAASUVORK5CYII=',
+    'base64'
+  )
+
   let websocket = ''
   let downloadUrl = ''
 
@@ -149,49 +156,43 @@ test('DingTalk ACKs a known media size rejection and keeps accepting text on the
       return { body: { downloadUrl } }
     }
     return {
-      body: Buffer.alloc(1),
-      headers: { 'content-type': 'image/png', 'content-length': '26214401' }
+      body: bytes,
+      headers: { 'content-type': 'image/png' }
     }
   })
 
   websocket = remote.ws
   downloadUrl = `${remote.http}/picture.png`
-  const plugin = createDingTalkChannel()
+  const local = await limitsRuntime({ maxMediaBytes: 64 })
 
-  const local = await assemble(
-    plugin,
-    {
-      clientId: 'app',
-      clientSecret: { env: 'DING_SIZE_SECRET' },
-      robotCode: 'robot'
-    },
-    [{ chatId: 'staff', senderId: 'sender' }]
-  )
-
-  await local.start()
-  const socket = remote.sockets[0]
-  if (!socket) {
-    throw new Error('missing_initial_socket')
+  try {
+    await local.start()
+    const socket = remote.sockets[0]
+    if (!socket) {
+      throw new Error('missing_initial_socket')
+    }
+    socket.send(frame('oversized-picture', picture))
+    await expect
+      .poll(() => remote.frames)
+      .toContainEqual(ack('oversized-picture'))
+    socket.send(
+      frame('text-after-rejection', {
+        ...picture,
+        msgId: 'text-message',
+        msgtype: 'text',
+        text: { content: 'question after oversized picture' }
+      })
+    )
+    await expect
+      .poll(() => remote.frames)
+      .toContainEqual(ack('text-after-rejection'))
+    const saved = await records(local.storage)
+    expect(saved).toHaveLength(1)
+    expect(saved[0]?.snapshot.text).toBe('question after oversized picture')
+    expect(remote.sockets).toHaveLength(1)
+  } finally {
+    await local.close()
   }
-  socket.send(frame('oversized-picture', picture))
-  await expect
-    .poll(() => remote.frames)
-    .toContainEqual(ack('oversized-picture'))
-  socket.send(
-    frame('text-after-rejection', {
-      ...picture,
-      msgId: 'text-message',
-      msgtype: 'text',
-      text: { content: 'question after oversized picture' }
-    })
-  )
-  await expect
-    .poll(() => remote.frames)
-    .toContainEqual(ack('text-after-rejection'))
-  const saved = await records(local.storage)
-  expect(saved).toHaveLength(1)
-  expect(saved[0]?.snapshot.text).toBe('question after oversized picture')
-  expect(remote.sockets).toHaveLength(1)
 })
 
 test('DingTalk leaves failed media downloads unacknowledged until redelivery saves the message', async () => {
