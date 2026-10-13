@@ -1,5 +1,9 @@
 import { API_VERSION, API_BASE, validateEndpointUrl } from './config.js'
-import { downloadMedia, mediaBlob } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  mediaBlob,
+  MediaDownloadError
+} from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaKind,
@@ -140,11 +144,11 @@ export async function receiveMedia(
     formats[kind].limit
   )
 
-  if (
-    metadata.file_size > maximum ||
-    !formats[kind].mimeTypes.includes(mimeType)
-  ) {
+  if (!formats[kind].mimeTypes.includes(mimeType)) {
     throw new Error('unsupported_media')
+  }
+  if (metadata.file_size > maximum) {
+    throw new MediaDownloadError('media_too_large')
   }
 
   const downloaded = await downloadMedia(metadata.url, {

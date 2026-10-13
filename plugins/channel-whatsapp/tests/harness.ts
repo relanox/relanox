@@ -123,7 +123,8 @@ export async function harness(
   chat: string,
   sender: string,
   thread?: string,
-  filename = ':memory:'
+  filename = ':memory:',
+  maxMediaBytes?: number
 ): Promise<{
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
@@ -166,6 +167,7 @@ export async function harness(
     storage,
     channels: new Map([['business', plugin]]),
     agents: new Map([['dot', agent]]),
+    ...(maxMediaBytes === undefined ? {} : { worker: { maxMediaBytes } }),
     config: {
       accounts: [
         {
