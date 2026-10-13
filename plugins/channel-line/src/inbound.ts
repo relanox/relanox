@@ -1,10 +1,32 @@
 import { apiBase } from './constants.js'
-import type { AccountConfig, ChannelHost } from '@relanox/sdk'
+import type { AccountConfig, ChannelHost, MediaUpload } from '@relanox/sdk'
+import { MediaDownloadError } from '@relanox/channel-media'
 import type { z } from 'zod'
 import type { LineConfig } from './config.js'
 import { ingest } from './io.js'
 import { receiveMedia } from './media.js'
 import type { eventSchema } from './schemas.js'
+
+async function eventMedia(
+  message: NonNullable<z.infer<typeof eventSchema>['message']>,
+  host: ChannelHost,
+  config: LineConfig
+): Promise<MediaUpload[] | undefined> {
+  try {
+    return await receiveMedia(message, host, config)
+  } catch (error) {
+    if (
+      !(error instanceof MediaDownloadError) ||
+      error.code !== 'media_too_large'
+    ) {
+      throw error
+    }
+    host.observe.log('info', 'channel_policy_rejection', {
+      errorCode: error.code
+    })
+    return undefined
+  }
+}
 
 export async function receiveEvent(
   host: ChannelHost,
@@ -54,6 +76,10 @@ export async function receiveEvent(
   if (!destination) {
     throw new Error('missing_destination')
   }
+  const attachments = await eventMedia(message, host, config)
+  if (!attachments) {
+    return
+  }
   await ingest(host, {
     source: {
       channel: 'line',
@@ -62,7 +88,7 @@ export async function receiveEvent(
     },
     senderId: source.userId,
     text: message.text ?? '',
-    attachments: await receiveMedia(message, host, config),
+    attachments,
     receivedAt: Date.now(),
     context: null,
     target: {

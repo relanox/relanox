@@ -1,7 +1,11 @@
 import { lineMarkdown } from './markdown.js'
 import { richError, richMessage } from './rich.js'
 import { contentApiBase } from './constants.js'
-import { downloadMedia, mediaKind } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  MediaDownloadError,
+  mediaKind
+} from '@relanox/channel-media'
 import type { DownloadedMedia } from '@relanox/channel-media'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { ChannelHost, Json, MediaUpload, SendInput } from '@relanox/sdk'
@@ -56,7 +60,7 @@ export async function receiveMedia(
   }
   const maximum = host.maxMediaBytes ?? 25 * 1024 * 1024
   if ((message.fileSize ?? 0) > maximum) {
-    throw new Error('media_too_large')
+    throw new MediaDownloadError('media_too_large')
   }
   const external = message.contentProvider?.type === 'external'
 
