@@ -375,6 +375,128 @@ it('reconnects and relies on durable msgid dedup while retaining configured acco
   expect(await fixture.storage.listInbound({ limit: 10 })).toHaveLength(1)
 })
 
+// Native authority: ircdocs/modern-irc 8f4c3cc51f0036597f5c95e595fb6ec3177ba4c9,
+// _includes/modern-appendix.md CASEMAPPING: RFC1459 equates ^ and ~.
+// The public agent endpoint replies after a real tagged DM is persisted.
+// Existing channel case mapping tests do not resolve folded DM targets.
+// This TCP/SQLite regression needs no production seam.
+it.each([
+  ['rfc1459', 'Alice^', 'dm:alice~', 'alice^'],
+  ['rfc1459', '^Alice', 'dm:~alice', '^alice'],
+  ['ascii', 'Alice^', 'dm:alice^', 'alice^'],
+  ['rfc1459-strict', 'Alice^', 'dm:alice^', 'alice^']
+])(
+  'replies with %s case mapping to %s through private binding %s',
+  async (mapping, sender, chatId, recipient) => {
+    const tcp = await tcpPeer((line, socket) => {
+      register(line, socket)
+      if (line === 'CAP END') {
+        socket.write(
+          `:server 005 relay CASEMAPPING=${mapping} :are supported\r\n@account=alice;msgid=folded-dm :${sender}!u@h PRIVMSG relay :private question\r\n`
+        )
+      }
+    })
+
+    const http = await httpPeer((_request, response) => {
+      json(response, {})
+    })
+
+    const plugin = createIrcChannel({ IRC_SASL: 'password' })
+
+    const fixture = await harness(
+      plugin,
+      config(tcp.port),
+      [{ chatId }],
+      ['account:alice'],
+      `${http.base}/dispatch`
+    )
+
+    await plugin.start?.(new AbortController().signal)
+    await waitFor(
+      async () =>
+        (await fixture.storage.listInbound({ limit: 10 })).length === 1
+    )
+    const request = (await fixture.storage.listInbound({ limit: 10 }))[0]
+    if (!request) {
+      throw new Error('Missing accepted private input')
+    }
+    expect(request.snapshot.target.chatId).toBe(chatId)
+    expect(
+      (await plugin.resolveChannel?.(request.snapshot.channel))?.status
+    ).toBe('available')
+
+    const result = await fixture.sendReply(
+      request.snapshot.requestId,
+      'private answer'
+    )
+
+    await fixture.runtime.processDue()
+    await waitFor(() =>
+      tcp.lines.includes(`PRIVMSG ${recipient} :private answer`)
+    )
+    expect((await fixture.storage.getOutbound(result.deliveryId))?.status).toBe(
+      'sent'
+    )
+    await plugin.stop?.()
+  }
+)
+
+// Native fixtures: ircdocs/modern-irc 8f4c3cc51f0036597f5c95e595fb6ec3177ba4c9,
+// _includes/c2s_structure.md allows nickname[!user][@host] sources. IRCv3
+// https://ircv3.net/specs/extensions/account-tag also demonstrates :user sources.
+// Protect native account-tag authentication without requiring an ident or host.
+// Existing fixtures always include !u@h; real TCP/SQLite need no seam.
+it.each(['Alice', 'Alice@host'])(
+  'accepts an authenticated private message from source %s',
+  async (source) => {
+    const tcp = await tcpPeer((line, socket) => {
+      register(line, socket)
+      if (line === 'CAP END') {
+        socket.write(
+          `@account=relay :relay${source.includes('@') ? '@host' : ''} NICK :relay2\r\n@account=alice;msgid=native-prefix :${source} PRIVMSG relay2 :private question\r\n@account=mallory;msgid=blocked-prefix :Mallory PRIVMSG relay2 :blocked\r\n:Alice PRIVMSG relay2 :unauthenticated\r\nPING :prefix-done\r\n`
+        )
+      }
+    })
+
+    const http = await httpPeer((_request, response) => {
+      json(response, {})
+    })
+
+    const plugin = createIrcChannel({ IRC_SASL: 'password' })
+
+    const fixture = await harness(
+      plugin,
+      config(tcp.port),
+      [{ chatId: 'dm:alice' }],
+      ['account:alice'],
+      `${http.base}/dispatch`
+    )
+
+    await plugin.start?.(new AbortController().signal)
+    await waitFor(() => tcp.lines.includes('PONG :prefix-done'))
+    const requests = await fixture.storage.listInbound({ limit: 10 })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.snapshot.senderId).toBe('account:alice')
+    expect(requests[0]?.snapshot.target.chatId).toBe('dm:alice')
+    const request = requests[0]
+    if (!request) {
+      throw new Error('Missing accepted native private input')
+    }
+
+    const result = await fixture.sendReply(
+      request.snapshot.requestId,
+      'native answer'
+    )
+
+    await fixture.runtime.processDue()
+    await waitFor(() => tcp.lines.includes('PRIVMSG alice :native answer'))
+    expect((await fixture.storage.getOutbound(result.deliveryId))?.status).toBe(
+      'sent'
+    )
+    await plugin.stop?.()
+  }
+)
+
 it('enforces UTF-8 wire size, renders CRLF as message text and rejects NUL before writing', async () => {
   const tcp = await tcpPeer(register)
 

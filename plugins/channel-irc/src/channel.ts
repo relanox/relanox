@@ -27,17 +27,20 @@ const authenticationFailures = new Set([
   'ERROR'
 ])
 
+function sourceNick(prefix: string | undefined): string | undefined {
+  return prefix?.split(/[!@]/u)[0]
+}
+
 function incomingText(
   message: IrcMessage,
   ownNick: string,
   caseMapping: CaseMapping
 ): { sender: string; destination: string; text: string } | null {
-  const sender = message.prefix?.split('!')[0]
+  const sender = sourceNick(message.prefix)
   const destination = message.params[0]
   const text = message.params[1]
   if (
     !sender ||
-    !message.prefix?.includes('!') ||
     !destination ||
     !text ||
     foldNick(sender, caseMapping) === foldNick(ownNick, caseMapping)
@@ -277,7 +280,7 @@ export function createIrcChannel(
         return
       }
       case 'NICK': {
-        if (fold(message.prefix?.split('!')[0] ?? '') === fold(nick)) {
+        if (fold(sourceNick(message.prefix) ?? '') === fold(nick)) {
           nick = nicknameSchema.parse(message.params[0])
         }
         return
@@ -482,17 +485,25 @@ export function createIrcChannel(
     async resolveChannel(address) {
       const { account, config } = configured()
 
-      const recipient = address.chatId.startsWith('dm:')
+      const privateMessage = address.chatId.startsWith('dm:')
+
+      const nickOrChannel = privateMessage
         ? address.chatId.slice(3)
         : address.chatId
+
+      // RFC1459 folds valid nickname ^ into ~.
+      // Use its equivalent ^ alias because RFC2812 servers cannot register ~.
+      const recipient =
+        privateMessage && caseMapping === 'rfc1459'
+          ? nickOrChannel.replaceAll('~', '^')
+          : nickOrChannel
 
       if (
         address.platform !== 'irc' ||
         address.accountId !== account.id ||
         address.threadId !== undefined ||
-        !(
-          address.chatId.startsWith('dm:') ? nicknameSchema : channelSchema
-        ).safeParse(recipient).success
+        !(privateMessage ? nicknameSchema : channelSchema).safeParse(recipient)
+          .success
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
