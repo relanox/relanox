@@ -1,16 +1,22 @@
 import { telegramMarkdown } from './markdown.js'
 import { REQUEST_TIMEOUT_MS } from './config.js'
-import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  mediaBlob,
+  mediaKind,
+  MediaDownloadError
+} from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,
   SendInput,
   SendResult
 } from '@relanox/sdk'
-import { z } from 'zod'
+import type { z } from 'zod'
 import type { TelegramConfig } from './config.js'
 import { sendOutcome } from './client.js'
 import type { updateSchema } from './schemas.js'
+import { fileResponseSchema } from './schemas.js'
 import { jsonResponse, postJson } from './transport.js'
 
 type Message = NonNullable<z.infer<typeof updateSchema>['message']>
@@ -77,7 +83,7 @@ export async function receiveMedia(
   )
 
   if ((file.file_size ?? 0) > maximum) {
-    throw new Error('media_too_large')
+    throw new MediaDownloadError('media_too_large')
   }
   const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   const base = config.apiBaseUrl.replace(/\/$/u, '')
@@ -90,18 +96,23 @@ export async function receiveMedia(
     REQUEST_TIMEOUT_MS
   )
 
-  const result = z
-    .looseObject({
-      ok: z.literal(true),
-      result: z.looseObject({
-        file_path: z.string().min(1),
-        file_size: z.number().optional()
-      })
-    })
-    .parse(await jsonResponse(response))
+  const result = fileResponseSchema.parse(await jsonResponse(response))
 
-  if (!response.ok || (result.result.file_size ?? 0) > maximum) {
+  if (!result.ok) {
+    if (
+      response.status === 400 &&
+      result.error_code === 400 &&
+      result.description === 'Bad Request: file is too big'
+    ) {
+      throw new MediaDownloadError('media_too_large')
+    }
     throw new Error('media_download_failed')
+  }
+  if (!response.ok) {
+    throw new Error('media_download_failed')
+  }
+  if ((result.result.file_size ?? 0) > maximum) {
+    throw new MediaDownloadError('media_too_large')
   }
   const path = result.result.file_path
   if (
