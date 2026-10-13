@@ -1,55 +1,75 @@
 import type { Storage } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { migrate } from 'drizzle-orm/node-postgres/migrator'
+import { sql } from 'drizzle-orm'
+import { fileURLToPath } from 'node:url'
+import { schema as tables } from './schema.js'
 
 export function createLifecycle(
-  context: Pick<DatabaseContext, 'config' | 'pool' | 'transaction'>
+  context: Pick<DatabaseContext, 'config' | 'pool' | 'db'>
 ): Pick<Storage, 'initialize' | 'health' | 'close'> {
-  const { config, pool, transaction } = context
+  const { config, pool, db } = context
   return {
     async initialize() {
-      await transaction(async (client) => {
-        // Serialize concurrent startup; schema is a validated PostgreSQL identifier.
-        await client.query(
-          'SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
-          [`relanox:initialize:${config.schema}`]
+      const client = await pool.connect()
+      const migrationDb = drizzle(client)
+      const lock = `relanox:initialize:${config.schema}`
+      let discard = false
+      try {
+        // Session locking keeps the exported ORM migrator's transaction on this same connection.
+        await migrationDb.execute(
+          sql`select pg_advisory_lock(hashtextextended(${lock}, 0))`
         )
-        await client.query(`CREATE SCHEMA IF NOT EXISTS "${config.schema}"`)
-
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, active BOOLEAN NOT NULL, record JSONB NOT NULL);
-          CREATE TABLE IF NOT EXISTS inbound(
-            id TEXT COLLATE "C" PRIMARY KEY, channel TEXT NOT NULL, account TEXT NOT NULL,event TEXT NOT NULL,
-            endpoint TEXT NOT NULL,accepted_at BIGINT NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,record JSONB NOT NULL,UNIQUE(channel,account,event));
-          CREATE INDEX IF NOT EXISTS inbound_fifo ON inbound(endpoint,accepted_at,id) WHERE status='due';
-          CREATE INDEX IF NOT EXISTS inbound_due ON inbound(((record#>>'{dispatch,dueAt}')::bigint),accepted_at,id) WHERE status='due';
-          CREATE INDEX IF NOT EXISTS inbound_lease ON inbound(((record#>>'{dispatch,lease,expiresAt}')::bigint)) WHERE status='due';
-          CREATE TABLE IF NOT EXISTS outbound(
-            id TEXT COLLATE "C" PRIMARY KEY,sequence BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,channel_id TEXT NOT NULL REFERENCES conversations(id),
-            message_id TEXT NOT NULL,digest TEXT NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL,record JSONB NOT NULL,UNIQUE(channel_id,message_id));
-          CREATE INDEX IF NOT EXISTS outbound_channel_order ON outbound(channel_id,sequence) WHERE status IN ('pending','unknown');
-          CREATE INDEX IF NOT EXISTS outbound_due ON outbound(((record->>'dueAt')::bigint),id) WHERE status='pending';
-          CREATE INDEX IF NOT EXISTS outbound_lease ON outbound(((record#>>'{lease,expiresAt}')::bigint)) WHERE status='pending';
-          CREATE TABLE IF NOT EXISTS media(
-            id TEXT PRIMARY KEY, channel_id TEXT NOT NULL REFERENCES conversations(id),
-            reference JSONB NOT NULL, data BYTEA, digest TEXT NOT NULL, staged BOOLEAN NOT NULL DEFAULT FALSE, created_at BIGINT NOT NULL);
-          CREATE INDEX IF NOT EXISTS media_channel ON media(channel_id);
-          CREATE TABLE IF NOT EXISTS plugin_state(
-            plugin TEXT NOT NULL,owner TEXT NOT NULL,key TEXT COLLATE "C" NOT NULL,version INTEGER NOT NULL,
-            expires_at BIGINT,record JSONB NOT NULL,PRIMARY KEY(plugin,owner,key));
-        `)
-      })
+        await migrate(migrationDb, {
+          migrationsFolder: fileURLToPath(
+            new URL('../migrations', import.meta.url)
+          ),
+          migrationsSchema: config.schema
+        })
+      } catch (error) {
+        discard = true
+        throw error
+      } finally {
+        try {
+          await migrationDb.execute(
+            sql`select pg_advisory_unlock(hashtextextended(${lock}, 0))`
+          )
+        } catch {
+          discard = true
+        }
+        client.release(discard)
+      }
     },
     async health() {
       try {
-        await pool.query(
-          'SELECT id,endpoint,active,record FROM conversations LIMIT 0'
-        )
-        await pool.query('SELECT id,record FROM inbound LIMIT 0')
-        await pool.query('SELECT id,record FROM outbound LIMIT 0')
-        await pool.query(
-          'SELECT plugin,owner,key,version,record FROM plugin_state LIMIT 0'
-        )
-        await pool.query('SELECT id,reference,data FROM media LIMIT 0')
+        await db.select().from(tables.conversations).limit(0)
+        await db
+          .select({ id: tables.inbound.id, record: tables.inbound.record })
+          .from(tables.inbound)
+          .limit(0)
+        await db
+          .select({ id: tables.outbound.id, record: tables.outbound.record })
+          .from(tables.outbound)
+          .limit(0)
+        await db
+          .select({
+            plugin: tables.pluginState.plugin,
+            owner: tables.pluginState.owner,
+            key: tables.pluginState.key,
+            version: tables.pluginState.version,
+            record: tables.pluginState.record
+          })
+          .from(tables.pluginState)
+          .limit(0)
+        await db
+          .select({
+            id: tables.media.id,
+            reference: tables.media.reference,
+            data: tables.media.data
+          })
+          .from(tables.media)
+          .limit(0)
         return { ok: true }
       } catch {
         return { ok: false, errorCode: 'storage_unavailable' }

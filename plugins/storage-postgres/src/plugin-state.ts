@@ -1,72 +1,68 @@
-import type { Storage, StateEntry } from '@relanox/sdk'
+import type { Storage, StateEntry, StateNamespace } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
-import { boundedLimit } from './database.js'
-import { encodeDurableRecord } from '@relanox/storage-support'
+import { boundedLimit, durable } from './database.js'
+import { and, eq, lte, sql } from 'drizzle-orm'
+import type { SQL } from 'drizzle-orm'
+import { pluginState } from './schema.js'
+
+function namespace(ns: StateNamespace, key?: string): SQL | undefined {
+  return and(
+    eq(pluginState.plugin, ns.pluginId),
+    eq(pluginState.owner, ns.ownerId),
+    key === undefined ? undefined : eq(pluginState.key, key)
+  )
+}
+
+const active = sql<boolean>`${pluginState.record} != 'null'::jsonb`
 
 export function createStateOperations(
-  context: Pick<DatabaseContext, 'pool' | 'query' | 'transaction'>
+  context: Pick<DatabaseContext, 'db' | 'transaction'>
 ): Pick<
   Storage,
   'getState' | 'listState' | 'compareAndSetState' | 'deleteState'
 > {
-  const { pool, query, transaction } = context
+  const { db, transaction } = context
   return {
     async getState(ns, key) {
       return (
-        await query<{ record: StateEntry }>(
-          pool,
-          `
-            SELECT record
-            FROM plugin_state
-            WHERE plugin=$1
-              AND owner=$2
-              AND key=$3
-              AND record!='null'::jsonb
-          `,
-          [ns.pluginId, ns.ownerId, key]
-        )
-      )[0]?.record
+        (
+          await db
+            .select({ record: pluginState.record })
+            .from(pluginState)
+            .where(and(namespace(ns, key), active))
+        )[0]?.record ?? undefined
+      )
     },
     async listState(ns, input) {
-      const params: unknown[] = [ns.pluginId, ns.ownerId]
-      const where = ['plugin=$1', 'owner=$2', "record!='null'::jsonb"]
-      if (input.prefix !== undefined) {
-        params.push(input.prefix)
-        where.push(`starts_with(key,$${params.length})`)
-      }
-      if (input.expiresBefore !== undefined) {
-        params.push(input.expiresBefore)
-        where.push(`expires_at<=$${params.length}`)
-      }
-      params.push(boundedLimit(input.limit))
-      return (
-        await query<{ record: StateEntry }>(
-          pool,
-          `
-            SELECT record
-            FROM plugin_state
-            WHERE ${where.join(' AND ')}
-            ORDER BY key
-            LIMIT $${params.length}
-          `,
-          params
+      const rows = await db
+        .select({ record: pluginState.record })
+        .from(pluginState)
+        .where(
+          and(
+            namespace(ns),
+            active,
+            input.prefix === undefined
+              ? undefined
+              : sql`starts_with(${pluginState.key}, ${input.prefix})`,
+            input.expiresBefore === undefined
+              ? undefined
+              : lte(pluginState.expiresAt, input.expiresBefore)
+          )
         )
-      ).map((row) => row.record)
+        .orderBy(pluginState.key)
+        .limit(boundedLimit(input.limit))
+
+      return rows.flatMap((row) => (row.record === null ? [] : [row.record]))
     },
     async compareAndSetState(ns, input) {
       return transaction(async (client) => {
+        const where = namespace(ns, input.key)
+
         const old = (
-          await query<{ version: number; active: boolean }>(
-            client,
-            `
-              SELECT version,record!='null'::jsonb AS active
-              FROM plugin_state
-              WHERE plugin=$1
-                AND owner=$2
-                AND key=$3
-            `,
-            [ns.pluginId, ns.ownerId, input.key]
-          )
+          await client
+            .select({ version: pluginState.version, active })
+            .from(pluginState)
+            .where(where)
         )[0]
 
         if (
@@ -87,39 +83,30 @@ export function createStateOperations(
             : {})
         }
 
-        const params = [
-          ns.pluginId,
-          ns.ownerId,
-          input.key,
+        const values = {
+          plugin: ns.pluginId,
+          owner: ns.ownerId,
+          key: input.key,
           version,
-          input.expiresAt ?? null,
-          encodeDurableRecord(entry)
-        ]
+          expiresAt: input.expiresAt ?? null,
+          record: durable(entry)
+        }
 
         const changed = !old
-          ? await query(
-              client,
-              `
-                INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record)
-                VALUES($1,$2,$3,$4,$5,$6::jsonb)
-                ON CONFLICT DO NOTHING
-                RETURNING version
-              `,
-              params
-            )
-          : await query(
-              client,
-              `
-                UPDATE plugin_state
-                SET version=$4,expires_at=$5,record=$6::jsonb
-                WHERE plugin=$1
-                  AND owner=$2
-                  AND key=$3
-                  AND version=$7
-                RETURNING version
-              `,
-              [...params, old.version]
-            )
+          ? await client
+              .insert(pluginState)
+              .values(values)
+              .onConflictDoNothing()
+              .returning({ version: pluginState.version })
+          : await client
+              .update(pluginState)
+              .set({
+                version,
+                expiresAt: values.expiresAt,
+                record: durable(entry)
+              })
+              .where(and(where, eq(pluginState.version, old.version)))
+              .returning({ version: pluginState.version })
 
         return changed.length > 0
           ? { status: 'updated', version }
@@ -128,19 +115,13 @@ export function createStateOperations(
     },
     async deleteState(ns, key, version) {
       return transaction(async (client) => {
+        const where = and(namespace(ns, key), active)
+
         const old = (
-          await query<{ version: number }>(
-            client,
-            `
-              SELECT version
-              FROM plugin_state
-              WHERE plugin=$1
-                AND owner=$2
-                AND key=$3
-                AND record!='null'::jsonb
-            `,
-            [ns.pluginId, ns.ownerId, key]
-          )
+          await client
+            .select({ version: pluginState.version })
+            .from(pluginState)
+            .where(where)
         )[0]
 
         if (!old) {
@@ -149,17 +130,14 @@ export function createStateOperations(
         if (old.version !== version) {
           return { status: 'conflict' }
         }
-        await client.query(
-          `
-            UPDATE plugin_state
-            SET record='null'::jsonb,expires_at=NULL,version=version+1
-            WHERE plugin=$1
-              AND owner=$2
-              AND key=$3
-              AND version=$4
-          `,
-          [ns.pluginId, ns.ownerId, key, version]
-        )
+        await client
+          .update(pluginState)
+          .set({
+            record: sql`'null'::jsonb`,
+            expiresAt: null,
+            version: sql`${pluginState.version} + 1`
+          })
+          .where(and(where, eq(pluginState.version, version)))
         return { status: 'updated', version: version + 1 }
       })
     }

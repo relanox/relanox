@@ -1,9 +1,9 @@
-import type { Storage, ConversationRecord } from '@relanox/sdk'
-import {
-  encodeDurableRecord,
-  equalDurableValues
-} from '@relanox/storage-support'
+import type { Storage } from '@relanox/sdk'
+import { equalDurableValues } from '@relanox/storage-support'
+import { notInArray } from 'drizzle-orm'
+import { conversations } from './schema.js'
 import type { DatabaseContext } from './database.js'
+import { durable } from './database.js'
 
 export function createConversationOperations(
   context: DatabaseContext
@@ -11,18 +11,17 @@ export function createConversationOperations(
   return {
     async registerConversations(records) {
       await context.transaction(async (client) => {
-        await client.query(
-          'UPDATE conversations SET active=FALSE WHERE NOT(id=ANY($1::text[]))',
-          [records.map((record) => record.address.id)]
-        )
+        const ids = records.map((record) => record.address.id)
+        await client
+          .update(conversations)
+          .set({ active: false })
+          .where(ids.length > 0 ? notInArray(conversations.id, ids) : undefined)
         for (const record of records) {
-          const previous = (
-            await context.query<{ record: ConversationRecord }>(
-              client,
-              'SELECT record FROM conversations WHERE id=$1 FOR UPDATE',
-              [record.address.id]
-            )
-          )[0]?.record
+          const previous = await context.readConversation(
+            client,
+            record.address.id,
+            true
+          )
 
           if (
             previous &&
@@ -38,19 +37,29 @@ export function createConversationOperations(
             ...(previous?.target ? { target: previous.target } : {})
           }
 
-          await client.query(
-            'INSERT INTO conversations(id,endpoint,active,record) VALUES($1,$2,TRUE,$3::jsonb) ON CONFLICT(id) DO UPDATE SET endpoint=excluded.endpoint,active=TRUE,record=excluded.record',
-            [record.address.id, record.endpoint.id, encodeDurableRecord(stored)]
-          )
+          const values = {
+            id: record.address.id,
+            endpoint: record.endpoint.id,
+            active: true,
+            record: durable(stored)
+          }
+
+          await client
+            .insert(conversations)
+            .values(values)
+            .onConflictDoUpdate({
+              target: conversations.id,
+              set: {
+                endpoint: values.endpoint,
+                active: true,
+                record: durable(stored)
+              }
+            })
         }
       })
     },
     async getConversation(id, options) {
-      return context.readConversation(
-        context.pool,
-        id,
-        options?.includeInactive
-      )
+      return context.readConversation(context.db, id, options?.includeInactive)
     }
   }
 }

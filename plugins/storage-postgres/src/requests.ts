@@ -2,7 +2,6 @@ import {
   validateIncoming,
   validateMessageMedia,
   messageMediaIds,
-  encodeDurableRecord,
   messageDigest,
   matchesInitialMessage,
   isConversationInScope,
@@ -11,24 +10,30 @@ import {
 import { readMedia, insertIncomingMedia } from './media.js'
 import type { Storage, InboundRecord } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
+import { durable } from './database.js'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import {
+  inbound,
+  outbound,
+  conversations,
+  media as mediaTable
+} from './schema.js'
 
 export function createRequestOperations(
   context: DatabaseContext
 ): Pick<Storage, 'acceptInbound' | 'enqueueMessage' | 'getMessageReceipt'> {
-  const { query, transaction, readConversation } = context
+  const { transaction, readConversation } = context
   return {
     async acceptInbound(snapshot, media = []) {
       return transaction(async (client) => {
+        const sourceKey = and(
+          eq(inbound.channel, snapshot.source.channel),
+          eq(inbound.account, snapshot.source.accountId),
+          eq(inbound.event, snapshot.source.eventId)
+        )
+
         const existing = (
-          await query<{ id: string }>(
-            client,
-            'SELECT id FROM inbound WHERE channel=$1 AND account=$2 AND event=$3',
-            [
-              snapshot.source.channel,
-              snapshot.source.accountId,
-              snapshot.source.eventId
-            ]
-          )
+          await client.select({ id: inbound.id }).from(inbound).where(sourceKey)
         )[0]
 
         if (existing) {
@@ -46,49 +51,37 @@ export function createRequestOperations(
           dispatch: { status: 'due', attempts: 0, dueAt: snapshot.acceptedAt }
         }
 
-        const inserted = await query<{ id: string }>(
-          client,
-          `
-            INSERT INTO inbound(id,channel,account,event,endpoint,accepted_at,status,version,record)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
-            ON CONFLICT(channel,account,event) DO NOTHING
-            RETURNING id
-          `,
-          [
-            snapshot.requestId,
-            snapshot.source.channel,
-            snapshot.source.accountId,
-            snapshot.source.eventId,
-            snapshot.endpoint.id,
-            snapshot.acceptedAt,
-            record.dispatch.status,
-            1,
-            encodeDurableRecord(record)
-          ]
-        )
+        const inserted = await client
+          .insert(inbound)
+          .values({
+            id: snapshot.requestId,
+            channel: snapshot.source.channel,
+            account: snapshot.source.accountId,
+            event: snapshot.source.eventId,
+            endpoint: snapshot.endpoint.id,
+            acceptedAt: snapshot.acceptedAt,
+            status: record.dispatch.status,
+            version: 1,
+            record: durable(record)
+          })
+          .onConflictDoNothing({
+            target: [inbound.channel, inbound.account, inbound.event]
+          })
+          .returning({ id: inbound.id })
 
         if (inserted.length > 0) {
-          await client.query(
-            'UPDATE conversations SET record=$1::jsonb WHERE id=$2',
-            [
-              encodeDurableRecord({ ...conversation, target: snapshot.target }),
-              snapshot.channel.id
-            ]
-          )
+          await client
+            .update(conversations)
+            .set({
+              record: durable({ ...conversation, target: snapshot.target })
+            })
+            .where(eq(conversations.id, snapshot.channel.id))
           await insertIncomingMedia(context, client, snapshot.channel.id, media)
           return { requestId: snapshot.requestId, duplicate: false }
         }
 
         const original = (
-          await query<{ id: string }>(
-            client,
-            'SELECT id FROM inbound WHERE channel=$1 AND account=$2 AND event=$3',
-            [
-              snapshot.source.channel,
-              snapshot.source.accountId,
-              snapshot.source.eventId
-            ]
-          )
+          await client.select({ id: inbound.id }).from(inbound).where(sourceKey)
         )[0]
 
         if (!original) {
@@ -105,11 +98,15 @@ export function createRequestOperations(
         }
 
         const previous = (
-          await query<{ id: string; digest: string }>(
-            client,
-            'SELECT id,digest FROM outbound WHERE channel_id=$1 AND message_id=$2',
-            [input.channelId, input.message.messageId]
-          )
+          await client
+            .select({ id: outbound.id, digest: outbound.digest })
+            .from(outbound)
+            .where(
+              and(
+                eq(outbound.channelId, input.channelId),
+                eq(outbound.messageId, input.message.messageId)
+              )
+            )
         )[0]
 
         if (!previous) {
@@ -131,11 +128,15 @@ export function createRequestOperations(
         }
 
         const previous = (
-          await query<{ id: string; digest: string }>(
-            client,
-            'SELECT id,digest FROM outbound WHERE channel_id=$1 AND message_id=$2',
-            [input.channelId, input.message.messageId]
-          )
+          await client
+            .select({ id: outbound.id, digest: outbound.digest })
+            .from(outbound)
+            .where(
+              and(
+                eq(outbound.channelId, input.channelId),
+                eq(outbound.messageId, input.message.messageId)
+              )
+            )
         )[0]
 
         const digest = messageDigest(input.message)
@@ -148,11 +149,16 @@ export function createRequestOperations(
           return { status: 'conflict' }
         }
 
-        const rows = await query<{ id: string }>(
-          client,
-          'SELECT id FROM media WHERE channel_id=$1 AND id=ANY($2::text[]) AND data IS NOT NULL',
-          [input.channelId, messageMediaIds(input)]
-        )
+        const rows = await client
+          .select({ id: mediaTable.id })
+          .from(mediaTable)
+          .where(
+            and(
+              eq(mediaTable.channelId, input.channelId),
+              inArray(mediaTable.id, messageMediaIds(input)),
+              isNotNull(mediaTable.data)
+            )
+          )
 
         const assets = []
         for (const { id } of rows) {
@@ -166,45 +172,54 @@ export function createRequestOperations(
           return { status: 'conflict' }
         }
 
-        const collisions = await query(
-          client,
-          'SELECT id FROM media WHERE id=ANY($1::text[])',
-          [additions.map((asset) => asset.reference.id)]
-        )
+        const collisions = await client
+          .select({ id: mediaTable.id })
+          .from(mediaTable)
+          .where(
+            inArray(
+              mediaTable.id,
+              additions.map((asset) => asset.reference.id)
+            )
+          )
 
         if (collisions.length > 0) {
           return { status: 'conflict' }
         }
         const delivery = input.outbound
 
-        const inserted = await query(
-          client,
-          'INSERT INTO outbound(id,channel_id,message_id,digest,status,version,record) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) ON CONFLICT DO NOTHING RETURNING id',
-          [
-            delivery.deliveryId,
-            input.channelId,
-            input.message.messageId,
+        const inserted = await client
+          .insert(outbound)
+          .values({
+            id: delivery.deliveryId,
+            channelId: input.channelId,
+            messageId: input.message.messageId,
             digest,
-            delivery.status,
-            1,
-            encodeDurableRecord(delivery)
-          ]
-        )
+            status: delivery.status,
+            version: 1,
+            record: durable(delivery)
+          })
+          .onConflictDoNothing()
+          .returning({ id: outbound.id })
 
         if (inserted.length === 0) {
           return { status: 'conflict' }
         }
         await insertIncomingMedia(context, client, input.channelId, additions)
-        await client.query(
-          'UPDATE media SET staged=FALSE WHERE channel_id=$1 AND id=ANY($2::text[])',
-          [
-            input.channelId,
-            input.message.attachments?.flatMap((ref) => [
-              ref.id,
-              ...(ref.previewMediaId ? [ref.previewMediaId] : [])
-            ]) ?? []
-          ]
-        )
+        await client
+          .update(mediaTable)
+          .set({ staged: false })
+          .where(
+            and(
+              eq(mediaTable.channelId, input.channelId),
+              inArray(
+                mediaTable.id,
+                input.message.attachments?.flatMap((ref) => [
+                  ref.id,
+                  ...(ref.previewMediaId ? [ref.previewMediaId] : [])
+                ]) ?? []
+              )
+            )
+          )
         return {
           status: 'queued',
           deliveryId: delivery.deliveryId,
