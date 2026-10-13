@@ -1,81 +1,93 @@
 import {
-  encodeDurableRecord,
   mediaDigest,
   isConversationInScope,
   validateStagedMedia
 } from '@relanox/storage-support'
 import type { MediaStorage, StoredMedia, MediaReference } from '@relanox/sdk'
-import type { DatabaseContext } from './database.js'
-import type { Pool, PoolClient } from 'pg'
+import type { Database, DatabaseContext } from './database.js'
+import { durable } from './database.js'
+import { and, count, eq, isNotNull, sql } from 'drizzle-orm'
+import type { SQL } from 'drizzle-orm'
+import { media } from './schema.js'
+
+function liveMedia(channelId: string, mediaId: string): SQL | undefined {
+  return and(
+    eq(media.channelId, channelId),
+    eq(media.id, mediaId),
+    isNotNull(media.data)
+  )
+}
 
 export async function readMedia(
   context: DatabaseContext,
-  client: Pool | PoolClient,
+  client: Database,
   channelId: string,
   mediaId: string
 ): Promise<StoredMedia | undefined> {
   const row = (
-    await context.query<{ reference: MediaReference; data: Buffer }>(
-      client,
-      'SELECT reference,data FROM media WHERE channel_id=$1 AND id=$2 AND data IS NOT NULL',
-      [channelId, mediaId]
-    )
+    await client
+      .select({ reference: media.reference, data: media.data })
+      .from(media)
+      .where(liveMedia(channelId, mediaId))
   )[0]
 
-  return row
+  return row?.data
     ? { reference: row.reference, data: new Uint8Array(row.data) }
     : undefined
 }
 
+function mediaValues(
+  channelId: string,
+  asset: StoredMedia,
+  staged: boolean
+): typeof media.$inferInsert {
+  return {
+    id: asset.reference.id,
+    channelId,
+    reference: durable(asset.reference),
+    data: Buffer.from(asset.data),
+    digest: mediaDigest(asset),
+    staged,
+    createdAt: Date.now()
+  }
+}
+
 export async function insertIncomingMedia(
   context: DatabaseContext,
-  client: PoolClient,
+  client: Database,
   channelId: string,
   assets: readonly StoredMedia[],
   staged = false
 ): Promise<void> {
   for (const asset of assets) {
-    await client.query(
-      'INSERT INTO media(id,channel_id,reference,data,digest,staged,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7)',
-      [
-        asset.reference.id,
-        channelId,
-        encodeDurableRecord(asset.reference),
-        Buffer.from(asset.data),
-        mediaDigest(asset),
-        staged,
-        Date.now()
-      ]
-    )
+    await client.insert(media).values(mediaValues(channelId, asset, staged))
   }
 }
 
 export function createMediaOperations(context: DatabaseContext): MediaStorage {
   const reference = async (
-    client: PoolClient,
+    client: Database,
     channelId: string,
     id: string
   ): Promise<MediaReference | undefined> =>
     (
-      await context.query<{ reference: MediaReference }>(
-        client,
-        'SELECT reference FROM media WHERE channel_id=$1 AND id=$2 AND data IS NOT NULL',
-        [channelId, id]
-      )
+      await client
+        .select({ reference: media.reference })
+        .from(media)
+        .where(liveMedia(channelId, id))
     )[0]?.reference
 
   return {
     async getReference(channelId, id) {
       return (
-        await context.query<{ reference: MediaReference }>(
-          context.pool,
-          'SELECT reference FROM media WHERE channel_id=$1 AND id=$2',
-          [channelId, id]
-        )
+        await context.db
+          .select({ reference: media.reference })
+          .from(media)
+          .where(and(eq(media.channelId, channelId), eq(media.id, id)))
       )[0]?.reference
     },
     async get(channelId, mediaId) {
-      return readMedia(context, context.pool, channelId, mediaId)
+      return readMedia(context, context.db, channelId, mediaId)
     },
     async put(input) {
       return context.transaction(async (client) => {
@@ -87,18 +99,33 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
         const previous = await reference(client, input.channelId, id)
         if (
           !previous &&
-          (await client.query('SELECT id FROM media WHERE id=$1', [id]))
-            .rowCount
+          (
+            await client
+              .select({ id: media.id })
+              .from(media)
+              .where(eq(media.id, id))
+          ).length > 0
         ) {
           return { status: 'conflict' }
         }
 
         const totals = (
-          await context.query<{ count: string; bytes: string }>(
-            client,
-            'SELECT count(*) AS count, coalesce(sum(octet_length(data)),0) AS bytes FROM media WHERE channel_id=$1 AND data IS NOT NULL AND staged=TRUE',
-            [input.channelId]
-          )
+          await client
+            .select({
+              count: count(),
+              bytes:
+                sql<number>`coalesce(sum(octet_length(${media.data})), 0)`.mapWith(
+                  Number
+                )
+            })
+            .from(media)
+            .where(
+              and(
+                eq(media.channelId, input.channelId),
+                isNotNull(media.data),
+                eq(media.staged, true)
+              )
+            )
         )[0]
 
         const previewId = input.media.reference.previewMediaId
@@ -109,25 +136,18 @@ export function createMediaOperations(context: DatabaseContext): MediaStorage {
           previewId === undefined
             ? undefined
             : await reference(client, input.channelId, previewId),
-          Number(totals?.count ?? 0),
-          Number(totals?.bytes ?? 0)
+          totals?.count ?? 0,
+          totals?.bytes ?? 0
         )
 
         if (result.status === 'stored' && !previous) {
-          const inserted = await client.query(
-            'INSERT INTO media(id,channel_id,reference,data,digest,staged,created_at) VALUES($1,$2,$3::jsonb,$4,$5,$6,$7) ON CONFLICT(id) DO NOTHING',
-            [
-              id,
-              input.channelId,
-              encodeDurableRecord(input.media.reference),
-              Buffer.from(input.media.data),
-              mediaDigest(input.media),
-              true,
-              Date.now()
-            ]
-          )
+          const inserted = await client
+            .insert(media)
+            .values(mediaValues(input.channelId, input.media, true))
+            .onConflictDoNothing({ target: media.id })
+            .returning({ id: media.id })
 
-          if (inserted.rowCount !== 1) {
+          if (inserted.length !== 1) {
             return { status: 'conflict' }
           }
         }

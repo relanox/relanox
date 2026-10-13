@@ -1,6 +1,7 @@
 import { asset, mediaContract } from '../../../tests/storage/media-contract.js'
 import { randomUUID } from 'node:crypto'
-import type { Storage, DueWork } from '@relanox/sdk'
+import { readFile } from 'node:fs/promises'
+import type { Storage, DueWork, InboundRecord } from '@relanox/sdk'
 import { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 import {
@@ -64,6 +65,152 @@ describe.skipIf(!enabled)('postgreSQL real database', () => {
           await drop(schema)
         }
       }
+    }
+  })
+
+  it('adopts the populated pre-ORM schema and preserves records and identity order across concurrent initialization and reopen', async () => {
+    const schema = schemaName()
+
+    const pool = new Pool({
+      connectionString: process.env.RELANOX_TEST_POSTGRES_URL,
+      options: `-c search_path=${schema}`
+    })
+
+    let storage = open(schema)
+    const peer = open(schema)
+    const incoming = asset('legacy-media')
+
+    const originalSnapshot = {
+      ...snapshot(),
+      attachments: [incoming.reference]
+    }
+
+    const original: InboundRecord = {
+      snapshot: originalSnapshot,
+      version: 3,
+      dispatch: {
+        status: 'due',
+        attempts: 1,
+        dueAt: 100,
+        lease: { token: 'historical-lease', version: 3, expiresAt: 200 }
+      }
+    }
+
+    const first = completion('channel', 'z-first')
+    const second = completion('channel', 'a-second')
+    const namespace = { pluginId: 'dot', ownerId: 'historical' }
+    const state = { key: 'cursor', value: { sequence: 9 }, version: 4 }
+    try {
+      await pool.query(`CREATE SCHEMA "${schema}"`)
+      // Historical DDL and inserts describe the released pre-ORM database, not the implementation under test.
+      await pool.query(
+        await readFile(new URL('legacy-schema.sql', import.meta.url), 'utf8')
+      )
+      const conversation = required(testConversations[0])
+      await pool.query(
+        'INSERT INTO conversations(id,endpoint,active,record) VALUES($1,$2,TRUE,$3::jsonb)',
+        ['channel', 'ep', JSON.stringify(conversation)]
+      )
+      await pool.query(
+        'INSERT INTO inbound(id,channel,account,event,endpoint,accepted_at,status,version,record) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)',
+        [
+          'r1',
+          'telegram',
+          'a',
+          'r1',
+          'ep',
+          100,
+          'due',
+          3,
+          JSON.stringify(original)
+        ]
+      )
+      for (const input of [first, second]) {
+        await pool.query(
+          'INSERT INTO outbound(id,channel_id,message_id,digest,status,version,record) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)',
+          [
+            input.outbound.deliveryId,
+            'channel',
+            input.message.messageId,
+            'e8e8d2a4cf563c2458f6c427f5372dfcefd8543634f43e912d8c156eb6b3c84e',
+            'pending',
+            1,
+            JSON.stringify(input.outbound)
+          ]
+        )
+      }
+      await pool.query(
+        'INSERT INTO media(id,channel_id,reference,data,digest,staged,created_at) VALUES($1,$2,$3::jsonb,$4,$5,FALSE,$6)',
+        [
+          incoming.reference.id,
+          'channel',
+          JSON.stringify(incoming.reference),
+          Buffer.from(incoming.data),
+          'legacy-media-digest',
+          100
+        ]
+      )
+      await pool.query(
+        'INSERT INTO plugin_state(plugin,owner,key,version,record) VALUES($1,$2,$3,$4,$5::jsonb)',
+        [
+          namespace.pluginId,
+          namespace.ownerId,
+          state.key,
+          state.version,
+          JSON.stringify(state)
+        ]
+      )
+      await Promise.all([storage.initialize(), peer.initialize()])
+      expect(await storage.getConversation('channel')).toEqual(conversation)
+      expect(await storage.getInbound('r1')).toEqual(original)
+      expect(await storage.getOutbound(first.outbound.deliveryId)).toEqual(
+        first.outbound
+      )
+      expect(
+        await required(storage.media).get('channel', incoming.reference.id)
+      ).toEqual(incoming)
+      expect(await storage.getState(namespace, state.key)).toEqual(state)
+      expect(await storage.getMessageReceipt(first)).toEqual({
+        status: 'queued',
+        deliveryId: first.outbound.deliveryId,
+        replay: true
+      })
+
+      const lease = required(
+        (
+          await storage.takeDue({
+            now: 110,
+            limit: 1,
+            leaseMs: 10,
+            leaseOwner: 'after-migration',
+            safeRetryAccountIds: []
+          })
+        )[0]
+      )
+
+      expect(lease.kind).toBe('send')
+      if (lease.kind === 'send') {
+        expect(lease.record.deliveryId).toBe(first.outbound.deliveryId)
+      }
+      await storage.close()
+      storage = open(schema)
+      await storage.initialize()
+      expect(await storage.health()).toEqual({ ok: true })
+      expect(
+        (await storage.getOutbound(first.outbound.deliveryId))?.lease
+      ).toEqual(lease.lease)
+      expect(await storage.getOutbound(second.outbound.deliveryId)).toEqual(
+        second.outbound
+      )
+      expect(
+        await required(storage.media).get('channel', incoming.reference.id)
+      ).toEqual(incoming)
+      expect(await storage.getState(namespace, state.key)).toEqual(state)
+    } finally {
+      await storage.close()
+      await peer.close()
+      await pool.end()
+      await drop(schema)
     }
   })
 

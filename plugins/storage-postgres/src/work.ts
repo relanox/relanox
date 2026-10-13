@@ -1,18 +1,15 @@
-import type {
-  Storage,
-  DueWork,
-  InboundRecord,
-  OutboundRecord
-} from '@relanox/sdk'
+import type { Storage, DueWork } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { boundedLimit } from './database.js'
 import { randomUUID } from 'node:crypto'
 import { isActiveLease } from '@relanox/storage-support'
+import { and, eq, isNull, lt, lte, notExists, inArray, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
+import { inbound, outbound } from './schema.js'
 
 export function createWorkOperations(
   context: Pick<
     DatabaseContext,
-    | 'query'
     | 'transaction'
     | 'readInbound'
     | 'readOutbound'
@@ -20,14 +17,8 @@ export function createWorkOperations(
     | 'saveOutbound'
   >
 ): Pick<Storage, 'requeue' | 'takeDue' | 'settleAttempt'> {
-  const {
-    query,
-    transaction,
-    readInbound,
-    readOutbound,
-    saveInbound,
-    saveOutbound
-  } = context
+  const { transaction, readInbound, readOutbound, saveInbound, saveOutbound } =
+    context
 
   return {
     async requeue(input) {
@@ -90,18 +81,20 @@ export function createWorkOperations(
         const work: DueWork[] = []
 
         // Expiry recovery and executable selection are separate bounded scans. Unknown effects never auto-repeat.
-        const expiredRequests = await query<{ record: InboundRecord }>(
-          client,
-          `
-            SELECT record
-            FROM inbound
-            WHERE status='due'
-              AND (record#>>'{dispatch,lease,expiresAt}')::bigint<=$1
-            ORDER BY accepted_at,id
-            LIMIT $2
-          `,
-          [input.now, limit]
-        )
+        const expiredRequests = await client
+          .select({ record: inbound.record })
+          .from(inbound)
+          .where(
+            and(
+              eq(inbound.status, 'due'),
+              lte(
+                sql<number>`(${inbound.record}#>>'{dispatch,lease,expiresAt}')::bigint`,
+                input.now
+              )
+            )
+          )
+          .orderBy(inbound.acceptedAt, inbound.id)
+          .limit(limit)
 
         for (const { record } of expiredRequests) {
           const dispatch = {
@@ -118,18 +111,20 @@ export function createWorkOperations(
           })
         }
 
-        const expiredDeliveries = await query<{ record: OutboundRecord }>(
-          client,
-          `
-            SELECT record
-            FROM outbound
-            WHERE status='pending'
-              AND (record#>>'{lease,expiresAt}')::bigint<=$1
-            ORDER BY id
-            LIMIT $2
-          `,
-          [input.now, limit]
-        )
+        const expiredDeliveries = await client
+          .select({ record: outbound.record })
+          .from(outbound)
+          .where(
+            and(
+              eq(outbound.status, 'pending'),
+              lte(
+                sql<number>`(${outbound.record}#>>'{lease,expiresAt}')::bigint`,
+                input.now
+              )
+            )
+          )
+          .orderBy(outbound.id)
+          .limit(limit)
 
         for (const { record } of expiredDeliveries) {
           const next = {
@@ -145,19 +140,21 @@ export function createWorkOperations(
           await saveOutbound(client, next)
         }
 
-        const requests = await query<{ record: InboundRecord }>(
-          client,
-          `
-            SELECT i.record
-            FROM inbound i
-            WHERE i.status='due'
-              AND i.record#>'{dispatch,lease}' IS NULL
-              AND (i.record#>>'{dispatch,dueAt}')::bigint<=$1
-            ORDER BY i.accepted_at,i.id
-            LIMIT $2
-          `,
-          [input.now, limit]
-        )
+        const requests = await client
+          .select({ record: inbound.record })
+          .from(inbound)
+          .where(
+            and(
+              eq(inbound.status, 'due'),
+              isNull(sql`${inbound.record}#>'{dispatch,lease}'`),
+              lte(
+                sql<number>`(${inbound.record}#>>'{dispatch,dueAt}')::bigint`,
+                input.now
+              )
+            )
+          )
+          .orderBy(inbound.acceptedAt, inbound.id)
+          .limit(limit)
 
         for (const { record } of requests) {
           const lease = {
@@ -176,20 +173,35 @@ export function createWorkOperations(
           work.push({ kind: 'dispatch', record: next, lease })
         }
 
-        const deliveries = await query<{ record: OutboundRecord }>(
-          client,
-          `
-            SELECT record
-            FROM outbound o
-            WHERE o.status='pending'
-              AND NOT EXISTS(SELECT 1 FROM outbound earlier WHERE earlier.channel_id=o.channel_id AND earlier.sequence<o.sequence AND earlier.status IN ('pending','unknown'))
-              AND record->'lease' IS NULL
-              AND (record->>'dueAt')::bigint<=$1
-            ORDER BY o.sequence
-            LIMIT $2
-          `,
-          [input.now, limit - work.length]
-        )
+        const earlier = alias(outbound, 'earlier')
+
+        const deliveries = await client
+          .select({ record: outbound.record })
+          .from(outbound)
+          .where(
+            and(
+              eq(outbound.status, 'pending'),
+              notExists(
+                client
+                  .select({ id: earlier.id })
+                  .from(earlier)
+                  .where(
+                    and(
+                      eq(earlier.channelId, outbound.channelId),
+                      lt(earlier.sequence, outbound.sequence),
+                      inArray(earlier.status, ['pending', 'unknown'])
+                    )
+                  )
+              ),
+              isNull(sql`${outbound.record}->'lease'`),
+              lte(
+                sql<number>`(${outbound.record}->>'dueAt')::bigint`,
+                input.now
+              )
+            )
+          )
+          .orderBy(outbound.sequence)
+          .limit(limit - work.length)
 
         for (const { record } of deliveries) {
           const lease = {

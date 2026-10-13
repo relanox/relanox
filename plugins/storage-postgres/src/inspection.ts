@@ -1,18 +1,29 @@
-import { chunkMediaReferences } from '@relanox/storage-support'
-import type {
-  Storage,
-  InboundRecord,
-  OutboundRecord,
-  MediaReference
-} from '@relanox/sdk'
+import type { Storage } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { boundedLimit } from './database.js'
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  isNotNull,
+  lt,
+  gte,
+  ne,
+  notExists,
+  or,
+  sql
+} from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
+import { conversations, inbound, outbound, media } from './schema.js'
 
 export function createInspectionOperations(
   context: Pick<
     DatabaseContext,
-    | 'pool'
-    | 'query'
+    | 'db'
     | 'transaction'
     | 'readInbound'
     | 'readOutbound'
@@ -29,8 +40,7 @@ export function createInspectionOperations(
   | 'cleanup'
 > {
   const {
-    pool,
-    query,
+    db,
     transaction,
     readInbound,
     readOutbound,
@@ -40,121 +50,130 @@ export function createInspectionOperations(
 
   return {
     async getInbound(id) {
-      return readInbound(pool, id)
+      return readInbound(db, id)
     },
     async getOutbound(id) {
-      return readOutbound(pool, id)
+      return readOutbound(db, id)
     },
     async listInbound(filter) {
       if (filter.recent && filter.afterId !== undefined) {
         throw new Error('recent_cursor_unsupported')
       }
-      const order = filter.recent ? 'accepted_at DESC,id DESC' : 'id'
-      const where = ['1=1']
-      const params: unknown[] = []
-      if (filter.dispatchStatus !== undefined) {
-        params.push(filter.dispatchStatus)
-        where.push(`status=$${params.length}`)
-      }
-      if (filter.endpointId !== undefined) {
-        params.push(filter.endpointId)
-        where.push(`endpoint=$${params.length}`)
-      }
-      if (filter.afterId !== undefined) {
-        params.push(filter.afterId)
-        where.push(`id>$${params.length}`)
-      }
-      params.push(boundedLimit(filter.limit))
-      return (
-        await query<{ record: InboundRecord }>(
-          pool,
-          `
-            SELECT record
-            FROM inbound
-            WHERE ${where.join(' AND ')}
-            ORDER BY ${order}
-            LIMIT $${params.length}
-          `,
-          params
+
+      const rows = await db
+        .select({ record: inbound.record })
+        .from(inbound)
+        .where(
+          and(
+            filter.dispatchStatus === undefined
+              ? undefined
+              : eq(inbound.status, filter.dispatchStatus),
+            filter.endpointId === undefined
+              ? undefined
+              : eq(inbound.endpoint, filter.endpointId),
+            filter.afterId === undefined
+              ? undefined
+              : gt(inbound.id, filter.afterId)
+          )
         )
-      ).map((record) => record.record)
+        .orderBy(
+          ...(filter.recent
+            ? [desc(inbound.acceptedAt), desc(inbound.id)]
+            : [inbound.id])
+        )
+        .limit(boundedLimit(filter.limit))
+
+      return rows.map((row) => row.record)
     },
     async listOutbound(filter) {
-      const where = ['1=1']
-      const params: unknown[] = []
-      if (filter.deliveryStatus !== undefined) {
-        params.push(filter.deliveryStatus)
-        where.push(`outbound_delivery.status=$${params.length}`)
-      }
-      if (filter.endpointId !== undefined) {
-        params.push(filter.endpointId)
-        where.push(
-          `outbound_delivery.record#>>'{endpoint,id}'=$${params.length}`
+      const rows = await db
+        .select({ record: outbound.record })
+        .from(outbound)
+        .where(
+          and(
+            filter.deliveryStatus === undefined
+              ? undefined
+              : eq(outbound.status, filter.deliveryStatus),
+            filter.endpointId === undefined
+              ? undefined
+              : eq(
+                  sql<string>`${outbound.record}#>>'{endpoint,id}'`,
+                  filter.endpointId
+                ),
+            filter.afterId === undefined
+              ? undefined
+              : gt(outbound.id, filter.afterId)
+          )
         )
-      }
-      if (filter.afterId !== undefined) {
-        params.push(filter.afterId)
-        where.push(`outbound_delivery.id>$${params.length}`)
-      }
-      params.push(boundedLimit(filter.limit))
-      return (
-        await query<{ record: OutboundRecord }>(
-          pool,
-          `
-            SELECT outbound_delivery.record
-            FROM outbound outbound_delivery
-            WHERE ${where.join(' AND ')}
-            ORDER BY outbound_delivery.id
-            LIMIT $${params.length}
-          `,
-          params
-        )
-      ).map((record) => record.record)
+        .orderBy(outbound.id)
+        .limit(boundedLimit(filter.limit))
+
+      return rows.map((row) => row.record)
     },
     async getStats() {
+      const undelivered = db
+        .select({ total: count() })
+        .from(outbound)
+        .where(ne(outbound.status, 'sent'))
+
+      const unknownOutbound = db
+        .select({ total: count() })
+        .from(outbound)
+        .where(eq(outbound.status, 'unknown'))
+
       const row = (
-        await query<{
-          pending: string
-          oldest: string | null
-          undelivered: string
-          unknown: string
-        }>(
-          pool,
-          `
-            SELECT
-              COUNT(*) FILTER(WHERE status='due') pending,
-              MIN(accepted_at) FILTER(WHERE status='due') oldest,
-              (SELECT COUNT(*) FROM outbound WHERE status!='sent') undelivered,
-              COUNT(*) FILTER(
-                WHERE record#>>'{dispatch,status}'='unknown'
-              ) + (SELECT COUNT(*) FROM outbound WHERE status='unknown') unknown
-            FROM inbound
-          `
-        )
+        await db
+          .select({
+            pending:
+              sql<number>`count(*) filter (where ${inbound.status}='due')`.mapWith(
+                Number
+              ),
+            oldest: sql<
+              number | null
+            >`min(${inbound.acceptedAt}) filter (where ${inbound.status}='due')`.mapWith(
+              (value) => (value === null ? null : Number(value))
+            ),
+            undelivered: sql<number>`(${undelivered})`.mapWith(Number),
+            unknown:
+              sql<number>`count(*) filter (where ${inbound.record}#>>'{dispatch,status}'='unknown') + (${unknownOutbound})`.mapWith(
+                Number
+              )
+          })
+          .from(inbound)
       )[0]
 
       if (!row) {
         throw new Error('Storage aggregates unavailable')
       }
       return {
-        pending: Number(row.pending),
-        undelivered: Number(row.undelivered),
-        unknown: Number(row.unknown),
-        ...(row.oldest !== null ? { oldestPendingAt: Number(row.oldest) } : {})
+        pending: row.pending,
+        undelivered: row.undelivered,
+        unknown: row.unknown,
+        ...(row.oldest === null ? {} : { oldestPendingAt: row.oldest })
       }
     },
     async cleanup(input) {
       return transaction(async (client) => {
         // Media writers lock their conversation before publishing references.
-        await client.query(
-          'SELECT id FROM conversations ORDER BY id FOR UPDATE'
-        )
+        await client
+          .select({ id: conversations.id })
+          .from(conversations)
+          .orderBy(conversations.id)
+          .for('update')
 
-        const rows = await query<{ record: InboundRecord }>(
-          client,
-          "SELECT record FROM inbound WHERE accepted_at<$1 AND status IN ('accepted','rejected') AND record->'redactedAt' IS NULL ORDER BY accepted_at,id LIMIT $2 FOR UPDATE",
-          [input.before, boundedLimit(input.limit)]
-        )
+        const rows = await client
+          .select({ record: inbound.record })
+          .from(inbound)
+          .where(
+            and(
+              lt(inbound.acceptedAt, input.before),
+              inArray(inbound.status, ['accepted', 'rejected']),
+              isNull(sql`${inbound.record}->'redactedAt'`)
+            )
+          )
+          .orderBy(inbound.acceptedAt, inbound.id)
+          .limit(boundedLimit(input.limit))
+          .for('update')
 
         for (const { record } of rows) {
           await saveInbound(client, {
@@ -170,11 +189,21 @@ export function createInspectionOperations(
           })
         }
 
-        const deliveries = await query<{ record: OutboundRecord }>(
-          client,
-          "SELECT record FROM outbound WHERE status='sent' AND (record->>'createdAt')::bigint<$1 AND record->'redactedAt' IS NULL LIMIT $2 FOR UPDATE",
-          [input.before, boundedLimit(input.limit)]
-        )
+        const deliveries = await client
+          .select({ record: outbound.record })
+          .from(outbound)
+          .where(
+            and(
+              eq(outbound.status, 'sent'),
+              lt(
+                sql<number>`(${outbound.record}->>'createdAt')::bigint`,
+                input.before
+              ),
+              isNull(sql`${outbound.record}->'redactedAt'`)
+            )
+          )
+          .limit(boundedLimit(input.limit))
+          .for('update')
 
         for (const { record } of deliveries) {
           await saveOutbound(client, {
@@ -189,64 +218,69 @@ export function createInspectionOperations(
             redactedAt: input.before
           })
         }
-        const retained = new Set<string>()
+        // Keep reference existence checks in SQL so cleanup never materializes all retained messages.
+        const staged = alias(media, 'staged_preview_owner')
 
-        const incoming = await query<{ record: InboundRecord }>(
-          client,
-          "SELECT record FROM inbound WHERE record->'redactedAt' IS NULL"
-        )
-
-        for (const { record } of incoming) {
-          for (const ref of record.snapshot.attachments ?? []) {
-            retained.add(ref.id)
-            if (ref.previewMediaId) {
-              retained.add(ref.previewMediaId)
-            }
-          }
-        }
-
-        const outgoing = await query<{ record: OutboundRecord }>(
-          client,
-          "SELECT record FROM outbound WHERE record->'redactedAt' IS NULL"
-        )
-
-        for (const { record } of outgoing) {
-          for (const chunk of record.chunks) {
-            for (const reference of chunkMediaReferences(chunk)) {
-              retained.add(reference.id)
-              if (reference.previewMediaId) {
-                retained.add(reference.previewMediaId)
-              }
-            }
-          }
-        }
-
-        const staged = await query<{ reference: MediaReference }>(
-          client,
-          'SELECT reference FROM media WHERE staged=TRUE AND data IS NOT NULL AND created_at>=$1',
-          [input.before]
-        )
-
-        for (const { reference } of staged) {
-          if (reference.previewMediaId) {
-            retained.add(reference.previewMediaId)
-          }
-        }
-
-        const candidates = await query<{ id: string }>(
-          client,
-          'SELECT id FROM media WHERE data IS NOT NULL AND created_at<$1 AND NOT(id=ANY($2::text[])) ORDER BY created_at,id LIMIT $3 FOR UPDATE',
-          [input.before, [...retained], boundedLimit(input.limit)]
-        )
-
-        for (const { id } of candidates) {
-          if (!retained.has(id)) {
-            await client.query(
-              'UPDATE media SET data=NULL,staged=FALSE WHERE id=$1',
-              [id]
+        const referencedIncoming = client
+          .select({ id: inbound.id })
+          .from(inbound)
+          .where(
+            and(
+              isNull(sql`${inbound.record}->'redactedAt'`),
+              sql`jsonb_path_exists(${inbound.record}, '$.snapshot.attachments[*] ? (@.id == $id || @.previewMediaId == $id)', jsonb_build_object('id', ${media.id}))`
             )
-          }
-        }
+          )
+
+        const referencedOutgoing = client
+          .select({ id: outbound.id })
+          .from(outbound)
+          .where(
+            and(
+              isNull(sql`${outbound.record}->'redactedAt'`),
+              or(
+                sql`jsonb_path_exists(${outbound.record}, '$.chunks[*].media ? (@.id == $id || @.previewMediaId == $id)', jsonb_build_object('id', ${media.id}))`,
+                sql`jsonb_path_exists(${outbound.record}, '$.chunks[*].richText[*] ? (@.type == "image" && (@.media.id == $id || @.media.previewMediaId == $id))', jsonb_build_object('id', ${media.id}))`
+              )
+            )
+          )
+
+        const referencedStaged = client
+          .select({ id: staged.id })
+          .from(staged)
+          .where(
+            and(
+              eq(staged.staged, true),
+              isNotNull(staged.data),
+              gte(staged.createdAt, input.before),
+              eq(sql<string>`${staged.reference}->>'previewMediaId'`, media.id)
+            )
+          )
+
+        const candidates = await client
+          .select({ id: media.id })
+          .from(media)
+          .where(
+            and(
+              isNotNull(media.data),
+              lt(media.createdAt, input.before),
+              notExists(referencedIncoming),
+              notExists(referencedOutgoing),
+              notExists(referencedStaged)
+            )
+          )
+          .orderBy(media.createdAt, media.id)
+          .limit(boundedLimit(input.limit))
+          .for('update')
+
+        await client
+          .update(media)
+          .set({ data: null, staged: false })
+          .where(
+            inArray(
+              media.id,
+              candidates.map((candidate) => candidate.id)
+            )
+          )
         return { redacted: rows.length + deliveries.length }
       })
     }

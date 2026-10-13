@@ -6,25 +6,20 @@ import type {
   Span
 } from '@relanox/sdk'
 import { Pool } from 'pg'
-import type { PoolClient, QueryResultRow } from 'pg'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
+import { and, eq, or, sql } from 'drizzle-orm'
+import { schema as tables } from './schema.js'
+import { encodeDurableRecord } from '@relanox/storage-support'
 import type { z } from 'zod'
 import type { PostgresConfig } from './config.js'
 import { configSchema } from './config.js'
-import { encodeDurableRecord } from '@relanox/storage-support'
 
 /** Owns the connection and atomic transaction boundary for every storage operation. */
 export function openDatabase(
   configuration: z.input<typeof configSchema>,
   observe: Observability
 ): DatabaseContext {
-  const extractDatabaseErrorCode = (error: unknown): string | undefined =>
-    error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string'
-      ? error.code
-      : undefined
-
   const config = configSchema.parse(configuration)
   const connectionString = process.env[config.connectionString.env]
   if (!connectionString) {
@@ -52,14 +47,10 @@ export function openDatabase(
     }
   })
 
-  const query = async <T extends QueryResultRow>(
-    client: Pool | PoolClient,
-    sql: string,
-    values: unknown[] = []
-  ): Promise<T[]> => (await client.query<T>(sql, values)).rows
+  const db = drizzle(pool, { schema: tables })
 
   const transaction = async <T>(
-    fn: (client: PoolClient) => Promise<T>
+    fn: (client: Database) => Promise<T>
   ): Promise<T> => {
     const started = performance.now()
     let span: Span | undefined
@@ -77,21 +68,21 @@ export function openDatabase(
         const client = await pool.connect()
         let discard = false
         try {
-          await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE')
-          const result = await fn(client)
-          await client.query('COMMIT')
+          const result = await drizzle(client, { schema: tables }).transaction(
+            fn,
+            {
+              isolationLevel: 'serializable'
+            }
+          )
+
           outcome = 'ok'
           return result
         } catch (error) {
-          try {
-            await client.query('ROLLBACK')
-          } catch {
-            discard = true
-          }
+          // Own checkout release even if the ORM fails before entering its transaction body.
+          discard = true
           if (
-            !discard &&
             attempt < 7 &&
-            ['40001', '40P01'].includes(extractDatabaseErrorCode(error) ?? '')
+            ['40001', '40P01'].includes(databaseErrorCode(error) ?? '')
           ) {
             continue
           }
@@ -123,80 +114,92 @@ export function openDatabase(
   }
 
   const readInbound = async (
-    client: Pool | PoolClient,
+    client: Database,
     id: string
   ): Promise<InboundRecord | undefined> =>
     (
-      await query<{ record: InboundRecord }>(
-        client,
-        'SELECT record FROM inbound WHERE id=$1 FOR UPDATE',
-        [id]
-      )
+      await client
+        .select({ record: tables.inbound.record })
+        .from(tables.inbound)
+        .where(eq(tables.inbound.id, id))
+        .for('update')
     )[0]?.record
 
   const readOutbound = async (
-    client: Pool | PoolClient,
+    client: Database,
     id: string
   ): Promise<OutboundRecord | undefined> =>
     (
-      await query<{ record: OutboundRecord }>(
-        client,
-        'SELECT record FROM outbound WHERE id=$1',
-        [id]
-      )
+      await client
+        .select({ record: tables.outbound.record })
+        .from(tables.outbound)
+        .where(eq(tables.outbound.id, id))
     )[0]?.record
 
   const readConversation = async (
-    client: Pool | PoolClient,
+    client: Database,
     id: string,
     includeInactive = false
   ): Promise<ConversationRecord | undefined> =>
     (
-      await query<{ record: ConversationRecord }>(
-        client,
-        'SELECT record FROM conversations WHERE id=$1 AND (active=TRUE OR $2) FOR UPDATE',
-        [id, includeInactive]
-      )
+      await client
+        .select({ record: tables.conversations.record })
+        .from(tables.conversations)
+        .where(
+          and(
+            eq(tables.conversations.id, id),
+            or(eq(tables.conversations.active, true), sql`${includeInactive}`)
+          )
+        )
+        .for('update')
     )[0]?.record
 
   const saveInbound = async (
-    client: PoolClient,
+    client: Database,
     record: InboundRecord,
     expectedVersion = record.version - 1
   ): Promise<void> => {
-    const changed = await client.query(
-      'UPDATE inbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5',
-      [
-        record.dispatch.status,
-        record.version,
-        encodeDurableRecord(record),
-        record.snapshot.requestId,
-        expectedVersion
-      ]
-    )
+    const changed = await client
+      .update(tables.inbound)
+      .set({
+        status: record.dispatch.status,
+        version: record.version,
+        record: durable(record)
+      })
+      .where(
+        and(
+          eq(tables.inbound.id, record.snapshot.requestId),
+          eq(tables.inbound.version, expectedVersion)
+        )
+      )
+      .returning({ id: tables.inbound.id })
 
-    if (changed.rowCount !== 1) {
+    if (changed.length !== 1) {
       throw new Error('Inbound version conflict')
     }
   }
 
   const saveOutbound = async (
-    client: PoolClient,
+    client: Database,
     record: OutboundRecord,
     expectedVersion = record.version - 1
   ): Promise<void> => {
-    const changed = await client.query(
-      'UPDATE outbound SET status=$1,version=$2,record=$3::jsonb WHERE id=$4 AND version=$5',
-      [
-        record.status,
-        record.version,
-        encodeDurableRecord(record),
-        record.deliveryId,
-        expectedVersion
-      ]
-    )
+    const changed = await client
+      .update(tables.outbound)
+      .set({
+        status: record.status,
+        version: record.version,
+        record: durable(record)
+      })
+      .where(
+        and(
+          eq(tables.outbound.id, record.deliveryId),
+          eq(tables.outbound.version, expectedVersion)
+        )
+      )
+      .returning({ id: tables.outbound.id })
 
-    if (changed.rowCount !== 1) {
+    if (changed.length !== 1) {
       throw new Error('Outbound version conflict')
     }
   }
@@ -204,7 +207,7 @@ export function openDatabase(
   return {
     config,
     pool,
-    query,
+    db,
     transaction,
     readInbound,
     readConversation,
@@ -214,47 +217,61 @@ export function openDatabase(
   }
 }
 
+export type Database = NodePgDatabase<typeof tables>
+
 export type DatabaseContext = {
   readonly config: PostgresConfig
   readonly pool: Pool
-  query<T extends QueryResultRow>(
-    this: void,
-    client: Pool | PoolClient,
-    sql: string,
-    values?: unknown[]
-  ): Promise<T[]>
+  readonly db: Database
   transaction<T>(
     this: void,
-    operation: (client: PoolClient) => Promise<T>
+    operation: (client: Database) => Promise<T>
   ): Promise<T>
   readConversation(
     this: void,
-    client: Pool | PoolClient,
+    client: Database,
     id: string,
     includeInactive?: boolean
   ): Promise<ConversationRecord | undefined>
   readInbound(
     this: void,
-    client: Pool | PoolClient,
+    client: Database,
     id: string
   ): Promise<InboundRecord | undefined>
   readOutbound(
     this: void,
-    client: Pool | PoolClient,
+    client: Database,
     id: string
   ): Promise<OutboundRecord | undefined>
   saveInbound(
     this: void,
-    client: PoolClient,
+    client: Database,
     record: InboundRecord,
     expectedVersion?: number
   ): Promise<void>
   saveOutbound(
     this: void,
-    client: PoolClient,
+    client: Database,
     record: OutboundRecord,
     expectedVersion?: number
   ): Promise<void>
+}
+
+function databaseErrorCode(error: unknown): string | undefined {
+  const seen = new Set<object>()
+  let current = error
+  while (
+    current !== null &&
+    typeof current === 'object' &&
+    !seen.has(current)
+  ) {
+    seen.add(current)
+    if ('code' in current && typeof current.code === 'string') {
+      return current.code
+    }
+    current = 'cause' in current ? current.cause : undefined
+  }
+  return undefined
 }
 
 export const boundedLimit = (limit: number): number => {
@@ -262,4 +279,9 @@ export const boundedLimit = (limit: number): number => {
     throw new TypeError('Invalid storage limit')
   }
   return Math.min(limit, 1000)
+}
+
+/** Validate before Drizzle JSONB serialization, retaining the durable plain-JSON boundary. */
+export function durable<T>(value: T): T {
+  return JSON.parse(encodeDurableRecord(value)) as T
 }
