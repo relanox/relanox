@@ -248,6 +248,19 @@ function uploadStatus(status: number): 'retryable' | 'rejected' {
   return status === 429 || status >= 500 ? 'retryable' : 'rejected'
 }
 
+export async function consentThrottled(
+  host: ChannelHost,
+  key: string
+): Promise<void> {
+  const entry = await host.state.get(key)
+  if (entry && consentSchema.parse(entry.value).phase === 'posting') {
+    const result = await host.state.delete(key, entry.version)
+    if (result.status !== 'updated') {
+      throw new Error('file_consent_contention')
+    }
+  }
+}
+
 export async function consentPosted(
   host: ChannelHost,
   key: string
@@ -283,7 +296,17 @@ export async function downloadAttachments(
       attachment.contentType ===
       'application/vnd.microsoft.teams.file.download.info'
 
-    const url = file ? attachment.content?.downloadUrl : attachment.contentUrl
+    if (
+      ['text/html', 'text/plain'].includes(attachment.contentType) &&
+      !attachment.contentUrl
+    ) {
+      continue
+    }
+
+    const url = file
+      ? z.object({ downloadUrl: z.url() }).parse(attachment.content).downloadUrl
+      : attachment.contentUrl
+
     if (!url) {
       throw new Error('missing_media_url')
     }
@@ -357,20 +380,20 @@ async function imageAttachment(
   return { attachment: { contentType: mimeType, name: fileName, contentUrl } }
 }
 
-export async function richMarkdown(
+export async function richAttachment(
   input: SendInput,
   host: ChannelHost
-): Promise<string> {
+): Promise<Json | undefined> {
   if (!input.chunk.richText) {
-    return input.chunk.text
+    return undefined
   }
   if (!host.media || !host.publicUrl) {
     throw new Error('media_publication_unavailable')
   }
-  const parts: string[] = []
+  const body: Json[] = []
   for (const part of input.chunk.richText) {
     if (part.type === 'text') {
-      parts.push(part.text)
+      body.push({ type: 'TextBlock', text: part.text, wrap: true })
     } else {
       const url = new URL(
         await host.media.publish({
@@ -387,23 +410,28 @@ export async function richMarkdown(
       ) {
         throw new Error('invalid_publication_url')
       }
-
-      const label = (part.label || part.media.fileName)
-        .replaceAll('\\', String.raw`\\`)
-        .replaceAll('[', String.raw`\[`)
-        .replaceAll(']', String.raw`\]`)
-        .replaceAll('\n', ' ')
-
-      parts.push(
-        `![${label}](${url.href.replaceAll('(', '%28').replaceAll(')', '%29')})`
-      )
+      body.push({
+        type: 'Image',
+        url: url.href,
+        altText: part.label || part.media.fileName
+      })
     }
   }
-  const text = parts.join('\n\n')
-  if (Buffer.byteLength(text, 'utf8') > 24_000) {
+
+  const attachment = {
+    contentType: 'application/vnd.microsoft.card.adaptive',
+    content: {
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      type: 'AdaptiveCard',
+      version: '1.2',
+      body
+    }
+  }
+
+  if (Buffer.byteLength(JSON.stringify(attachment), 'utf8') > 24_000) {
     throw new Error('rich_text_limit_exceeded')
   }
-  return text
+  return attachment
 }
 
 export { richError, richCapabilities } from './rich.js'

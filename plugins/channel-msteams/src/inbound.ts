@@ -11,6 +11,12 @@ export async function receive(
   config: TeamsConfig,
   activity: z.infer<typeof activitySchema>
 ): Promise<void> {
+  if (!account.allowedSenders.includes(activity.from.id)) {
+    host.observe.log('info', 'channel_policy_rejection', {
+      errorCode: 'sender_not_allowed'
+    })
+    return
+  }
   if (activity.type === 'invoke' && activity.name === 'fileConsent/invoke') {
     await acceptConsent(host, activity.value, {
       conversationId: activity.conversation.id,
