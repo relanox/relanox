@@ -10,7 +10,7 @@ import {
 
 installPeerNetwork()
 
-test('DingTalk downloads a pure picture before durable ACK and uploads original multipart bytes', async () => {
+test('DingTalk rejects denied pictures before OAuth or download and durably relays allowed pictures', async () => {
   vi.stubEnv('DING_MEDIA_SECRET', 'secret')
   const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 4, 5, 6])
   let websocket = ''
@@ -50,6 +50,38 @@ test('DingTalk downloads a pure picture before durable ACK and uploads original 
   )
 
   await local.start()
+  // Native identity/content: open-dingtalk/dingtalk-stream-sdk-python
+  // @8d8bb1c630848fee1ae8c7bdd11bc1b78097b611 dingtalk_stream/chatbot.py
+  // ChatbotMessage.from_dict distinguishes senderId from senderStaffId and
+  // ImageContent.from_dict reads content.downloadCode.
+  remote.sockets[0]?.send(
+    JSON.stringify({
+      type: 'CALLBACK',
+      headers: { topic: '/v1.0/im/bot/messages/get', messageId: 'denied' },
+      data: JSON.stringify({
+        msgId: 'denied-picture',
+        conversationType: '1',
+        conversationId: 'single',
+        senderId: 'denied-sender',
+        senderStaffId: 'staff',
+        robotCode: 'robot',
+        msgtype: 'picture',
+        content: { downloadCode: 'denied-code' }
+      })
+    })
+  )
+  await expect
+    .poll(() => remote.frames)
+    .toContainEqual({
+      code: 200,
+      headers: { contentType: 'application/json', messageId: 'denied' },
+      message: 'OK',
+      data: '{"response":null}'
+    })
+  expect(remote.requests.map((request) => request.path)).toEqual([
+    '/v1.0/gateway/connections/open'
+  ])
+  expect(await records(local.storage)).toHaveLength(0)
   remote.sockets[0]?.send(
     JSON.stringify({
       type: 'CALLBACK',
