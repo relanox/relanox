@@ -150,3 +150,53 @@ it('keeps a text and image final pending until every chunk succeeds and replays 
     await fx.close()
   }
 })
+
+it('recovers unanswered content after restart and explicitly reports expiry after retention', async () => {
+  const fx = await mediaFixture()
+  try {
+    const input = await fx.channel.ingest({
+      ...incoming,
+      text: 'recover me',
+      attachments: [picture]
+    })
+
+    await fx.runtime.processDue()
+    await fx.restart()
+
+    const principal = fx.agent.forPrincipal({
+      subject: 'agent',
+      endpointIds: ['first']
+    })
+
+    const pending = await principal.readMessages({ pending: true })
+    expect(pending).toMatchObject([
+      {
+        requestId: input.requestId,
+        text: 'recover me',
+        attachments: [{ kind: 'image' }],
+        reply: { status: 'awaiting_final' }
+      }
+    ])
+    expect(await principal.readMessages({ pending: true })).toEqual(pending)
+    expect(await fx.storage.listOutbound({ limit: 20 })).toEqual([])
+    expect(
+      await fx.agent
+        .forPrincipal({ subject: 'other', endpointIds: ['other'] })
+        .readMessages({ pending: true })
+    ).toEqual([])
+    await fx.storage.cleanup({ before: Date.now() + 1000, limit: 20 })
+    expect(await principal.readMessages({ pending: true })).toEqual([])
+    expect(
+      (await principal.status({ requestId: input.requestId })).request?.reply
+    ).toEqual({ status: 'expired' })
+    expect(
+      await principal.sendMessage({
+        channel: fx.channelId,
+        text: 'late answer',
+        reply: { requestId: input.requestId, kind: 'final' }
+      })
+    ).toEqual({ status: 'not_found' })
+  } finally {
+    await fx.close()
+  }
+})

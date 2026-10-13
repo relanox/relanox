@@ -21,9 +21,10 @@ import {
   min,
   ne,
   notInArray,
+  or,
   sql
 } from 'drizzle-orm'
-import { inbound, outbound, media } from './schema.js'
+import { inbound, outbound, media, conversations } from './schema.js'
 import { jsonValue } from './expressions.js'
 
 export function createInspectionOperations(
@@ -41,6 +42,7 @@ export function createInspectionOperations(
   | 'getInbound'
   | 'getOutbound'
   | 'listInbound'
+  | 'listPendingInbound'
   | 'listOutbound'
   | 'getStats'
   | 'cleanup'
@@ -87,6 +89,50 @@ export function createInspectionOperations(
         .limit(filter.limit)
         .all()
         .map((row) => decodeDurableRecord<InboundRecord>(row.record))
+    },
+    async listPendingInbound(input) {
+      if (
+        !Number.isSafeInteger(input.limit) ||
+        input.limit < 1 ||
+        input.limit > 20
+      ) {
+        throw new TypeError('Invalid pending message limit')
+      }
+
+      const rows = db
+        .select({ record: inbound.record })
+        .from(inbound)
+        .innerJoin(
+          conversations,
+          eq(
+            conversations.id,
+            jsonValue(inbound.record, '$.snapshot.channel.id')
+          )
+        )
+        .leftJoin(outbound, eq(outbound.id, inbound.finalDeliveryId))
+        .where(
+          and(
+            eq(conversations.active, 1),
+            inArray(conversations.id, [...input.channelIds]),
+            inArray(inbound.endpoint, [...input.endpointIds]),
+            isNull(jsonValue(inbound.record, '$.redactedAt')),
+            or(isNull(outbound.status), ne(outbound.status, 'sent')),
+            input.cursor
+              ? or(
+                  gt(inbound.acceptedAt, input.cursor.acceptedAt),
+                  and(
+                    eq(inbound.acceptedAt, input.cursor.acceptedAt),
+                    gt(inbound.id, input.cursor.requestId)
+                  )
+                )
+              : undefined
+          )
+        )
+        .orderBy(inbound.acceptedAt, inbound.id)
+        .limit(input.limit)
+        .all()
+
+      return rows.map((row) => decodeDurableRecord<InboundRecord>(row.record))
     },
     async listOutbound(filter) {
       return db

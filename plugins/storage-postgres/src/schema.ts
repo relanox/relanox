@@ -48,6 +48,11 @@ export const inbound = pgTable(
   },
   (table) => [
     unique().on(table.channel, table.account, table.event),
+    index('inbound_pending_reply').on(
+      table.endpoint,
+      table.acceptedAt,
+      table.id
+    ),
     index('inbound_fifo')
       .on(table.endpoint, table.acceptedAt, table.id)
       .where(sql`${table.status}='due'`),

@@ -256,6 +256,6 @@ If MCP authentication fails, compare the token and URL, check `publicUrl` agains
 
 ### Recover missing dot event data
 
-The dot event data includes `requestId` and `acceptedAt` alongside the full message. If the host omits the data when starting the task, call `relanox_read_messages` with that request ID, or remove `evt_` from the event ID. Without an ID, the tool returns recent persisted messages (default 5, maximum 20), newest first. Match the event before replying: recent results can include already processed messages.
+The dot event data includes `requestId` and `acceptedAt` alongside the full message. If the host omits the data when starting the task, call `relanox_read_messages` with that request ID, or remove `evt_` from the event ID. Without an ID, the tool returns recent persisted messages (default 5, maximum 20), newest first. For catch-up, use `pending: true` and follow `nextCursor` to read retained unfinished messages oldest first. Check each message's `reply` status and reuse existing deliveries; see [Message status and recovery](core.md). Match the event before replying: recent results can include already processed messages.
 
 Reads use the configured database, survive restarts, and expose only messages whose endpoint and channel binding are still authorized. Removed bindings, changed endpoint ownership and redacted messages are unavailable. Retention still applies. A read does not claim, acknowledge or retry a message and does not accelerate host scheduling. Do not poll this tool for new events.
