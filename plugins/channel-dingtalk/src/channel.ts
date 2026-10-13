@@ -146,6 +146,13 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       ack(200, '{"response":null}')
       return
     }
+    if (!account.allowedSenders.includes(message.senderId)) {
+      host.observe.log('info', 'channel_input_discarded', {
+        errorCode: 'sender_not_allowed'
+      })
+      ack(200, '{"response":null}')
+      return
+    }
     if (
       !['text', 'picture', 'audio', 'video', 'file', 'richText'].includes(
         message.msgtype
