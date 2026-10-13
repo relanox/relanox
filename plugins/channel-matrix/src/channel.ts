@@ -209,6 +209,12 @@ export function createMatrixChannel(
     }
     const data = syncSchema.parse(await readJson(response))
     for (const [room, value] of Object.entries(data.rooms?.join ?? {})) {
+      if (
+        host.boundChatIds !== undefined &&
+        !host.boundChatIds.includes(room)
+      ) {
+        continue
+      }
       if (since && value.timeline?.limited) {
         throw new Error('sync_history_gap')
       }
