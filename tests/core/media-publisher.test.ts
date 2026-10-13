@@ -108,6 +108,43 @@ it('serves scoped durable capability URLs across SQLite restart and rejects inva
   }
 })
 
+it('publishes reserved filename characters using the native HTTP extended parameter encoding', async () => {
+  // RFC 8187 section 3.2.1: value-chars permits pct-encoded or attr-char,
+  // Excluding raw apostrophes, asterisks and parentheses.
+  // https://www.rfc-editor.org/rfc/rfc8187.html#section-3.2.1
+  const f = await mediaFixture(undefined, 'https://media.example')
+  try {
+    const receipt = await f.channel.ingest({
+      ...incoming,
+      attachments: [{ ...picture, fileName: "report (final)*'1.png" }]
+    })
+
+    const stored = (await f.storage.getInbound(receipt.requestId))?.snapshot
+      .attachments?.[0]
+
+    expect(stored?.fileName).toBe("report (final)*'1.png")
+    if (!stored || !f.channel.media) {
+      throw new Error('Expected publisher')
+    }
+
+    const url = await f.channel.media.publish({
+      channelId: f.channelId,
+      mediaId: stored.id
+    })
+
+    const response = await throughHttp(f.runtime, url)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-disposition')).toBe(
+      "attachment; filename*=UTF-8''report%20%28final%29%2A%271.png"
+    )
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3])
+    )
+  } finally {
+    await f.close()
+  }
+})
+
 it('expires public URLs and prunes expired durable tickets before publishing', async () => {
   const f = await mediaFixture(undefined, 'https://media.example', {
     urlLifetimeMs: 1
