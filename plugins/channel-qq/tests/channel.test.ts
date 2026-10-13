@@ -852,6 +852,7 @@ test.each([false, true])(
   async (group) => {
     vi.stubEnv('QQ_SECRET', 'secret')
     let address = ''
+    const heartbeatInterval = 1000
 
     const remote = await peer(
       (request) => ({
@@ -861,7 +862,12 @@ test.each([false, true])(
             : { url: address }
       }),
       (socket) => {
-        socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
+        socket.send(
+          JSON.stringify({
+            op: 10,
+            d: { heartbeat_interval: heartbeatInterval }
+          })
+        )
         socket.on('message', (data) => {
           const received = z
             .object({ op: z.number() })
@@ -907,7 +913,9 @@ test.each([false, true])(
     expect((await records(host.storage))[0]?.snapshot.target.replyToId).toBe(
       'scene-only'
     )
-    await expect.poll(() => remote.frames).toContainEqual({ op: 1, d: 2 })
+    await expect
+      .poll(() => remote.frames, { timeout: heartbeatInterval * 2 + 1000 })
+      .toContainEqual({ op: 1, d: 2 })
     host.controller.abort()
   }
 )
