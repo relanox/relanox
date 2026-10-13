@@ -8,6 +8,12 @@ import {
   unique
 } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
+import type { SQL } from 'drizzle-orm'
+import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
+
+/** Keep the queue predicate literal so SQLite can use its matching partial index. */
+export const isBlockingDelivery = (status: SQLiteColumn): SQL<boolean> =>
+  sql<boolean>`${status} in ('pending','unknown')`
 
 export const conversations = sqliteTable('conversations', {
   id: text('id').primaryKey(),
@@ -52,7 +58,7 @@ export const outbound = sqliteTable(
     unique().on(table.channelId, table.messageId),
     index('outbound_channel_order')
       .on(table.channelId)
-      .where(sql`${table.status} in ('pending','unknown')`)
+      .where(isBlockingDelivery(table.status))
   ]
 )
 
