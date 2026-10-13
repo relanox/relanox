@@ -16,10 +16,11 @@ installPeerNetwork()
 
 // Native response metadata: WecomTeam/aibot-node-sdk at
 // 80615b987ef69c6028ad764924609247c0725955, src/api.ts downloadFileRaw;
+// Native sender and file fields: src/types/message.ts BaseMessage/FileMessage.
 // HTTP callback decryption: WecomTeam/wecom-openclaw-plugin at
 // 3b1cbe3e664352821758d99ae5907f5620fce26e, src/webhook/media.ts.
 test.each(['websocket', 'webhook'] as const)(
-  'WeCom %s keeps the native download filename when the callback has no filename',
+  'WeCom %s rejects denied media before download and preserves authorized storage failure retries',
   async (mode) => {
     vi.stubEnv('WECOM_MEDIA_SECRET', 'secret')
     vi.stubEnv('CALLBACK_TOKEN', 'callback-token')
@@ -70,9 +71,14 @@ test.each(['websocket', 'webhook'] as const)(
             secret: { env: 'WECOM_MEDIA_SECRET' }
           }
 
-    const host = await assemble(createWeComChannel(), config, [
-      { chatId: 'user', senderId: 'user' }
-    ])
+    const filename = await temporaryDatabase()
+
+    const host = await assemble(
+      createWeComChannel(),
+      config,
+      [{ chatId: 'user', senderId: 'user' }],
+      filename
+    )
 
     await host.start()
 
@@ -88,6 +94,29 @@ test.each(['websocket', 'webhook'] as const)(
       }
     }
 
+    const denied = {
+      ...body,
+      msgid: 'denied-file',
+      from: { userid: 'denied' },
+      file: { ...body.file, url: `${remote.http}/denied-download` }
+    }
+
+    if (mode === 'webhook') {
+      const rejected = await host.runtime.fetch(callbackRequest(denied))
+      expect(rejected.status).toBe(200)
+      expect(remote.requests).toEqual([])
+      expect(await rejected.text()).toBe('')
+      expect(await records(host.storage)).toEqual([])
+    } else {
+      remote.sockets[0]?.send(
+        JSON.stringify({
+          cmd: 'aibot_msg_callback',
+          headers: { req_id: 'denied-file' },
+          body: denied
+        })
+      )
+    }
+
     if (mode === 'webhook') {
       expect((await host.runtime.fetch(callbackRequest(body))).status).toBe(200)
     } else {
@@ -100,6 +129,9 @@ test.each(['websocket', 'webhook'] as const)(
       )
     }
     await expect.poll(async () => (await records(host.storage)).length).toBe(1)
+    expect((await records(host.storage))[0]?.snapshot.source.eventId).toBe(
+      'native-file'
+    )
     expect(
       (await records(host.storage))[0]?.snapshot.attachments?.[0]
     ).toMatchObject({
@@ -107,9 +139,44 @@ test.each(['websocket', 'webhook'] as const)(
       fileName: '报告.pdf',
       size: 12
     })
+    expect(remote.requests).toHaveLength(1)
     expect(remote.requests).toMatchObject([
       { method: 'GET', path: '/download' }
     ])
+
+    // Fail real durable storage after the allowed control. Policy rejection
+    // Must not turn a failed authorized persistence into a successful ACK.
+    await host.storage.close()
+    const failed = { ...body, msgid: 'storage-failure' }
+    if (mode === 'webhook') {
+      expect((await host.runtime.fetch(callbackRequest(failed))).status).toBe(
+        503
+      )
+    } else {
+      remote.sockets[0]?.send(
+        JSON.stringify({
+          cmd: 'aibot_msg_callback',
+          headers: { req_id: 'storage-failure' },
+          body: failed
+        })
+      )
+      await expect.poll(() => remote.sockets[0]?.readyState).toBe(3)
+    }
+    expect(remote.requests).toHaveLength(2)
+    host.controller.abort()
+
+    const recovered = await assemble(
+      createWeComChannel(),
+      config,
+      [{ chatId: 'user', senderId: 'user' }],
+      filename
+    )
+
+    expect(
+      (await records(recovered.storage)).map(
+        (record) => record.snapshot.source.eventId
+      )
+    ).toEqual(['native-file'])
   }
 )
 

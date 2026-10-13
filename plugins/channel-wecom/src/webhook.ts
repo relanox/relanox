@@ -152,6 +152,12 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       host.discoverConversation({ chatId, senderId: message.from.userid })
       return undefined
     }
+    if (!account.allowedSenders.includes(message.from.userid)) {
+      host.observe.log('info', 'channel_input_discarded', {
+        errorCode: 'sender_not_allowed'
+      })
+      return undefined
+    }
     const id = streamId(config.botId, message.msgid)
 
     const { text, attachments } = await receiveParts(
