@@ -1,5 +1,8 @@
 import { createCore } from '../../../packages/core/src/index.js'
-import type { CoreRuntime } from '../../../packages/core/src/index.js'
+import type {
+  CoreRuntime,
+  WorkerOptions
+} from '../../../packages/core/src/index.js'
 import { createSqliteStorage } from '../../storage-sqlite/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -10,7 +13,8 @@ import { createFeishuChannel } from '../src/index.js'
 export async function storedChannel(
   cleanup: (() => Promise<void>)[],
   environment: NodeJS.ProcessEnv,
-  account: AccountConfig
+  account: AccountConfig,
+  worker?: WorkerOptions
 ): Promise<{
   core: CoreRuntime
   storage: ReturnType<typeof createSqliteStorage>
@@ -47,6 +51,7 @@ export async function storedChannel(
   const core = await createCore({
     publicUrl: 'https://relay.example',
     storage,
+    ...(worker ? { worker } : {}),
     channels: new Map([['fs', createFeishuChannel(environment)]]),
     agents: new Map([['grok', agent]]),
     config: {

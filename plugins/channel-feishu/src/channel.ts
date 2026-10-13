@@ -16,7 +16,8 @@ import {
   receiveMedia,
   messageContent,
   mediaError,
-  parseContent
+  parseContent,
+  isMediaSizeRejection
 } from './media.js'
 import {
   encryptedEventSchema,
@@ -375,7 +376,16 @@ export function createFeishuChannel(
         receivedAt: Date.now()
       })
       return new Response(null, { status: 200 })
-    } catch {
+    } catch (error) {
+      if (isMediaSizeRejection(error)) {
+        host.observe.count('relanox_inbound_total', {
+          channel: 'feishu',
+          operation: 'ingest',
+          outcome: 'rejected',
+          error_class: 'policy'
+        })
+        return new Response(null, { status: 200 })
+      }
       return new Response(null, { status: 503 })
     }
   }
