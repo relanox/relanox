@@ -94,7 +94,9 @@ it.each(kinds)(
           uploadStatus
         )
       } else if (url.pathname.includes('/state/')) {
-        json(response, {}, 404)
+        // Missing room encryption state: Matrix Client-Server v1.15 state endpoint.
+        // https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
+        json(response, { errcode: 'M_NOT_FOUND' }, 404)
       } else {
         sent.push(await body(request))
         json(response, { event_id: '$sent' })

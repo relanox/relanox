@@ -457,7 +457,7 @@ it.each([
   async (status, outcome) => {
     const peer = await httpPeer((request, response) => {
       if (request.url?.includes('/state/')) {
-        json(response, {}, 404)
+        json(response, { errcode: 'M_NOT_FOUND' }, 404)
       } else {
         response.setHeader('Retry-After', '7')
         json(response, {}, status)
@@ -582,3 +582,178 @@ it('returns from start and aborts an outstanding sync connection on stop', async
   await waitFor(() => closed)
   expect(closed).toBe(true)
 })
+
+// Matrix JS SDK d633e7c1954a6b92597fbc3f8a95f183789a8d40,
+// Src/client.ts:addThreadRelationIfNeeded: explicit replies are not thread fallbacks.
+// https://spec.matrix.org/v1.15/client-server-api/#threading
+it('preserves an explicit threaded reply on the native HTTP send boundary', async () => {
+  const sent: unknown[] = []
+
+  const peer = await httpPeer(async (request, response) => {
+    if (request.url?.includes('/state/')) {
+      json(response, { errcode: 'M_NOT_FOUND' }, 404)
+      return
+    }
+    sent.push(await body(request))
+    json(response, { event_id: '$reply' })
+  })
+
+  const plugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
+  await harness(
+    plugin,
+    config(peer.base),
+    [{ chatId: room, threadId: thread }],
+    [user],
+    `${peer.base}/dispatch`
+  )
+  expect(
+    await plugin.send(
+      input({
+        channel: 'matrix',
+        accountId: 'bot',
+        chatId: room,
+        threadId: thread,
+        replyToId: '$selected-message',
+        data: { homeserver: peer.base, userId: '@bot:local.test' }
+      })
+    )
+  ).toEqual({ status: 'sent', receipt: { platformMessageId: '$reply' } })
+  expect(sent).toEqual([
+    expect.objectContaining({
+      'm.relates_to': {
+        rel_type: 'm.thread',
+        event_id: thread,
+        is_falling_back: false,
+        'm.in_reply_to': { event_id: '$selected-message' }
+      }
+    })
+  ])
+})
+
+// Encrypted attachment wire fields are defined at
+// https://spec.matrix.org/v1.15/client-server-api/#sending-encrypted-attachments
+// Unsupported encryption must not prevent later plain messages from reaching SQLite.
+it('rejects an encrypted attachment and durably advances past it to subsequent text', async () => {
+  const observation = observations()
+  let downloads = 0
+
+  const peer = await httpPeer((request, response) => {
+    if (request.url?.includes('/media/download/')) {
+      downloads += 1
+      response.end()
+      return
+    }
+    json(response, {
+      next_batch: 'after-encrypted-attachment',
+      rooms: {
+        join: {
+          [room]: {
+            timeline: {
+              events: [
+                {
+                  event_id: '$encrypted-attachment',
+                  sender: user,
+                  type: 'm.room.message',
+                  content: {
+                    msgtype: 'm.image',
+                    body: 'secret.png',
+                    file: {
+                      url: 'mxc://example.org/encrypted-image',
+                      key: {
+                        kty: 'oct',
+                        key_ops: ['encrypt', 'decrypt'],
+                        alg: 'A256CTR',
+                        k: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+                        ext: true
+                      },
+                      iv: 'AAAAAAAAAAAAAAAAAAAAAA',
+                      hashes: {
+                        sha256: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+                      },
+                      v: 'v2'
+                    }
+                  }
+                },
+                event('$after-encrypted-attachment', 'plain message')
+              ]
+            }
+          }
+        }
+      }
+    })
+  })
+
+  const plugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
+
+  const fixture = await harness(
+    plugin,
+    config(peer.base),
+    [{ chatId: room, threadId: thread }],
+    [user],
+    `${peer.base}/dispatch`,
+    { observe: observation.observe }
+  )
+
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(
+    async () =>
+      (
+        await fixture.storage.getState(
+          { pluginId: 'channel-matrix', ownerId: 'bot' },
+          'sync'
+        )
+      )?.value === 'after-encrypted-attachment'
+  )
+  await plugin.stop?.()
+  const records = await fixture.storage.listInbound({ limit: 10 })
+  expect(records).toHaveLength(1)
+  expect(records[0]?.snapshot.text).toBe('plain message')
+  expect(records[0]?.snapshot.source.eventId).toBe(
+    '$after-encrypted-attachment'
+  )
+  expect(downloads).toBe(0)
+  expect(observation.logs).toContainEqual({
+    event: 'operation.failed',
+    fields: { operation: 'receive', errorCode: 'encrypted_unsupported' }
+  })
+})
+
+// State lookup 404 establishes absent state only with the native M_NOT_FOUND code:
+// https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
+// OpenClaw c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3,
+// Extensions/matrix/src/matrix/sdk/client-core.ts:getMessageWireEventType verifies both.
+it.each([{}, { errcode: 'M_UNRECOGNIZED' }])(
+  'does not send plaintext when encryption preflight has an ambiguous 404 (%j)',
+  async (error) => {
+    let sends = 0
+
+    const peer = await httpPeer((request, response) => {
+      if (request.url?.includes('/state/')) {
+        json(response, error, 404)
+        return
+      }
+      sends += 1
+      json(response, { event_id: '$must-not-send' })
+    })
+
+    const plugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
+    await harness(
+      plugin,
+      config(peer.base),
+      [{ chatId: room }],
+      [user],
+      `${peer.base}/dispatch`
+    )
+    expect(
+      await plugin.send(
+        input({
+          channel: 'matrix',
+          accountId: 'bot',
+          chatId: room,
+          data: { homeserver: peer.base, userId: '@bot:local.test' }
+        })
+      )
+    ).toEqual({ status: 'retryable', errorCode: 'encryption_check_failed' })
+    expect(sends).toBe(0)
+  }
+)

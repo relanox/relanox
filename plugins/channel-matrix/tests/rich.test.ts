@@ -14,7 +14,9 @@ it('uploads inline images and sends one ordered Matrix HTML event with a stable 
 
   const peer = await httpPeer(async (request, response) => {
     if (request.url?.includes('/state/')) {
-      json(response, {}, 404)
+      // Missing room encryption state: Matrix Client-Server v1.15 state endpoint.
+      // https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
+      json(response, { errcode: 'M_NOT_FOUND' }, 404)
     } else if (request.url?.includes('/upload')) {
       const chunks: Buffer[] = []
       for await (const bytes of request) {

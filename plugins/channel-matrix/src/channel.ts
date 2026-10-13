@@ -54,7 +54,7 @@ function outboundRelation(target: SendInput['target']):
     return {
       rel_type: 'm.thread',
       event_id: target.threadId,
-      is_falling_back: true,
+      is_falling_back: false,
       'm.in_reply_to': { event_id: target.replyToId ?? target.threadId }
     }
   }
@@ -62,6 +62,16 @@ function outboundRelation(target: SendInput['target']):
     return { 'm.in_reply_to': { event_id: target.replyToId } }
   }
   return null
+}
+
+function encryptedEvent(event: z.infer<typeof eventSchema>): boolean {
+  // Plaintext media events can also carry encrypted attachment descriptors.
+  return (
+    event.type === 'm.room.encrypted' ||
+    (event.type === 'm.room.message' &&
+      event.content.msgtype !== 'm.text' &&
+      'file' in event.content)
+  )
 }
 
 export function createMatrixChannel(
@@ -108,7 +118,7 @@ export function createMatrixChannel(
     if (event.sender === userId) {
       return
     }
-    if (event.type === 'm.room.encrypted') {
+    if (encryptedEvent(event)) {
       diagnose(host, 'encrypted_unsupported')
       return
     }
@@ -255,12 +265,18 @@ export function createMatrixChannel(
         { headers: headers(), redirect: 'error', signal }
       )
 
+      if (encryption.status === 404) {
+        const missing = z
+          .object({ errcode: z.literal('M_NOT_FOUND') })
+          .safeParse(await readJson(encryption))
+
+        return missing.success
+          ? null
+          : { status: 'retryable', errorCode: 'encryption_check_failed' }
+      }
       await encryption.body?.cancel()
       if (encryption.ok) {
         return { status: 'rejected', errorCode: 'encrypted_unsupported' }
-      }
-      if (encryption.status === 404) {
-        return null
       }
       const failure = httpFailure(encryption)
       return failure.status === 'unknown'
