@@ -146,6 +146,90 @@ async function setup(filename = ':memory:'): Promise<{
 }
 
 describe('native Google Chat', () => {
+  it.each(['users/denied', 'users/alice'])(
+    'authorizes %s before requesting OAuth or attachment bytes',
+    async (sender) => {
+      const local = await setup()
+      const bytes = new Uint8Array([1, 2, 3, 4])
+      local.remote.route(
+        '/v1/media/spaces/space/messages/media/attachments/file?alt=media',
+        bytes,
+        { 'content-type': 'image/png' }
+      )
+      expect(
+        (
+          await local.core.fetch(
+            await local.incoming(undefined, attachmentEvent(sender))
+          )
+        ).status
+      ).toBe(200)
+
+      const credentialed = local.remote.traffic.filter(
+        (request) =>
+          request.path === '/token' || request.path.startsWith('/v1/media/')
+      )
+
+      const inbound = await local.storage.listInbound({ limit: 10 })
+      if (sender === 'users/denied') {
+        expect(credentialed).toHaveLength(0)
+        expect(inbound).toHaveLength(0)
+      } else {
+        expect(credentialed.map((request) => request.path)).toEqual([
+          '/token',
+          '/v1/media/spaces/space/messages/media/attachments/file?alt=media'
+        ])
+        expect(inbound).toHaveLength(1)
+        expect(inbound[0]?.snapshot.senderId).toBe('users/alice')
+        const item = inbound[0]?.snapshot
+        if (!item?.attachments?.[0]) {
+          throw new Error('missing_attachment')
+        }
+
+        const media = await local.principal().media?.read({
+          channelId: item.channel.id,
+          mediaId: item.attachments[0].id
+        })
+
+        expect(media?.data).toEqual(bytes)
+      }
+    }
+  )
+
+  it('fails an authorized media ingress while real SQLite is closed and accepts its replay after reopening', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'relanox-chat-ingress-'))
+    cleanup.push(async () => rm(directory, { recursive: true, force: true }))
+    const filename = join(directory, 'state.db')
+    const local = await setup(filename)
+
+    const path =
+      '/v1/media/spaces/space/messages/media/attachments/file?alt=media'
+
+    local.remote.route(path, new Uint8Array([1, 2, 3, 4]), {
+      'content-type': 'image/png'
+    })
+    await local.storage.close()
+    expect(
+      (
+        await local.core.fetch(
+          await local.incoming(undefined, attachmentEvent())
+        )
+      ).status
+    ).toBe(500)
+    const reopened = await setup(filename)
+    reopened.remote.route(path, new Uint8Array([1, 2, 3, 4]), {
+      'content-type': 'image/png'
+    })
+    expect(await reopened.storage.listInbound({ limit: 10 })).toHaveLength(0)
+    expect(
+      (
+        await reopened.core.fetch(
+          await reopened.incoming(undefined, attachmentEvent())
+        )
+      ).status
+    ).toBe(200)
+    expect(await reopened.storage.listInbound({ limit: 10 })).toHaveLength(1)
+  })
+
   it('accepts both Google OAuth ID token issuers before persisting an authorized message', async () => {
     // Google OAuth verifier accepts both issuer spellings:
     // https://github.com/googleapis/google-auth-library-nodejs/blob/a95b8272197f35453d1647eed85be475d51474c9/src/auth/oauth2client.ts#L620-L623
@@ -462,6 +546,30 @@ describe('native Google Chat', () => {
     ).toThrow()
   })
 })
+
+function attachmentEvent(sender = 'users/alice'): string {
+  // Native Message.sender and AttachmentDataRef contracts:
+  // https://github.com/googleapis/google-api-nodejs-client/blob/f1a8448f294a39320c2a548a118fb2a0b8ada468/src/apis/chat/v1.ts
+  // https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments
+  return JSON.stringify({
+    type: 'MESSAGE',
+    space: { name: 'spaces/space' },
+    message: {
+      name: 'spaces/space/messages/media',
+      sender: { name: sender, type: 'HUMAN' },
+      thread: { name: 'spaces/space/threads/thread' },
+      attachment: [
+        {
+          contentName: 'picture.png',
+          contentType: 'image/png',
+          attachmentDataRef: {
+            resourceName: 'spaces/space/messages/media/attachments/file'
+          }
+        }
+      ]
+    }
+  })
+}
 
 it('downloads pure Google Chat media with bot auth and returns a native image card to the frozen thread', async () => {
   const local = await setup()

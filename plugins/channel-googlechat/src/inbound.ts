@@ -25,6 +25,12 @@ export async function receive(
     })
     return
   }
+  if (!account.allowedSenders.includes(message.sender.name)) {
+    host.observe.log('info', 'channel_policy_rejection', {
+      errorCode: 'sender_not_allowed'
+    })
+    return
+  }
   const text = message.argumentText ?? message.text ?? ''
   if (!text && !message.attachment?.length) {
     host.observe.log('debug', 'channel_event_ignored', {
