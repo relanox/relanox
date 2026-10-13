@@ -11,6 +11,7 @@ import { WebSocketServer } from 'ws'
 import type { RawData } from 'ws'
 import { createSlackChannel } from '../src/index.js'
 import { peer, recorder, sendInput } from './peer.js'
+import { mediaPeer } from '../../channel-telegram/tests/media-peer.js'
 
 installPeerNetwork()
 
@@ -433,6 +434,139 @@ describe('slack native protocol', () => {
       ).status
     ).toBe(204)
     expect(test.received).toHaveLength(0)
+  })
+
+  // Native human message fields: https://github.com/slackapi/node-slack-sdk/blob/e02e7feeb500bfde1f947401a639633e42ce2f91/packages/types/src/events/message.ts
+  it.each([
+    { subtype: 'me_message', threadId: undefined, outerThread: false },
+    {
+      subtype: 'thread_broadcast',
+      threadId: '1700000000.001',
+      outerThread: true
+    },
+    {
+      subtype: 'thread_broadcast',
+      threadId: '1700000000.001',
+      outerThread: false
+    }
+  ])(
+    'receives native human $subtype messages at their original address (outer thread: $outerThread)',
+    async ({ subtype, threadId, outerThread }) => {
+      const test = await setup()
+      const { thread_ts: _thread, ...message } = event.event
+      expect(
+        (
+          await test.handler(
+            request({
+              ...event,
+              event: {
+                ...message,
+                subtype,
+                channel_type: 'channel',
+                event_ts: '1700000000.002',
+                ...(threadId
+                  ? {
+                      ...(outerThread ? { thread_ts: threadId } : {}),
+                      client_msg_id: '9b3f2ca4-46c6-4dbc-a0f5-5576033c55d3',
+                      root: {
+                        type: 'message',
+                        event_ts: threadId,
+                        channel: 'C7',
+                        channel_type: 'channel',
+                        user: 'U42',
+                        text: 'root',
+                        ts: threadId,
+                        thread_ts: threadId,
+                        reply_count: 1,
+                        reply_users_count: 1,
+                        latest_reply: '1700000000.002',
+                        reply_users: ['U42']
+                      }
+                    }
+                  : {})
+              }
+            })
+          )
+        ).status
+      ).toBe(204)
+      expect(test.received).toHaveLength(1)
+      expect(test.received[0]).toMatchObject({
+        source: { channel: 'slack', accountId: 'sl', eventId: 'Ev1' },
+        senderId: 'U42',
+        text: 'hello',
+        target: { chatId: 'C7', replyToId: '1700000000.002' }
+      })
+      expect(test.received[0]?.target.threadId).toBe(threadId)
+    }
+  )
+
+  it('receives a native file with a null name using its file ID without dropping the message', async () => {
+    const download = await mediaPeer(() => ({
+      data: Uint8Array.of(104, 101, 108, 108, 111),
+      mimeType: 'text/plain'
+    }))
+
+    cleanup.push(download.close)
+    routePlatform('https://files.slack.com', registerPeer(download.origin))
+    const test = await setup()
+    // The native message File contract above explicitly permits name: string | null.
+    expect(
+      (
+        await test.handler(
+          request({
+            ...event,
+            event: {
+              ...event.event,
+              subtype: 'file_share',
+              files: [
+                {
+                  id: 'F123',
+                  created: 1_700_000_000,
+                  name: null,
+                  title: null,
+                  mimetype: 'text/plain',
+                  filetype: 'text',
+                  pretty_type: 'Plain Text',
+                  user: 'U42',
+                  editable: false,
+                  size: 5,
+                  mode: 'hosted',
+                  is_external: false,
+                  external_type: null,
+                  is_public: false,
+                  public_url_shared: false,
+                  display_as_bot: false,
+                  username: null,
+                  permalink: 'https://workspace.slack.com/files/U42/F123',
+                  channels: ['C7'],
+                  groups: [],
+                  url_private_download:
+                    'https://files.slack.com/files-pri/T1-F123/download'
+                }
+              ]
+            }
+          })
+        )
+      ).status
+    ).toBe(204)
+    expect(test.received).toHaveLength(1)
+    expect(test.received[0]?.attachments).toMatchObject([
+      {
+        kind: 'file',
+        mimeType: 'text/plain',
+        fileName: 'F123'
+      }
+    ])
+    expect([...(test.received[0]?.attachments?.[0]?.data ?? [])]).toEqual([
+      104, 101, 108, 108, 111
+    ])
+    expect(download.traffic).toMatchObject([
+      {
+        method: 'GET',
+        path: '/files-pri/T1-F123/download',
+        headers: { authorization: 'Bearer xoxb-secret' }
+      }
+    ])
   })
 
   it('does not acknowledge failed HTTP handoff', async () => {
