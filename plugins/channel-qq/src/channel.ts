@@ -84,7 +84,7 @@ function configuredType(
 function supportedMessage(message: z.infer<typeof messageSchema>): boolean {
   return !(
     (message.message_type !== undefined &&
-      ![0, 7].includes(message.message_type)) ||
+      ![0, 7, 103].includes(message.message_type)) ||
     (!message.attachments?.length && !message.content.trim()) ||
     message.attachments?.some((attachment) => !attachment.url)
   )

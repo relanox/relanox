@@ -487,6 +487,102 @@ test('QQ rejects deprecated static token configuration and remote insecure API b
   ).toThrow()
 })
 
+// Native 103 messages keep the current user's text in content; msg_elements carries the quote.
+// https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html
+// https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_at_message_create.html
+test.each([false, true])(
+  'QQ receives the current text of a native quoted message and replies to its message ID (group=%s)',
+  async (group) => {
+    vi.stubEnv('QQ_SECRET', 'secret')
+    let address = ''
+
+    const remote = await peer(
+      (request) => {
+        if (request.path === '/app/getAppAccessToken') {
+          return { body: { access_token: 'token', expires_in: 7200 } }
+        }
+        return request.path === '/gateway'
+          ? { body: { url: address } }
+          : { body: { id: 'quoted-reply' } }
+      },
+      (socket) => {
+        socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
+        socket.on('message', (data) => {
+          const received = z
+            .object({ op: z.number() })
+            .parse(JSON.parse(wireText(data)))
+
+          if (received.op === 2) {
+            socket.send(frame(1, 'READY', { session_id: 'session' }))
+            socket.send(
+              frame(
+                2,
+                group ? 'GROUP_AT_MESSAGE_CREATE' : 'C2C_MESSAGE_CREATE',
+                createEvent('current-message', group, {
+                  content: 'Could you expand on that?',
+                  message_type: 103,
+                  msg_elements: [
+                    {
+                      msg_idx: 'REFIDX_previous',
+                      message_type: 0,
+                      content: 'Earlier answer'
+                    }
+                  ],
+                  message_scene: {
+                    ext: [
+                      'ref_msg_idx=REFIDX_previous',
+                      'msg_idx=REFIDX_current'
+                    ]
+                  }
+                })
+              )
+            )
+          }
+          if (received.op === 1) {
+            socket.send(JSON.stringify({ op: 11 }))
+          }
+        })
+      }
+    )
+
+    address = remote.ws
+
+    const host = await assemble(
+      createQqChannel(),
+      { appId: 'app', clientSecret: { env: 'QQ_SECRET' } },
+      [
+        {
+          chatId: group ? 'group' : 'user',
+          senderId: group ? 'member' : 'user'
+        }
+      ]
+    )
+
+    await host.start()
+    await expect.poll(async () => (await records(host.storage)).length).toBe(1)
+    const saved = (await records(host.storage))[0]?.snapshot
+    if (!saved) {
+      throw new Error('missing_quoted_message')
+    }
+    expect(saved.text).toBe('Could you expand on that?')
+    expect(saved.senderId).toBe(group ? 'member' : 'user')
+    await host.principal().sendMessage({
+      channel: saved.channel.id,
+      text: 'Here is more detail.'
+    })
+    await host.runtime.processDue()
+    expect(
+      remote.requests.find((request) => request.path.endsWith('/messages'))
+        ?.body
+    ).toEqual({
+      msg_type: 2,
+      markdown: { content: 'Here is more detail.' },
+      msg_id: 'current-message',
+      msg_seq: 1
+    })
+  }
+)
+
 test('QQ resumes before a failed SQLite write even with later dispatches already buffered', async () => {
   vi.stubEnv('QQ_SECRET', 'secret')
   let address = ''
