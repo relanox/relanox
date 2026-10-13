@@ -73,6 +73,92 @@ it('downloads exact binary bytes from an explicitly configured native API origin
   expect(authorization).toBe('Bearer native-test')
 })
 
+// Native resource token rejection: https://open.feishu.cn/document/faq/trouble-shooting/how-to-fix-99991663-error
+it.each([400, 401])(
+  'preserves bounded native JSON errors for failed resource HTTP %s',
+  async (status) => {
+    const { origin, options } = await peer((_request, response) => {
+      response.writeHead(status, { 'content-type': 'application/json' })
+      response.end('{"code":99991663,"msg":"Invalid access token"}')
+    })
+
+    await expect(
+      downloadMedia(`${origin}/file`, options)
+    ).rejects.toMatchObject({
+      code: 'media_download_failed',
+      status,
+      responseBody: { code: 99_991_663, msg: 'Invalid access token' }
+    })
+  }
+)
+
+it('keeps successful JSON resources as the original file bytes', async () => {
+  const text = '{"code":99991663,"note":"ordinary user file"}'
+
+  const { origin, options } = await peer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(text)
+  })
+
+  const media = await downloadMedia(`${origin}/file`, {
+    ...options,
+    maxBytes: 128
+  })
+
+  expect(media.status).toBe(200)
+  expect(media.mimeType).toBe('application/json')
+  expect(Buffer.from(media.data).toString('utf8')).toBe(text)
+})
+
+it.each([true, false])(
+  'bounds failed JSON response information with content-length=%s',
+  async (declared) => {
+    const text = JSON.stringify({
+      code: 99_991_663,
+      msg: 'x'.repeat(128 * 1024)
+    })
+
+    const { origin, options } = await peer((_request, response) => {
+      response.writeHead(401, {
+        'content-type': 'application/json',
+        ...(declared
+          ? { 'content-length': String(Buffer.byteLength(text)) }
+          : {})
+      })
+      response.end(text)
+    })
+
+    await expect(
+      downloadMedia(`${origin}/file`, options)
+    ).rejects.toMatchObject({
+      code: 'media_download_failed',
+      status: 401,
+      responseBody: undefined
+    })
+  }
+)
+
+it.each([
+  { mimeType: 'application/json', body: 'invalid JSON' },
+  { mimeType: 'text/plain', body: '{"code":99991663}' }
+])(
+  'retains HTTP failure without interpreting unusable $mimeType information',
+  async ({ mimeType, body }) => {
+    const { origin, options } = await peer((_request, response) => {
+      response.writeHead(503, { 'content-type': mimeType })
+      response.end(body)
+    })
+
+    await expect(
+      downloadMedia(`${origin}/file`, options)
+    ).rejects.toMatchObject({
+      code: 'media_download_failed',
+      status: 503,
+      responseBody: undefined
+    })
+  }
+)
+
 // LINE content downloads return 202 while audio/video is being prepared:
 // https://developers.line.biz/en/reference/messaging-api/#get-content
 it.each([200, 202])(

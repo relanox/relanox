@@ -5,7 +5,9 @@ export class MediaDownloadError extends Error {
       | 'media_too_large'
       | 'media_download_failed'
       | 'media_timeout',
-    readonly status?: number
+    readonly status?: number,
+    /** Parsed JSON from a failed native HTTP response, bounded to 64 KiB. */
+    readonly responseBody?: unknown
   ) {
     super(code)
     this.name = 'MediaDownloadError'
