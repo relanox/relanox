@@ -102,6 +102,17 @@ export function createSlackChannel(
       })
       return
     }
+    // Check the canonical native sender before any credentialed file requests.
+    // Core ingest remains authoritative for bindings and their narrower policy.
+    if (!account.allowedSenders.includes(event.user)) {
+      host.observe.count('relanox_inbound_total', {
+        channel: 'slack',
+        operation: 'ingest',
+        outcome: 'rejected',
+        error_class: 'sender_not_allowed'
+      })
+      return
+    }
     await ingest(host, {
       source: {
         channel: 'slack',
