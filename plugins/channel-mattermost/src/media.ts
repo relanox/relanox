@@ -17,7 +17,7 @@ import { diagnose, httpFailure, readJson } from './protocol.js'
 
 const infoSchema = z.object({
   id: z.string().min(1).max(1024),
-  name: z.string().min(1).max(255),
+  name: z.string().min(1).max(256),
   mime_type: z.string().max(128),
   size: z.number().int().nonnegative()
 })

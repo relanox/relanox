@@ -12,7 +12,7 @@ const uploadSchema = z.strictObject({
   fileName: z
     .string()
     .min(1)
-    .max(255)
+    .max(256)
     .refine(
       (name) =>
         name.isWellFormed() &&

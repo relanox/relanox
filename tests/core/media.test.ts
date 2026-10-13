@@ -221,12 +221,18 @@ it('retains endpoint media access after notification redispatch and removes expi
 it('rejects malformed or oversized media and unsupported sends without enqueueing', async () => {
   const f = await mediaFixture([])
   try {
-    await expect(
-      f.channel.ingest({
-        ...incoming,
-        attachments: [{ ...picture, fileName: '../picture.png' }]
-      })
-    ).rejects.toThrow()
+    for (const fileName of [
+      '../picture.png',
+      'a'.repeat(257),
+      '😀'.repeat(128) + 'a'.repeat(129)
+    ]) {
+      await expect(
+        f.channel.ingest({
+          ...incoming,
+          attachments: [{ ...picture, fileName }]
+        })
+      ).rejects.toThrow()
+    }
     await expect(
       f.channel.ingest({
         ...incoming,
