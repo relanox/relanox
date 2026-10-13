@@ -342,7 +342,9 @@ it.each(cases)(
             caption
           )
         ).status
-      ).toBe(channel === 'line' ? 200 : 204)
+        // Feishu requires HTTP 200 to acknowledge native callback events.
+        // https://open.feishu.cn/document/event-subscription-guide/event-subscriptions/faq
+      ).toBe(channel === 'line' || channel === 'feishu' ? 200 : 204)
     }
     await expect
       .poll(() => fixture.routine.traffic.length, { timeout: 5000 })
