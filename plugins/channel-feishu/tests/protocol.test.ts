@@ -1074,9 +1074,9 @@ it.each([
     content: {
       content: [
         [
-          { tag: 'at', user_id: '@_user_1' },
+          { tag: 'at', user_id: '@_user_1', user_name: '' },
           { tag: 'text', text: ' asks ' },
-          { tag: 'at', user_id: '@_user_10' }
+          { tag: 'at', user_id: '@_user_10', user_name: '' }
         ]
       ]
     }
@@ -1086,6 +1086,7 @@ it.each([
   async ({ message_type, content }) => {
     // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
     // Channel/normalize/context.ts RawMention and channel/normalize/mentions.ts resolveMentions.
+    // Native empty post user_name: https://open.feishu.cn/document/server-docs/im-v1/message-content-description/message_content
     const local = await setup()
 
     const response = await local.handler(
@@ -1110,6 +1111,33 @@ it.each([
     expect(local.received[0]?.text).toBe('@Alice asks @Bob')
   }
 )
+
+it('preserves the native shortcode in emotion-only rich posts', async () => {
+  // Source: https://open.feishu.cn/document/server-docs/im-v1/message-content-description/message_content
+  // Native emotion elements carry emoji_type, including SMILE, without a text field.
+  const local = await setup()
+
+  const response = await local.handler(
+    request({
+      ...event,
+      event: {
+        ...event.event,
+        message: {
+          ...event.event.message,
+          message_type: 'post',
+          content: JSON.stringify({
+            title: '',
+            content: [[{ tag: 'emotion', emoji_type: 'SMILE' }]]
+          })
+        }
+      }
+    })
+  )
+
+  expect(response.status).toBe(200)
+  expect(local.received).toHaveLength(1)
+  expect(local.received[0]?.text).toBe(':SMILE:')
+})
 
 it.each([
   {
