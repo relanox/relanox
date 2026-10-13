@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { readFile } from 'node:fs/promises'
 import { ingressFixture } from './ingress-fixture.js'
 import { mediaPeer } from './media-peer.js'
 
@@ -15,12 +16,18 @@ afterEach(async () => {
 // VoiceNotesManager.cpp create_voice_note uses max(duration, 0), and
 // Get_voice_note_object returns that value. A zero native duration is legal.
 it.each([
-  { seconds: 0, durationMs: undefined },
-  { seconds: 2, durationMs: 2000 }
+  { seconds: 0, durationMs: undefined, filename: 'voice-short.oga' },
+  { seconds: 2, durationMs: 2000, filename: 'voice-two-seconds.oga' }
 ])(
   'persists a native $seconds-second voice and preserves known duration through restart',
-  async ({ seconds, durationMs }) => {
-    const data = Uint8Array.of(1, 2, 3)
+  async ({ seconds, durationMs, filename }) => {
+    // Complete Ogg Opus silence generated once with FFmpeg 7.1.1:
+    // Ffmpeg -f lavfi -i anullsrc=r=48000:cl=mono -t 0.02 (or 2) -c:a libopus -b:a 16k -f ogg
+    // Native Voice duration is an integer number of seconds; the short file is <1s.
+    // https://core.telegram.org/bots/api#voice
+    const data = new Uint8Array(
+      await readFile(new URL(filename, import.meta.url))
+    )
 
     const remote = await mediaPeer((traffic) =>
       traffic.method === 'GET'
@@ -31,7 +38,7 @@ it.each([
               result: {
                 file_id: 'native-voice',
                 file_unique_id: 'voice-unique',
-                file_size: 3,
+                file_size: data.byteLength,
                 file_path: 'voice/file_1.oga'
               }
             }
@@ -55,7 +62,7 @@ it.each([
           file_unique_id: 'voice-unique',
           duration: seconds,
           mime_type: 'audio/ogg',
-          file_size: 3
+          file_size: data.byteLength
         }
       }
     }
@@ -79,7 +86,7 @@ it.each([
     expect(attachment).toMatchObject({
       kind: 'audio',
       mimeType: 'audio/ogg',
-      size: 3,
+      size: data.byteLength,
       fileName: 'file_1.oga'
     })
     expect(attachment?.durationMs).toBe(durationMs)
