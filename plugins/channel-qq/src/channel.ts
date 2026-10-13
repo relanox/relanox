@@ -203,6 +203,10 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       connection.signal
     )
 
+    if (!attachments) {
+      return
+    }
+
     await ingestText(host, {
       source: { channel: 'qq', accountId: account.id, eventId },
       senderId,
