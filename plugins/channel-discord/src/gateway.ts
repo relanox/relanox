@@ -284,10 +284,16 @@ export function createDiscordGateway(
             host.connection('connected')
           } else if (packet.t === 'MESSAGE_CREATE') {
             const message = messageSchema.parse(packet.d)
+
+            const allowedSender = account.allowedSenders.includes(
+              message.author.id
+            )
+
             if (
               !message.author.bot &&
               !message.webhook_id &&
               message.author.id !== discovered.botId &&
+              allowedSender &&
               [0, 19].includes(message.type) &&
               (message.content || message.attachments.length > 0)
             ) {
@@ -341,7 +347,7 @@ export function createDiscordGateway(
                 channel: 'discord',
                 operation: 'ingest',
                 outcome: 'rejected',
-                error_class: 'unsupported'
+                error_class: allowedSender ? 'unsupported' : 'authorization'
               })
             }
           }
