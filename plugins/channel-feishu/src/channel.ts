@@ -17,7 +17,8 @@ import {
   messageContent,
   mediaError,
   parseContent,
-  isMediaSizeRejection
+  isMediaSizeRejection,
+  isMediaTokenRejection
 } from './media.js'
 import {
   encryptedEventSchema,
@@ -273,6 +274,22 @@ export function createFeishuChannel(
     return value
   }
 
+  function inboundFailure(error: unknown): Response {
+    if (isMediaTokenRejection(error)) {
+      token = undefined
+    }
+    if (isMediaSizeRejection(error)) {
+      host.observe.count('relanox_inbound_total', {
+        channel: 'feishu',
+        operation: 'ingest',
+        outcome: 'rejected',
+        error_class: 'policy'
+      })
+      return new Response(null, { status: 200 })
+    }
+    return new Response(null, { status: 503 })
+  }
+
   async function receiveEvent(
     event: z.infer<typeof eventSchema>
   ): Promise<Response> {
@@ -377,16 +394,7 @@ export function createFeishuChannel(
       })
       return new Response(null, { status: 200 })
     } catch (error) {
-      if (isMediaSizeRejection(error)) {
-        host.observe.count('relanox_inbound_total', {
-          channel: 'feishu',
-          operation: 'ingest',
-          outcome: 'rejected',
-          error_class: 'policy'
-        })
-        return new Response(null, { status: 200 })
-      }
-      return new Response(null, { status: 503 })
+      return inboundFailure(error)
     }
   }
 
