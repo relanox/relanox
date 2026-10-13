@@ -248,7 +248,8 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
               body,
               callbackKey(secret(config.encodingAESKey)),
               secret(config.token)
-            )
+            ),
+            { headers: { 'content-type': 'text/plain; charset=utf-8' } }
           )
         : new Response(null, { status: 200 })
     } catch {

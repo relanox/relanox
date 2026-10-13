@@ -66,9 +66,12 @@ test('callback persists a deduplicated message and private reply destination acr
 
   await host.start()
 
-  const pendingReply = await callbackReply(
-    await host.runtime.fetch(callbackRequest(callbackMessage()))
-  )
+  const response = await host.runtime.fetch(callbackRequest(callbackMessage()))
+  // Native encrypted HTTP replies: WecomTeam/wecom-openclaw-plugin at
+  // 3b1cbe3e664352821758d99ae5907f5620fce26e,
+  // `src/webhook/handler.ts` sendEncryptedReply uses text/plain JSON.
+  expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8')
+  const pendingReply = await callbackReply(response)
 
   expect(pendingReply.stream).toMatchObject({ finish: false, content: '' })
   for (let attempt = 0; attempt < 2; attempt++) {
