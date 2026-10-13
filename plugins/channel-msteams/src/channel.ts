@@ -225,8 +225,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       if (prepared.consentKey) {
         await consentPosted(runtime.host, prepared.consentKey)
         return {
-          status: 'retryable',
-          errorCode: 'file_consent_pending',
+          status: 'pending',
           retryAfterMs: 30_000
         }
       }
