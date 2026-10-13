@@ -162,9 +162,9 @@ const scenarios = [
   },
   {
     name: 'attachment count',
-    // Complete 1x1 PNG, not an empty or undecodable image.
+    // Complete 1x1 PNG; Pillow Image.verify and Image.load validate its CRC/data.
     bytes: Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=',
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
       'base64'
     ),
     worker: { maxAttachments: 1 }
@@ -172,7 +172,7 @@ const scenarios = [
   {
     name: 'aggregate bytes',
     bytes: Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=',
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
       'base64'
     ),
     worker: { maxTotalMediaBytes: 100 }
