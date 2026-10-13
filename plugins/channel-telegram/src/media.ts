@@ -137,15 +137,16 @@ export async function receiveMedia(
       ? fallback
       : downloaded.mimeType)
 
+  // Native durations may be zero; Core's optional duration stores positive milliseconds.
+  const durationMs = Math.round((file.duration ?? 0) * 1000)
+
   return [
     {
       kind: mediaKind(mimeType),
       mimeType,
       fileName: file.file_name ?? path.split('/').at(-1) ?? 'attachment',
       data: downloaded.data,
-      ...(file.duration === undefined
-        ? {}
-        : { durationMs: Math.round(file.duration * 1000) })
+      ...(durationMs > 0 ? { durationMs } : {})
     }
   ]
 }
