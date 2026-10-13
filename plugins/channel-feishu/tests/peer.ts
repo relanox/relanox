@@ -131,7 +131,11 @@ export async function peer(
       'content-type': 'application/json',
       ...output.headers
     })
-    response.end(JSON.stringify(output.body))
+    response.end(
+      output.body instanceof Uint8Array
+        ? output.body
+        : JSON.stringify(output.body)
+    )
   }
 
   const server = createServer((request, response) => {
