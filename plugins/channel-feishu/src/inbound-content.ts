@@ -110,7 +110,8 @@ function postText(element: z.infer<typeof postElementSchema>): string {
     return name.startsWith('@_') ? name : `@${name}`
   }
   if (element.tag === 'a') {
-    return element.text ?? element.href ?? ''
+    const label = element.text ?? element.href ?? ''
+    return element.href ? `[${label}](${element.href})` : label
   }
   if (element.tag === 'hr') {
     return '\n'
