@@ -19,7 +19,7 @@ export const messageSchema = z.object({
   group_openid: z.string().min(1).optional(),
   message_type: z.number().int().optional(),
   msg_seq: z.number().int().optional(),
-  message_scene: z.object({ ext: z.array(z.string()) }).optional(),
+  message_scene: z.object({ ext: z.array(z.string()).optional() }).optional(),
   attachments: z
     .array(
       z.object({
