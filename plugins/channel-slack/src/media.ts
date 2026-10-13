@@ -1,6 +1,11 @@
 import { slackMarkdown } from './markdown.js'
 import { REQUEST_TIMEOUT_MS, API_BASE_URL } from './config.js'
-import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  mediaBlob,
+  mediaKind,
+  MediaDownloadError
+} from '@relanox/channel-media'
 import type {
   Json,
   ChannelHost,
@@ -15,6 +20,8 @@ import { failure, jsonResponse, postJson } from './transport.js'
 import { apiError } from './client.js'
 
 export { sendOutcome, discoverIdentity } from './client.js'
+
+export { MediaDownloadError } from '@relanox/channel-media'
 
 async function fileMetadata(
   file: z.infer<typeof fileSchema>,
@@ -52,7 +59,7 @@ export async function receiveMedia(
     files.map(async (eventFile) => {
       const file = await fileMetadata(eventFile, token)
       if ((file.size ?? 0) > (host.maxMediaBytes ?? 25 * 1024 * 1024)) {
-        throw new Error('media_too_large')
+        throw new MediaDownloadError('media_too_large')
       }
       const url = file.url_private_download ?? file.url_private
       if (!url) {

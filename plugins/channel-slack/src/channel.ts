@@ -7,7 +7,12 @@ import {
 } from './config.js'
 import { createHmac } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
-import type { AccountConfig, ChannelHost, ChannelPlugin } from '@relanox/sdk'
+import type {
+  AccountConfig,
+  ChannelHost,
+  ChannelPlugin,
+  IngestInput
+} from '@relanox/sdk'
 import { WebSocket } from 'ws'
 import type { z } from 'zod'
 import type { SlackConfig } from './config.js'
@@ -21,6 +26,7 @@ import {
 import { frameText, waitForStop } from './socket.js'
 import {
   receiveMedia,
+  MediaDownloadError,
   sendMedia,
   richBlocks,
   richError,
@@ -73,6 +79,31 @@ export function createSlackChannel(
   let controller: AbortController | undefined
   let task: Promise<void> | undefined
   let socket: WebSocket | undefined
+
+  async function ingestWithMedia(
+    input: Omit<IngestInput, 'attachments'>,
+    files: z.infer<typeof messageSchema>['files']
+  ): Promise<void> {
+    try {
+      const attachments = await receiveMedia(
+        files,
+        host,
+        credential(config.botToken, environment)
+      )
+
+      await ingest(host, { ...input, attachments })
+    } catch (error) {
+      if (
+        !(error instanceof MediaDownloadError) ||
+        error.code !== 'media_too_large'
+      ) {
+        throw error
+      }
+      host.observe.log('info', 'channel_policy_rejection', {
+        errorCode: error.code
+      })
+    }
+  }
 
   async function ingestEnvelope(value: unknown): Promise<void> {
     const envelope = envelopeSchema.parse(value)
@@ -129,30 +160,28 @@ export function createSlackChannel(
       })
       return
     }
-    await ingest(host, {
-      source: {
-        channel: 'slack',
-        accountId: account.id,
-        eventId: envelope.event_id
+    await ingestWithMedia(
+      {
+        source: {
+          channel: 'slack',
+          accountId: account.id,
+          eventId: envelope.event_id
+        },
+        senderId: event.user,
+        text: event.text ?? '',
+        target: {
+          channel: 'slack',
+          accountId: account.id,
+          chatId: event.channel,
+          ...(threadId ? { threadId } : {}),
+          replyToId: event.ts,
+          data: identity()
+        },
+        context: { teamId },
+        receivedAt: Date.now()
       },
-      senderId: event.user,
-      text: event.text ?? '',
-      attachments: await receiveMedia(
-        event.files,
-        host,
-        credential(config.botToken, environment)
-      ),
-      target: {
-        channel: 'slack',
-        accountId: account.id,
-        chatId: event.channel,
-        ...(threadId ? { threadId } : {}),
-        replyToId: event.ts,
-        data: identity()
-      },
-      context: { teamId },
-      receivedAt: Date.now()
-    })
+      event.files
+    )
   }
 
   async function connect(signal: AbortSignal): Promise<void> {
