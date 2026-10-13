@@ -29,7 +29,7 @@ Core 从当前账号的绑定提供 `host.boundChatIds`。长连接渠道可用�
 
 ### 原生文字和图片布局
 
-仅在原生协议接受有序文字和图片内容时声明 `capabilities.richText`。其中 `maxParts` 计算每个分块中的文字和图片部分数，`maxTextLength` 按 `lengthUnit` 限制这些部分的源文本总长度。可选的 `imageMimeTypes` 和 `maxImageBytes` 限制行内图片。超出行内限制时，Core 在原位置通过独立媒体发送图片，只发送一次。普通媒体限制和整条消息限制仍适用。
+仅在原生协议接受有序文字和图片内容时声明 `capabilities.richText`。其中 `maxParts` 计算每个分块中的文字和图片部分数，`maxTextLength` 按 `lengthUnit` 限制这些部分的源文本总长度。可选的 `imageMimeTypes` 和 `maxImageBytes` 限制行内图片。`maxTotalImageBytes` 限制每个分块的图片总字节数，设置时应为平台请求的其他字段预留空间。Core 按这个总量拆分富文本分块；超出单图行内限制时，在原位置通过独立媒体发送图片，只发送一次。普通媒体限制和整条消息限制仍适用。
 
 Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中的引用，检查渠道归属和图片类型，拆分闭合格式的文字，并在入队前固定投递计划。`DeliveryChunk.richText` 包含有序的 `RichTextPart` 文字和图片条目，与非空 `text` 和独立 `media` 互斥。`SendInput.richMedia` 按阅读顺序提供已验证的存储图片。将这些字节与分块引用对应，使用平台的原生上传或图片 URL 表达方式，不要下载内部 Markdown URI。需要跨重试复用的平台上传 ID 应保存在渠道状态中。
 
