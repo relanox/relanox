@@ -38,6 +38,12 @@ export async function receiveEvent(
   if (!event.webhookEventId || !source.userId) {
     throw new Error('missing_event_identity')
   }
+  if (!account.allowedSenders.includes(source.userId)) {
+    host.observe.log('info', 'channel_policy_rejection', {
+      errorCode: 'sender_not_allowed'
+    })
+    return
+  }
   let destination = source.userId
   if (source.type === 'group') {
     destination = source.groupId ?? ''
