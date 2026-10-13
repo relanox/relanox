@@ -216,8 +216,7 @@ export async function uploadMedia(
     return { status: 'retryable', errorCode: 'media_upload_failed' }
   }
   if (!response.ok) {
-    await response.body?.cancel()
-    const result = failure(response)
+    const result = await failure(response)
     return result.status === 'unknown'
       ? { status: 'retryable', errorCode: 'media_upload_failed' }
       : result

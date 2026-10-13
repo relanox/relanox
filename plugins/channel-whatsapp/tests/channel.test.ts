@@ -27,6 +27,7 @@ afterEach(async () => {
     await close()
   }
   vi.unstubAllEnvs()
+  vi.useRealTimers()
 })
 
 const config = (): Json => ({
@@ -539,6 +540,97 @@ describe('native WhatsApp Cloud', () => {
     expect((await local.sendReply()).delivery?.status).toBe(expected)
     expect(local.remote.traffic).toHaveLength(1)
   })
+
+  // Meta defines these integer codes as retryable API/WABA/throughput/pair
+  // Limits and explicitly says to use codes rather than HTTP status:
+  // https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes#throttling-errors
+  it.each([4, 80_007, 130_429, 131_056])(
+    'recovers a saved Graph rate-limit refusal %s after restart',
+    async (code) => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      const directory = await mkdtemp(join(tmpdir(), 'relanox-whatsapp-rate-'))
+      cleanup.push(async () => rm(directory, { recursive: true }))
+      const filename = join(directory, 'state.db')
+      const local = await setup(filename)
+      expect((await local.core.fetch(incoming(webhook()))).status).toBe(200)
+      local.remote.respond(400, {
+        error: {
+          type: 'OAuthException',
+          code,
+          error_data: { messaging_product: 'whatsapp' }
+        }
+      })
+      const result = await local.sendReply('saved answer')
+      expect(result.delivery?.status).toBe('pending')
+      expect(local.remote.traffic).toHaveLength(1)
+      const deliveryId = result.delivery?.deliveryId
+      if (!deliveryId) {
+        throw new Error('Missing durable rate-limited delivery')
+      }
+      await local.close()
+      cleanup.pop()
+      local.remote.respond(200, {
+        messaging_product: 'whatsapp',
+        messages: [{ id: 'wamid.recovered' }]
+      })
+      vi.setSystemTime(Date.now() + 10_000)
+
+      const restarted = await harness(
+        createWhatsAppChannel(),
+        config(),
+        'customer',
+        'customer',
+        undefined,
+        filename
+      )
+
+      cleanup.push(restarted.close)
+      await restarted.core.processDue()
+      const completed = await restarted.storage.getOutbound(deliveryId)
+      expect(completed?.status).toBe('sent')
+      expect(completed?.receipts).toEqual([
+        { platformMessageId: 'wamid.recovered' }
+      ])
+      expect(local.remote.traffic).toHaveLength(2)
+      expect(
+        local.remote.traffic.map(
+          (request) => JSON.parse(request.body) as unknown
+        )
+      ).toEqual([
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: 'customer',
+          type: 'text',
+          text: { body: 'saved answer', preview_url: false }
+        },
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: 'customer',
+          type: 'text',
+          text: { body: 'saved answer', preview_url: false }
+        }
+      ])
+    }
+  )
+
+  it.each([
+    [400, 190, 'rejected'],
+    [400, 131_047, 'rejected'],
+    [400, 131_048, 'rejected'],
+    [400, '130429', 'rejected'],
+    [503, 130_429, 'unknown']
+  ] as const)(
+    'preserves HTTP %s failure boundaries for native error %s',
+    async (status, code, expected) => {
+      const local = await setup()
+      expect((await local.core.fetch(incoming(webhook()))).status).toBe(200)
+      local.remote.respond(status, { error: { code } })
+      expect((await local.sendReply()).delivery?.status).toBe(expected)
+      expect(local.remote.traffic).toHaveLength(1)
+    }
+  )
 
   it('requires SecretRefs and rejects hosted endpoint overrides', () => {
     const plugin = createWhatsAppChannel()

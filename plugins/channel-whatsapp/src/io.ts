@@ -5,6 +5,8 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import { z } from 'zod'
+import { readJson } from '@relanox/transport'
+import { errorResponseSchema } from './schemas.js'
 
 export { signed } from '@relanox/transport'
 export { rawBody, parseBody, request } from '@relanox/transport'
@@ -37,24 +39,41 @@ export async function ingest(
   }
 }
 
-export function failure(response: Response): SendResult {
-  if (response.status === 429) {
-    const seconds = Number(response.headers.get('retry-after'))
-
-    const delay =
-      Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 1000
-
-    return {
-      status: 'retryable',
-      errorCode: 'rate_limited',
-      retryAfterMs: delay
-    }
+async function nativeRateLimit(response: Response): Promise<boolean> {
+  try {
+    const parsed = errorResponseSchema.parse(await readJson(response))
+    return [4, 80_007, 130_429, 131_056].includes(parsed.error.code)
+  } catch {
+    return false
   }
+}
 
-  const status =
-    response.status >= 400 && response.status < 500 ? 'rejected' : 'unknown'
+export async function failure(response: Response): Promise<SendResult> {
+  try {
+    const limited =
+      response.status === 429 ||
+      (response.status === 400 && (await nativeRateLimit(response)))
 
-  return { status, errorCode: `provider_http_${response.status}` }
+    if (limited) {
+      const seconds = Number(response.headers.get('retry-after'))
+
+      const delay =
+        Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 1000
+
+      return {
+        status: 'retryable',
+        errorCode: 'rate_limited',
+        retryAfterMs: delay
+      }
+    }
+
+    const status =
+      response.status >= 400 && response.status < 500 ? 'rejected' : 'unknown'
+
+    return { status, errorCode: `provider_http_${response.status}` }
+  } finally {
+    await response.body?.cancel().catch(() => {})
+  }
 }
 
 export function unavailable(): SendResult {
