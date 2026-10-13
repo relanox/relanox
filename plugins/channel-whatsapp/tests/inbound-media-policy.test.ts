@@ -252,44 +252,19 @@ it.each([
 
 it('does not acknowledge a real SQLite write failure and accepts the replay after recovery', async () => {
   const { local, filename } = await setup('none')
-  const timestamp = Math.floor(Date.now() / 1000)
-
-  // Establish the same authenticated service-window state without durable input,
-  // So the held SQLite writer lock is encountered during acceptInbound.
-  const activity = JSON.stringify({
-    object: 'whatsapp_business_account',
-    entry: [
-      {
-        id: '102030405060708',
-        changes: [
-          {
-            field: 'messages',
-            value: {
-              metadata: { phone_number_id: '10987654321' },
-              messages: [
-                {
-                  id: 'wamid.activity',
-                  from: '15551234567',
-                  timestamp: String(timestamp),
-                  type: 'reaction',
-                  reaction: { message_id: 'wamid.previous', emoji: '👍' }
-                }
-              ]
-            }
-          }
-        ]
-      }
-    ]
-  })
-
-  expect((await local.core.fetch(incoming(activity))).status).toBe(200)
-  const lock = new DatabaseSync(filename)
+  const database = new DatabaseSync(filename)
   try {
-    lock.exec('BEGIN IMMEDIATE')
-    const encoded = envelope(timestamp)
+    // Two SQLite copies in one process do not share POSIX advisory lock state:
+    // https://www.sqlite.org/howtocorrupt.html#multiple_copies_of_sqlite_linked_into_the_same_application
+    // This real trigger fails only acceptInbound's INSERT, independent of driver
+    // Locking behavior; window/state operations still use the production store.
+    database.exec(
+      "CREATE TRIGGER whatsapp_write_refusal BEFORE INSERT ON inbound BEGIN SELECT RAISE(FAIL, 'inbound_unavailable'); END"
+    )
+    const encoded = envelope()
     expect((await local.core.fetch(incoming(encoded))).status).toBe(500)
     expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
-    lock.exec('ROLLBACK')
+    database.exec('DROP TRIGGER whatsapp_write_refusal')
     expect((await local.core.fetch(incoming(encoded))).status).toBe(200)
     await local.core.processDue()
     expect(local.dispatches.toSorted()).toEqual([
@@ -297,6 +272,6 @@ it('does not acknowledge a real SQLite write failure and accepts the replay afte
       'later legal text'
     ])
   } finally {
-    lock.close()
+    database.close()
   }
 })
