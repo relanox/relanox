@@ -684,6 +684,179 @@ it('acknowledges persisted and duplicate native events with HTTP 200 while retai
   ).toBe(503)
 })
 
+it.each([400, 401])(
+  'refreshes the rejected inbound resource token on native HTTP %s redelivery',
+  async (status) => {
+    // Source: https://open.feishu.cn/document/faq/trouble-shooting/how-to-fix-99991663-error
+    // Native resource fields: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7, code-gen/projects/im.ts.
+    let tokens = 0
+    let resources = 0
+
+    const remote = await peer((captured) => {
+      if (captured.path.includes('tenant_access_token')) {
+        return {
+          body: {
+            code: 0,
+            tenant_access_token: `tenant-token-${++tokens}`,
+            expire: 7200
+          }
+        }
+      }
+      if (++resources === 1) {
+        return {
+          status,
+          body: {
+            code: 99_991_663,
+            msg: 'Invalid access token for authorization. Please make a request with token attached.'
+          }
+        }
+      }
+      return {
+        headers: { 'content-type': 'application/json' },
+        body: Buffer.from('{"code":99991663,"note":"ordinary user file"}')
+      }
+    })
+
+    cleanup.push(remote.close)
+    const { core, storage } = await storedChannel(cleanup, environment, account)
+
+    const resourceEvent = {
+      ...event,
+      event: {
+        ...event.event,
+        message: {
+          ...event.event.message,
+          message_type: 'file',
+          content: '{"file_key":"file_rejected","file_name":"report.json"}'
+        }
+      }
+    }
+
+    expect((await core.fetch(request(resourceEvent))).status).toBe(503)
+    expect(await storage.listInbound({ limit: 10 })).toEqual([])
+    expect(remote.requests).toMatchObject([
+      {
+        path: '/open-apis/im/v1/messages/om_message/resources/file_rejected?type=file',
+        headers: { authorization: 'Bearer tenant-token-1' }
+      }
+    ])
+    expect((await core.fetch(request(resourceEvent))).status).toBe(200)
+    expect(remote.requests).toMatchObject([
+      {
+        path: '/open-apis/im/v1/messages/om_message/resources/file_rejected?type=file',
+        headers: { authorization: 'Bearer tenant-token-1' }
+      },
+      {
+        path: '/open-apis/auth/v3/tenant_access_token/internal',
+        body: { app_id: 'cli_app', app_secret: 'app-secret' }
+      },
+      {
+        path: '/open-apis/im/v1/messages/om_message/resources/file_rejected?type=file',
+        headers: { authorization: 'Bearer tenant-token-2' }
+      }
+    ])
+    await expectJsonResource(storage)
+  }
+)
+
+it('preserves successful JSON resources that contain native error-code-looking data', async () => {
+  const remote = await peer((captured) =>
+    captured.path.includes('tenant_access_token')
+      ? { body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 } }
+      : {
+          headers: { 'content-type': 'application/json' },
+          body: Buffer.from('{"code":99991663,"note":"ordinary user file"}')
+        }
+  )
+
+  cleanup.push(remote.close)
+  const { core, storage } = await storedChannel(cleanup, environment, account)
+  expect(
+    (
+      await core.fetch(
+        request({
+          ...event,
+          event: {
+            ...event.event,
+            message: {
+              ...event.event.message,
+              message_type: 'file',
+              content: '{"file_key":"file_json","file_name":"ordinary.json"}'
+            }
+          }
+        })
+      )
+    ).status
+  ).toBe(200)
+  expect(remote.requests.map((captured) => captured.path)).toEqual([
+    '/open-apis/im/v1/messages/om_message/resources/file_json?type=file'
+  ])
+  await expectJsonResource(storage)
+})
+
+async function expectJsonResource(
+  storage: Awaited<ReturnType<typeof storedChannel>>['storage']
+): Promise<void> {
+  const records = await storage.listInbound({ limit: 10 })
+  expect(records).toHaveLength(1)
+  const reference = records[0]?.snapshot.attachments?.[0]
+  const channelId = records[0]?.snapshot.channel.id
+  if (!reference || !channelId) {
+    throw new Error('missing_json_resource')
+  }
+  expect(reference.kind).toBe('file')
+  expect(reference.mimeType).toBe('application/json')
+  const media = await storage.media?.get(channelId, reference.id)
+  expect(new TextDecoder().decode(media?.data)).toBe(
+    '{"code":99991663,"note":"ordinary user file"}'
+  )
+}
+
+it.each([
+  { status: 401, body: {} },
+  { status: 503, body: { code: 99_991_663 } }
+])(
+  'retains the cached resource token for unknown HTTP $status failures',
+  async ({ status, body }) => {
+    const remote = await peer((captured) =>
+      captured.path.includes('tenant_access_token')
+        ? {
+            body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+          }
+        : { status, body }
+    )
+
+    cleanup.push(remote.close)
+    const { core, storage } = await storedChannel(cleanup, environment, account)
+
+    const unknownEvent = {
+      ...event,
+      event: {
+        ...event.event,
+        message: {
+          ...event.event.message,
+          message_type: 'file',
+          content: '{"file_key":"file_unknown","file_name":"report.json"}'
+        }
+      }
+    }
+
+    expect((await core.fetch(request(unknownEvent))).status).toBe(503)
+    expect((await core.fetch(request(unknownEvent))).status).toBe(503)
+    expect(await storage.listInbound({ limit: 10 })).toEqual([])
+    expect(remote.requests).toMatchObject([
+      {
+        path: '/open-apis/im/v1/messages/om_message/resources/file_unknown?type=file',
+        headers: { authorization: 'Bearer tenant-token' }
+      },
+      {
+        path: '/open-apis/im/v1/messages/om_message/resources/file_unknown?type=file',
+        headers: { authorization: 'Bearer tenant-token' }
+      }
+    ])
+  }
+)
+
 it('resolves authenticated Feishu threads through their real root message while omitting visual reply quoting', async () => {
   const remote = await peer((input) => ({
     body: input.path.includes('tenant_access_token')

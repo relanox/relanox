@@ -27,6 +27,15 @@ export function isMediaSizeRejection(error: unknown): boolean {
   return error instanceof MediaDownloadError && error.code === 'media_too_large'
 }
 
+export function isMediaTokenRejection(error: unknown): boolean {
+  return (
+    error instanceof MediaDownloadError &&
+    error.code === 'media_download_failed' &&
+    error.status !== undefined &&
+    tenantTokenRejected({ ok: false, status: error.status }, error.responseBody)
+  )
+}
+
 const nativeType = {
   image: 'image',
   audio: 'audio',

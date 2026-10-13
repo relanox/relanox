@@ -17,7 +17,7 @@ export class FeishuTokenError extends Error {
 }
 
 export function tenantTokenRejected(
-  response: Response,
+  response: Pick<Response, 'ok' | 'status'>,
   value: unknown
 ): boolean {
   return (
