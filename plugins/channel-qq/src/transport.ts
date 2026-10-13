@@ -33,7 +33,14 @@ export async function ingestText(
     await host.ingest(input)
   } catch (error) {
     const rejection = z
-      .object({ code: z.enum(['sender_not_allowed', 'unbound_conversation']) })
+      .object({
+        code: z.enum([
+          'sender_not_allowed',
+          'unbound_conversation',
+          'media_total_too_large',
+          'too_many_attachments'
+        ])
+      })
       .safeParse(error)
 
     if (!rejection.success) {
