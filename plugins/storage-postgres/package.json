@@ -17,9 +17,10 @@
   },
   "dependencies": {
     "@relanox/sdk": "workspace:*",
+    "@relanox/storage-support": "workspace:*",
+    "drizzle-orm": "0.45.4",
     "pg": "8.23.1",
-    "zod": "4.6.5",
-    "@relanox/storage-support": "workspace:*"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

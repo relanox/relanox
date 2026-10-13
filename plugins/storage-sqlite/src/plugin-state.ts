@@ -2,6 +2,9 @@ import { decodeDurableRecord } from './record-codec.js'
 import type { Storage, StateEntry } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { encodeDurableRecord } from '@relanox/storage-support'
+import { and, eq, lte, ne } from 'drizzle-orm'
+import { pluginState } from './schema.js'
+import { keyPrefix } from './expressions.js'
 
 export function createStateOperations(
   context: Pick<DatabaseContext, 'db' | 'transaction'>
@@ -13,40 +16,58 @@ export function createStateOperations(
   return {
     async getState(ns, key) {
       const row = db
-        .prepare(
-          "SELECT record FROM plugin_state WHERE plugin=? AND owner=? AND key=? AND record!='null'"
+        .select({ record: pluginState.record })
+        .from(pluginState)
+        .where(
+          and(
+            eq(pluginState.plugin, ns.pluginId),
+            eq(pluginState.owner, ns.ownerId),
+            eq(pluginState.key, key),
+            ne(pluginState.record, 'null')
+          )
         )
-        .get(ns.pluginId, ns.ownerId, key) as { record: string } | undefined
+        .get()
 
       return row ? decodeDurableRecord<StateEntry>(row.record) : undefined
     },
     async listState(ns, input) {
-      const where = ['plugin=?', 'owner=?', "record!='null'"]
-      const params: (string | number)[] = [ns.pluginId, ns.ownerId]
-      if (input.prefix !== undefined) {
-        where.push('substr(key,1,?)=?')
-        params.push(input.prefix.length, input.prefix)
-      }
-      if (input.expiresBefore !== undefined) {
-        where.push('expires_at<=?')
-        params.push(input.expiresBefore)
-      }
-      return (
-        db
-          .prepare(
-            `SELECT record FROM plugin_state WHERE ${where.join(' AND ')} ORDER BY key LIMIT ?`
+      return db
+        .select({ record: pluginState.record })
+        .from(pluginState)
+        .where(
+          and(
+            eq(pluginState.plugin, ns.pluginId),
+            eq(pluginState.owner, ns.ownerId),
+            ne(pluginState.record, 'null'),
+            input.prefix === undefined
+              ? undefined
+              : eq(
+                  keyPrefix(pluginState.key, input.prefix.length),
+                  input.prefix
+                ),
+            input.expiresBefore === undefined
+              ? undefined
+              : lte(pluginState.expiresAt, input.expiresBefore)
           )
-          .all(...params, input.limit) as { record: string }[]
-      ).map((row) => decodeDurableRecord<StateEntry>(row.record))
+        )
+        .orderBy(pluginState.key)
+        .limit(input.limit)
+        .all()
+        .map((row) => decodeDurableRecord<StateEntry>(row.record))
     },
     async compareAndSetState(ns, input) {
       return transaction(() => {
         const old = db
-          .prepare(
-            'SELECT version,record FROM plugin_state WHERE plugin=? AND owner=? AND key=?'
+          .select({ version: pluginState.version, record: pluginState.record })
+          .from(pluginState)
+          .where(
+            and(
+              eq(pluginState.plugin, ns.pluginId),
+              eq(pluginState.owner, ns.ownerId),
+              eq(pluginState.key, input.key)
+            )
           )
-          .get(ns.pluginId, ns.ownerId, input.key) as
-          { version: number; record: string } | undefined
+          .get()
 
         const active = old?.record !== undefined && old.record !== 'null'
         if (
@@ -67,31 +88,39 @@ export function createStateOperations(
             : {})
         }
 
-        db.prepare(
-          `
-            INSERT INTO plugin_state(plugin,owner,key,version,expires_at,record)
-            VALUES(?,?,?,?,?,?)
-            ON CONFLICT(plugin,owner,key) DO UPDATE
-            SET version=excluded.version,expires_at=excluded.expires_at,record=excluded.record
-          `
-        ).run(
-          ns.pluginId,
-          ns.ownerId,
-          input.key,
+        const values = {
+          plugin: ns.pluginId,
+          owner: ns.ownerId,
+          key: input.key,
           version,
-          input.expiresAt ?? null,
-          encodeDurableRecord(entry)
-        )
+          expiresAt: input.expiresAt ?? null,
+          record: encodeDurableRecord(entry)
+        }
+
+        db.insert(pluginState)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [pluginState.plugin, pluginState.owner, pluginState.key],
+            set: { version, expiresAt: values.expiresAt, record: values.record }
+          })
+          .run()
         return { status: 'updated', version }
       })
     },
     async deleteState(ns, key, version) {
       return transaction(() => {
         const old = db
-          .prepare(
-            "SELECT version FROM plugin_state WHERE plugin=? AND owner=? AND key=? AND record!='null'"
+          .select({ version: pluginState.version })
+          .from(pluginState)
+          .where(
+            and(
+              eq(pluginState.plugin, ns.pluginId),
+              eq(pluginState.owner, ns.ownerId),
+              eq(pluginState.key, key),
+              ne(pluginState.record, 'null')
+            )
           )
-          .get(ns.pluginId, ns.ownerId, key) as { version: number } | undefined
+          .get()
 
         if (!old) {
           return { status: 'not_found' }
@@ -99,15 +128,16 @@ export function createStateOperations(
         if (old.version !== version) {
           return { status: 'conflict' }
         }
-        db.prepare(
-          `
-            UPDATE plugin_state
-            SET record='null',expires_at=NULL,version=version+1
-            WHERE plugin=?
-              AND owner=?
-              AND key=?
-          `
-        ).run(ns.pluginId, ns.ownerId, key)
+        db.update(pluginState)
+          .set({ record: 'null', expiresAt: null, version: version + 1 })
+          .where(
+            and(
+              eq(pluginState.plugin, ns.pluginId),
+              eq(pluginState.owner, ns.ownerId),
+              eq(pluginState.key, key)
+            )
+          )
+          .run()
         return { status: 'updated', version: version + 1 }
       })
     }

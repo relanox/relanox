@@ -5,27 +5,40 @@ import type {
   ConversationRecord
 } from '@relanox/sdk'
 import Database from 'better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import { and, eq } from 'drizzle-orm'
 import type { SqliteConfig } from './config.js'
 import { encodeDurableRecord } from '@relanox/storage-support'
+import { conversations, inbound, outbound } from './schema.js'
 
 /** Owns the connection and atomic transaction boundary for every storage operation. */
 export function openDatabase(config: SqliteConfig): DatabaseContext {
-  const db = new Database(config.filename)
-  db.pragma('busy_timeout = 5000')
-  db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
-  const transaction = <T>(fn: () => T): T => db.transaction(fn).immediate()
+  const connection = new Database(config.filename)
+  connection.pragma('busy_timeout = 5000')
+  connection.pragma('journal_mode = WAL')
+  connection.pragma('foreign_keys = ON')
+  const db = drizzle(connection)
+
+  const transaction = <T>(fn: () => T): T =>
+    db.transaction(fn, { behavior: 'immediate' })
 
   const readInbound = (id: string): InboundRecord | undefined => {
-    const row = db.prepare('SELECT record FROM inbound WHERE id=?').get(id) as
-      { record: string } | undefined
+    const row = db
+      .select({ record: inbound.record })
+      .from(inbound)
+      .where(eq(inbound.id, id))
+      .get()
 
     return row ? decodeDurableRecord(row.record) : undefined
   }
 
   const readOutbound = (id: string): OutboundRecord | undefined => {
-    const row = db.prepare('SELECT record FROM outbound WHERE id=?').get(id) as
-      { record: string } | undefined
+    const row = db
+      .select({ record: outbound.record })
+      .from(outbound)
+      .where(eq(outbound.id, id))
+      .get()
 
     return row ? decodeDurableRecord(row.record) : undefined
   }
@@ -35,36 +48,44 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
     includeInactive = false
   ): ConversationRecord | undefined => {
     const row = db
-      .prepare(
-        'SELECT record FROM conversations WHERE id=? AND (active=1 OR ?=1)'
+      .select({ record: conversations.record })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.id, id),
+          includeInactive ? undefined : eq(conversations.active, 1)
+        )
       )
-      .get(id, includeInactive ? 1 : 0) as { record: string } | undefined
+      .get()
 
     return row ? decodeDurableRecord(row.record) : undefined
   }
 
   const saveInbound = (record: InboundRecord): Database.RunResult =>
     db
-      .prepare('UPDATE inbound SET status=?, version=?, record=? WHERE id=?')
-      .run(
-        record.dispatch.status,
-        record.version,
-        encodeDurableRecord(record),
-        record.snapshot.requestId
-      )
+      .update(inbound)
+      .set({
+        status: record.dispatch.status,
+        version: record.version,
+        record: encodeDurableRecord(record)
+      })
+      .where(eq(inbound.id, record.snapshot.requestId))
+      .run()
 
   const saveOutbound = (record: OutboundRecord): Database.RunResult =>
     db
-      .prepare('UPDATE outbound SET status=?, version=?, record=? WHERE id=?')
-      .run(
-        record.status,
-        record.version,
-        encodeDurableRecord(record),
-        record.deliveryId
-      )
+      .update(outbound)
+      .set({
+        status: record.status,
+        version: record.version,
+        record: encodeDurableRecord(record)
+      })
+      .where(eq(outbound.id, record.deliveryId))
+      .run()
 
   return {
     db,
+    connection,
     transaction,
     readInbound,
     readConversation,
@@ -75,7 +96,8 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
 }
 
 export type DatabaseContext = {
-  db: Database.Database
+  db: BetterSQLite3Database
+  connection: Database.Database
   transaction<T>(this: void, fn: () => T): T
   readConversation(
     this: void,

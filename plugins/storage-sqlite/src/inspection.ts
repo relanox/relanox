@@ -7,6 +7,24 @@ import type {
   MediaReference
 } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  min,
+  ne,
+  notInArray,
+  sql
+} from 'drizzle-orm'
+import { inbound, outbound, media } from './schema.js'
+import { jsonValue } from './expressions.js'
 
 export function createInspectionOperations(
   context: Pick<
@@ -47,94 +65,83 @@ export function createInspectionOperations(
       if (filter.recent && filter.afterId !== undefined) {
         throw new Error('recent_cursor_unsupported')
       }
-      const order = filter.recent ? 'accepted_at DESC,id DESC' : 'id'
-      const where = ['1=1']
-      const params: (string | number)[] = []
-      if (filter.dispatchStatus) {
-        where.push('status=?')
-        params.push(filter.dispatchStatus)
-      }
-      if (filter.endpointId) {
-        where.push('endpoint=?')
-        params.push(filter.endpointId)
-      }
-      if (filter.afterId) {
-        where.push('id>?')
-        params.push(filter.afterId)
-      }
-      return (
-        db
-          .prepare(
-            `SELECT record FROM inbound WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?`
+      return db
+        .select({ record: inbound.record })
+        .from(inbound)
+        .where(
+          and(
+            filter.dispatchStatus
+              ? eq(inbound.status, filter.dispatchStatus)
+              : undefined,
+            filter.endpointId
+              ? eq(inbound.endpoint, filter.endpointId)
+              : undefined,
+            filter.afterId ? gt(inbound.id, filter.afterId) : undefined
           )
-          .all(...params, filter.limit) as { record: string }[]
-      ).map((row) => decodeDurableRecord<InboundRecord>(row.record))
+        )
+        .orderBy(
+          ...(filter.recent
+            ? [desc(inbound.acceptedAt), desc(inbound.id)]
+            : [inbound.id])
+        )
+        .limit(filter.limit)
+        .all()
+        .map((row) => decodeDurableRecord<InboundRecord>(row.record))
     },
     async listOutbound(filter) {
-      const where = ['1=1']
-      const params: (string | number)[] = []
-      if (filter.deliveryStatus) {
-        where.push('outbound_delivery.status=?')
-        params.push(filter.deliveryStatus)
-      }
-      if (filter.endpointId) {
-        where.push("json_extract(outbound_delivery.record,'$.endpoint.id')=?")
-        params.push(filter.endpointId)
-      }
-      if (filter.afterId) {
-        where.push('outbound_delivery.id>?')
-        params.push(filter.afterId)
-      }
-      return (
-        db
-          .prepare(
-            `
-              SELECT outbound_delivery.record
-              FROM outbound outbound_delivery
-              WHERE ${where.join(' AND ')}
-              ORDER BY outbound_delivery.id
-              LIMIT ?
-            `
+      return db
+        .select({ record: outbound.record })
+        .from(outbound)
+        .where(
+          and(
+            filter.deliveryStatus
+              ? eq(outbound.status, filter.deliveryStatus)
+              : undefined,
+            filter.endpointId
+              ? eq(
+                  jsonValue(outbound.record, '$.endpoint.id'),
+                  filter.endpointId
+                )
+              : undefined,
+            filter.afterId ? gt(outbound.id, filter.afterId) : undefined
           )
-          .all(...params, filter.limit) as { record: string }[]
-      ).map((row) => decodeDurableRecord<OutboundRecord>(row.record))
+        )
+        .orderBy(outbound.id)
+        .limit(filter.limit)
+        .all()
+        .map((row) => decodeDurableRecord<OutboundRecord>(row.record))
     },
     async getStats() {
       const inboundStats = db
-        .prepare(
-          `
-            SELECT
-              SUM(status='due') pending,
-              MIN(CASE WHEN status='due' THEN accepted_at END) oldest
-            FROM inbound
-          `
-        )
-        .get() as {
-        pending: number | null
-        oldest: number | null
-      }
+        .select({ pending: count(), oldest: min(inbound.acceptedAt) })
+        .from(inbound)
+        .where(eq(inbound.status, 'due'))
+        .get()
 
-      const outboundStats = db
-        .prepare(
-          "SELECT SUM(status!='sent') undelivered,SUM(status='unknown') unknown FROM outbound"
-        )
-        .get() as { undelivered: number | null; unknown: number | null }
+      const undelivered = db
+        .select({ count: count() })
+        .from(outbound)
+        .where(ne(outbound.status, 'sent'))
+        .get()
+
+      const unknownDeliveries = db
+        .select({ count: count() })
+        .from(outbound)
+        .where(eq(outbound.status, 'unknown'))
+        .get()
 
       const unknownDispatches = db
-        .prepare(
-          `
-            SELECT COUNT(*) count
-            FROM inbound
-            WHERE json_extract(record,'$.dispatch.status')='unknown'
-          `
-        )
-        .get() as { count: number }
+        .select({ count: count() })
+        .from(inbound)
+        .where(eq(jsonValue(inbound.record, '$.dispatch.status'), 'unknown'))
+        .get()
 
       return {
-        pending: inboundStats.pending ?? 0,
-        undelivered: outboundStats.undelivered ?? 0,
-        unknown: (outboundStats.unknown ?? 0) + unknownDispatches.count,
-        ...(inboundStats.oldest !== null
+        pending: inboundStats?.pending ?? 0,
+        undelivered: undelivered?.count ?? 0,
+        unknown:
+          (unknownDeliveries?.count ?? 0) + (unknownDispatches?.count ?? 0),
+        ...(inboundStats?.oldest !== undefined && inboundStats.oldest !== null
           ? { oldestPendingAt: inboundStats.oldest }
           : {})
       }
@@ -142,10 +149,18 @@ export function createInspectionOperations(
     async cleanup(input) {
       return transaction(() => {
         const rows = db
-          .prepare(
-            "SELECT record FROM inbound WHERE accepted_at<? AND status IN ('accepted','rejected') AND json_extract(record,'$.redactedAt') IS NULL ORDER BY accepted_at,id LIMIT ?"
+          .select({ record: inbound.record })
+          .from(inbound)
+          .where(
+            and(
+              lt(inbound.acceptedAt, input.before),
+              inArray(inbound.status, ['accepted', 'rejected']),
+              isNull(jsonValue(inbound.record, '$.redactedAt'))
+            )
           )
-          .all(input.before, input.limit) as { record: string }[]
+          .orderBy(inbound.acceptedAt, inbound.id)
+          .limit(input.limit)
+          .all()
 
         for (const row of rows) {
           const record = decodeDurableRecord<InboundRecord>(row.record)
@@ -163,10 +178,20 @@ export function createInspectionOperations(
         }
 
         const deliveries = db
-          .prepare(
-            "SELECT record FROM outbound WHERE status='sent' AND json_extract(record,'$.createdAt')<? AND json_extract(record,'$.redactedAt') IS NULL LIMIT ?"
+          .select({ record: outbound.record })
+          .from(outbound)
+          .where(
+            and(
+              eq(outbound.status, 'sent'),
+              lt(
+                jsonValue<number>(outbound.record, '$.createdAt'),
+                input.before
+              ),
+              isNull(jsonValue(outbound.record, '$.redactedAt'))
+            )
           )
-          .all(input.before, input.limit) as { record: string }[]
+          .limit(input.limit)
+          .all()
 
         for (const row of deliveries) {
           const record = decodeDurableRecord<OutboundRecord>(row.record)
@@ -185,10 +210,10 @@ export function createInspectionOperations(
         const retained = new Set<string>()
 
         const incoming = db
-          .prepare(
-            "SELECT record FROM inbound WHERE json_extract(record,'$.redactedAt') IS NULL"
-          )
-          .all() as { record: string }[]
+          .select({ record: inbound.record })
+          .from(inbound)
+          .where(isNull(jsonValue(inbound.record, '$.redactedAt')))
+          .all()
 
         for (const row of incoming) {
           for (const ref of decodeDurableRecord<InboundRecord>(row.record)
@@ -201,10 +226,10 @@ export function createInspectionOperations(
         }
 
         const outgoing = db
-          .prepare(
-            "SELECT record FROM outbound WHERE json_extract(record,'$.redactedAt') IS NULL"
-          )
-          .all() as { record: string }[]
+          .select({ record: outbound.record })
+          .from(outbound)
+          .where(isNull(jsonValue(outbound.record, '$.redactedAt')))
+          .all()
 
         for (const row of outgoing) {
           for (const chunk of decodeDurableRecord<OutboundRecord>(row.record)
@@ -219,10 +244,16 @@ export function createInspectionOperations(
         }
 
         const staged = db
-          .prepare(
-            'SELECT reference FROM media WHERE staged=1 AND data IS NOT NULL AND created_at>=?'
+          .select({ reference: media.reference })
+          .from(media)
+          .where(
+            and(
+              eq(media.staged, 1),
+              isNotNull(media.data),
+              gte(media.createdAt, input.before)
+            )
           )
-          .all(input.before) as { reference: string }[]
+          .all()
 
         for (const row of staged) {
           const ref = decodeDurableRecord<MediaReference>(row.reference)
@@ -231,17 +262,31 @@ export function createInspectionOperations(
           }
         }
 
+        // One bound JSON array avoids SQLite's parameter limit on a large retained media set.
+        const retainedIds = db
+          .select({ value: sql<string>`value` })
+          .from(sql`json_each(${JSON.stringify([...retained])})`)
+
         const candidates = db
-          .prepare(
-            'SELECT id FROM media WHERE data IS NOT NULL AND created_at<? AND id NOT IN (SELECT value FROM json_each(?)) ORDER BY created_at,id LIMIT ?'
+          .select({ id: media.id })
+          .from(media)
+          .where(
+            and(
+              isNotNull(media.data),
+              lt(media.createdAt, input.before),
+              notInArray(media.id, retainedIds)
+            )
           )
-          .all(input.before, JSON.stringify([...retained]), input.limit) as {
-          id: string
-        }[]
+          .orderBy(media.createdAt, media.id)
+          .limit(input.limit)
+          .all()
 
         for (const { id } of candidates) {
           if (!retained.has(id)) {
-            db.prepare('UPDATE media SET data=NULL,staged=0 WHERE id=?').run(id)
+            db.update(media)
+              .set({ data: null, staged: 0 })
+              .where(eq(media.id, id))
+              .run()
           }
         }
         return { redacted: rows.length + deliveries.length }

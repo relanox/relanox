@@ -99,6 +99,8 @@ docker compose exec relanox node dist/main.js doctor --config /config/relanox.js
 
 升级后在每个已配置渠道发送短消息验证回信。源码安装则停止进程、备份、更新仓库、运行 `pnpm install --frozen-lockfile` 和 `pnpm build`，再使用原工作目录与环境启动 CLI。
 
+存储会在启动时应用随程序提供的 Drizzle 迁移。初始迁移接管已有表，保留已保存的消息、附件和连接状态。升级 SQLite 时，先停止使用同一个数据库的全部进程，再启动一个实例，等待就绪后启动其余实例。SQLite 迁移执行不会协调多个进程同时升级。
+
 `docker compose down` 保留数据卷。只有确定永久删除该安装的消息和连接状态时，才使用 `docker compose down --volumes`。
 
 ## 备份和恢复

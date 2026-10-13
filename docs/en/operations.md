@@ -99,6 +99,8 @@ docker compose exec relanox node dist/main.js doctor --config /config/relanox.js
 
 Send a short message through each configured channel after upgrading. For a source installation, stop the process, back up, update the checkout, run `pnpm install --frozen-lockfile` and `pnpm build`, then start the CLI with the original working directory and environment.
 
+Storage applies the bundled Drizzle migrations at startup. The initial migration adopts existing tables and keeps saved messages, attachments and connection state. For SQLite upgrades, stop every process using the same database, then start one instance and wait for readiness before restarting others. SQLite migration execution does not coordinate concurrent upgrades across processes.
+
 `docker compose down` retains the data volume. Use `docker compose down --volumes` only when you intend to permanently remove that installation's stored messages and state.
 
 ## Back up and restore

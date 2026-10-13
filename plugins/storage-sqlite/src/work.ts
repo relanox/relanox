@@ -3,6 +3,10 @@ import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { randomUUID } from 'node:crypto'
 import { isActiveLease } from '@relanox/storage-support'
+import { and, eq, inArray, isNull, lt, lte, notExists, or } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/sqlite-core'
+import { inbound, outbound } from './schema.js'
+import { jsonValue, rowId } from './expressions.js'
 
 export function createWorkOperations(
   context: Pick<
@@ -82,22 +86,34 @@ export function createWorkOperations(
     async takeDue(input) {
       return transaction(() => {
         const work: Awaited<ReturnType<Storage['takeDue']>>[number][] = []
-        for (const record of (
-          db
-            .prepare(
-              `
-                SELECT record
-                FROM inbound
-                WHERE status='due'
-                  AND (json_extract(record,'$.dispatch.lease.expiresAt')<=?
-                    OR (json_extract(record,'$.dispatch.lease') IS NULL
-                      AND json_extract(record,'$.dispatch.dueAt')<=?
-                      AND json_extract(record,'$.dispatch.status') ='due'))
-                ORDER BY accepted_at,id
-              `
+        for (const record of db
+          .select({ record: inbound.record })
+          .from(inbound)
+          .where(
+            and(
+              eq(inbound.status, 'due'),
+              or(
+                lte(
+                  jsonValue<number>(
+                    inbound.record,
+                    '$.dispatch.lease.expiresAt'
+                  ),
+                  input.now
+                ),
+                and(
+                  isNull(jsonValue(inbound.record, '$.dispatch.lease')),
+                  lte(
+                    jsonValue<number>(inbound.record, '$.dispatch.dueAt'),
+                    input.now
+                  ),
+                  eq(jsonValue(inbound.record, '$.dispatch.status'), 'due')
+                )
+              )
             )
-            .all(input.now, input.now) as { record: string }[]
-        ).map((row) => decodeDurableRecord<InboundRecord>(row.record))) {
+          )
+          .orderBy(inbound.acceptedAt, inbound.id)
+          .all()
+          .map((row) => decodeDurableRecord<InboundRecord>(row.record))) {
           let next = record
           if (
             record.dispatch.lease &&
@@ -136,22 +152,40 @@ export function createWorkOperations(
           saveInbound(next)
           work.push({ kind: 'dispatch', record: next, lease })
         }
-        for (const record of (
-          db
-            .prepare(
-              `
-                SELECT record
-                FROM outbound o
-                WHERE o.status='pending'
-                  AND NOT EXISTS(SELECT 1 FROM outbound earlier WHERE earlier.channel_id=o.channel_id AND earlier.rowid<o.rowid AND earlier.status IN ('pending','unknown'))
-                  AND (json_extract(record,'$.lease.expiresAt')<=?
-                    OR (json_extract(record,'$.lease') IS NULL
-                      AND json_extract(record,'$.dueAt')<=?))
-                ORDER BY o.rowid
-              `
+        const earlier = alias(outbound, 'earlier')
+        for (const record of db
+          .select({ record: outbound.record })
+          .from(outbound)
+          .where(
+            and(
+              eq(outbound.status, 'pending'),
+              notExists(
+                db
+                  .select({ id: earlier.id })
+                  .from(earlier)
+                  .where(
+                    and(
+                      eq(earlier.channelId, outbound.channelId),
+                      lt(rowId(earlier), rowId(outbound)),
+                      inArray(earlier.status, ['pending', 'unknown'])
+                    )
+                  )
+              ),
+              or(
+                lte(
+                  jsonValue<number>(outbound.record, '$.lease.expiresAt'),
+                  input.now
+                ),
+                and(
+                  isNull(jsonValue(outbound.record, '$.lease')),
+                  lte(jsonValue<number>(outbound.record, '$.dueAt'), input.now)
+                )
+              )
             )
-            .all(input.now, input.now) as { record: string }[]
-        ).map((row) => decodeDurableRecord<OutboundRecord>(row.record))) {
+          )
+          .orderBy(rowId(outbound))
+          .all()
+          .map((row) => decodeDurableRecord<OutboundRecord>(row.record))) {
           let next = record
           if (record.lease && record.lease.expiresAt <= input.now) {
             next = {
