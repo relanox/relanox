@@ -138,7 +138,7 @@ test('DingTalk ACKs a known media size rejection and keeps accepting text on the
   vi.stubEnv('DING_LIMIT_SECRET', 'secret')
 
   const bytes = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6dKQAAAAASUVORK5CYII=',
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
     'base64'
   )
 

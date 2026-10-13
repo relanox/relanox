@@ -35,11 +35,12 @@ const textEventId = '01H810YECXQQZ37VAXPF6H9E6V'
 const messageId = '468789577898262530'
 
 // Native message shapes: Line/line-bot-sdk-nodejs@deac3147609c73fe0ff0746fe231ab5bfdbd06c0,
-// Lib/webhook/model/{fileMessageContent,videoMessageContent,groupSource}.ts.
-// Binary transport fixture: examples/kitchensink/static/imagemap/video.mp4, first ftyp box.
-const video = Buffer.from(
-  '0000001c667479706d703432000000016d7034316d70343269736f6d',
-  'hex'
+// Lib/webhook/model/{fileMessageContent,imageMessageContent,groupSource}.ts.
+// Complete 1x1 gray/alpha PNG, with verified chunk CRCs and zlib scanline [0,255,255].
+// PNG binary format: https://www.w3.org/TR/png-3/
+const imageBytes = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
+  'base64'
 )
 
 function batch(declaredFile = false): string {
@@ -59,11 +60,11 @@ function batch(declaredFile = false): string {
               id: messageId,
               type: 'file',
               fileName: 'report.bin',
-              fileSize: 28
+              fileSize: 68
             }
           : {
               id: messageId,
-              type: 'video',
+              type: 'image',
               contentProvider: { type: 'line' },
               quoteToken: 'quote-token'
             }
@@ -160,7 +161,7 @@ it.each([
   'acknowledges the known %s policy refusal and durably accepts later batch text',
   async (_name, declaredFile, worker, downloads) => {
     const { remote, filename } = await setup()
-    remote.content({ status: 200, data: video, mimeType: 'video/mp4' })
+    remote.content({ status: 200, data: imageBytes, mimeType: 'image/png' })
     const local = await runtime(filename, worker)
     const body = batch(declaredFile)
 
@@ -201,7 +202,7 @@ it('withholds ACK for content HTTP 503 and recovers the whole batch after SQLite
   await local.close()
   cleanup.pop()
 
-  remote.content({ status: 200, data: video, mimeType: 'video/mp4' })
+  remote.content({ status: 200, data: imageBytes, mimeType: 'image/png' })
   const restarted = await runtime(filename)
   expect(await post(restarted.origin, body)).toBe(200)
   expect(await post(restarted.origin, body)).toBe(200)
@@ -213,11 +214,11 @@ it('withholds ACK for content HTTP 503 and recovers the whole batch after SQLite
   )
 
   expect(media?.snapshot.attachments).toMatchObject([
-    { kind: 'video', mimeType: 'video/mp4', size: 28 }
+    { kind: 'image', mimeType: 'image/png', size: 68 }
   ])
   const attachment = media?.snapshot.attachments?.[0]
   if (!media || !attachment) {
-    throw new Error('missing_persisted_video')
+    throw new Error('missing_persisted_image')
   }
 
   const stored = await restarted.storage.media?.get(
@@ -225,7 +226,7 @@ it('withholds ACK for content HTTP 503 and recovers the whole batch after SQLite
     attachment.id
   )
 
-  expect(Buffer.from(stored?.data ?? [])).toEqual(video)
+  expect(Buffer.from(stored?.data ?? [])).toEqual(imageBytes)
   expect(remote.traffic[1]).toMatchObject({
     path: `/v2/bot/message/${messageId}/content`,
     headers: { authorization: 'Bearer token' }
