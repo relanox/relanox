@@ -89,6 +89,142 @@ async function setup(filename?: string): Promise<{
 }
 
 describe('native LINE', () => {
+  it('waits for native video preparation before acknowledging and storing the binary content', async () => {
+    const local = await setup()
+
+    // LINE Get content returns 202 during preparation, then 200 binary:
+    // https://developers.line.biz/en/reference/messaging-api/#get-content
+    // Fixed transport bytes: official SDK deac3147609c73fe0ff0746fe231ab5bfdbd06c0,
+    // Examples/kitchensink/static/imagemap/video.mp4, first 28-byte ftyp box.
+    const video = Buffer.from(
+      '0000001c667479706d703432000000016d7034316d70343269736f6d',
+      'hex'
+    )
+
+    local.remote.content(
+      {
+        status: 202,
+        data: new Uint8Array(),
+        mimeType: 'application/octet-stream'
+      },
+      { status: 200, data: video, mimeType: 'video/mp4' }
+    )
+
+    const body = JSON.stringify({
+      destination: 'bot',
+      events: [
+        {
+          type: 'message',
+          webhookEventId: 'ready-video-event',
+          source: { type: 'group', groupId: 'group', userId: 'user' },
+          message: {
+            id: 'ready-video-message',
+            type: 'video',
+            contentProvider: { type: 'line' }
+          }
+        }
+      ]
+    })
+
+    expect((await local.core.fetch(incoming(body))).status).toBe(200)
+    const records = await local.storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    expect(records[0]?.snapshot.attachments).toMatchObject([
+      { kind: 'video', mimeType: 'video/mp4', size: 28 }
+    ])
+    expect(local.remote.traffic).toHaveLength(2)
+    await local.core.processDue()
+    expect(local.dispatches).toEqual([''])
+  })
+
+  it('withholds ACK for preparing video content and recovers its redelivery after SQLite restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'relanox-line-content-'))
+    cleanup.push(async () => {
+      await rm(directory, { recursive: true })
+    })
+    const filename = join(directory, 'state.db')
+    const local = await setup(filename)
+
+    // Get content documents 202 while video/audio is preparing, and 200 binary:
+    // https://developers.line.biz/en/reference/messaging-api/#get-content
+    const body = JSON.stringify({
+      destination: 'bot',
+      events: [
+        {
+          type: 'message',
+          webhookEventId: 'video-event',
+          timestamp: 1,
+          source: { type: 'group', groupId: 'group', userId: 'user' },
+          message: {
+            id: 'video-message',
+            type: 'video',
+            contentProvider: { type: 'line' }
+          }
+        }
+      ]
+    })
+
+    local.remote.content({
+      status: 202,
+      data: new Uint8Array(),
+      mimeType: 'application/octet-stream'
+    })
+    expect((await local.core.fetch(incoming(body))).status).toBe(500)
+    expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+    expect(local.dispatches).toEqual([])
+    expect(local.remote.traffic).toHaveLength(3)
+    await local.close()
+    cleanup.pop()
+
+    const restarted = await harness(
+      createLineChannel(),
+      config(),
+      'group',
+      'user',
+      undefined,
+      filename
+    )
+
+    cleanup.push(restarted.close)
+
+    // Fixed ftyp box from the official SDK's sample video (transport bytes only):
+    // Line/line-bot-sdk-nodejs@deac3147609c73fe0ff0746fe231ab5bfdbd06c0
+    // Examples/kitchensink/static/imagemap/video.mp4, first 28 bytes.
+    const video = Buffer.from(
+      '0000001c667479706d703432000000016d7034316d70343269736f6d',
+      'hex'
+    )
+
+    local.remote.content({ status: 200, data: video, mimeType: 'video/mp4' })
+    expect((await restarted.core.fetch(incoming(body))).status).toBe(200)
+    const records = await restarted.storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    const snapshot = records[0]?.snapshot
+    const attachment = snapshot?.attachments?.[0]
+    expect(attachment).toMatchObject({
+      kind: 'video',
+      mimeType: 'video/mp4',
+      size: 28
+    })
+    if (!snapshot || !attachment) {
+      throw new Error('missing_video_attachment')
+    }
+
+    const stored = await restarted.storage.media?.get(
+      snapshot.channel.id,
+      attachment.id
+    )
+
+    expect(Buffer.from(stored?.data ?? [])).toEqual(video)
+    expect(local.remote.traffic).toHaveLength(4)
+    expect(local.remote.traffic[0]).toMatchObject({
+      path: '/v2/bot/message/video-message/content',
+      headers: { authorization: 'Bearer token' }
+    })
+    await restarted.core.processDue()
+    expect(restarted.dispatches).toEqual([''])
+  })
+
   it.each(['group', 'room'] as const)(
     'acknowledges %s messages without a sender while persisting subsequent authorized events',
     async (type) => {
