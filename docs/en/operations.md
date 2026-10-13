@@ -153,13 +153,13 @@ docker compose exec relanox node dist/main.js status --config /config/relanox.js
 | ------------------------------- | --------------------------------------------------------------------------------------------- |
 | No incoming record              | Webhook/connection, sender allowlist, exact chat and thread binding                           |
 | Incoming `due`                  | Agent credentials, Routine availability or dot subscription; logs show scheduled retries      |
-| Incoming `accepted`, no reply   | MCP connection metadata, connection status and remote execution                               |
+| Incoming `accepted`, no reply   | Agent plugin connection and whether the Agent has started processing                          |
 | Incoming or delivery `rejected` | Correct the reported permission/configuration problem before retrying                         |
 | Delivery `pending`              | Platform connection, permissions, retry delay and earlier held deliveries to the same channel |
 | Delivery `sent`                 | The platform accepted the reply; check its original chat/topic                                |
 | `unknown`                       | Check the Agent or platform for a completed action before repeating                           |
 
-The Agent can call `relanox_status` to inspect authorized channels, native send availability and a specific `deliveryId`. The CLI command above additionally exposes retained incoming notifications and recovery versions. New sends follow current channel ownership; changing a binding does not redirect already queued deliveries.
+You can ask the Agent to check which chats it can send to and whether a reply was sent. The CLI command above also shows incoming messages and the IDs and versions needed for recovery. Changing the Agent assigned to a chat does not redirect replies already waiting to be sent.
 
 Temporary failures retry automatically. To repeat a retained Agent notification, substitute its `requestId` and current `version` from status:
 
@@ -188,7 +188,7 @@ $before = [DateTimeOffset]::UtcNow.AddDays(-30).ToUnixTimeMilliseconds()
 docker compose exec relanox node dist/main.js cleanup --config /config/relanox.json --before $before --limit 1000
 ```
 
-Repeat in subsequent batches as needed. Cleanup handles completed incoming notifications and sent deliveries independently. It preserves pending, rejected and unknown deliveries, as well as media referenced by retained messages or recent staged uploads. Old unreferenced upload bytes can be cleaned to release staging quota. File metadata and send digests remain for idempotent retries; cleaned bytes cannot be read or used in a new send. Allow time for downloads: cleaned assets' public URLs stop working. Give backups their own retention policy.
+Repeat in batches as needed. Cleanup removes eligible completed message content and old attachments. It keeps unfinished or uncertain replies, files still used by retained messages and recent uploads. Cleaned files can no longer be downloaded or used in new messages. Allow recipients time to download attachments before cleanup, and choose a separate retention period for backups.
 
 ## Monitor the installation
 

@@ -219,7 +219,7 @@ async function showDetails(): Promise<void> {
           </div>
 
           <section class="connection-mapping">
-            <h2>{{ text('Send messages to', '渠道映射') }}</h2>
+            <h2>{{ text('Send messages to', '接收消息的 Agent') }}</h2>
             <p v-if="!selected.length" class="connection-muted">
               {{ text('Choose a channel to get started.', '先选择一个渠道。') }}
             </p>

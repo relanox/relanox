@@ -68,7 +68,12 @@ const guides = computed(() => [
     <section class="docs-intro" aria-labelledby="home-title">
       <div class="docs-intro-copy">
         <h1 id="home-title">
-          {{ label('Your Agent, in your chat.', '在聊天里，使用你的 Agent。') }}
+          {{
+            label(
+              'Use dot or Grok Bot in your chat apps',
+              '在聊天软件中使用 dot 或 Grok Bot'
+            )
+          }}
         </h1>
         <p>
           {{
@@ -90,7 +95,7 @@ const guides = computed(() => [
         </div>
       </div>
       <div class="docs-start">
-        <h2>{{ label('Get your first reply', '接通第一条回复') }}</h2>
+        <h2>{{ label('Get your first reply', '收到第一条回复') }}</h2>
         <ol>
           <li>
             <span aria-hidden="true">01</span
@@ -143,8 +148,8 @@ const guides = computed(() => [
         <p>
           {{
             label(
-              '15 native channels. Each guide covers setup and supported media.',
-              '15 个原生渠道，每份指南都说明接入步骤与媒体能力。'
+              'Connect 15 chat platforms. Each guide covers setup and supported files.',
+              '可连接 15 个聊天平台，各指南说明接入步骤和支持的文件类型。'
             )
           }}
         </p>
@@ -170,7 +175,7 @@ const guides = computed(() => [
       </nav>
     </section>
     <section class="docs-guides" aria-labelledby="guides-title">
-      <h2 id="guides-title">{{ label('Keep going', '接下来，你可能需要') }}</h2>
+      <h2 id="guides-title">{{ label('More guides', '使用与管理') }}</h2>
       <div class="docs-guide-list">
         <a v-for="guide in guides" :key="guide.path" :href="link(guide.path)"
           ><div>
@@ -182,9 +187,7 @@ const guides = computed(() => [
       </div>
     </section>
     <div class="docs-more">
-      <span>{{
-        label('Understand how it works', '想了解背后的工作方式？')
-      }}</span
+      <span>{{ label('About Relanox', '了解 Relanox') }}</span
       ><a :href="link('architecture')"
         >{{ label('How messages reach your Agent', '消息如何到达 Agent') }} →</a
       ><a :href="link('development')"

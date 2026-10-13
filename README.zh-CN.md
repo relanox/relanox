@@ -16,7 +16,7 @@
 
 支持 Telegram、Discord、Slack、飞书、企业微信、钉钉、QQ、Microsoft Teams、WhatsApp Business Cloud、Google Chat、LINE、Matrix、Mattermost、Signal 和 IRC。各渠道指南会说明账号准备、配置和文件收发方式。
 
-## 按你的方式部署
+## 部署
 
 可以使用 Node.js 运行，也可以用 Docker Compose 部署。SQLite 适合直接开始使用；已有 PostgreSQL 的部署也可使用现有数据库。消息、附件和发送进度保存在你配置的数据库中。
 
