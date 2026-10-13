@@ -258,6 +258,36 @@ describe('dot MCP Events and tools', () => {
       ).isError
     ).toBe(true)
 
+    const page = await read({ pending: true, limit: 1 })
+
+    const cursor = z
+      .object({
+        nextCursor: z.object({ acceptedAt: z.number(), requestId: z.string() })
+      })
+      .parse(page).nextCursor
+
+    expect(page).toMatchObject({
+      messages: [
+        {
+          requestId: own.requestId,
+          text: 'recover this',
+          reply: { status: 'awaiting_final' }
+        }
+      ]
+    })
+    expect(cursor.requestId).toBe(own.requestId)
+    expect(await read({ pending: true, limit: 1, cursor })).toEqual({
+      messages: []
+    })
+    expect(
+      (
+        await client.callTool({
+          name: 'relanox_read_messages',
+          arguments: { cursor }
+        })
+      ).isError
+    ).toBe(true)
+
     const send = {
       name: 'relanox_send_message',
       arguments: {
@@ -308,6 +338,14 @@ describe('dot MCP Events and tools', () => {
         })
       ).structuredContent
     ).toEqual({ status: 'not_found' })
+    expect(await read({ pending: true })).toMatchObject({
+      messages: [
+        {
+          requestId: own.requestId,
+          reply: { status: 'pending', deliveryId: final.deliveryId }
+        }
+      ]
+    })
     fx.endpoints[0] = {
       id: 'endpoint0',
       agent: 'dot',

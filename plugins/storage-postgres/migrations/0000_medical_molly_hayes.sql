@@ -61,3 +61,5 @@ CREATE INDEX "media_channel" ON "media" USING btree ("channel_id");--> statement
 CREATE INDEX "outbound_channel_order" ON "outbound" USING btree ("channel_id","sequence") WHERE "outbound"."status" IN ('pending','unknown');--> statement-breakpoint
 CREATE INDEX "outbound_due" ON "outbound" USING btree ((("record"->>'dueAt')::bigint),"id") WHERE "outbound"."status"='pending';--> statement-breakpoint
 CREATE INDEX "outbound_lease" ON "outbound" USING btree ((("record"#>>'{lease,expiresAt}')::bigint)) WHERE "outbound"."status"='pending';
+--> statement-breakpoint
+CREATE INDEX "inbound_pending_reply" ON "inbound" USING btree ("endpoint","accepted_at","id");

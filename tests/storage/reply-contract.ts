@@ -83,6 +83,188 @@ export function replyContract(
       })
     })
 
+    it('pages retained unfinished requests oldest first across completion, excluding other or inactive channels', async () => {
+      await storage.acceptInbound(snapshot('z-old', 90))
+      await storage.acceptInbound(snapshot('a-tie', 100))
+      await storage.acceptInbound(snapshot('b-tie', 100))
+      await storage.acceptInbound(snapshot('foreign', 50, 'other'))
+      await storage.acceptInbound(snapshot('inactive', 50, 'ep', 'independent'))
+      await storage.registerConversations(
+        testConversations.filter(
+          (record) => record.address.id !== 'independent'
+        )
+      )
+
+      const query = {
+        channelIds: ['channel', 'independent'],
+        endpointIds: ['ep'],
+        limit: 2
+      }
+
+      const first = await storage.listPendingInbound(query)
+      expect(first.map((record) => record.snapshot.requestId)).toEqual([
+        'z-old',
+        'a-tie'
+      ])
+      expect((await storage.getInbound('a-tie'))?.dispatch).toEqual({
+        status: 'due',
+        attempts: 0,
+        dueAt: 100
+      })
+      const final = reply('z-old', 'final', 'finished')
+      await storage.enqueueMessage(final)
+      // Complete both public delivery chunks between pages; an offset cursor would skip work.
+      for (let chunk = 0; chunk < 2; chunk++) {
+        const work = required(
+          (
+            await storage.takeDue({
+              now: 110,
+              leaseMs: 100,
+              limit: 20,
+              leaseOwner: 'worker',
+              safeRetryAccountIds: []
+            })
+          ).find((item) => item.kind === 'send')
+        )
+
+        expect(
+          await storage.settleAttempt({
+            kind: 'send',
+            id: final.outbound.deliveryId,
+            lease: work.lease,
+            now: 111,
+            nextDueAt: 110,
+            outcome: {
+              status: 'sent',
+              receipt: { platformMessageId: String(chunk) }
+            }
+          })
+        ).toMatchObject({ status: 'updated' })
+      }
+
+      const next = await storage.listPendingInbound({
+        ...query,
+        cursor: { acceptedAt: 100, requestId: 'a-tie' }
+      })
+
+      expect(next.map((record) => record.snapshot.requestId)).toEqual([
+        'b-tie',
+        'r1'
+      ])
+      expect(
+        await storage.listPendingInbound({
+          ...query,
+          cursor: { acceptedAt: 100, requestId: 'r1' }
+        })
+      ).toEqual([])
+      expect(
+        (await storage.listPendingInbound(query)).map(
+          (record) => record.snapshot.requestId
+        )
+      ).toEqual(['a-tie', 'b-tie'])
+      expect(
+        await storage.listPendingInbound({ ...query, endpointIds: ['other'] })
+      ).toEqual([])
+    })
+
+    it('retains ambiguous finals for delivery recovery and refuses to notify their source again', async () => {
+      const dispatch = required(
+        (
+          await storage.takeDue({
+            now: 100,
+            leaseMs: 100,
+            limit: 1,
+            leaseOwner: 'worker',
+            safeRetryAccountIds: []
+          })
+        )[0]
+      )
+
+      await storage.settleAttempt({
+        kind: 'dispatch',
+        id: 'r1',
+        lease: dispatch.lease,
+        now: 101,
+        nextDueAt: 101,
+        outcome: { status: 'accepted' }
+      })
+      const final = reply('r1', 'final', 'ambiguous')
+      await storage.enqueueMessage(final)
+
+      const work = required(
+        (
+          await storage.takeDue({
+            now: 110,
+            leaseMs: 100,
+            limit: 1,
+            leaseOwner: 'worker',
+            safeRetryAccountIds: []
+          })
+        )[0]
+      )
+
+      await storage.settleAttempt({
+        kind: 'send',
+        id: final.outbound.deliveryId,
+        lease: work.lease,
+        now: 111,
+        nextDueAt: 111,
+        outcome: { status: 'unknown', errorCode: 'timeout' }
+      })
+      const source = required(await storage.getInbound('r1'))
+      expect(
+        await storage.listPendingInbound({
+          channelIds: ['channel'],
+          endpointIds: ['ep'],
+          limit: 5
+        })
+      ).toMatchObject([
+        {
+          snapshot: { requestId: 'r1' },
+          reply: { finalDeliveryId: final.outbound.deliveryId }
+        }
+      ])
+      expect(
+        await storage.requeue({
+          kind: 'request',
+          id: 'r1',
+          expectedVersion: source.version,
+          now: 112,
+          acknowledgeUnknown: true
+        })
+      ).toEqual({ status: 'conflict' })
+
+      const delivery = required(
+        await storage.getOutbound(final.outbound.deliveryId)
+      )
+
+      expect(
+        await storage.requeue({
+          kind: 'delivery',
+          id: delivery.deliveryId,
+          expectedVersion: delivery.version,
+          now: 112,
+          acknowledgeUnknown: false
+        })
+      ).toEqual({ status: 'conflict' })
+      expect(
+        await storage.requeue({
+          kind: 'delivery',
+          id: delivery.deliveryId,
+          expectedVersion: delivery.version,
+          now: 112,
+          acknowledgeUnknown: true
+        })
+      ).toMatchObject({ status: 'updated' })
+      expect(
+        await storage.enqueueMessage(reply('r1', 'final', 'new-key'))
+      ).toEqual({
+        status: 'queued',
+        deliveryId: delivery.deliveryId,
+        replay: true
+      })
+    })
+
     it('preserves an active notification lease when its final arrives before the webhook receipt', async () => {
       const work = required(
         (

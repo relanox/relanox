@@ -63,6 +63,11 @@ export type ReplyReference = {
   readonly kind: 'progress' | 'final'
 }
 
+export type MessageCursor = {
+  readonly acceptedAt: EpochMs
+  readonly requestId: string
+}
+
 export type ReplyStatus = {
   readonly status: 'awaiting_final' | 'expired' | DeliveryStatus
   readonly deliveryId?: string
