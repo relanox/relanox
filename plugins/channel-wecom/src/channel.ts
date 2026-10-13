@@ -179,6 +179,12 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
       host.discoverConversation({ chatId, senderId: message.from.userid })
       return
     }
+    if (!account.allowedSenders.includes(message.from.userid)) {
+      host.observe.log('info', 'channel_input_discarded', {
+        errorCode: 'sender_not_allowed'
+      })
+      return
+    }
 
     const { text, attachments } = await receiveParts(
       message,

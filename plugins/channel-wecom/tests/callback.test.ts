@@ -251,7 +251,8 @@ test('callback refuses changed conversation targets, conflicting callback retrie
   const plugin = createWeComChannel()
 
   const host = await assemble(plugin, callbackConfig, [
-    { chatId: 'user', senderId: 'user' }
+    { chatId: 'user', senderId: 'user' },
+    { chatId: 'other', senderId: 'other' }
   ])
 
   await host.start()
