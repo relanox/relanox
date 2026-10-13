@@ -1,4 +1,7 @@
-import type { CoreRuntime } from '../../../packages/core/src/index.js'
+import type {
+  CoreRuntime,
+  CoreOptions
+} from '../../../packages/core/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,7 +23,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createGoogleChatChannel } from '../src/index.js'
-import { harness, peer } from './harness.js'
+import { harness, peer, webhook } from './harness.js'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -46,7 +49,10 @@ const body = JSON.stringify({
   }
 })
 
-async function setup(filename = ':memory:'): Promise<{
+async function setup(
+  filename = ':memory:',
+  worker?: CoreOptions['worker']
+): Promise<{
   core: CoreRuntime
   storage: Storage
   dispatches: string[]
@@ -105,7 +111,8 @@ async function setup(filename = ':memory:'): Promise<{
     'users/alice',
     'spaces/space/threads/thread',
     filename,
-    publicUrl
+    publicUrl,
+    worker
   )
 
   cleanup.push(local.close)
@@ -195,40 +202,117 @@ describe('native Google Chat', () => {
     }
   )
 
-  it('fails an authorized media ingress while real SQLite is closed and accepts its replay after reopening', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'relanox-chat-ingress-'))
-    cleanup.push(async () => rm(directory, { recursive: true, force: true }))
-    const filename = join(directory, 'state.db')
-    const local = await setup(filename)
-
-    const path =
-      '/v1/media/spaces/space/messages/media/attachments/file?alt=media'
-
-    local.remote.route(path, new Uint8Array([1, 2, 3, 4]), {
-      'content-type': 'image/png'
-    })
-    await local.storage.close()
-    expect(
-      (
-        await local.core.fetch(
-          await local.incoming(undefined, attachmentEvent())
+  it.each([
+    { limit: 'per-file bytes', worker: { maxMediaBytes: 3 }, count: 1 },
+    { limit: 'attachment count', worker: { maxAttachments: 1 }, count: 2 },
+    {
+      limit: 'aggregate bytes',
+      worker: { maxMediaBytes: 4, maxTotalMediaBytes: 7 },
+      count: 2
+    }
+  ])(
+    'acknowledges an explicit $limit refusal without saving or dispatching it',
+    async ({ worker, count }) => {
+      // Chat can retry a non-2xx callback and expects {} for asynchronous handling:
+      // https://developers.google.com/workspace/chat/receive-respond-interactions#http-service-retries
+      const local = await setup(':memory:', worker)
+      const callback = await webhook(local.core)
+      cleanup.push(callback.close)
+      for (let index = 0; index < count; index += 1) {
+        local.remote.route(
+          `/v1/media/spaces/space/messages/media/attachments/file${index || ''}?alt=media`,
+          new Uint8Array([1, 2, 3, 4]),
+          { 'content-type': 'image/png' }
         )
-      ).status
-    ).toBe(500)
-    const reopened = await setup(filename)
-    reopened.remote.route(path, new Uint8Array([1, 2, 3, 4]), {
-      'content-type': 'image/png'
-    })
-    expect(await reopened.storage.listInbound({ limit: 10 })).toHaveLength(0)
-    expect(
-      (
-        await reopened.core.fetch(
-          await reopened.incoming(undefined, attachmentEvent())
-        )
-      ).status
-    ).toBe(200)
-    expect(await reopened.storage.listInbound({ limit: 10 })).toHaveLength(1)
-  })
+      }
+
+      const response = await callback.post(
+        await local.incoming(undefined, attachmentEvent('users/alice', count))
+      )
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({})
+      expect(await local.storage.listInbound({ limit: 10 })).toHaveLength(0)
+      await local.core.processDue()
+      expect(local.dispatches).toEqual([])
+      expect((await callback.post(await local.incoming())).status).toBe(200)
+      await local.core.processDue()
+      expect(local.dispatches).toEqual(['hello'])
+      expect(await local.storage.listInbound({ limit: 10 })).toHaveLength(1)
+    }
+  )
+
+  it.each(['media HTTP 503', 'media connection reset', 'closed SQLite'])(
+    'keeps %s ingress replayable through HTTP and a real SQLite reopen',
+    async (failure) => {
+      const directory = await mkdtemp(join(tmpdir(), 'relanox-chat-replay-'))
+      cleanup.push(async () => rm(directory, { recursive: true, force: true }))
+      const filename = join(directory, 'state.db')
+      const local = await setup(filename)
+      const callback = await webhook(local.core)
+      cleanup.push(callback.close)
+
+      const path =
+        '/v1/media/spaces/space/messages/media/attachments/file?alt=media'
+
+      local.remote.route(
+        path,
+        new Uint8Array([1, 2, 3, 4]),
+        { 'content-type': 'image/png' },
+        failure === 'media HTTP 503' ? 503 : 200
+      )
+      if (failure === 'media connection reset') {
+        local.remote.disconnect(path)
+      }
+      if (failure === 'closed SQLite') {
+        await local.storage.close()
+      }
+      expect(
+        (
+          await callback.post(
+            await local.incoming(undefined, attachmentEvent())
+          )
+        ).status
+      ).toBe(500)
+      expect(local.dispatches).toEqual([])
+      await local.storage.close()
+      const reopened = await setup(filename)
+      const replay = await webhook(reopened.core)
+      cleanup.push(replay.close)
+      reopened.remote.route(path, new Uint8Array([1, 2, 3, 4]), {
+        'content-type': 'image/png'
+      })
+      expect(await reopened.storage.listInbound({ limit: 10 })).toHaveLength(0)
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        expect(
+          (
+            await replay.post(
+              await reopened.incoming(undefined, attachmentEvent())
+            )
+          ).status
+        ).toBe(200)
+      }
+      await reopened.core.processDue()
+      expect(await reopened.storage.listInbound({ limit: 10 })).toHaveLength(1)
+      expect(reopened.dispatches).toEqual([''])
+
+      const item = (await reopened.storage.listInbound({ limit: 10 }))[0]
+        ?.snapshot
+
+      const attachment = item?.attachments?.[0]
+      if (!item || !attachment) {
+        throw new Error('missing_replayed_attachment')
+      }
+      expect(
+        (
+          await reopened.principal().media?.read({
+            channelId: item.channel.id,
+            mediaId: attachment.id
+          })
+        )?.data
+      ).toEqual(new Uint8Array([1, 2, 3, 4]))
+    }
+  )
 
   it('accepts both Google OAuth ID token issuers before persisting an authorized message', async () => {
     // Google OAuth verifier accepts both issuer spellings:
@@ -547,7 +631,7 @@ describe('native Google Chat', () => {
   })
 })
 
-function attachmentEvent(sender = 'users/alice'): string {
+function attachmentEvent(sender = 'users/alice', count = 1): string {
   // Native Message.sender and AttachmentDataRef contracts:
   // https://github.com/googleapis/google-api-nodejs-client/blob/f1a8448f294a39320c2a548a118fb2a0b8ada468/src/apis/chat/v1.ts
   // https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages.attachments
@@ -558,15 +642,13 @@ function attachmentEvent(sender = 'users/alice'): string {
       name: 'spaces/space/messages/media',
       sender: { name: sender, type: 'HUMAN' },
       thread: { name: 'spaces/space/threads/thread' },
-      attachment: [
-        {
-          contentName: 'picture.png',
-          contentType: 'image/png',
-          attachmentDataRef: {
-            resourceName: 'spaces/space/messages/media/attachments/file'
-          }
+      attachment: Array.from({ length: count }, (_, index) => ({
+        contentName: 'picture.png',
+        contentType: 'image/png',
+        attachmentDataRef: {
+          resourceName: `spaces/space/messages/media/attachments/file${index || ''}`
         }
-      ]
+      }))
     }
   })
 }

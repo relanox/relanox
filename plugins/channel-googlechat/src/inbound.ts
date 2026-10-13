@@ -1,6 +1,7 @@
 import { apiBase } from './constants.js'
 import { downloadAttachments } from './media.js'
-import type { AccountConfig, ChannelHost } from '@relanox/sdk'
+import type { AccountConfig, ChannelHost, MediaUpload } from '@relanox/sdk'
+import { MediaDownloadError } from '@relanox/channel-media'
 import type { z } from 'zod'
 import type { GoogleChatConfig } from './config.js'
 import { ingest, secret } from './io.js'
@@ -46,12 +47,21 @@ export async function receive(
     throw new Error('inconsistent_space')
   }
 
-  const attachments = await downloadAttachments(
-    message,
-    space.name,
-    config,
-    host
-  )
+  let attachments: MediaUpload[]
+  try {
+    attachments = await downloadAttachments(message, space.name, config, host)
+  } catch (error) {
+    if (
+      error instanceof MediaDownloadError &&
+      error.code === 'media_too_large'
+    ) {
+      host.observe.log('info', 'channel_policy_rejection', {
+        errorCode: error.code
+      })
+      return
+    }
+    throw error
+  }
 
   const target = {
     channel: 'googlechat' as const,

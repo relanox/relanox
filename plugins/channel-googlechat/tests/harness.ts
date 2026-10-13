@@ -13,6 +13,7 @@ import type {
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createCore } from '@relanox/core'
+import type { CoreOptions, CoreRuntime } from '@relanox/core'
 import type {
   AgentHost,
   AgentPlugin,
@@ -77,9 +78,11 @@ export async function peer(): Promise<{
   ): void
   token(this: void, code: number, body: Json): void
   keys(this: void, value: Json): void
+  disconnect(this: void, path: string): void
   close(this: void): Promise<void>
 }> {
   const traffic: Traffic[] = []
+  const disconnected = new Set<string>()
 
   const routes = new Map<
     string,
@@ -107,6 +110,10 @@ export async function peer(): Promise<{
       body: Buffer.concat(parts).toString('utf8'),
       headers: incoming.headers
     })
+    if (disconnected.has(path)) {
+      response.destroy()
+      return
+    }
     response.setHeader('content-type', 'application/json')
     if (path === '/oauth2/v3/certs') {
       response.end(JSON.stringify(jwks))
@@ -176,6 +183,7 @@ export async function peer(): Promise<{
       routeHeaders: Record<string, string> = {},
       code = 200
     ): void {
+      disconnected.delete(path)
       routes.set(path, { status: code, body, headers: routeHeaders })
     },
     respond(
@@ -193,6 +201,9 @@ export async function peer(): Promise<{
     },
     keys(value: Json): void {
       jwks = value
+    },
+    disconnect(path: string): void {
+      disconnected.add(path)
     },
     async close(): Promise<void> {
       for (const host of hosts) {
@@ -227,7 +238,8 @@ export async function harness(
   sender: string,
   thread?: string,
   filename = ':memory:',
-  publicUrl?: string
+  publicUrl?: string,
+  worker?: CoreOptions['worker']
 ): Promise<{
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
@@ -268,6 +280,7 @@ export async function harness(
   const core = await createCore({
     publicUrl: publicUrl ?? 'https://relay.example',
     storage,
+    ...(worker ? { worker } : {}),
     channels: new Map([['business', plugin]]),
     agents: new Map([['dot', agent]]),
     config: {
@@ -340,6 +353,72 @@ export async function harness(
     sendReply,
     async close(): Promise<void> {
       await storage.close()
+    }
+  }
+}
+
+/** Forward real callback HTTP traffic to the public core boundary. */
+export async function webhook(core: CoreRuntime): Promise<{
+  post(this: void, incoming: Request): Promise<Response>
+  close(this: void): Promise<void>
+}> {
+  async function receive(
+    incoming: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> {
+    const parts: Buffer[] = []
+    for await (const part of incoming) {
+      parts.push(Buffer.isBuffer(part) ? part : Buffer.from(String(part)))
+    }
+    const headers = new Headers()
+    for (const [name, value] of Object.entries(incoming.headers)) {
+      if (value !== undefined) {
+        headers.set(name, Array.isArray(value) ? value.join(', ') : value)
+      }
+    }
+
+    const result = await core.fetch(
+      new Request(`http://local${incoming.url ?? '/'}`, {
+        method: 'POST',
+        headers,
+        body: Buffer.concat(parts).toString('utf8')
+      })
+    )
+
+    response.writeHead(result.status, Object.fromEntries(result.headers))
+    response.end(new Uint8Array(await result.arrayBuffer()))
+  }
+
+  const server = createServer((incoming, response) => {
+    void receive(incoming, response).catch(() => response.destroy())
+  })
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address() as AddressInfo
+  return {
+    async post(incoming): Promise<Response> {
+      return transport.fetch(
+        `http://127.0.0.1:${address.port}${new URL(incoming.url).pathname}`,
+        {
+          method: 'POST',
+          headers: incoming.headers,
+          body: await incoming.text()
+        }
+      )
+    },
+    async close(): Promise<void> {
+      server.closeAllConnections()
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error)
+          } else {
+            resolve()
+          }
+        })
+      })
     }
   }
 }
