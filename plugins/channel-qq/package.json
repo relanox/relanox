@@ -19,6 +19,7 @@
     "@relanox/channel-media": "workspace:*",
     "@relanox/sdk": "workspace:*",
     "mime-types": "3.0.2",
+    "silk-wasm": "3.7.1",
     "ws": "8.22.0",
     "zod": "4.6.5"
   },

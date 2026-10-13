@@ -387,13 +387,19 @@ test.each([
 
 test('WeCom decrypts pure-media input into SQLite and uploads original bytes after restart', async () => {
   vi.stubEnv('WECOM_MEDIA_SECRET', 'secret')
-  const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3])
+
+  // Complete 1x1 PNG, including a valid zlib stream and chunk CRCs (PNG 3).
+  const bytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
+    'base64'
+  )
+
   const key = Buffer.alloc(32, 7)
   const cipher = createCipheriv('aes-256-cbc', key, key.subarray(0, 16))
   cipher.setAutoPadding(false)
 
   const encrypted = Buffer.concat([
-    cipher.update(Buffer.concat([bytes, Buffer.alloc(21, 21)])),
+    cipher.update(Buffer.concat([bytes, Buffer.alloc(28, 28)])),
     cipher.final()
   ])
 
@@ -465,7 +471,7 @@ test('WeCom decrypts pure-media input into SQLite and uploads original bytes aft
   expect(inbound?.snapshot.attachments?.[0]).toMatchObject({
     kind: 'image',
     mimeType: 'image/png',
-    size: 11
+    size: 68
   })
   await first.stop?.()
   await local.storage.close()

@@ -7,6 +7,7 @@ import type {
   StoredMedia
 } from '@relanox/sdk'
 import { z } from 'zod'
+import { fileTypeFromBuffer } from 'file-type'
 import type { messageSchema } from './schemas.js'
 
 export const resourceSchema = z.object({
@@ -15,21 +16,13 @@ export const resourceSchema = z.object({
   filename: z.string().optional()
 })
 
-function contentType(data: Uint8Array, kind: MediaUpload['kind']): string {
-  const bytes = Buffer.from(data)
-  if (
-    bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-  ) {
-    return 'image/png'
-  }
-  if (bytes[0] === 255 && bytes[1] === 216) {
-    return 'image/jpeg'
-  }
-  if (bytes.subarray(0, 3).toString() === 'GIF') {
-    return 'image/gif'
-  }
-  if (bytes.subarray(4, 8).toString() === 'ftyp') {
-    return 'video/mp4'
+async function contentType(
+  data: Uint8Array,
+  kind: MediaUpload['kind']
+): Promise<string> {
+  const detected = await fileTypeFromBuffer(data)
+  if (detected) {
+    return detected.mime
   }
   if (kind !== 'file') {
     throw new Error('unsupported_media_format')
@@ -77,7 +70,7 @@ export async function receiveResource(
   if (data.byteLength > maximum) {
     throw new MediaDownloadError('media_too_large')
   }
-  const mimeType = contentType(data, kind)
+  const mimeType = await contentType(data, kind)
   const extension = mimeType.split('/')[1] ?? 'bin'
   return {
     kind,

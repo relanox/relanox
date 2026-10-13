@@ -293,7 +293,11 @@ test('callback refuses changed conversation targets, conflicting callback retrie
 })
 
 test('callback decrypts inbound images and returns a final image through signed encrypted polling', async () => {
-  const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3])
+  // Complete 1x1 PNG, including a valid zlib stream and chunk CRCs (PNG 3).
+  const bytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
+    'base64'
+  )
 
   const cipher = createCipheriv(
     'aes-256-cbc',
@@ -304,7 +308,7 @@ test('callback decrypts inbound images and returns a final image through signed 
   cipher.setAutoPadding(false)
 
   const encrypted = Buffer.concat([
-    cipher.update(Buffer.concat([bytes, Buffer.alloc(21, 21)])),
+    cipher.update(Buffer.concat([bytes, Buffer.alloc(28, 28)])),
     cipher.final()
   ])
 
@@ -341,7 +345,7 @@ test('callback decrypts inbound images and returns a final image through signed 
   expect(attachment).toMatchObject({
     kind: 'image',
     mimeType: 'image/png',
-    size: 11
+    size: 68
   })
   if (!inbound || !attachment) {
     throw new Error('missing durable image')
@@ -364,8 +368,9 @@ test('callback decrypts inbound images and returns a final image through signed 
       {
         msgtype: 'image',
         image: {
-          base64: 'iVBORw0KGgoBAgM=',
-          md5: '8ca92d7f177036b4a00594a4aa98468e'
+          base64:
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
+          md5: 'edb2aa47631c67a43709d4ccd2501e33'
         }
       }
     ]
@@ -403,7 +408,10 @@ test('callback recovers a final Markdown caption with ten images and repeats the
     kind: 'image' as const,
     mimeType: 'image/png',
     fileName: `${index}.png`,
-    data: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3])
+    data: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
+      'base64'
+    )
   }))
 
   await original.principal().sendMessage({
@@ -454,8 +462,9 @@ test('callback recovers a final Markdown caption with ten images and repeats the
     Array.from({ length: 10 }, () => ({
       msgtype: 'image',
       image: {
-        base64: 'iVBORw0KGgoBAgM=',
-        md5: '8ca92d7f177036b4a00594a4aa98468e'
+        base64:
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP4/x8AAwAB/2+Bq7YAAAAASUVORK5CYII=',
+        md5: 'edb2aa47631c67a43709d4ccd2501e33'
       }
     }))
   )

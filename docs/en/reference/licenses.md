@@ -8,17 +8,19 @@ Include Relanox's license and the notices for the dependencies you distribute. T
 
 The package manifests and lockfile identify the exact versions. The shipped runtime uses dependencies under the following declared licenses:
 
-| License       | Examples in the runtime                                                                                              |
-| ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| MIT           | Hono, Pino, better-sqlite3, PostgreSQL's `pg` client, Zod, `ws`, Standard Webhooks, Marked, `mime-types`, `mime-db`. |
-| Apache-2.0    | Model Context Protocol packages, OpenTelemetry packages, Prometheus client, Drizzle ORM.                             |
-| BSD-2-Clause  | `entities`.                                                                                                          |
-| ISC           | `pg-int8` and `split2`.                                                                                              |
-| Unlicense     | `fast-sha256`.                                                                                                       |
-| Public domain | SQLite embedded by better-sqlite3.                                                                                   |
+| License       | Examples in the runtime                                                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| MIT           | Hono, Pino, better-sqlite3, PostgreSQL's `pg` client, Zod, `ws`, Standard Webhooks, Marked, `mime-types`, `mime-db`, `file-type`, `silk-wasm`. |
+| Apache-2.0    | Model Context Protocol packages, OpenTelemetry packages, Prometheus client, Drizzle ORM.                                                       |
+| BSD-2-Clause  | `entities`.                                                                                                                                    |
+| ISC           | `pg-int8` and `split2`.                                                                                                                        |
+| Unlicense     | `fast-sha256`.                                                                                                                                 |
+| Public domain | SQLite embedded by better-sqlite3.                                                                                                             |
 
 The MIT texts for `pg-types` and `pgpass` are included in their README files. Standard Webhooks' missing archive license and the Prometheus client's missing upstream NOTICE are supplied in `licenses/` from the matching published upstream commits. Marked also retains the BSD-3-Clause notice for the original Markdown implementation in its license file. Development tools are separate from the production image.
 
 Drizzle ORM 0.45.4 declares Apache-2.0 but omits the license text from its published package. `licenses/drizzle-orm.LICENSE` supplies the text from its [release commit](https://github.com/drizzle-team/drizzle-orm/blob/eab8bedbb65d5429c54e612ddbd88aa23091d398/LICENSE).
 
 If you change the production dependency set before redistributing, check the installed packages' license files and update the notices alongside the dependency change. See [Contributing](../development.md) for dependency maintenance.
+
+The bundled codecs in silk-wasm retain the BSD-2-Clause Silk wrapper and Skype's SILK SDK BSD notice. Their matching published source notices, and the bundled MIT wav-file-decoder notice, are included in licenses/ alongside the package's MIT license.
