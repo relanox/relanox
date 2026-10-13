@@ -16,7 +16,7 @@ export const messageSchema = z.object({
   conversationType: z.enum(['1', '2']),
   conversationId: z.string().min(1),
   senderId: z.string().min(1),
-  senderStaffId: z.string().min(1).optional(),
+  senderStaffId: z.string().optional(),
   chatbotUserId: z.string().optional(),
   robotCode: z.string().min(1),
   isInAtList: z.boolean().optional(),
