@@ -113,24 +113,51 @@ test.each([false, true])(
 
 const smallBytes = Buffer.from([10, 20, 30, 40, 50])
 
+// Native attachment labels are distinct from the download response's MIME type.
+// Voice denotes a voice message; file remains an ordinary file even for audio bytes.
+// https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html#schema-messageattachment
+// https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_at_message_create.html#schema-messageattachment
 const formats = [
   {
     kind: 'image',
     mimeType: 'image/png',
+    nativeContentType: 'image/png',
     fileName: 'picture.png',
     fileType: 1
   },
   {
     kind: 'audio',
     mimeType: 'audio/silk',
+    nativeContentType: 'voice',
     fileName: 'voice.silk',
     fileType: 3
   },
-  { kind: 'video', mimeType: 'video/mp4', fileName: 'clip.mp4', fileType: 2 },
+  {
+    kind: 'video',
+    mimeType: 'video/mp4',
+    nativeContentType: 'video/mp4',
+    fileName: 'clip.mp4',
+    fileType: 2
+  },
   {
     kind: 'file',
     mimeType: 'application/pdf',
+    nativeContentType: 'file',
     fileName: 'report.pdf',
+    fileType: 4
+  },
+  {
+    kind: 'file',
+    mimeType: 'audio/mpeg',
+    nativeContentType: 'file',
+    fileName: 'recording.mp3',
+    fileType: 4
+  },
+  {
+    kind: 'file',
+    mimeType: 'application/octet-stream',
+    nativeContentType: 'voice',
+    fileName: 'opaque-voice.bin',
     fileType: 4
   }
 ] as const
@@ -215,7 +242,8 @@ async function fixture(
   group = false,
   bytes = smallBytes,
   fault?: Fault,
-  nativeShape = false
+  nativeShape = false,
+  downloadMimeType = 'application/octet-stream'
 ): Promise<{
   remote: Awaited<ReturnType<typeof peer>>
   local: Awaited<ReturnType<typeof assemble>>
@@ -241,7 +269,7 @@ async function fixture(
       if (request.path === '/attachment') {
         return {
           body: bytes,
-          headers: { 'content-type': 'application/octet-stream' }
+          headers: { 'content-type': downloadMimeType }
         }
       }
       if (request.path === `${base}/upload_prepare`) {
@@ -369,6 +397,7 @@ test.each(
     formats.map((format) => ({
       kind: format.kind,
       mimeType: format.mimeType,
+      nativeContentType: format.nativeContentType,
       fileName: format.fileName,
       fileType: format.fileType,
       group,
@@ -376,10 +405,18 @@ test.each(
     }))
   )
 )(
-  'QQ $chat relays $kind through SQLite and native binary parts without publication',
+  'QQ $chat relays $kind ($nativeContentType / $mimeType) through SQLite and native binary parts without publication',
   async (format) => {
     const { group } = format
-    const { remote, local, base, blockSize } = await fixture(group)
+
+    const { remote, local, base, blockSize } = await fixture(
+      group,
+      smallBytes,
+      undefined,
+      false,
+      format.mimeType
+    )
+
     await local.start()
     await expect.poll(() => remote.frames.length).toBeGreaterThan(0)
     remote.sockets[0]?.send(
@@ -391,14 +428,14 @@ test.each(
           id: 'file-in',
           content: '',
           timestamp: new Date().toISOString(),
-          message_type: 7,
+          message_type: 0,
           author: group ? { member_openid: 'member' } : { user_openid: 'user' },
           ...(group ? { group_openid: 'group' } : {}),
           attachments: [
             {
               url: `${remote.http}/attachment`,
               filename: format.fileName,
-              content_type: format.mimeType
+              content_type: format.nativeContentType
             }
           ]
         }
@@ -417,6 +454,11 @@ test.each(
     })
 
     expect(stored?.data).toEqual(new Uint8Array(smallBytes))
+    expect(stored?.reference).toMatchObject({
+      kind: format.kind,
+      mimeType: format.mimeType,
+      fileName: format.fileName
+    })
     await scoped.sendMessage({
       channel: item.channel.id,
       idempotencyKey: 'file-result',

@@ -27,11 +27,18 @@ export async function downloadAttachments(
       allowInsecureLocalhost: false
     })
 
-    const mimeType = attachment.content_type ?? downloaded.mimeType
+    // QQ uses voice/file as native labels, not MIME types. Keep unknown voice bytes opaque.
+    const nativeType = attachment.content_type
+
+    const mimeType =
+      nativeType === 'voice' || nativeType === 'file'
+        ? downloaded.mimeType
+        : (nativeType ?? downloaded.mimeType)
+
     uploads.push({
       data: downloaded.data,
       mimeType,
-      kind: mediaKind(mimeType),
+      kind: nativeType === 'file' ? 'file' : mediaKind(mimeType),
       fileName:
         attachment.filename ??
         new URL(url).pathname.split('/').at(-1) ??
