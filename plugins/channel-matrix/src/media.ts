@@ -117,8 +117,7 @@ async function upload(
     })
 
     if (!response.ok) {
-      await response.body?.cancel()
-      const result = httpFailure(response)
+      const result = await httpFailure(response)
       return result.status === 'unknown'
         ? { status: 'retryable', errorCode: 'media_upload_failed' }
         : result
