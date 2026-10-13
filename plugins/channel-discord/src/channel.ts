@@ -134,12 +134,13 @@ export function createDiscordChannel(
             await jsonResponse(response).catch(() => null)
           )
 
+          if (!parsed.success) {
+            return failure(response)
+          }
           return {
             status: 'retryable',
             errorCode: 'rate_limited',
-            ...(parsed.success
-              ? { retryAfterMs: Math.ceil(parsed.data.retry_after * 1000) }
-              : {})
+            retryAfterMs: Math.ceil(parsed.data.retry_after * 1000)
           }
         }
         if (!response.ok) {

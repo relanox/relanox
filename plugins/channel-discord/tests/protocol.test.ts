@@ -16,7 +16,7 @@ import type {
   HttpHandler
 } from '@relanox/sdk'
 import { WebSocketServer } from 'ws'
-import type { RawData, Server } from 'ws'
+import type { RawData, Server, WebSocket } from 'ws'
 import { createDiscordChannel } from '../src/index.js'
 import {
   peer,
@@ -161,6 +161,134 @@ async function gateway(): Promise<{
 }
 
 describe('discord native Gateway and REST', () => {
+  // Native close codes require a fresh session, including after process restart:
+  // https://docs.discord.com/developers/topics/opcodes-and-status-codes#gateway-close-event-codes
+  it.each([4007, 4009])(
+    'forgets durable session after close %s while a dispatch is committing',
+    async (code) => {
+      const remote = await gateway()
+
+      const directory = await mkdtemp(
+        join(tmpdir(), 'relanox-discord-invalid-')
+      )
+
+      const filename = join(directory, 'state.db')
+      let db = createSqliteStorage({ filename })
+      const blocked = Promise.withResolvers<void>()
+      const entered = Promise.withResolvers<void>()
+      const connected = Promise.withResolvers<WebSocket>()
+
+      const test = await setup(
+        undefined,
+        remote.url,
+        async () => {
+          entered.resolve()
+          await blocked.promise
+        },
+        db
+      )
+
+      cleanup.unshift(async () => {
+        blocked.resolve()
+        await test.plugin.stop?.()
+        await db.close()
+        await rm(directory, { recursive: true, force: true })
+      })
+      const frames: Record<string, unknown>[] = []
+      remote.wss.on('connection', (ws) => {
+        connected.resolve(ws)
+        ws.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
+        ws.on('message', (raw) => {
+          const frame = readFrame(raw)
+          frames.push(frame)
+          if (frame.op === 1) {
+            ws.send(JSON.stringify({ op: 11 }))
+          }
+          if (
+            frame.op === 2 &&
+            frames.filter((item) => item.op === 2).length === 1
+          ) {
+            ws.send(
+              JSON.stringify({
+                op: 0,
+                s: 1,
+                t: 'READY',
+                d: {
+                  session_id: 'invalid-session',
+                  resume_gateway_url: remote.url,
+                  user: { id: '999' }
+                }
+              })
+            )
+            ws.send(
+              JSON.stringify({
+                op: 0,
+                s: 2,
+                t: 'MESSAGE_CREATE',
+                d: {
+                  id: '789',
+                  channel_id: '456',
+                  content: 'hello',
+                  author: { id: '42' },
+                  type: 0
+                }
+              })
+            )
+          }
+        })
+      })
+      await test.plugin.start?.(new AbortController().signal)
+      await entered.promise
+      ;(await connected.promise).close(code)
+      await expect
+        .poll(() => test.connections.includes('disconnected'))
+        .toBe(true)
+      blocked.resolve()
+      await test.plugin.stop?.()
+      await db.close()
+      db = createSqliteStorage({ filename })
+      await db.initialize()
+      expect(
+        await db.getState(
+          { pluginId: 'channel-discord', ownerId: 'dc' },
+          'gateway-session'
+        )
+      ).toBeUndefined()
+      const restarted = await setup(undefined, remote.url, undefined, db)
+
+      cleanup.unshift(async () => {
+        await restarted.plugin.stop?.()
+      })
+      frames.length = 0
+      await restarted.plugin.start?.(new AbortController().signal)
+      await expect
+        .poll(() =>
+          frames
+            .filter((frame) => [2, 6].includes(Number(frame.op)))
+            .map((frame) => frame.op)
+        )
+        .toEqual([2])
+    }
+  )
+
+  // Retry-After is a documented alternative to JSON retry_after, in seconds:
+  // https://docs.discord.com/developers/topics/rate-limits#exceeding-a-rate-limit
+  it('uses the native Retry-After header when the 429 JSON delay is unavailable', async () => {
+    const remote = await peer(() => ({
+      status: 429,
+      headers: { 'retry-after': '1.25' },
+      body: { message: 'rate limited' }
+    }))
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+    expect(await test.plugin.send(sendInput(test.target))).toEqual({
+      status: 'retryable',
+      errorCode: 'rate_limited',
+      retryAfterMs: 1250
+    })
+  })
+
   it.each(['failed', 'incomplete'])(
     'does not mount or receive after %s authenticated identity discovery',
     async (failure) => {

@@ -136,6 +136,7 @@ export function createDiscordGateway(
     let acknowledged = true
     let pending = 0
     let failed = false
+    let invalidated = false
     let chain = Promise.resolve()
     let sequence = session?.seq ?? null
 
@@ -179,7 +180,7 @@ export function createDiscordGateway(
           host.connection('degraded', 'gateway_configuration_error')
         }
         if ([4007, 4009].includes(code)) {
-          session = undefined
+          invalidated = true
         }
         resolve()
       })
@@ -365,6 +366,10 @@ export function createDiscordGateway(
     })
     // Do not reconnect using a cursor while its earlier dispatch is still committing.
     await chain
+    // An in-flight dispatch may persist after close; invalidate only once it settles.
+    if (invalidated) {
+      await clearSession()
+    }
   }
 
   async function run(signal: AbortSignal): Promise<void> {
