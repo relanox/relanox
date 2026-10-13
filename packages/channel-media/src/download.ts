@@ -23,6 +23,40 @@ export type DownloadedMedia = {
   readonly fileName?: string
 }
 
+const MAX_ERROR_BYTES = 64 * 1024
+
+async function errorBody(response: IncomingMessage): Promise<unknown> {
+  const mimeType = response.headers['content-type']
+    ?.split(';')[0]
+    ?.trim()
+    .toLowerCase()
+
+  if (
+    !(mimeType === 'application/json' || mimeType?.endsWith('+json')) ||
+    Number(response.headers['content-length']) > MAX_ERROR_BYTES
+  ) {
+    response.destroy()
+    return undefined
+  }
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for await (const part of response) {
+      const bytes = part as Buffer
+      size += bytes.byteLength
+      if (size > MAX_ERROR_BYTES) {
+        response.destroy()
+        return undefined
+      }
+      chunks.push(bytes)
+    }
+    return JSON.parse(Buffer.concat(chunks, size).toString('utf8')) as unknown
+  } catch {
+    response.destroy()
+    return undefined
+  }
+}
+
 function validateUrl(
   value: string,
   options: DownloadMediaOptions
@@ -57,8 +91,11 @@ async function consume(
 ): Promise<DownloadedMedia> {
   const status = response.statusCode ?? 500
   if (status < 200 || status >= 300) {
-    response.destroy()
-    throw new MediaDownloadError('media_download_failed', status)
+    throw new MediaDownloadError(
+      'media_download_failed',
+      status,
+      await errorBody(response)
+    )
   }
   const declared = response.headers['content-length']
   if (declared !== undefined && Number(declared) > maximum) {
