@@ -327,7 +327,10 @@ export function createFeishuChannel(
           eventId: header.event_id
         },
         senderId: sender.sender_id.open_id,
-        text: content.text,
+        text: content.text.replaceAll(/@_user_\d+|@_all/gu, (key) => {
+          const mention = message.mentions?.find((entry) => entry.key === key)
+          return mention?.name ? `@${mention.name}` : key
+        }),
         attachments: await receiveMedia(
           message.message_id,
           content,

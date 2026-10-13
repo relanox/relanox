@@ -813,3 +813,76 @@ it('does not post a rich Feishu message without a successful uploaded image key'
     '/open-apis/im/v1/images'
   ])
 })
+
+it('accepts native Markdown post rows in authenticated inbound events', async () => {
+  // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
+  // Channel/outbound/markdown/to-post.ts emits native md rows; normalize/converters/post.ts preserves their text.
+  const local = await setup()
+
+  const response = await local.handler(
+    request({
+      ...event,
+      event: {
+        ...event.event,
+        message: {
+          ...event.event.message,
+          message_type: 'post',
+          content: JSON.stringify({
+            zh_cn: {
+              title: 'Question',
+              content: [[{ tag: 'md', text: '**Please** explain this.' }]]
+            }
+          })
+        }
+      }
+    })
+  )
+
+  expect(response.status).toBe(204)
+  expect(local.received).toHaveLength(1)
+  expect(local.received[0]?.text).toBe('Question\n**Please** explain this.')
+})
+
+it.each([
+  { message_type: 'text', content: { text: '@_user_1 asks @_user_10' } },
+  {
+    message_type: 'post',
+    content: {
+      content: [
+        [
+          { tag: 'at', user_id: '@_user_1' },
+          { tag: 'text', text: ' asks ' },
+          { tag: 'at', user_id: '@_user_10' }
+        ]
+      ]
+    }
+  }
+])(
+  'resolves native mention placeholders in $message_type messages',
+  async ({ message_type, content }) => {
+    // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
+    // Channel/normalize/context.ts RawMention and channel/normalize/mentions.ts resolveMentions.
+    const local = await setup()
+
+    const response = await local.handler(
+      request({
+        ...event,
+        event: {
+          ...event.event,
+          message: {
+            ...event.event.message,
+            message_type,
+            content: JSON.stringify(content),
+            mentions: [
+              { key: '@_user_1', name: 'Alice', id: { open_id: 'ou_alice' } },
+              { key: '@_user_10', name: 'Bob', id: { open_id: 'ou_bob' } }
+            ]
+          }
+        }
+      })
+    )
+
+    expect(response.status).toBe(204)
+    expect(local.received[0]?.text).toBe('@Alice asks @Bob')
+  }
+)

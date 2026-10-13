@@ -10,6 +10,7 @@ const resourceContentSchema = z.looseObject({
 const postElementSchema = z.looseObject({
   tag: z.enum([
     'text',
+    'md',
     'a',
     'at',
     'img',
@@ -50,7 +51,16 @@ function postBody(value: unknown): {
   [x: string]: unknown
   content: {
     [x: string]: unknown
-    tag: 'text' | 'a' | 'at' | 'img' | 'media' | 'code_block' | 'hr' | 'emotion'
+    tag:
+      | 'text'
+      | 'md'
+      | 'a'
+      | 'at'
+      | 'img'
+      | 'media'
+      | 'code_block'
+      | 'hr'
+      | 'emotion'
     text?: string | undefined
     href?: string | undefined
     user_id?: string | undefined
@@ -96,7 +106,8 @@ function postResource(
 
 function postText(element: z.infer<typeof postElementSchema>): string {
   if (element.tag === 'at') {
-    return `@${element.user_name ?? element.user_id ?? ''}`
+    const name = element.user_name ?? element.user_id ?? ''
+    return name.startsWith('@_') ? name : `@${name}`
   }
   if (element.tag === 'a') {
     return element.text ?? element.href ?? ''

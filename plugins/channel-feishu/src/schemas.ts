@@ -42,6 +42,15 @@ export const messageSchema = z.looseObject({
     message_type: platformIdSchema,
     content: z.string().max(1_048_576),
     create_time: z.string(),
+    mentions: z
+      .array(
+        z.looseObject({
+          key: z.string(),
+          name: z.string().optional(),
+          id: z.looseObject({ open_id: z.string().optional() })
+        })
+      )
+      .optional(),
     root_id: platformIdSchema.optional(),
     parent_id: platformIdSchema.optional(),
     thread_id: platformIdSchema.optional()
