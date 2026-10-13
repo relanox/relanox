@@ -1140,6 +1140,143 @@ it('preserves the native shortcode in emotion-only rich posts', async () => {
 })
 
 it.each([
+  { scenario: 'oversized', status: 200, acknowledgement: 200 },
+  { scenario: 'unavailable', status: 503, acknowledgement: 503 }
+])(
+  'returns the native retry outcome for $scenario resources',
+  async ({ status, acknowledgement }) => {
+    // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
+    // Code-gen/projects/im.ts messageResource.get allows binary resources up to 100 MB.
+    // Native retry ACK: https://open.feishu.cn/document/server-docs/event-subscription-guide/overview
+    const remote = await peer((captured) =>
+      captured.path.includes('tenant_access_token')
+        ? {
+            body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+          }
+        : {
+            status,
+            headers: { 'content-type': 'application/octet-stream' },
+            body:
+              status === 200
+                ? new Uint8Array(26 * 1024 * 1024)
+                : new Uint8Array()
+          }
+    )
+
+    cleanup.push(remote.close)
+    const { core, storage } = await storedChannel(cleanup, environment, account)
+
+    const oversized = await core.fetch(
+      request({
+        ...event,
+        event: {
+          ...event.event,
+          message: {
+            ...event.event.message,
+            message_type: 'file',
+            content: '{"file_key":"file_large","file_name":"large.bin"}'
+          }
+        }
+      })
+    )
+
+    expect(await storage.listInbound({ limit: 10 })).toEqual([])
+    expect(remote.requests.map((captured) => captured.path)).toEqual([
+      '/open-apis/im/v1/messages/om_message/resources/file_large?type=file'
+    ])
+    expect(oversized.status).toBe(acknowledgement)
+    expect(
+      (
+        await core.fetch(
+          request({
+            ...event,
+            header: { ...event.header, event_id: 'event-after-oversized' }
+          })
+        )
+      ).status
+    ).toBe(200)
+    const records = await storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    expect(records[0]?.snapshot.text).toBe('hello')
+  }
+)
+
+it.each([
+  { limit: 'too_many_attachments', worker: { maxAttachments: 1 } },
+  { limit: 'media_total_too_large', worker: { maxTotalMediaBytes: 1 } }
+])(
+  'acknowledges the configured $limit policy without persisting an oversized post',
+  async ({ worker }) => {
+    // Native resource fields: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
+    // Channel/normalize/converters/post.ts and code-gen/projects/im.ts messageResource.get.
+    // ACK contract: https://open.feishu.cn/document/server-docs/event-subscription-guide/overview
+    const remote = await peer((captured) =>
+      captured.path.includes('tenant_access_token')
+        ? {
+            body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+          }
+        : {
+            headers: { 'content-type': 'image/png' },
+            body: Buffer.from(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII=',
+              'base64'
+            )
+          }
+    )
+
+    cleanup.push(remote.close)
+
+    const { core, storage } = await storedChannel(
+      cleanup,
+      environment,
+      account,
+      worker
+    )
+
+    const limited = await core.fetch(
+      request({
+        ...event,
+        event: {
+          ...event.event,
+          message: {
+            ...event.event.message,
+            message_type: 'post',
+            content: JSON.stringify({
+              content: [
+                [{ tag: 'img', image_key: 'img_one' }],
+                [{ tag: 'img', image_key: 'img_two' }]
+              ]
+            })
+          }
+        }
+      })
+    )
+
+    expect(await storage.listInbound({ limit: 10 })).toEqual([])
+    expect(remote.requests.map((captured) => captured.path).toSorted()).toEqual(
+      [
+        '/open-apis/im/v1/messages/om_message/resources/img_one?type=image',
+        '/open-apis/im/v1/messages/om_message/resources/img_two?type=image'
+      ]
+    )
+    expect(limited.status).toBe(200)
+    expect(
+      (
+        await core.fetch(
+          request({
+            ...event,
+            header: { ...event.header, event_id: 'event-after-post-limit' }
+          })
+        )
+      ).status
+    ).toBe(200)
+    const records = await storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    expect(records[0]?.snapshot.text).toBe('hello')
+  }
+)
+
+it.each([
   {
     kind: 'image',
     encrypted: false,

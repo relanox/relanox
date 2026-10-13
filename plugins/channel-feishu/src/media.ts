@@ -1,5 +1,10 @@
 import { REQUEST_TIMEOUT_MS } from './config.js'
-import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  mediaBlob,
+  mediaKind,
+  MediaDownloadError
+} from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,
@@ -17,6 +22,10 @@ import {
 import type { InboundContent } from './inbound-content.js'
 
 export { parseContent } from './inbound-content.js'
+
+export function isMediaSizeRejection(error: unknown): boolean {
+  return error instanceof MediaDownloadError && error.code === 'media_too_large'
+}
 
 const nativeType = {
   image: 'image',
