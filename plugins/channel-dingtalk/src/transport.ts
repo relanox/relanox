@@ -140,7 +140,7 @@ export class JsonSocketConnection {
     readonly host: ChannelHost,
     readonly url: (signal: AbortSignal) => Promise<string>,
     readonly onOpen: () => Promise<void>,
-    readonly onFrame: (frame: unknown) => Promise<void>,
+    readonly onFrame: (frame: unknown, socket: WebSocket) => Promise<void>,
     readonly onClose: (code?: number) => void,
     readonly maxAttempts: number
   ) {}
@@ -214,7 +214,7 @@ export class JsonSocketConnection {
       }
       // Protocol ACK/heartbeat frames must not wait behind durable message writes.
       this.queued++
-      void this.onFrame(frame)
+      void this.onFrame(frame, socket)
         .catch(() => {
           this.host.connection('degraded', 'frame_processing_failed')
           socket.terminate()
@@ -279,11 +279,14 @@ export class JsonSocketConnection {
     this.host.connection('connected')
   }
 
-  send(frame: unknown): void {
-    if (this.signal.aborted || this.socket?.readyState !== WebSocket.OPEN) {
+  send(frame: unknown, socket: WebSocket): void {
+    if (socket !== this.socket) {
+      return
+    }
+    if (this.signal.aborted || socket.readyState !== WebSocket.OPEN) {
       throw new Error('not_connected')
     }
-    this.socket.send(JSON.stringify(frame))
+    socket.send(JSON.stringify(frame))
   }
 
   setHeartbeat(ms: number, tick: () => void): void {
