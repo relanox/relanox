@@ -19,15 +19,7 @@ export { sendOutcome, discoverIdentity } from './client.js'
 async function fileMetadata(
   file: z.infer<typeof fileSchema>,
   token: string
-): Promise<{
-  [x: string]: unknown
-  id: string
-  name?: string | undefined
-  mimetype?: string | undefined
-  size?: number | undefined
-  url_private?: string | undefined
-  url_private_download?: string | undefined
-}> {
+): Promise<z.infer<typeof fileSchema>> {
   if (file.url_private_download ?? file.url_private) {
     return file
   }

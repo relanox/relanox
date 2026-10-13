@@ -40,6 +40,15 @@ import {
   postJson
 } from './transport.js'
 
+function messageThreadId(
+  event: z.infer<typeof messageSchema>
+): string | undefined {
+  return (
+    event.thread_ts ??
+    (event.subtype === 'thread_broadcast' ? event.root?.thread_ts : undefined)
+  )
+}
+
 export function createSlackChannel(
   environment: NodeJS.ProcessEnv = process.env
 ): ChannelPlugin<SlackConfig> {
@@ -84,9 +93,16 @@ export function createSlackChannel(
       throw new Error('event_identity_mismatch')
     }
     const event = messageSchema.parse(envelope.event)
+
+    const threadId = messageThreadId(event)
+
     if (
       !['message', 'app_mention'].includes(event.type) ||
-      (event.subtype && event.subtype !== 'file_share') ||
+      (event.subtype &&
+        !['file_share', 'me_message', 'thread_broadcast'].includes(
+          event.subtype
+        )) ||
+      (event.subtype === 'thread_broadcast' && !threadId) ||
       event.bot_id ||
       event.user === botUserId ||
       (!event.text && event.files.length === 0) ||
@@ -130,7 +146,7 @@ export function createSlackChannel(
         channel: 'slack',
         accountId: account.id,
         chatId: event.channel,
-        ...(event.thread_ts ? { threadId: event.thread_ts } : {}),
+        ...(threadId ? { threadId } : {}),
         replyToId: event.ts,
         data: identity()
       },

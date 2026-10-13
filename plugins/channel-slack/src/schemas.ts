@@ -10,7 +10,7 @@ export const targetSchema = z.object({
 
 export const fileSchema = z.looseObject({
   id: platformIdSchema,
-  name: z.string().optional(),
+  name: z.string().nullish(),
   mimetype: z.string().optional(),
   size: z.number().int().nonnegative().optional(),
   url_private: z.url().optional(),
@@ -39,6 +39,9 @@ export const messageSchema = z.looseObject({
   thread_ts: z
     .string()
     .regex(/^\d+\.\d+$/u)
+    .optional(),
+  root: z
+    .looseObject({ thread_ts: z.string().regex(/^\d+\.\d+$/u) })
     .optional(),
   text: z.string().max(1_048_576).optional(),
   files: z.array(fileSchema).max(10).default([])
