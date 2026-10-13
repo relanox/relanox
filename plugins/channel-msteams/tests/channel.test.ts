@@ -1,4 +1,7 @@
-import type { CoreRuntime } from '../../../packages/core/src/index.js'
+import type {
+  CoreRuntime,
+  CoreOptions
+} from '../../../packages/core/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,7 +33,8 @@ async function setup(
   endorsements = ['msteams'],
   filename = ':memory:',
   publicUrl?: string,
-  tokenUrl?: string
+  tokenUrl?: string,
+  worker?: CoreOptions['worker']
 ): Promise<{
   core: CoreRuntime
   storage: Storage
@@ -100,7 +104,8 @@ async function setup(
     'user-id',
     'root-1',
     filename,
-    publicUrl
+    publicUrl,
+    worker
   )
 
   cleanup.push(local.close)
@@ -149,6 +154,200 @@ async function setup(
 }
 
 describe('native Microsoft Teams', () => {
+  it.each([
+    {
+      name: 'declared file bytes',
+      sizes: [5],
+      headers: { 'content-length': '5' },
+      worker: { maxMediaBytes: 4 }
+    },
+    {
+      name: 'streamed file bytes',
+      sizes: [5],
+      headers: { 'transfer-encoding': 'chunked' },
+      worker: { maxMediaBytes: 4 }
+    },
+    {
+      name: 'attachment count',
+      sizes: [3, 3],
+      headers: {},
+      worker: { maxMediaBytes: 4, maxAttachments: 1 }
+    },
+    {
+      name: 'aggregate file bytes',
+      sizes: [3, 3],
+      headers: {},
+      worker: { maxMediaBytes: 4, maxTotalMediaBytes: 5 }
+    }
+  ])(
+    'acknowledges local $name rejection without saving or dispatching the rejected activity',
+    async ({ sizes, headers, worker }) => {
+      const local = await setup(
+        ['msteams'],
+        ':memory:',
+        undefined,
+        undefined,
+        worker
+      )
+
+      // Native personal-chat file download envelope:
+      // Microsoft/botbuilder-js@63ebf76bff71db0f7dad067624e2fc3faf342898
+      // Libraries/botframework-schema/src/teams/index.ts:1171-1192 (FileDownloadInfo).
+      // https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/bots-files#receive-files-in-personal-chat
+      for (const [index, size] of sizes.entries()) {
+        local.remote.route(
+          `/bounded-file-${index}`,
+          new Uint8Array(size).fill(65),
+          {
+            ...headers,
+            'content-type': 'text/plain'
+          }
+        )
+      }
+
+      const incoming = {
+        ...local.activity,
+        conversation: {
+          ...local.activity.conversation,
+          conversationType: 'personal'
+        },
+        attachments: sizes.map((_size, index) => ({
+          contentType: 'application/vnd.microsoft.teams.file.download.info',
+          name: `file-${index}.txt`,
+          content: {
+            downloadUrl: `${local.remote.base}/bounded-file-${index}`,
+            uniqueId: `bounded-file-${index}`,
+            fileType: 'txt'
+          }
+        }))
+      }
+
+      expect(
+        (await local.core.fetch(await local.incoming({}, incoming))).status
+      ).toBe(200)
+      expect(
+        (await local.core.fetch(await local.incoming({}, incoming))).status
+      ).toBe(200)
+      expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+      await local.core.processDue()
+      expect(local.dispatches).toEqual([])
+
+      const following = {
+        ...local.activity,
+        id: 'following-text',
+        text: 'following legal text'
+      }
+
+      expect(
+        (await local.core.fetch(await local.incoming({}, following))).status
+      ).toBe(200)
+      await local.core.processDue()
+      expect(local.dispatches).toEqual(['following legal text'])
+      expect(await local.storage.listInbound({ limit: 10 })).toHaveLength(1)
+
+      const downloads = local.remote.traffic.filter((entry) =>
+        entry.path.startsWith('/bounded-file-')
+      )
+
+      expect(downloads).toHaveLength(sizes.length * 2)
+      expect(
+        downloads.every((entry) => entry.headers.authorization === undefined)
+      ).toBe(true)
+    }
+  )
+
+  it('leaves native file download failures replayable and dispatches recovered bytes after SQLite reopen', async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), 'relanox-teams-download-retry-')
+    )
+
+    cleanup.push(async () => rm(directory, { recursive: true, force: true }))
+    const filename = join(directory, 'state.db')
+
+    const local = await setup(['msteams'], filename, undefined, undefined, {
+      maxMediaBytes: 4
+    })
+
+    const incoming = {
+      ...local.activity,
+      text: 'recover this file',
+      conversation: {
+        ...local.activity.conversation,
+        conversationType: 'personal'
+      },
+      attachments: [
+        {
+          contentType: 'application/vnd.microsoft.teams.file.download.info',
+          name: 'recover.txt',
+          content: {
+            downloadUrl: `${local.remote.base}/recover-file`,
+            uniqueId: 'recover-file',
+            fileType: 'txt'
+          }
+        }
+      ]
+    }
+
+    // Same FileDownloadInfo contract as the local-policy cases above.
+    local.remote.route('/recover-file', {}, {}, 503)
+    expect(
+      (await local.core.fetch(await local.incoming({}, incoming))).status
+    ).toBe(500)
+    expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+    local.remote.route('/recover-file', new Uint8Array([65, 66, 67]), {
+      'content-type': 'text/plain'
+    })
+    expect(
+      (await local.core.fetch(await local.incoming({}, incoming))).status
+    ).toBe(200)
+    await local.close()
+
+    const reopened = await harness(
+      createTeamsChannel(),
+      local.config,
+      'conversation-1',
+      'user-id',
+      'root-1',
+      filename,
+      undefined,
+      { maxMediaBytes: 4 }
+    )
+
+    cleanup.push(reopened.close)
+    await reopened.core.processDue()
+    expect(reopened.dispatches).toEqual(['recover this file'])
+
+    const item = (await reopened.storage.listInbound({ limit: 10 }))[0]
+      ?.snapshot
+
+    const attachment = item?.attachments?.[0]
+    if (!item || !attachment) {
+      throw new Error('missing_recovered_file')
+    }
+    expect(
+      await reopened
+        .principal()
+        .media?.read({ channelId: item.channel.id, mediaId: attachment.id })
+    ).toMatchObject({
+      data: new Uint8Array([65, 66, 67]),
+      reference: { fileName: 'recover.txt', size: 3 }
+    })
+    await reopened.close()
+    expect(
+      (
+        await reopened.core.fetch(
+          await local.incoming(
+            {},
+            {
+              ...incoming,
+              id: 'storage-unavailable'
+            }
+          )
+        )
+      ).status
+    ).toBe(500)
+  })
+
   it('checks the account sender allowlist before authenticated attachment downloads', async () => {
     const local = await setup()
     // Bot Connector image contentUrl contract:

@@ -1,4 +1,5 @@
 import { acceptConsent, downloadAttachments } from './media.js'
+import { MediaDownloadError } from '@relanox/channel-media'
 import type { AccountConfig, ChannelHost } from '@relanox/sdk'
 import type { z } from 'zod'
 import type { TeamsConfig } from './config.js'
@@ -38,7 +39,21 @@ export async function receive(
   if (!activity.id) {
     throw new Error('missing_activity_id')
   }
-  const attachments = await downloadAttachments(activity, host, config)
+  let attachments: Awaited<ReturnType<typeof downloadAttachments>>
+  try {
+    attachments = await downloadAttachments(activity, host, config)
+  } catch (error) {
+    if (
+      !(error instanceof MediaDownloadError) ||
+      error.code !== 'media_too_large'
+    ) {
+      throw error
+    }
+    host.observe.log('info', 'channel_policy_rejection', {
+      errorCode: error.code
+    })
+    return
+  }
   const threadId = activity.replyToId
   await ingest(host, {
     source: {

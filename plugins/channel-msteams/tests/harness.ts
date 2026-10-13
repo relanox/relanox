@@ -13,6 +13,7 @@ import type {
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createCore } from '@relanox/core'
+import type { CoreOptions } from '@relanox/core'
 import type {
   AgentHost,
   AgentPlugin,
@@ -235,7 +236,8 @@ export async function harness(
   sender: string,
   thread?: string,
   filename = ':memory:',
-  publicUrl?: string
+  publicUrl?: string,
+  worker?: CoreOptions['worker']
 ): Promise<{
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
@@ -275,6 +277,7 @@ export async function harness(
 
   const core = await createCore({
     publicUrl: publicUrl ?? 'https://relay.example',
+    ...(worker ? { worker } : {}),
     storage,
     channels: new Map([['business', plugin]]),
     agents: new Map([['dot', agent]]),
