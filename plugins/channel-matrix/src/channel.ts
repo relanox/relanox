@@ -12,6 +12,7 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import { mediaCaption, messageContent, receiveMedia } from './media.js'
+import { MediaDownloadError } from '@relanox/channel-media'
 import { renderHtml, splitMarkdown, textLength } from '@relanox/markdown'
 import { z } from 'zod'
 import { validateConfig, platformIdSchema, validateBaseUrl } from './config.js'
@@ -212,7 +213,7 @@ export function createMatrixChannel(
         throw new Error('sync_history_gap')
       }
       for (const event of value.timeline?.events ?? []) {
-        await receive(room, event, signal)
+        await receiveEvent(room, event, signal)
       }
     }
 
@@ -226,6 +227,25 @@ export function createMatrixChannel(
       throw new Error('sync_checkpoint_conflict')
     }
     host.connection('connected')
+  }
+
+  async function receiveEvent(
+    room: string,
+    event: z.infer<typeof eventSchema>,
+    signal: AbortSignal
+  ): Promise<void> {
+    try {
+      await receive(room, event, signal)
+    } catch (error) {
+      if (
+        !(error instanceof MediaDownloadError) ||
+        error.code !== 'media_too_large'
+      ) {
+        throw error
+      }
+      // This local policy refusal is terminal; transport and storage errors replay.
+      diagnose(configured().host, error.code)
+    }
   }
 
   async function loop(signal: AbortSignal): Promise<void> {
