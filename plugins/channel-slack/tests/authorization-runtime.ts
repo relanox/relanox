@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import { createCore } from '../../../packages/core/src/index.js'
+import type { WorkerOptions } from '../../../packages/core/src/index.js'
 import { noopObservability } from '@relanox/sdk'
 import { createSqliteStorage } from '../../storage-sqlite/src/index.js'
 import { createGrokAgentPlugin } from '../../agent-grok/src/index.js'
@@ -13,7 +14,8 @@ import { createSlackChannel } from '../src/index.js'
 export async function fixture(
   filename: string,
   cleanup: (() => Promise<void>)[],
-  socket = false
+  socket = false,
+  worker: WorkerOptions = {}
 ): Promise<{
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
@@ -41,6 +43,7 @@ export async function fixture(
 
   const core = await createCore({
     publicUrl: 'https://relay.example',
+    worker,
     storage,
     channels: new Map([['sl', plugin]]),
     agents: new Map([['grok', agent]]),
