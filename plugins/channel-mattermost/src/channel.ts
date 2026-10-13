@@ -107,6 +107,10 @@ export function createMattermostChannel(
       signal
     )
 
+    if (!attachments) {
+      return
+    }
+
     await ingest(host, {
       source: {
         channel: 'mattermost',

@@ -1,5 +1,10 @@
 import { requestTimeoutMs } from './constants.js'
-import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  MediaDownloadError,
+  mediaBlob,
+  mediaKind
+} from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,
@@ -8,16 +13,16 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { MattermostConfig } from './config.js'
-import { httpFailure, readJson } from './protocol.js'
+import { diagnose, httpFailure, readJson } from './protocol.js'
 
 const infoSchema = z.object({
   id: z.string().min(1).max(1024),
   name: z.string().min(1).max(255),
-  mime_type: z.string().min(1).max(128),
+  mime_type: z.string().max(128),
   size: z.number().int().nonnegative()
 })
 
-export async function receiveFiles(
+async function collectFiles(
   ids: readonly string[],
   host: ChannelHost,
   config: MattermostConfig,
@@ -41,8 +46,11 @@ export async function receiveFiles(
       throw new Error('media_metadata_failed')
     }
     const info = infoSchema.parse(await readJson(response))
-    if (info.id !== id || info.size > (host.maxMediaBytes ?? 16_777_216)) {
+    if (info.id !== id) {
       throw new Error('invalid_media_metadata')
+    }
+    if (info.size > (host.maxMediaBytes ?? 16_777_216)) {
+      throw new MediaDownloadError('media_too_large')
     }
 
     const downloaded = await downloadMedia(url, {
@@ -53,14 +61,43 @@ export async function receiveFiles(
       allowInsecureLocalhost: config.allowInsecureLocalhost
     })
 
+    // Mattermost NewInfo preserves MIME parameters and leaves unknown extensions empty.
+    const declaredMime =
+      info.mime_type.split(';')[0]?.trim().toLowerCase() ?? ''
+
+    const mimeType =
+      declaredMime.length > 0 ? declaredMime : 'application/octet-stream'
+
     attachments.push({
-      kind: mediaKind(info.mime_type),
-      mimeType: info.mime_type,
+      kind: mediaKind(mimeType),
+      mimeType,
       fileName: info.name,
       data: downloaded.data
     })
   }
   return attachments
+}
+
+export async function receiveFiles(
+  ids: readonly string[],
+  host: ChannelHost,
+  config: MattermostConfig,
+  base: string,
+  authorization: string,
+  signal: AbortSignal
+): Promise<MediaUpload[] | undefined> {
+  try {
+    return await collectFiles(ids, host, config, base, authorization, signal)
+  } catch (error) {
+    if (
+      error instanceof MediaDownloadError &&
+      error.code === 'media_too_large'
+    ) {
+      diagnose(host, 'media_limit_unsupported')
+      return undefined
+    }
+    throw error
+  }
 }
 
 export async function uploadFile(
