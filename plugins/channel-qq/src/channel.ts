@@ -176,7 +176,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
 
     // Current docs distinguish indexed parts; never persist auth_token from message_scene.
     const index = message.message_scene?.ext
-      .find((entry) => entry.startsWith('msg_idx='))
+      ?.find((entry) => entry.startsWith('msg_idx='))
       ?.slice(8)
 
     const eventId = JSON.stringify([
@@ -569,6 +569,9 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         async () => {},
         receive,
         (code) => {
+          if (code === 4004) {
+            token = undefined
+          }
           ready = false
           awaitingHeartbeat = false
           if (

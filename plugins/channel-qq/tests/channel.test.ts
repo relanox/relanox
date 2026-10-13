@@ -748,3 +748,143 @@ test('QQ resolution discovers the real passive window and durable quota without 
     errorCode: 'invalid_target'
   })
 })
+
+// Protocol fixture source: tencent-connect/qqbot-nodejs f77fab29e78f5c69a4194237aab81e12f41afb3e,
+// Src/protocol/types.ts (optional message_scene.ext), gateway/constants.ts and reconnect.ts (4004).
+test.each([false, true])(
+  'QQ receives a native message scene without ext (group=%s)',
+  async (group) => {
+    vi.stubEnv('QQ_SECRET', 'secret')
+    let address = ''
+
+    const remote = await peer(
+      (request) => ({
+        body:
+          request.path === '/app/getAppAccessToken'
+            ? { access_token: 'token', expires_in: 7200 }
+            : { url: address }
+      }),
+      (socket) => {
+        socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
+        socket.on('message', (data) => {
+          const received = z
+            .object({ op: z.number() })
+            .parse(JSON.parse(wireText(data)))
+
+          if (received.op === 2) {
+            socket.send(frame(1, 'READY', { session_id: 'session' }))
+            socket.send(
+              frame(
+                2,
+                group ? 'GROUP_AT_MESSAGE_CREATE' : 'C2C_MESSAGE_CREATE',
+                createEvent('scene-only', group, {
+                  message_scene: { source: 'qq' }
+                })
+              )
+            )
+          }
+          if (received.op === 1) {
+            socket.send(JSON.stringify({ op: 11 }))
+          }
+        })
+      }
+    )
+
+    address = remote.ws
+
+    const host = await assemble(
+      createQqChannel(),
+      {
+        appId: 'app',
+        clientSecret: { env: 'QQ_SECRET' }
+      },
+      [
+        {
+          chatId: group ? 'group' : 'user',
+          senderId: group ? 'member' : 'user'
+        }
+      ]
+    )
+
+    await host.start()
+    await expect.poll(async () => (await records(host.storage)).length).toBe(1)
+    expect((await records(host.storage))[0]?.snapshot.target.replyToId).toBe(
+      'scene-only'
+    )
+    await expect.poll(() => remote.frames).toContainEqual({ op: 1, d: 2 })
+    host.controller.abort()
+  }
+)
+
+test('QQ refreshes an otherwise cached token after gateway authentication failure', async () => {
+  vi.stubEnv('QQ_SECRET', 'secret')
+  let address = ''
+  let tokenRequests = 0
+
+  const remote = await peer(
+    (request) => {
+      if (request.path === '/app/getAppAccessToken') {
+        tokenRequests++
+        return {
+          body: {
+            access_token: tokenRequests === 1 ? 'revoked' : 'fresh',
+            expires_in: 7200
+          }
+        }
+      }
+      return { body: { url: address } }
+    },
+    (socket) => {
+      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
+      socket.on('message', (data) => {
+        const received = z
+          .object({ op: z.number(), d: z.unknown().optional() })
+          .parse(JSON.parse(wireText(data)))
+
+        if (received.op === 2) {
+          if (
+            z.object({ token: z.string() }).parse(received.d).token ===
+            'QQBot revoked'
+          ) {
+            socket.close(4004)
+          } else {
+            socket.send(frame(1, 'READY', { session_id: 'session' }))
+          }
+        }
+        if (received.op === 1) {
+          socket.send(JSON.stringify({ op: 11 }))
+        }
+      })
+    }
+  )
+
+  address = remote.ws
+
+  const host = await assemble(
+    createQqChannel(),
+    {
+      appId: 'app',
+      clientSecret: { env: 'QQ_SECRET' }
+    },
+    [{ chatId: 'user', senderId: 'user' }]
+  )
+
+  await host.start()
+  await expect
+    .poll(() => remote.frames, { timeout: 4000 })
+    .toContainEqual({
+      op: 2,
+      d: {
+        token: 'QQBot fresh',
+        intents: 33_554_432,
+        shard: [0, 1],
+        properties: {}
+      }
+    })
+  expect(tokenRequests).toBe(2)
+  expect(
+    remote.requests.findLast((request) => request.path === '/gateway')?.headers
+      .authorization
+  ).toBe('QQBot fresh')
+  host.controller.abort()
+})
