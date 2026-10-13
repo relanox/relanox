@@ -8,8 +8,13 @@ import {
   validConversationInbound
 } from '@relanox/storage-support'
 import { readMedia, insertIncomingMedia } from './media.js'
-import type { Storage, InboundRecord } from '@relanox/sdk'
-import type { DatabaseContext } from './database.js'
+import type {
+  Storage,
+  InboundRecord,
+  OutboundMessage,
+  ConversationRecord
+} from '@relanox/sdk'
+import type { DatabaseContext, Database } from './database.js'
 import { durable } from './database.js'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import {
@@ -48,6 +53,7 @@ export function createRequestOperations(
         const record: InboundRecord = {
           snapshot,
           version: 1,
+          reply: {},
           dispatch: { status: 'due', attempts: 0, dueAt: snapshot.acceptedAt }
         }
 
@@ -97,15 +103,28 @@ export function createRequestOperations(
           return { status: 'not_found' }
         }
 
+        const { finalId, valid } = await resolveReply(
+          context,
+          client,
+          record,
+          input.message
+        )
+
+        if (!valid) {
+          return { status: 'not_found' }
+        }
+
         const previous = (
           await client
             .select({ id: outbound.id, digest: outbound.digest })
             .from(outbound)
             .where(
-              and(
-                eq(outbound.channelId, input.channelId),
-                eq(outbound.messageId, input.message.messageId)
-              )
+              finalId
+                ? eq(outbound.id, finalId)
+                : and(
+                    eq(outbound.channelId, input.channelId),
+                    eq(outbound.messageId, input.message.messageId)
+                  )
             )
         )[0]
 
@@ -127,15 +146,28 @@ export function createRequestOperations(
           return { status: 'unauthorized' }
         }
 
+        const { source, finalId, valid } = await resolveReply(
+          context,
+          client,
+          record,
+          input.message
+        )
+
+        if (!valid) {
+          return { status: 'not_found' }
+        }
+
         const previous = (
           await client
             .select({ id: outbound.id, digest: outbound.digest })
             .from(outbound)
             .where(
-              and(
-                eq(outbound.channelId, input.channelId),
-                eq(outbound.messageId, input.message.messageId)
-              )
+              finalId
+                ? eq(outbound.id, finalId)
+                : and(
+                    eq(outbound.channelId, input.channelId),
+                    eq(outbound.messageId, input.message.messageId)
+                  )
             )
         )[0]
 
@@ -144,6 +176,9 @@ export function createRequestOperations(
           return previous.digest === digest
             ? { status: 'queued', deliveryId: previous.id, replay: true }
             : { status: 'conflict' }
+        }
+        if (source?.redactedAt !== undefined) {
+          return { status: 'not_found' }
         }
         if (!matchesInitialMessage(input.outbound, record, input)) {
           return { status: 'conflict' }
@@ -204,6 +239,13 @@ export function createRequestOperations(
         if (inserted.length === 0) {
           return { status: 'conflict' }
         }
+        if (source && input.message.reply?.kind === 'final') {
+          await context.saveInbound(client, {
+            ...source,
+            version: source.version + 1,
+            reply: { finalDeliveryId: delivery.deliveryId }
+          })
+        }
         await insertIncomingMedia(context, client, input.channelId, additions)
         await client
           .update(mediaTable)
@@ -231,3 +273,30 @@ export function createRequestOperations(
 }
 
 export { createConversationOperations } from './conversations.js'
+
+async function resolveReply(
+  context: DatabaseContext,
+  client: Database,
+  conversation: ConversationRecord,
+  message: OutboundMessage
+): Promise<{
+  source: InboundRecord | undefined
+  valid: boolean
+  finalId: string | undefined
+}> {
+  const source = message.reply
+    ? await context.readInbound(client, message.reply.requestId)
+    : undefined
+
+  return {
+    source,
+    valid:
+      !message.reply ||
+      (source !== undefined &&
+        validConversationInbound(source.snapshot, conversation)),
+    finalId:
+      message.reply?.kind === 'final'
+        ? source?.reply?.finalDeliveryId
+        : undefined
+  }
+}

@@ -1,5 +1,5 @@
 import type { ChannelId, EndpointConfig } from './config.js'
-import type { ReplyTarget, DeliveryStatus } from './messages.js'
+import type { ReplyTarget, DeliveryStatus, ReplyStatus } from './messages.js'
 import type { MediaKind } from './media.js'
 
 /** A configured conversation or thread, authorized through its Agent endpoint. */
@@ -47,6 +47,7 @@ export type AgentChannelStatus = {
 }
 
 export type AgentStatus = {
+  readonly request?: { readonly id: string; readonly reply: ReplyStatus }
   readonly mediaLimits: {
     readonly maxBytes: number
     readonly maxTotalBytes: number

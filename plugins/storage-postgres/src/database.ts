@@ -162,6 +162,7 @@ export function openDatabase(
     const changed = await client
       .update(tables.inbound)
       .set({
+        finalDeliveryId: record.reply?.finalDeliveryId ?? null,
         status: record.dispatch.status,
         version: record.version,
         record: durable(record)
