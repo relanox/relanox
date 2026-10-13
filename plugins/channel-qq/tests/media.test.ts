@@ -643,6 +643,26 @@ test.each([false, true])(
 // Cases vary MIME metadata to protect precedence, normalization and fallback.
 // Native attachment labels: https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html
 const receivedMedia = [
+  // The 2026-10-13 QQ recording had content_type=voice, an .amr name and
+  // The Tencent-prefixed SILK header below. Also vary standard SILK with AMR metadata.
+  {
+    name: 'Tencent SILK with an AMR filename',
+    contentType: 'voice',
+    fileName: 'recording.amr',
+    bytes: Buffer.from('02232153494c4b5f56331b00aa9a6f93', 'hex'),
+    mimeType: 'audio/silk',
+    kind: 'audio',
+    fileType: 3
+  },
+  {
+    name: 'SILK mislabeled as AMR',
+    contentType: 'audio/amr',
+    fileName: 'recording.amr',
+    bytes: Buffer.from('#!SILK_V3\u001B\u0000audio'),
+    mimeType: 'audio/silk',
+    kind: 'audio',
+    fileType: 3
+  },
   {
     name: 'native MP4 labeled file',
     contentType: 'file',
@@ -769,5 +789,36 @@ test.each(
       remote.requests.find((request) => request.path === `${base}/messages`)
         ?.body
     ).toMatchObject({ msg_type: 7, media: { file_info: 'opaque-file-info' } })
+  }
+)
+
+test.each(['audio/amr', 'audio/wav', 'audio/mpeg'])(
+  'QQ rejects unsupported %s voice without uploading mislabeled bytes',
+  async (mimeType) => {
+    const { remote, plugin } = await fixture()
+    const input = outbound(smallBytes)
+    if (!input.media) {
+      throw new Error('missing_media')
+    }
+
+    const reference = {
+      ...input.media.reference,
+      kind: 'audio' as const,
+      mimeType
+    }
+
+    expect(
+      await plugin.send({
+        ...input,
+        chunk: { ...input.chunk, media: reference },
+        media: { ...input.media, reference }
+      })
+    ).toEqual({ status: 'rejected', errorCode: 'unsupported_media_format' })
+    expect(
+      remote.requests.some(
+        (request) =>
+          request.path.includes('upload') || request.path.endsWith('/messages')
+      )
+    ).toBe(false)
   }
 )
