@@ -6,6 +6,7 @@ import { z } from 'zod'
 import {
   body,
   cleanup,
+  databaseFile,
   harness,
   httpPeer,
   json,
@@ -85,6 +86,233 @@ function sockets(peer: Awaited<ReturnType<typeof httpPeer>>): Server {
   })
   return server
 }
+
+it('receives native /me text at the channel and thread while filtering system posts', async () => {
+  const peer = await httpPeer((_request, response) => {
+    json(response, {})
+  })
+
+  const server = sockets(peer)
+  server.on('connection', (socket) => {
+    socket.once('message', () => {
+      socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
+      // Mattermost 2b64fd09d3839007887662c191bd5d7af113a385:
+      // Server/public/model/post.go PostTypeMe and Post, and
+      // Server/public/model/websocket_message.go WebsocketEventPosted.
+      // /me is a native text post type; system_join_channel is a system event.
+      for (const [id, type, rootId] of [
+        ['action-channel', 'me', ''],
+        ['action-thread', 'me', 'root'],
+        ['system-post', 'system_join_channel', ''],
+        ['custom-post', 'custom_unknown', '']
+      ]) {
+        socket.send(
+          JSON.stringify({
+            event: 'posted',
+            data: {
+              post: JSON.stringify({
+                id,
+                type,
+                root_id: rootId,
+                user_id: 'alice',
+                channel_id: 'channel',
+                message: 'waves hello',
+                create_at: 1_800_000_000_000,
+                file_ids: []
+              })
+            }
+          })
+        )
+      }
+    })
+  })
+  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
+
+  const fixture = await harness(
+    plugin,
+    config(peer.base),
+    [{ chatId: 'channel' }, { chatId: 'channel', threadId: 'root' }],
+    ['alice'],
+    `${peer.base}/dispatch`
+  )
+
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(
+    async () => (await fixture.storage.listInbound({ limit: 10 })).length === 2
+  )
+  await plugin.stop?.()
+  const requests = await fixture.storage.listInbound({ limit: 10 })
+  expect(
+    requests
+      .map((request) => ({
+        eventId: request.snapshot.source.eventId,
+        text: request.snapshot.text,
+        chatId: request.snapshot.target.chatId,
+        threadId: request.snapshot.target.threadId
+      }))
+      .toSorted((left, right) => left.eventId.localeCompare(right.eventId))
+  ).toEqual([
+    {
+      eventId: 'action-channel',
+      text: 'waves hello',
+      chatId: 'channel',
+      threadId: undefined
+    },
+    {
+      eventId: 'action-thread',
+      text: 'waves hello',
+      chatId: 'channel',
+      threadId: 'root'
+    }
+  ])
+})
+
+it('resumes a native bounded WebSocket stream after reopening SQLite and waits for authentication', async () => {
+  const upgrades: {
+    url: string | undefined
+    authorization: string | undefined
+  }[] = []
+
+  let identity = 'self-bot'
+
+  const peer = await httpPeer(
+    (_request, response) => {
+      json(response, {})
+    },
+    (_request, response) => {
+      json(response, { id: identity })
+    }
+  )
+
+  const server = sockets(peer)
+  // Primary Mattermost 2b64fd09d3839007887662c191bd5d7af113a385:
+  // Server/channels/api4/websocket.go authenticated upgrade query;
+  // Server/channels/app/platform/web_conn.go PopulateWebConnConfig and
+  // WritePump replay the next sequence before authentication_challenge reply.
+  // Fixed wire fixtures describe a retained server cache, not historical backfill.
+  const connectionId = 'abcdefghijklmnopqrstuvwxyz'
+  let releaseAuthentication: (() => void) | undefined
+
+  function authenticate(): void {
+    if (!releaseAuthentication) {
+      throw new Error('Missing authentication challenge')
+    }
+    releaseAuthentication()
+  }
+
+  server.on('connection', (socket, request) => {
+    upgrades.push({
+      url: request.url,
+      authorization: request.headers.authorization
+    })
+    if (upgrades.length !== 2) {
+      socket.send(
+        JSON.stringify({
+          event: 'hello',
+          seq: 0,
+          data: { connection_id: connectionId }
+        })
+      )
+      socket.send(
+        JSON.stringify({
+          ...posted(
+            upgrades.length === 1
+              ? 'saved-before-restart'
+              : 'after-identity-rotation'
+          ),
+          seq: 1
+        })
+      )
+    } else {
+      socket.send(
+        JSON.stringify({ ...posted('replayed-after-restart'), seq: 2 })
+      )
+    }
+    socket.once('message', () => {
+      releaseAuthentication = (): void => {
+        socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
+      }
+    })
+  })
+  const filename = await databaseFile()
+  const first = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
+
+  const initial = await harness(
+    first,
+    config(peer.base),
+    [{ chatId: 'channel', threadId: 'root' }],
+    ['alice'],
+    `${peer.base}/dispatch`,
+    { filename }
+  )
+
+  await first.start?.(new AbortController().signal)
+  await waitFor(() => releaseAuthentication !== undefined)
+  expect(await initial.storage.listInbound({ limit: 10 })).toEqual([])
+  authenticate()
+  await waitFor(
+    async () => (await initial.storage.listInbound({ limit: 10 })).length === 1
+  )
+  await first.stop?.()
+  await initial.storage.close()
+  releaseAuthentication = undefined
+  const second = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
+
+  const restored = await harness(
+    second,
+    config(peer.base),
+    [{ chatId: 'channel', threadId: 'root' }],
+    ['alice'],
+    `${peer.base}/dispatch`,
+    { filename }
+  )
+
+  await second.start?.(new AbortController().signal)
+  await waitFor(() => releaseAuthentication !== undefined)
+  expect(await restored.storage.listInbound({ limit: 10 })).toHaveLength(1)
+  authenticate()
+  await waitFor(
+    async () => (await restored.storage.listInbound({ limit: 10 })).length === 2
+  )
+  await second.stop?.()
+  expect(upgrades).toEqual([
+    { url: '/api/v4/websocket', authorization: 'Bearer token' },
+    {
+      url: '/api/v4/websocket?connection_id=abcdefghijklmnopqrstuvwxyz&sequence_number=2',
+      authorization: 'Bearer token'
+    }
+  ])
+  expect(
+    (await restored.storage.listInbound({ limit: 10 }))
+      .map((request) => request.snapshot.source.eventId)
+      .toSorted()
+  ).toEqual(['replayed-after-restart', 'saved-before-restart'])
+  await restored.storage.close()
+  identity = 'rotated-bot'
+  releaseAuthentication = undefined
+  const rotated = createMattermostChannel({ MATTERMOST_TOKEN: 'rotated-token' })
+
+  const rotation = await harness(
+    rotated,
+    config(peer.base),
+    [{ chatId: 'channel', threadId: 'root' }],
+    ['alice'],
+    `${peer.base}/dispatch`,
+    { filename }
+  )
+
+  await rotated.start?.(new AbortController().signal)
+  await waitFor(() => releaseAuthentication !== undefined)
+  expect(upgrades[2]).toEqual({
+    url: '/api/v4/websocket',
+    authorization: 'Bearer rotated-token'
+  })
+  authenticate()
+  await waitFor(
+    async () => (await rotation.storage.listInbound({ limit: 10 })).length === 3
+  )
+  await rotated.stop?.()
+})
 
 it('authenticates WebSocket, deduplicates posted frames across reconnect and sends delayed thread posts', async () => {
   const sent: { data: unknown; authorization: string | undefined }[] = []

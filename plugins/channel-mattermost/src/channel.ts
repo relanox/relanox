@@ -8,6 +8,7 @@ import type {
 } from '@relanox/sdk'
 import { receiveFiles, uploadFile } from './media.js'
 import { richError, richMarkdown } from './rich.js'
+import { websocketResume } from './resume.js'
 import { WebSocket } from 'ws'
 import type { RawData } from 'ws'
 import { z } from 'zod'
@@ -30,12 +31,7 @@ import {
   targetSchema
 } from './schemas.js'
 
-function decodeFrame(bytes: RawData): {
-  event?: string | undefined
-  data?: Record<string, unknown> | undefined
-  seq_reply?: number | undefined
-  status?: string | undefined
-} {
+function decodeFrame(bytes: RawData): z.infer<typeof frameSchema> {
   let buffer: Buffer
   if (Array.isArray(bytes)) {
     buffer = Buffer.concat(bytes)
@@ -94,7 +90,10 @@ export function createMattermostChannel(
       diagnose(host, 'sender_not_allowed')
       return
     }
-    if (post.type || (!post.message && post.file_ids.length === 0)) {
+    if (
+      (post.type !== '' && post.type !== 'me') ||
+      (!post.message && post.file_ids.length === 0)
+    ) {
       diagnose(host, 'nontext_unsupported')
       return
     }
@@ -131,19 +130,23 @@ export function createMattermostChannel(
   }
 
   async function connect(signal: AbortSignal): Promise<void> {
-    const { host, base, config } = configured()
+    const { host, base, config, botUserId } = configured()
     const url = new URL(`${base}/api/v4/websocket`)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     const token = secret(config.token, environment)
+    const resume = await websocketResume(host, base, botUserId)
+    resume.query(url)
 
     const current = new WebSocket(url, {
       handshakeTimeout: requestTimeoutMs,
       maxPayload: 2_097_152,
+      headers: { Authorization: `Bearer ${token}` },
       followRedirects: false
     })
 
     socket = current
     let authenticated = false
+    const beforeAuthentication: z.infer<typeof frameSchema>[] = []
     let queued = 0
     let pending = Promise.resolve()
     let lastPong = Date.now()
@@ -197,12 +200,23 @@ export function createMattermostChannel(
         authenticated = true
         clearTimeout(authTimeout)
         host.connection('connected')
+        for (const buffered of beforeAuthentication.splice(0)) {
+          resume.check(buffered)
+          await receive(buffered, signal)
+          await resume.accept(buffered)
+        }
         return
       }
-      if (frame.event === 'posted' && !authenticated) {
-        throw new Error('unauthenticated_event')
+      if (frame.event && !authenticated) {
+        if (beforeAuthentication.length >= 100) {
+          throw new Error('unauthenticated_event_overflow')
+        }
+        beforeAuthentication.push(frame)
+        return
       }
+      resume.check(frame)
       await receive(frame, signal)
+      await resume.accept(frame)
     }
 
     current.on('message', (bytes, isBinary) => {
