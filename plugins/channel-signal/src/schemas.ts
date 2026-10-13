@@ -25,7 +25,10 @@ const envelopeSchema = z.object({
 })
 
 export const receiveSchema = z.object({
-  envelope: envelopeSchema,
+  envelope: envelopeSchema.optional(),
+  exception: z
+    .object({ message: z.string().nullable(), type: z.string() })
+    .optional(),
   account: platformIdSchema.optional()
 })
 
