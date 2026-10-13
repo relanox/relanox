@@ -7,7 +7,11 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
-import { outboundAttachments, receiveAttachments } from './media.js'
+import {
+  outboundAttachments,
+  receiveAttachments,
+  SignalMediaPolicyError
+} from './media.js'
 import { validateConfig, validateBaseUrl } from './config.js'
 import type { SignalConfig } from './config.js'
 import {
@@ -204,7 +208,17 @@ export function createSignalChannel(
       throw new Error('event_stream_failed')
     }
     host.connection('connected')
-    await consumeEvents(response, async (data, id) => receive(data, id, signal))
+    await consumeEvents(response, async (data, id) => {
+      try {
+        await receive(data, id, signal)
+      } catch (error) {
+        if (!(error instanceof SignalMediaPolicyError)) {
+          throw error
+        }
+        diagnose(host, error.code)
+        await saveEventCursor(host, id)
+      }
+    })
   }
 
   async function loop(signal: AbortSignal): Promise<void> {

@@ -20,7 +20,8 @@ export function secret(
 
 export async function readJson(
   response: Response,
-  maximum = 2_097_152
+  maximum = 2_097_152,
+  overflowError: Error = new Error('response_too_large')
 ): Promise<unknown> {
   if (!response.body) {
     throw new Error('empty_response')
@@ -36,7 +37,7 @@ export async function readJson(
       }
       size += value.byteLength
       if (size > maximum) {
-        throw new Error('response_too_large')
+        throw overflowError
       }
       pieces.push(value)
     }
@@ -68,7 +69,15 @@ export async function ingest(
     await host.ingest(input)
   } catch (error) {
     const code = z
-      .object({ code: z.enum(['sender_not_allowed', 'unbound_conversation']) })
+      .object({
+        code: z.enum([
+          'sender_not_allowed',
+          'unbound_conversation',
+          'media_too_large',
+          'media_total_too_large',
+          'too_many_attachments'
+        ])
+      })
       .safeParse(error)
 
     if (!code.success) {

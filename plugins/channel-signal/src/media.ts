@@ -8,8 +8,15 @@ import { readJson } from './protocol.js'
 
 const base64Schema = z
   .string()
-  .min(1)
   .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u)
+
+/** Known local byte policy; protocol, network and daemon errors stay replayable. */
+export class SignalMediaPolicyError extends Error {
+  constructor(readonly code: 'media_too_large' | 'media_response_too_large') {
+    super(code)
+    this.name = 'SignalMediaPolicyError'
+  }
+}
 
 export async function receiveAttachments(
   attachments: readonly z.infer<typeof attachmentSchema>[],
@@ -24,13 +31,15 @@ export async function receiveAttachments(
   const result: MediaUpload[] = []
   const maximum = host.maxMediaBytes ?? 16_777_216
   for (const attachment of attachments) {
-    if (
-      !attachment.id ||
-      (attachment.size !== undefined &&
-        attachment.size !== null &&
-        attachment.size > maximum)
-    ) {
+    if (!attachment.id) {
       throw new Error('media_unavailable')
+    }
+    if (
+      attachment.size !== undefined &&
+      attachment.size !== null &&
+      attachment.size > maximum
+    ) {
+      throw new SignalMediaPolicyError('media_too_large')
     }
     const id = crypto.randomUUID()
 
@@ -61,13 +70,23 @@ export async function receiveAttachments(
       .object({
         jsonrpc: z.literal('2.0'),
         id: z.literal(id),
-        result: z.object({ data: base64Schema.max(encodedMaximum) })
+        result: z.object({ data: base64Schema })
       })
-      .parse(await readJson(response, encodedMaximum + 16_384))
+      .parse(
+        await readJson(
+          response,
+          encodedMaximum + 16_384,
+          new SignalMediaPolicyError('media_response_too_large')
+        )
+      )
+
+    if (rpc.result.data.length > encodedMaximum) {
+      throw new SignalMediaPolicyError('media_too_large')
+    }
 
     const data = new Uint8Array(Buffer.from(rpc.result.data, 'base64'))
     if (data.byteLength === 0 || data.byteLength > maximum) {
-      throw new Error('media_too_large')
+      throw new SignalMediaPolicyError('media_too_large')
     }
 
     const mimeType =
