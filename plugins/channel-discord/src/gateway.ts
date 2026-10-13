@@ -7,7 +7,11 @@ import {
 } from './config.js'
 import type { DiscordIdentity } from './identity.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { downloadMedia, mediaKind } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  mediaKind,
+  MediaDownloadError
+} from '@relanox/channel-media'
 import type { AccountConfig, ChannelHost } from '@relanox/sdk'
 import { WebSocket } from 'ws'
 import type { z } from 'zod'
@@ -109,6 +113,67 @@ export function createDiscordGateway(
       throw new Error('thread_parent_missing')
     }
     return { chatId: channel.parent_id, threadId: message.channel_id }
+  }
+
+  async function ingestMessage(
+    message: z.infer<typeof messageSchema>,
+    signal: AbortSignal
+  ): Promise<void> {
+    try {
+      const target = await messageTarget(message, signal)
+      await ingest(host, {
+        source: {
+          channel: 'discord',
+          accountId: account.id,
+          eventId: message.id
+        },
+        senderId: message.author.id,
+        text: message.content,
+        attachments: await Promise.all(
+          message.attachments.map(async (attachment) => {
+            if (attachment.size > (host.maxMediaBytes ?? 25 * 1024 * 1024)) {
+              throw new MediaDownloadError('media_too_large')
+            }
+
+            const downloaded = await downloadMedia(attachment.url, {
+              maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
+              signal,
+              trustedOrigins: [new URL(API_BASE_URL).origin],
+              allowInsecureLocalhost: false
+            })
+
+            const mimeType = attachment.content_type ?? downloaded.mimeType
+
+            return {
+              kind: mediaKind(mimeType),
+              mimeType,
+              fileName: attachment.filename,
+              data: downloaded.data
+            }
+          })
+        ),
+        target: {
+          channel: 'discord',
+          accountId: account.id,
+          ...target,
+          replyToId: message.id,
+          data: identity()
+        },
+        context: message.guild_id ? { guildId: message.guild_id } : {},
+        receivedAt: Date.now()
+      })
+    } catch (error) {
+      // A local byte limit is terminal; download and storage failures still replay.
+      if (
+        !(error instanceof MediaDownloadError) ||
+        error.code !== 'media_too_large'
+      ) {
+        throw error
+      }
+      host.observe.log('info', 'channel_policy_rejection', {
+        errorCode: error.code
+      })
+    }
   }
 
   async function connect(signal: AbortSignal): Promise<void> {
@@ -297,51 +362,7 @@ export function createDiscordGateway(
               [0, 19].includes(message.type) &&
               (message.content || message.attachments.length > 0)
             ) {
-              const target = await messageTarget(message, signal)
-              await ingest(host, {
-                source: {
-                  channel: 'discord',
-                  accountId: account.id,
-                  eventId: message.id
-                },
-                senderId: message.author.id,
-                text: message.content,
-                attachments: await Promise.all(
-                  message.attachments.map(async (attachment) => {
-                    if (
-                      attachment.size > (host.maxMediaBytes ?? 25 * 1024 * 1024)
-                    ) {
-                      throw new Error('media_too_large')
-                    }
-
-                    const downloaded = await downloadMedia(attachment.url, {
-                      maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
-                      signal,
-                      trustedOrigins: [new URL(API_BASE_URL).origin],
-                      allowInsecureLocalhost: false
-                    })
-
-                    const mimeType =
-                      attachment.content_type ?? downloaded.mimeType
-
-                    return {
-                      kind: mediaKind(mimeType),
-                      mimeType,
-                      fileName: attachment.filename,
-                      data: downloaded.data
-                    }
-                  })
-                ),
-                target: {
-                  channel: 'discord',
-                  accountId: account.id,
-                  ...target,
-                  replyToId: message.id,
-                  data: identity()
-                },
-                context: message.guild_id ? { guildId: message.guild_id } : {},
-                receivedAt: Date.now()
-              })
+              await ingestMessage(message, signal)
             } else {
               host.observe.count('relanox_inbound_total', {
                 channel: 'discord',

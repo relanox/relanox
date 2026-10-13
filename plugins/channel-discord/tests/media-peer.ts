@@ -6,6 +6,7 @@ export { mediaPeer } from '../../channel-telegram/tests/media-peer.js'
 
 export async function discordPeer(): Promise<{
   url: string
+  frames: unknown[]
   message(this: void, data: unknown, sequence?: number): void
   connected(this: void): boolean
   close(this: void): Promise<void>
@@ -25,14 +26,21 @@ export async function discordPeer(): Promise<{
   )
 
   let active: WebSocket | undefined
+  const frames: unknown[] = []
   server.on('connection', (socket) => {
     active = socket
+    socket.on('close', () => {
+      if (active === socket) {
+        active = undefined
+      }
+    })
     socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 30_000 } }))
     socket.on('message', (bytes) => {
       if (!Buffer.isBuffer(bytes)) {
         throw new TypeError('unexpected_gateway_bytes')
       }
       const frame: unknown = JSON.parse(bytes.toString('utf8'))
+      frames.push(frame)
       if (
         typeof frame === 'object' &&
         frame !== null &&
@@ -64,6 +72,7 @@ export async function discordPeer(): Promise<{
   })
   return {
     url,
+    frames,
     message(data: unknown, sequence = 2): void {
       if (!active) {
         throw new Error('gateway_not_connected')
