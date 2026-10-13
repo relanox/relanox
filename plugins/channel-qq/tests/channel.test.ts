@@ -888,3 +888,113 @@ test('QQ refreshes an otherwise cached token after gateway authentication failur
   ).toBe('QQBot fresh')
   host.controller.abort()
 })
+
+// Native identities and attachment fields: tencent-connect/qqbot-nodejs
+// F77fab29e78f5c69a4194237aab81e12f41afb3e src/protocol/types.ts C2CMessageEvent/GroupMessageEvent.
+test.each([false, true])(
+  'QQ rejects account-denied media before downloading and commits its cursor (group=%s)',
+  async (group) => {
+    vi.stubEnv('QQ_SECRET', 'secret')
+    let address = ''
+
+    const remote = await peer(
+      (request) => {
+        if (request.path === '/app/getAppAccessToken') {
+          return { body: { access_token: 'token', expires_in: 7200 } }
+        }
+        if (request.path === '/attachment') {
+          return {
+            body: Buffer.from('native-file'),
+            headers: { 'content-type': 'application/octet-stream' }
+          }
+        }
+        return { body: { url: address } }
+      },
+      (socket) => {
+        socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
+        socket.on('message', (data) => {
+          const received = z
+            .object({ op: z.number() })
+            .parse(JSON.parse(wireText(data)))
+
+          if (received.op === 2) {
+            socket.send(frame(1, 'READY', { session_id: 'session' }))
+          }
+          if (received.op === 1) {
+            socket.send(JSON.stringify({ op: 11 }))
+          }
+        })
+      }
+    )
+
+    address = remote.ws
+
+    const host = await assemble(
+      createQqChannel(),
+      {
+        appId: 'app',
+        clientSecret: { env: 'QQ_SECRET' }
+      },
+      [
+        {
+          chatId: group ? 'group' : 'user',
+          senderId: group ? 'member' : 'user'
+        }
+      ]
+    )
+
+    await host.start()
+    await expect.poll(() => remote.frames.length).toBeGreaterThan(0)
+    const socket = remote.sockets[0]
+    if (!socket) {
+      throw new Error('Peer not connected')
+    }
+
+    const attachments = [
+      {
+        url: `${remote.http}/attachment`,
+        filename: 'file.bin',
+        content_type: 'application/octet-stream'
+      }
+    ]
+
+    socket.send(
+      frame(
+        2,
+        group ? 'GROUP_AT_MESSAGE_CREATE' : 'C2C_MESSAGE_CREATE',
+        createEvent('denied-media', group, {
+          message_type: 7,
+          attachments,
+          // An unrelated native ID must not authorize the canonical identity for this event type.
+          author: group
+            ? { member_openid: 'denied', user_openid: 'member' }
+            : { user_openid: 'denied', member_openid: 'user' }
+        })
+      )
+    )
+    await expect.poll(() => remote.frames).toContainEqual({ op: 1, d: 2 })
+    expect(
+      remote.requests.filter((request) => request.path === '/attachment')
+    ).toHaveLength(0)
+    expect(await records(host.storage)).toHaveLength(0)
+    socket.send(
+      frame(
+        3,
+        group ? 'GROUP_AT_MESSAGE_CREATE' : 'C2C_MESSAGE_CREATE',
+        createEvent('allowed-media', group, {
+          message_type: 7,
+          attachments
+        })
+      )
+    )
+    await expect.poll(async () => (await records(host.storage)).length).toBe(1)
+    const stored = (await records(host.storage))[0]?.snapshot
+    expect(stored?.target.replyToId).toBe('allowed-media')
+    expect(stored?.attachments).toHaveLength(1)
+    expect(
+      remote.requests.filter((request) => request.path === '/attachment')
+    ).toHaveLength(1)
+    await expect.poll(() => remote.frames).toContainEqual({ op: 1, d: 3 })
+    host.controller.abort()
+  }
+)

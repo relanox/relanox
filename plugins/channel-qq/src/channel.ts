@@ -81,6 +81,15 @@ function configuredType(
   return types && Object.hasOwn(types, chatId) ? types[chatId] : undefined
 }
 
+function supportedMessage(message: z.infer<typeof messageSchema>): boolean {
+  return !(
+    (message.message_type !== undefined &&
+      ![0, 7].includes(message.message_type)) ||
+    (!message.attachments?.length && !message.content.trim()) ||
+    message.attachments?.some((attachment) => !attachment.url)
+  )
+}
+
 export function createQqChannel(): ChannelPlugin<QqConfig> {
   let host: ChannelHost
   let account: AccountConfig
@@ -152,12 +161,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     if (message.author.bot) {
       return
     }
-    if (
-      (message.message_type !== undefined &&
-        ![0, 7].includes(message.message_type)) ||
-      (!message.attachments?.length && !message.content.trim()) ||
-      message.attachments?.some((attachment) => !attachment.url)
-    ) {
+    if (!supportedMessage(message)) {
       host.observe.log('info', 'channel_unsupported_input', {
         errorCode: 'unsupported_message_type'
       })
@@ -172,6 +176,13 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     const chatId = group ? message.group_openid : senderId
     if (!senderId || !chatId) {
       throw new Error('missing_sender_address')
+    }
+
+    if (!account.allowedSenders.includes(senderId)) {
+      host.observe.log('info', 'channel_input_discarded', {
+        errorCode: 'sender_not_allowed'
+      })
+      return
     }
 
     // Current docs distinguish indexed parts; never persist auth_token from message_scene.
