@@ -578,13 +578,19 @@ describe('slack native protocol', () => {
     const remote = await peer(() => ({
       body: {
         ok: true,
-        url: `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`
+        url: registerPeer(
+          `http://127.0.0.1:${(wss.address() as AddressInfo).port}`
+        ).replace('https:', 'wss:')
       }
     }))
 
     const frames: unknown[] = []
 
+    // Socket envelope shape: https://github.com/slackapi/node-slack-sdk/blob/e02e7feeb500bfde1f947401a639633e42ce2f91/packages/socket-mode/src/SocketModeClient.ts
+    let attempted = false
+
     const test = await setup(remote.url, true, async () => {
+      attempted = true
       throw new Error('failed commit')
     })
 
@@ -611,6 +617,7 @@ describe('slack native protocol', () => {
       ws.on('message', (raw) => frames.push(readFrame(raw)))
     })
     await test.plugin.start?.(new AbortController().signal)
+    await expect.poll(() => attempted).toBe(true)
     await expect.poll(() => test.connections.includes('degraded')).toBe(true)
     await test.plugin.stop?.()
     expect(frames).toEqual([])
