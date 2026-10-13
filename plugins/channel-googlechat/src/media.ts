@@ -45,7 +45,7 @@ export async function downloadAttachments(
 
       const mimeType = attachment.contentType ?? downloaded.mimeType
       attachments.push({
-        ...downloaded,
+        data: downloaded.data,
         mimeType,
         kind: mediaKind(mimeType),
         fileName: attachment.contentName ?? 'attachment.bin'
