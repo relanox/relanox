@@ -39,13 +39,13 @@ Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中
 
 先认证请求，再取得仅允许访问指定端点的 Agent host。`host.status()` 从当前授权绑定列出 channel，包含原生发送可用性和限制。来信携带 `source.channel` 与 `source.senderId`，公开发送和媒体工具使用 channel ID。内部来信 request ID 仍用于事件去重和通知恢复。
 
-发送调用为 `sendMessage({ channel, text, idempotencyKey?, attachments? })`，目标来自 `source.channel.id` 或 status 返回的 channel，无需先收到消息。不提供键时，每次调用都会创建新发送；仅在重试同一次发送意图、文字和有序附件都相同时复用明确的键。返回 `queued` 表示消息已经保存，等待发送。`host.status({ deliveryId })` 仅在该投递所属 channel 仍获授权时返回投递信息。
+发送调用为 `sendMessage({ channel, text, idempotencyKey?, attachments?, reply? })`，目标来自 `source.channel.id` 或 status 返回的 channel，无需先收到消息。不关联来信的发送或进度消息未提供键时，每次调用都会创建新发送；仅在重试同一次发送意图、文字和有序附件都相同时复用明确的键。返回 `queued` 表示消息已经保存，等待发送。`host.status({ deliveryId })` 仅在该投递所属 channel 仍获授权时返回投递信息。
 
 附件可以引用所选 channel 中收到或已上传的媒体，也可以包含新生成的字节。签发上传凭证前，用 `host.media.authorize({ channelId })` 检查权限；`host.media.upload({ channelId, mediaId, upload })` 保存归属于该 channel、不可覆盖的媒体。`host.media.read({ channelId, mediaId })` 读取可用字节。存储会在写入事务中重新检查当前归属、封面和未发送上传额度。入队后，引用的上传文件释放暂存额度；每条消息独立检查媒体限制。上传不会创建待发送消息，之后再将返回的 ID 传给 `sendMessage`。附件形式见[媒体传输](../media.md)和 SDK 导出的类型。
 
 通过 host 在 `/agents/<agentId>` 下注册 Agent HTTP 路由。不要把端点凭据混入通知或工具返回的字段。dot 和 Grok 已通过 `packages/agent-mcp` 共用 MCP 认证和消息工具；修改这些接入时可以复用现有辅助代码。
 
-使用 `host.readMessages({ requestId?, limit? })` 补取保留的来信内容。读取会检查当前端点和频道归属，排除已清理记录、端点配置和私有回复目标。未传入 ID 时，先查询各授权端点最近的记录，再过滤权限，最多返回 `limit` 条消息（默认 5，最大 20）。读取不会领取或确认任务。
+使用 `host.readMessages({ requestId?, limit?, pending?, cursor? })` 补取保留的来信内容。读取会检查当前端点和频道归属，排除已清理记录、端点配置和私有回复目标。未传入 ID 时，先查询各授权端点最近的记录，再过滤权限，最多返回 `limit` 条消息（默认 5，最大 20）。读取不会领取或确认任务。设置 `pending: true` 可从旧到新读取仍保留正文的未完成来信，将最后一条的 `{ acceptedAt, requestId }` 作为 `cursor` 继续读取。MCP 封装会将其作为 `nextCursor` 返回。未完成筛选在数据库限量前应用当前有效频道和端点权限。每条读取结果包含 `reply` 状态。发送时传入 `reply: { requestId, kind: "progress" | "final" }` 可关联来信，也可用 `host.status({ requestId })` 查询状态。每条来信只有一个最终投递，全部发送完成后才算完成。详见[消息状态与恢复](core.md)。
 
 ## 保存 channel 和投递
 

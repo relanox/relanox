@@ -52,3 +52,13 @@ For an incoming `requestId`, send `reply: { requestId, kind: "final" }` with the
 Inspect `relanox_status` with `requestId`, or the `reply` field from `relanox_read_messages`. `awaiting_final` means no final answer is queued. Once queued, `pending`, `sent`, `rejected` and `unknown` describe the final delivery. Only `sent` means all text and media parts were accepted by the platform; it does not prove the recipient read them. Reading, progress updates and accepting an event do not complete a request.
 
 A request can have one final delivery. Identical final retries return that delivery even with a new send key; changed content returns `conflict`. Recover a failed final through its existing delivery ID. Unassociated sends retain their existing key behavior. Retention can remove incoming content; `expired` then means an unanswered tracked request no longer has recoverable content.
+
+## Catch up on unfinished messages
+
+`relanox_read_messages` already supports reading one `requestId` or recent messages. Use `pending: true` to extend that read to retained messages without a fully sent final reply, oldest first. Follow `nextCursor` in subsequent pending calls until absent; a full last page can be followed by an empty page. The default page size is 5, with a maximum of 20. Do not combine `requestId` with pending pagination.
+
+Read `reply.status` before acting: answer `awaiting_final`; inspect the saved `deliveryId` for `pending`, `rejected` or `unknown`. Recheck status before sending. Reads are snapshots and do not claim work, resend events or acknowledge processing. Concurrent final submissions are deduplicated by the request association; differing answers conflict. A later recovery pass starts from the beginning.
+
+Existing deliveries resume through the worker or the existing version-checked CLI `requeue --kind delivery` command. Unknown outcomes still require explicit duplicate-risk acknowledgement. Requeueing a request with an associated final now returns `conflict`; recover its delivery instead. CLI status includes request-to-final and delivery-to-request references.
+
+The existing retention policy still applies: expired content is excluded from pending pages. Query a known request through `relanox_status` to distinguish `expired` from an unfinished final delivery. This recovery is available when dot runs or is invoked manually; it cannot force dot to wake after an accepted event.

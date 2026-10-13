@@ -12,7 +12,8 @@ import type {
   MessageReceipt,
   MutationResult,
   DispatchResult,
-  SendResult
+  SendResult,
+  MessageCursor
 } from './messages.js'
 import type { StateNamespace, StateEntry } from './state.js'
 import type { ConversationStorage } from './conversations.js'
@@ -146,6 +147,13 @@ export type Storage = ConversationStorage & {
       readonly recent?: boolean
     }
   ): Promise<readonly InboundRecord[]>
+  /** Tracked, retained inputs without a fully sent final, oldest first within current active channels. */
+  listPendingInbound(input: {
+    readonly channelIds: readonly string[]
+    readonly endpointIds: readonly string[]
+    readonly limit: number
+    readonly cursor?: MessageCursor
+  }): Promise<readonly InboundRecord[]>
   listOutbound(filter: StatusFilter): Promise<readonly OutboundRecord[]>
   getStats(): Promise<StorageStats>
   cleanup(input: {

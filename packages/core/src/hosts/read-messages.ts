@@ -5,17 +5,35 @@ import { authorizedConversation } from './conversations.js'
 import { replyStatus } from './reply-status.js'
 import { textId } from '../validation.js'
 
-const inputSchema = z.strictObject({
-  requestId: textId.optional(),
-  limit: z.number().int().min(1).max(20).default(5)
-})
+const inputSchema = z
+  .strictObject({
+    requestId: textId.optional(),
+    pending: z.boolean().default(false),
+    cursor: z
+      .strictObject({
+        acceptedAt: z.number().int().nonnegative(),
+        requestId: textId
+      })
+      .optional(),
+    limit: z.number().int().min(1).max(20).default(5)
+  })
+  .refine(
+    (input) =>
+      !(input.requestId && input.pending) &&
+      (input.cursor === undefined || input.pending),
+    'cursor requires pending; requestId cannot be combined with pending'
+  )
 
 export async function readMessages(
   options: AgentHostOptions,
   scope: readonly string[],
   input: Parameters<ScopedAgentHost['readMessages']>[0]
 ): Promise<readonly AgentMessage[]> {
-  const { requestId, limit } = inputSchema.parse(input ?? {})
+  const parsed = inputSchema.parse(input ?? {})
+  const { requestId, limit } = parsed
+  if (parsed.pending) {
+    return readPending(options, scope, parsed)
+  }
 
   const records =
     requestId === undefined
@@ -70,4 +88,36 @@ function projectMessage(snapshot: AgentMessage): AgentMessage {
     context: snapshot.context,
     ...(snapshot.attachments ? { attachments: snapshot.attachments } : {})
   }
+}
+
+async function readPending(
+  options: AgentHostOptions,
+  scope: readonly string[],
+  input: z.infer<typeof inputSchema>
+): Promise<readonly AgentMessage[]> {
+  const channelIds = [...options.configured.values()]
+    .filter((conversation) =>
+      authorizedConversation(
+        conversation,
+        options.agent,
+        scope,
+        options.configured
+      )
+    )
+    .map((conversation) => conversation.address.id)
+
+  const records = await options.storage.listPendingInbound({
+    channelIds,
+    endpointIds: scope,
+    limit: input.limit,
+    ...(input.cursor ? { cursor: input.cursor } : {})
+  })
+
+  return Promise.all(
+    records.map(async (record) =>
+      Object.assign(projectMessage(record.snapshot), {
+        reply: await replyStatus(options.storage, record)
+      })
+    )
+  )
 }
