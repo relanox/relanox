@@ -267,12 +267,42 @@ it.each(policies)(
   }
 )
 
+// Mattermost FileInfo.IsValidFilename bounds names to 256 Unicode code points:
+// 2b64fd09d3839007887662c191bd5d7af113a385 server/public/model/file_info.go.
 it.each([
-  ['text/plain; charset=utf-8', 'note.txt', 'text/plain'],
-  ['', 'file.unknownextension', 'application/octet-stream']
+  {
+    case: 'parameterized MIME',
+    nativeMime: 'text/plain; charset=utf-8',
+    name: 'note.txt',
+    expectedMime: 'text/plain'
+  },
+  {
+    case: 'empty MIME',
+    nativeMime: '',
+    name: 'file.unknownextension',
+    expectedMime: 'application/octet-stream'
+  },
+  {
+    case: '256 ASCII code points',
+    nativeMime: 'application/octet-stream',
+    name: `${'a'.repeat(252)}.bin`,
+    expectedMime: 'application/octet-stream'
+  },
+  {
+    case: '255 Unicode code points',
+    nativeMime: 'application/octet-stream',
+    name: `${'😀'.repeat(251)}.bin`,
+    expectedMime: 'application/octet-stream'
+  },
+  {
+    case: '256 Unicode code points',
+    nativeMime: 'application/octet-stream',
+    name: `${'😀'.repeat(252)}.bin`,
+    expectedMime: 'application/octet-stream'
+  }
 ])(
-  'accepts native FileInfo MIME %s as %s without changing bytes',
-  async (nativeMime, name, expectedMime) => {
+  'accepts native FileInfo $case without changing its name or bytes',
+  async ({ nativeMime, name, expectedMime }) => {
     const data = new Uint8Array([0, 1, 2])
 
     const peer = await httpPeer(
