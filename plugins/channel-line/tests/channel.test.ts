@@ -89,6 +89,69 @@ async function setup(filename?: string): Promise<{
 }
 
 describe('native LINE', () => {
+  it('checks signed native sender authorization before media HTTP and preserves SQLite failures', async () => {
+    const local = await setup()
+
+    // Official webhook source identity and authenticated binary content contracts:
+    // Line/line-bot-sdk-nodejs@deac3147609c73fe0ff0746fe231ab5bfdbd06c0
+    // Lib/webhook/model/groupSource.ts and lib/webhook/model/videoMessageContent.ts.
+    // Transport bytes: examples/kitchensink/static/imagemap/video.mp4, first 28 bytes.
+    const video = Buffer.from(
+      '0000001c667479706d703432000000016d7034316d70343269736f6d',
+      'hex'
+    )
+
+    local.remote.content({ status: 200, data: video, mimeType: 'video/mp4' })
+
+    const body = (sender: string, eventId: string): string =>
+      JSON.stringify({
+        destination: 'bot',
+        events: [
+          {
+            type: 'message',
+            webhookEventId: eventId,
+            source: { type: 'group', groupId: 'group', userId: sender },
+            message: {
+              id: 'policy-video-message',
+              type: 'video',
+              contentProvider: { type: 'line' }
+            }
+          }
+        ]
+      })
+
+    const authorized = body('user', 'allowed-video')
+    expect(
+      (await local.core.fetch(incoming(authorized, 'invalid'))).status
+    ).toBe(401)
+    expect(local.remote.traffic).toHaveLength(0)
+    expect(
+      (await local.core.fetch(incoming(body('denied-user', 'denied-video'))))
+        .status
+    ).toBe(200)
+    expect(local.remote.traffic).toHaveLength(0)
+    expect(await local.storage.listInbound({ limit: 10 })).toEqual([])
+    expect((await local.core.fetch(incoming(authorized))).status).toBe(200)
+    expect(local.remote.traffic).toHaveLength(1)
+    expect(local.remote.traffic[0]).toMatchObject({
+      path: '/v2/bot/message/policy-video-message/content',
+      headers: { authorization: 'Bearer token' }
+    })
+    const records = await local.storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    expect(records[0]?.snapshot).toMatchObject({
+      senderId: 'user',
+      attachments: [{ kind: 'video', mimeType: 'video/mp4', size: 28 }]
+    })
+    await local.close()
+    cleanup.pop()
+    expect(
+      (await local.core.fetch(incoming(body('user', 'storage-failure-video'))))
+        .status
+    ).toBe(500)
+    expect(local.remote.traffic).toHaveLength(2)
+  })
+
   it('waits for native video preparation before acknowledging and storing the binary content', async () => {
     const local = await setup()
 
