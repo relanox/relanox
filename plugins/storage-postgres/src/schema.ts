@@ -39,6 +39,7 @@ export const inbound = pgTable(
     channel: text().notNull(),
     account: text().notNull(),
     event: text().notNull(),
+    finalDeliveryId: text('final_delivery_id'),
     endpoint: text().notNull(),
     acceptedAt: bigint('accepted_at', { mode: 'number' }).notNull(),
     status: text().notNull(),

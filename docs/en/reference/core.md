@@ -33,7 +33,7 @@ Separate channels can proceed independently, including channels using the same A
 
 ## How are duplicates avoided?
 
-The same platform event arriving again is recognized as a duplicate. Each Agent send without an `idempotencyKey` creates a new message, even when its content matches an earlier send.
+The same platform event arriving again is recognized as a duplicate. Each unassociated Agent send without an `idempotencyKey` creates a new message, even when its content matches an earlier send.
 
 For retries, use the same key, channel, text and ordered attachments. Relanox returns the original delivery ID; changing the content with that key returns `conflict`. Use a fresh key for each new send intent. A `queued` result must not be retried with a new key. The Agent can call `relanox_status` with that `deliveryId` to check delivery without sending again.
 
@@ -44,3 +44,11 @@ If you write an integration, see [Extending Relanox](sdk.md) for sending replies
 Inspect the current record and fix the connection, credentials or platform restriction first. For an `unknown` result, check whether the message already arrived. Recovery requires the current record version; unknown recovery additionally requires acknowledging possible duplicates.
 
 A partially sent reply resumes from its unfinished part and retains receipts for earlier parts. Restarting the service resumes saved work, but does not resolve ambiguous remote outcomes by itself. Use [Operations](../operations.md) for recovery commands and [Logs and monitoring](observability.md) to locate the failing stage.
+
+## Associate an answer with its incoming message
+
+For an incoming `requestId`, send `reply: { requestId, kind: "final" }` with the complete text and ordered media in one `relanox_send_message` call. Use `kind: "progress"` for interim updates. Replies must use the source channel and its current authorized endpoint; native reply context comes from that incoming message. Proactive sends omit `reply`.
+
+Inspect `relanox_status` with `requestId`, or the `reply` field from `relanox_read_messages`. `awaiting_final` means no final answer is queued. Once queued, `pending`, `sent`, `rejected` and `unknown` describe the final delivery. Only `sent` means all text and media parts were accepted by the platform; it does not prove the recipient read them. Reading, progress updates and accepting an event do not complete a request.
+
+A request can have one final delivery. Identical final retries return that delivery even with a new send key; changed content returns `conflict`. Recover a failed final through its existing delivery ID. Unassociated sends retain their existing key behavior. Retention can remove incoming content; `expired` then means an unanswered tracked request no longer has recoverable content.

@@ -2,10 +2,12 @@ import type {
   AgentChannelStatus,
   AgentStatus,
   ChannelPlugin,
-  ConversationRecord
+  ConversationRecord,
+  ScopedAgentHost
 } from '@relanox/sdk'
 import type { AgentHostOptions } from './agent.js'
 import { authorizedConversation } from './conversations.js'
+import { replyStatus } from './reply-status.js'
 import { textId } from '../validation.js'
 
 function richTextMode(
@@ -101,7 +103,7 @@ async function deliveryView(
 export async function channelStatus(
   options: AgentHostOptions,
   scope: readonly string[],
-  deliveryId?: string
+  input?: Parameters<ScopedAgentHost['status']>[0]
 ): Promise<AgentStatus> {
   const channels: AgentChannelStatus[] = []
 
@@ -136,10 +138,51 @@ export async function channelStatus(
     }
   }
 
+  const deliveryId = input?.deliveryId
+
   const delivery =
     deliveryId === undefined
       ? undefined
       : await deliveryView(options, scope, deliveryId)
 
-  return { channels, mediaLimits, ...(delivery ? { delivery } : {}) }
+  const request =
+    input?.requestId === undefined
+      ? undefined
+      : await requestView(options, scope, input.requestId)
+
+  return {
+    channels,
+    mediaLimits,
+    ...(delivery ? { delivery } : {}),
+    ...(request ? { request } : {})
+  }
+}
+
+async function requestView(
+  options: AgentHostOptions,
+  scope: readonly string[],
+  id: string
+): Promise<AgentStatus['request']> {
+  textId.parse(id)
+  const record = await options.storage.getInbound(id)
+  if (!record) {
+    return undefined
+  }
+
+  const conversation = await options.storage.getConversation(
+    record.snapshot.channel.id
+  )
+
+  if (
+    !authorizedConversation(
+      conversation,
+      options.agent,
+      scope,
+      options.configured
+    ) ||
+    record.snapshot.endpoint.id !== conversation.endpoint.id
+  ) {
+    return undefined
+  }
+  return { id, reply: await replyStatus(options.storage, record) }
 }
