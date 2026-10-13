@@ -303,6 +303,15 @@ export function createFeishuChannel(
     if (sender.tenant_key && sender.tenant_key !== config.tenantKey) {
       return new Response(null, { status: 401 })
     }
+    if (!account.allowedSenders.includes(sender.sender_id.open_id)) {
+      host.observe.count('relanox_inbound_total', {
+        channel: 'feishu',
+        operation: 'ingest',
+        outcome: 'rejected',
+        error_class: 'policy'
+      })
+      return new Response(null, { status: 204 })
+    }
     let content: ReturnType<typeof parseContent>
     try {
       content = parseContent(message)

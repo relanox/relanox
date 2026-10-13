@@ -1,3 +1,4 @@
+import { storedChannel } from './storage-peer.js'
 import {
   routePlatform,
   installPeerNetwork
@@ -884,5 +885,91 @@ it.each([
 
     expect(response.status).toBe(204)
     expect(local.received[0]?.text).toBe('@Alice asks @Bob')
+  }
+)
+
+it.each([
+  {
+    kind: 'image',
+    encrypted: false,
+    content: { image_key: 'img_native' },
+    mime: 'image/png',
+    resource: 'img_native',
+    type: 'image'
+  },
+  {
+    kind: 'file',
+    encrypted: true,
+    content: { file_key: 'file_native', file_name: 'notes.txt' },
+    mime: 'text/plain',
+    resource: 'file_native',
+    type: 'file'
+  }
+])(
+  'rejects denied $kind senders before native resource traffic and retains allowed storage failure retries',
+  async ({ kind, encrypted, content, mime, resource, type }) => {
+    // Native fixture: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
+    // Channel/normalize/context.ts RawMessageEvent; code-gen/projects/im.ts messageResource.get.
+    const remote = await peer((captured) =>
+      captured.path.includes('tenant_access_token')
+        ? { body: { code: 0, tenant_access_token: 'tenant-token', expire: 1 } }
+        : {
+            headers: { 'content-type': mime },
+            body: new Uint8Array([1, 2, 3, 4])
+          }
+    )
+
+    cleanup.push(remote.close)
+    const { core, storage } = await storedChannel(cleanup, environment, account)
+
+    const mediaEvent = {
+      ...event,
+      event: {
+        ...event.event,
+        message: {
+          ...event.event.message,
+          message_type: kind,
+          content: JSON.stringify(content)
+        }
+      }
+    }
+
+    const denied = {
+      ...mediaEvent,
+      event: {
+        ...mediaEvent.event,
+        sender: {
+          ...mediaEvent.event.sender,
+          sender_id: { open_id: 'OU_USER' }
+        }
+      }
+    }
+
+    expect((await core.fetch(request(denied, encrypted))).status).toBe(204)
+    expect(remote.requests).toEqual([])
+    expect(await storage.listInbound({ limit: 10 })).toEqual([])
+    expect((await core.fetch(request(mediaEvent, encrypted))).status).toBe(204)
+    expect(remote.requests.map((captured) => captured.path)).toEqual([
+      '/open-apis/auth/v3/tenant_access_token/internal',
+      `/open-apis/im/v1/messages/om_message/resources/${resource}?type=${type}`
+    ])
+    const records = await storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    expect(records[0]?.snapshot.senderId).toBe('ou_user')
+    expect(records[0]?.snapshot.attachments).toHaveLength(1)
+    await storage.close()
+    expect(
+      (
+        await core.fetch(
+          request(
+            {
+              ...mediaEvent,
+              header: { ...mediaEvent.header, event_id: 'event-storage-failed' }
+            },
+            encrypted
+          )
+        )
+      ).status
+    ).toBe(503)
   }
 )
