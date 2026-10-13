@@ -5,6 +5,8 @@ import {
 } from '@relanox/storage-support'
 import { decodeDurableRecord } from './record-codec.js'
 import type { DatabaseContext } from './database.js'
+import { eq } from 'drizzle-orm'
+import { conversations } from './schema.js'
 
 export function createConversationOperations(
   context: DatabaseContext
@@ -12,11 +14,13 @@ export function createConversationOperations(
   return {
     async registerConversations(records) {
       context.transaction(() => {
-        context.db.prepare('UPDATE conversations SET active=0').run()
+        context.db.update(conversations).set({ active: 0 }).run()
         for (const record of records) {
           const row = context.db
-            .prepare('SELECT record FROM conversations WHERE id=?')
-            .get(record.address.id) as { record: string } | undefined
+            .select({ record: conversations.record })
+            .from(conversations)
+            .where(eq(conversations.id, record.address.id))
+            .get()
 
           const previous = row
             ? decodeDurableRecord<ConversationRecord>(row.record)
@@ -36,15 +40,25 @@ export function createConversationOperations(
             ...(previous?.target ? { target: previous.target } : {})
           }
 
+          const values = {
+            id: record.address.id,
+            endpoint: record.endpoint.id,
+            active: 1,
+            record: encodeDurableRecord(stored)
+          }
+
           context.db
-            .prepare(
-              'INSERT INTO conversations(id,endpoint,active,record) VALUES(?,?,1,?) ON CONFLICT(id) DO UPDATE SET endpoint=excluded.endpoint,active=1,record=excluded.record'
-            )
-            .run(
-              record.address.id,
-              record.endpoint.id,
-              encodeDurableRecord(stored)
-            )
+            .insert(conversations)
+            .values(values)
+            .onConflictDoUpdate({
+              target: conversations.id,
+              set: {
+                endpoint: values.endpoint,
+                active: values.active,
+                record: values.record
+              }
+            })
+            .run()
         }
       })
     },

@@ -12,6 +12,13 @@ import { decodeDurableRecord } from './record-codec.js'
 import { readMedia, insertIncomingMedia } from './media.js'
 import type { Storage, InboundRecord } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import {
+  conversations,
+  inbound,
+  outbound,
+  media as mediaTable
+} from './schema.js'
 
 export function createRequestOperations(
   context: DatabaseContext
@@ -21,14 +28,16 @@ export function createRequestOperations(
     async acceptInbound(snapshot, media = []) {
       return transaction(() => {
         const row = db
-          .prepare(
-            'SELECT id FROM inbound WHERE channel=? AND account=? AND event=?'
+          .select({ id: inbound.id })
+          .from(inbound)
+          .where(
+            and(
+              eq(inbound.channel, snapshot.source.channel),
+              eq(inbound.account, snapshot.source.accountId),
+              eq(inbound.event, snapshot.source.eventId)
+            )
           )
-          .get(
-            snapshot.source.channel,
-            snapshot.source.accountId,
-            snapshot.source.eventId
-          ) as { id: string } | undefined
+          .get()
 
         if (row) {
           return { requestId: row.id, duplicate: true }
@@ -45,26 +54,28 @@ export function createRequestOperations(
           dispatch: { status: 'due', attempts: 0, dueAt: snapshot.acceptedAt }
         }
 
-        db.prepare(
-          `
-            INSERT INTO inbound(id,channel,account,event,endpoint,accepted_at,status,version,record)
-            VALUES(?,?,?,?,?,?,?,?,?)
-          `
-        ).run(
-          snapshot.requestId,
-          snapshot.source.channel,
-          snapshot.source.accountId,
-          snapshot.source.eventId,
-          snapshot.endpoint.id,
-          snapshot.acceptedAt,
-          record.dispatch.status,
-          1,
-          encodeDurableRecord(record)
-        )
-        db.prepare('UPDATE conversations SET record=? WHERE id=?').run(
-          encodeDurableRecord({ ...conversation, target: snapshot.target }),
-          snapshot.channel.id
-        )
+        db.insert(inbound)
+          .values({
+            id: snapshot.requestId,
+            channel: snapshot.source.channel,
+            account: snapshot.source.accountId,
+            event: snapshot.source.eventId,
+            endpoint: snapshot.endpoint.id,
+            acceptedAt: snapshot.acceptedAt,
+            status: record.dispatch.status,
+            version: 1,
+            record: encodeDurableRecord(record)
+          })
+          .run()
+        db.update(conversations)
+          .set({
+            record: encodeDurableRecord({
+              ...conversation,
+              target: snapshot.target
+            })
+          })
+          .where(eq(conversations.id, snapshot.channel.id))
+          .run()
         insertIncomingMedia(context, snapshot.channel.id, media)
         return { requestId: snapshot.requestId, duplicate: false }
       })
@@ -77,11 +88,15 @@ export function createRequestOperations(
         }
 
         const previous = db
-          .prepare(
-            'SELECT id,digest FROM outbound WHERE channel_id=? AND message_id=?'
+          .select({ id: outbound.id, digest: outbound.digest })
+          .from(outbound)
+          .where(
+            and(
+              eq(outbound.channelId, input.channelId),
+              eq(outbound.messageId, input.message.messageId)
+            )
           )
-          .get(input.channelId, input.message.messageId) as
-          { id: string; digest: string } | undefined
+          .get()
 
         if (!previous) {
           return { status: 'not_found' }
@@ -102,11 +117,15 @@ export function createRequestOperations(
         }
 
         const previous = db
-          .prepare(
-            'SELECT id,digest FROM outbound WHERE channel_id=? AND message_id=?'
+          .select({ id: outbound.id, digest: outbound.digest })
+          .from(outbound)
+          .where(
+            and(
+              eq(outbound.channelId, input.channelId),
+              eq(outbound.messageId, input.message.messageId)
+            )
           )
-          .get(input.channelId, input.message.messageId) as
-          { id: string; digest: string } | undefined
+          .get()
 
         const digest = messageDigest(input.message)
         if (previous) {
@@ -118,18 +137,21 @@ export function createRequestOperations(
           return { status: 'conflict' }
         }
 
-        const assets = (
-          db
-            .prepare(
-              'SELECT id FROM media WHERE channel_id=? AND id IN (SELECT value FROM json_each(?)) AND data IS NOT NULL'
+        const assets = db
+          .select({ id: mediaTable.id })
+          .from(mediaTable)
+          .where(
+            and(
+              eq(mediaTable.channelId, input.channelId),
+              inArray(mediaTable.id, messageMediaIds(input)),
+              isNotNull(mediaTable.data)
             )
-            .all(input.channelId, JSON.stringify(messageMediaIds(input))) as {
-            id: string
-          }[]
-        ).flatMap(({ id }) => {
-          const asset = readMedia(context, input.channelId, id)
-          return asset ? [asset] : []
-        })
+          )
+          .all()
+          .flatMap(({ id }) => {
+            const asset = readMedia(context, input.channelId, id)
+            return asset ? [asset] : []
+          })
 
         const additions = validateMessageMedia(input, assets)
         if (
@@ -137,39 +159,47 @@ export function createRequestOperations(
           additions.some(
             (asset) =>
               db
-                .prepare('SELECT id FROM media WHERE id=?')
-                .get(asset.reference.id) !== undefined
+                .select({ id: mediaTable.id })
+                .from(mediaTable)
+                .where(eq(mediaTable.id, asset.reference.id))
+                .get() !== undefined
           ) ||
           db
-            .prepare('SELECT id FROM outbound WHERE id=?')
-            .get(input.outbound.deliveryId) !== undefined
+            .select({ id: outbound.id })
+            .from(outbound)
+            .where(eq(outbound.id, input.outbound.deliveryId))
+            .get() !== undefined
         ) {
           return { status: 'conflict' }
         }
         const delivery = input.outbound
-        db.prepare(
-          'INSERT INTO outbound(id,channel_id,message_id,digest,status,version,record) VALUES(?,?,?,?,?,?,?)'
-        ).run(
-          delivery.deliveryId,
-          input.channelId,
-          input.message.messageId,
-          digest,
-          delivery.status,
-          1,
-          encodeDurableRecord(delivery)
-        )
+        db.insert(outbound)
+          .values({
+            id: delivery.deliveryId,
+            channelId: input.channelId,
+            messageId: input.message.messageId,
+            digest,
+            status: delivery.status,
+            version: 1,
+            record: encodeDurableRecord(delivery)
+          })
+          .run()
         insertIncomingMedia(context, input.channelId, additions)
-        db.prepare(
-          'UPDATE media SET staged=0 WHERE channel_id=? AND id IN (SELECT value FROM json_each(?))'
-        ).run(
-          input.channelId,
-          JSON.stringify(
-            input.message.attachments?.flatMap((ref) => [
-              ref.id,
-              ...(ref.previewMediaId ? [ref.previewMediaId] : [])
-            ]) ?? []
+        db.update(mediaTable)
+          .set({ staged: 0 })
+          .where(
+            and(
+              eq(mediaTable.channelId, input.channelId),
+              inArray(
+                mediaTable.id,
+                input.message.attachments?.flatMap((ref) => [
+                  ref.id,
+                  ...(ref.previewMediaId ? [ref.previewMediaId] : [])
+                ]) ?? []
+              )
+            )
           )
-        )
+          .run()
         return {
           status: 'queued',
           deliveryId: delivery.deliveryId,

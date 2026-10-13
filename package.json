@@ -23,6 +23,7 @@
     "@modelcontextprotocol/client": "2.3.1",
     "@stylistic/eslint-plugin": "5.10.0",
     "@types/node": "26.6.5",
+    "drizzle-kit": "0.31.11",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2004",
     "prettier": "3.9.10",
