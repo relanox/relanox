@@ -24,6 +24,10 @@ pnpm check
 
 更新依赖时，保持精确版本、更新锁文件、检查安装脚本和许可；生产依赖变化时更新随附的许可声明。检查 `pnpm-workspace.yaml` 中的局部例外，不要关闭共享的安装策略。
 
+存储查询使用 Drizzle 的类型化 schema、查询构建器和事务接口。根据 schema 生成迁移，并随存储包分发。运行时代码不手写数据查询或 schema DDL；数据库特有表达式和函数调用保持范围明确并使用参数，保留数据库端的过滤、排序和数量限制。
+
+修改存储 schema 后运行 `pnpm --filter @relanox/storage-sqlite db:generate` 或 `pnpm --filter @relanox/storage-postgres db:generate`，提交前检查生成的迁移。PostgreSQL 通过 `search_path` 支持配置的 schema，表和外键引用应在该 schema 中解析，不能固定指向 `public`。初始迁移使用 `IF NOT EXISTS` 接管引入 ORM 前的数据库，PostgreSQL 外键放在建表声明内，避免接管时重复添加约束。后续迁移应升级现有 schema，不能重复初始迁移。
+
 ## 选择能发现实际回归的测试
 
 使用 Vitest。添加或修改测试之前，在拉取请求中说明：
@@ -34,6 +38,8 @@ pnpm check
 - 是否需要没有生产调用者的生产接口？
 
 恢复测试使用真实存储。本地 HTTP 或 socket 对端可以模拟外部平台响应，但不能实现 Relanox 的路由、权限、持久化或重试。测试公开行为，不依赖内部代码结构。新的测试目录需要可发现的 TypeScript 配置，以供类型感知 lint 使用。
+
+外部响应 fixture 应来自平台文档、实际响应记录或经过核对的 SDK 实现，并在 fixture 旁注明来源。区分平台标识、编号、字段类型、可选字段和本地数组位置。参考资料相互矛盾时，先验证响应，再修改约定。照着 Relanox 的假设编写对端，不能证明真实平台兼容。
 
 运行 PostgreSQL 测试时，将 `RELANOX_TEST_POSTGRES_URL` 设置为可创建和删除 schema 的临时数据库。测试使用隔离 schema，并在结束后清理；未设置时会跳过 PostgreSQL 测试。PowerShell 示例：
 
