@@ -3,9 +3,9 @@ import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { randomUUID } from 'node:crypto'
 import { isActiveLease } from '@relanox/storage-support'
-import { and, eq, inArray, isNull, lt, lte, notExists, or } from 'drizzle-orm'
+import { and, eq, isNull, lt, lte, notExists, or } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
-import { inbound, outbound } from './schema.js'
+import { inbound, outbound, isBlockingDelivery } from './schema.js'
 import { jsonValue, rowId } from './expressions.js'
 
 export function createWorkOperations(
@@ -167,7 +167,7 @@ export function createWorkOperations(
                     and(
                       eq(earlier.channelId, outbound.channelId),
                       lt(rowId(earlier), rowId(outbound)),
-                      inArray(earlier.status, ['pending', 'unknown'])
+                      isBlockingDelivery(earlier.status)
                     )
                   )
               ),
