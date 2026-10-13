@@ -16,6 +16,8 @@ export type DownloadMediaOptions = {
 }
 
 export type DownloadedMedia = {
+  /** Native HTTP status, including deferred content responses such as LINE 202. */
+  readonly status: number
   readonly data: Uint8Array
   readonly mimeType: string
   readonly fileName?: string
@@ -76,6 +78,7 @@ async function consume(
   }
   const fileName = responseFileName(response.headers['content-disposition'])
   return {
+    status,
     data: Buffer.concat(chunks, size),
     ...(fileName === undefined ? {} : { fileName }),
     mimeType:

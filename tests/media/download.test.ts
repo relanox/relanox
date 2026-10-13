@@ -73,6 +73,21 @@ it('downloads exact binary bytes from an explicitly configured native API origin
   expect(authorization).toBe('Bearer native-test')
 })
 
+// LINE content downloads return 202 while audio/video is being prepared:
+// https://developers.line.biz/en/reference/messaging-api/#get-content
+it.each([200, 202])(
+  'preserves native successful HTTP status %s',
+  async (status) => {
+    const { origin, options } = await peer((_request, response) => {
+      response.writeHead(status, { 'content-type': 'application/octet-stream' })
+      response.end()
+    })
+
+    const downloaded = await downloadMedia(`${origin}/content`, options)
+    expect(downloaded).toHaveProperty('status', status)
+  }
+)
+
 // RFC 6266 sections 4.3 and 5: prefer UTF-8 filename*, preserve quoted names,
 // Discard path segments, and ignore unusable filename metadata.
 // https://www.rfc-editor.org/rfc/rfc6266#section-4.3
