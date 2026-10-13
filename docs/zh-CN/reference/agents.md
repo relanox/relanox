@@ -169,7 +169,7 @@ dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段
 
 每次新发送生成新的 `idempotencyKey`，例如 UUID；上面的值仅为示例。重试同一次发送时，复用该键、相同文字及内容和顺序均相同的附件。不提供键时，每次调用都会创建新消息，即使内容完全相同。`replay: true` 表示该发送已经入队，返回原有 `deliveryId`。使用同一个键发送不同内容会返回 `conflict`。不要用新键重试已入队的发送。
 
-查看收到的附件时，使用拥有该附件的 `channel` 和附件的 `id` 作为 `mediaId` 调用 `relanox_read_media`。不超过 1 MiB 的图片/音频和不超过 64 KiB 的受支持 UTF-8 文本文件会作为 MCP 内容返回；其他文件返回下载链接，链接五分钟后过期。支持的文本类型和限制见[媒体协议](media.md)。
+查看收到的附件时，使用拥有该附件的 `channel` 和附件的 `id` 作为 `mediaId` 调用 `relanox_read_media`。所有附件统一返回五分钟后过期的下载资源链接。Agent 应先下载文件，再检查内容。下载详情见[媒体协议](media.md)。
 
 把收到或已上传的图片放在段落之间时，在 `text` 中使用 `![说明](relanox://media/UUID)`，将 `UUID` 替换为该渠道拥有的媒体 ID。Relanox 自动解析引用，无需重复提供 `attachments` 条目。文件使用 `[文件名](relanox://media/UUID)`，在对应位置发送。每个文件只能出现一次。通过 `channels[].richText` 查看布局：顺序发送渠道使用独立消息，企业微信 HTTP 则把文字放在图片之前。代码示例保留字面含义，普通 HTTPS Markdown 图片不会自动下载。见[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)。
 

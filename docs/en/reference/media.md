@@ -10,7 +10,7 @@ The MCP connection provides attachment instructions and the `relanox_read_media`
 
 Media is owned by an authorized channel. Read, upload and send calls must select that channel. A `mediaId` from another channel cannot be used, including as a preview. Use `relanox_status` to discover authorized channels and their supported media before uploading or sending.
 
-`relanox_read_media` returns images and audio up to 1 MiB as MCP content. UTF-8 plain text, Markdown, CSV, TSV and JSON files up to 64 KiB are returned as embedded text resources. Other files return download resource links valid for five minutes. That link lifetime controls access, not asset retention. If the Agent cannot read the returned content or download it, it should explain the limitation.
+`relanox_read_media` returns all attachments as download resource links valid for five minutes, regardless of file type or size. Download the file before inspecting its contents. That link lifetime controls access, not asset retention. If the Agent cannot download or read the file, it should explain the limitation. Downloading an audio file does not by itself provide speech recognition.
 
 ## Receive files created by the Agent
 
