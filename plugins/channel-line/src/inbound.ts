@@ -27,6 +27,14 @@ export async function receiveEvent(
     })
     return
   }
+  // Group and room messages may omit userId. Without an identifiable sender,
+  // They cannot pass the account allowlist; skip them without failing the batch.
+  if (!source.userId && source.type !== 'user') {
+    host.observe.log('debug', 'channel_event_ignored', {
+      errorCode: 'missing_sender_identity'
+    })
+    return
+  }
   if (!event.webhookEventId || !source.userId) {
     throw new Error('missing_event_identity')
   }
