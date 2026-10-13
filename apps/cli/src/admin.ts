@@ -38,6 +38,7 @@ function requestSummary(
     attempts: number
     dueAt: number
   }
+  reply: InboundRecord['reply']
   redactedAt: number | undefined
 } {
   return {
@@ -51,6 +52,7 @@ function requestSummary(
       attempts: record.dispatch.attempts,
       dueAt: record.dispatch.dueAt
     },
+    reply: record.reply,
     redactedAt: record.redactedAt,
     ...(content ? { text: record.snapshot.text } : {})
   }
@@ -67,6 +69,7 @@ function deliverySummary(
   status: DeliveryStatus
   version: number
   currentChunk: number
+  reply: OutboundRecord['reply']
   chunkCount: number
   attempts: number
   dueAt: number
@@ -78,6 +81,7 @@ function deliverySummary(
     status: record.status,
     version: record.version,
     currentChunk: record.currentChunk,
+    reply: record.reply,
     chunkCount: record.chunks.length,
     attempts: record.attempts,
     dueAt: record.dueAt,
@@ -105,6 +109,7 @@ export async function readStatus(
       attempts: number
       dueAt: number
     }
+    reply: InboundRecord['reply']
     redactedAt: number | undefined
   }[]
   deliveries: {
@@ -115,6 +120,7 @@ export async function readStatus(
     status: DeliveryStatus
     version: number
     currentChunk: number
+    reply: OutboundRecord['reply']
     chunkCount: number
     attempts: number
     dueAt: number

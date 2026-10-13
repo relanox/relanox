@@ -35,6 +35,7 @@ export function createInspectionOperations(
   | 'getInbound'
   | 'getOutbound'
   | 'listInbound'
+  | 'listPendingInbound'
   | 'listOutbound'
   | 'getStats'
   | 'cleanup'
@@ -82,6 +83,49 @@ export function createInspectionOperations(
             : [inbound.id])
         )
         .limit(boundedLimit(filter.limit))
+
+      return rows.map((row) => row.record)
+    },
+    async listPendingInbound(input) {
+      if (
+        !Number.isSafeInteger(input.limit) ||
+        input.limit < 1 ||
+        input.limit > 20
+      ) {
+        throw new TypeError('Invalid pending message limit')
+      }
+
+      const rows = await db
+        .select({ record: inbound.record })
+        .from(inbound)
+        .innerJoin(
+          conversations,
+          eq(
+            conversations.id,
+            sql<string>`${inbound.record}#>>'{snapshot,channel,id}'`
+          )
+        )
+        .leftJoin(outbound, eq(outbound.id, inbound.finalDeliveryId))
+        .where(
+          and(
+            eq(conversations.active, true),
+            inArray(conversations.id, [...input.channelIds]),
+            inArray(inbound.endpoint, [...input.endpointIds]),
+            isNull(sql`${inbound.record}->'redactedAt'`),
+            or(isNull(outbound.status), ne(outbound.status, 'sent')),
+            input.cursor
+              ? or(
+                  gt(inbound.acceptedAt, input.cursor.acceptedAt),
+                  and(
+                    eq(inbound.acceptedAt, input.cursor.acceptedAt),
+                    gt(inbound.id, input.cursor.requestId)
+                  )
+                )
+              : undefined
+          )
+        )
+        .orderBy(inbound.acceptedAt, inbound.id)
+        .limit(input.limit)
 
       return rows.map((row) => row.record)
     },

@@ -15,7 +15,8 @@ import type {
   ReplyTarget,
   DispatchInput,
   AgentMessage,
-  ReplyReference
+  ReplyReference,
+  MessageCursor
 } from './messages.js'
 import type { StateStore } from './state.js'
 import type {
@@ -81,6 +82,8 @@ export type AgentPrincipal = {
 export type ScopedAgentHost = {
   readMessages(input?: {
     readonly requestId?: string
+    readonly pending?: boolean
+    readonly cursor?: MessageCursor
     readonly limit?: number
   }): Promise<readonly AgentMessage[]>
   readonly media?: AgentMediaHost

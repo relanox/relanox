@@ -39,6 +39,7 @@ export function createWorkOperations(
           if (
             record.version !== input.expectedVersion ||
             record.redactedAt !== undefined ||
+            record.reply?.finalDeliveryId !== undefined ||
             !['accepted', 'unknown', 'rejected'].includes(
               record.dispatch.status
             ) ||
