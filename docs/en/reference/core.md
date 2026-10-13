@@ -27,7 +27,7 @@ An accepted agent notification is not automatically repeated just because the ag
 
 ## Why can a later reply be waiting?
 
-Messages to the same channel are sent in the order they were saved. Long text is sent in platform-sized parts, followed by any attachments. An earlier pending or unknown delivery holds up later messages to that channel. A rejected delivery releases later messages.
+Messages to the same channel are sent in the order they were saved. Long text is sent in platform-sized parts, followed by any attachments. An earlier pending delivery holds up later messages to that channel. An unknown delivery also blocks later messages except on QQ, where later replies can continue while the uncertain delivery retains its receipts and requires explicit recovery. Recovering that QQ delivery may send its unfinished parts after newer replies. A rejected delivery releases later messages.
 
 Separate channels can proceed independently, including channels using the same Agent.
 
