@@ -26,7 +26,13 @@ export async function ingest(
     const code = z.object({ code: z.string() }).safeParse(error)
     if (
       !code.success ||
-      !['sender_not_allowed', 'unbound_conversation'].includes(code.data.code)
+      ![
+        'sender_not_allowed',
+        'unbound_conversation',
+        'media_too_large',
+        'media_total_too_large',
+        'too_many_attachments'
+      ].includes(code.data.code)
     ) {
       throw error
     }
