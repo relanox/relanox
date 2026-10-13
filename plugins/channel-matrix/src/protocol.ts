@@ -7,6 +7,7 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import { readJson } from '@relanox/transport'
+import { httpDate } from './http-date.js'
 
 export function secret(
   ref: SecretRef,
@@ -66,10 +67,9 @@ function headerRetryAfter(value: string | null): number | undefined {
     const milliseconds = Number(value) * 1000
     return Number.isSafeInteger(milliseconds) ? milliseconds : undefined
   }
-  const date = new Date(value)
-  return date.toUTCString() === value
-    ? Math.max(0, date.getTime() - Date.now())
-    : undefined
+  const now = Date.now()
+  const date = httpDate(value, now)
+  return date !== undefined ? Math.max(0, date - now) : undefined
 }
 
 async function rateLimitDelay(response: Response): Promise<number> {
