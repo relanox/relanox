@@ -3,7 +3,7 @@ import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { randomUUID } from 'node:crypto'
 import { isActiveLease } from '@relanox/storage-support'
-import { and, eq, isNull, lt, lte, notExists, or } from 'drizzle-orm'
+import { and, eq, isNull, lt, lte, ne, notExists, or } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
 import { inbound, outbound, isBlockingDelivery } from './schema.js'
 import { jsonValue, rowId } from './expressions.js'
@@ -168,7 +168,11 @@ export function createWorkOperations(
                     and(
                       eq(earlier.channelId, outbound.channelId),
                       lt(rowId(earlier), rowId(outbound)),
-                      isBlockingDelivery(earlier.status)
+                      isBlockingDelivery(earlier.status),
+                      or(
+                        eq(earlier.status, 'pending'),
+                        ne(jsonValue(earlier.record, '$.target.channel'), 'qq')
+                      )
                     )
                   )
               ),
