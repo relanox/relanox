@@ -1,7 +1,7 @@
 import { ircMarkdown, splitIrcMarkdown } from './markdown.js'
 import { requestTimeoutMs, reconnectDelayMs } from './constants.js'
 import { randomUUID } from 'node:crypto'
-import { createConnection } from 'node:net'
+import { createConnection, isIP } from 'node:net'
 import type { Socket } from 'node:net'
 import { connect as connectTls } from 'node:tls'
 import type {
@@ -16,7 +16,7 @@ import type { IrcConfig } from './config.js'
 import { delay, diagnose, ingest, secret, stopTask } from './protocol.js'
 import { recipientSchema, targetSchema } from './schemas.js'
 import { foldNick, parseMessage, wireLine } from './wire.js'
-import type { IrcMessage } from './wire.js'
+import type { CaseMapping, IrcMessage } from './wire.js'
 
 const authenticationFailures = new Set([
   '904',
@@ -29,7 +29,8 @@ const authenticationFailures = new Set([
 
 function incomingText(
   message: IrcMessage,
-  ownNick: string
+  ownNick: string,
+  caseMapping: CaseMapping
 ): { sender: string; destination: string; text: string } | null {
   const sender = message.prefix?.split('!')[0]
   const destination = message.params[0]
@@ -39,7 +40,7 @@ function incomingText(
     !message.prefix?.includes('!') ||
     !destination ||
     !text ||
-    foldNick(sender) === foldNick(ownNick)
+    foldNick(sender, caseMapping) === foldNick(ownNick, caseMapping)
   ) {
     return null
   }
@@ -63,6 +64,11 @@ export function createIrcChannel(
   let ready = false
   let nick = ''
   let channels: string[] = []
+  let caseMapping: CaseMapping = 'rfc1459'
+
+  function fold(value: string): string {
+    return foldNick(value, caseMapping)
+  }
 
   function configured(): {
     host: ChannelHost
@@ -81,7 +87,7 @@ export function createIrcChannel(
 
   async function receive(message: IrcMessage): Promise<void> {
     const { host, account, config } = configured()
-    const incoming = incomingText(message, nick)
+    const incoming = incomingText(message, nick, caseMapping)
     if (!incoming) {
       return
     }
@@ -91,11 +97,9 @@ export function createIrcChannel(
       return
     }
 
-    const channel = channels.find(
-      (value) => foldNick(value) === foldNick(destination)
-    )
+    const channel = channels.find((value) => fold(value) === fold(destination))
 
-    if (!channel && foldNick(destination) !== foldNick(nick)) {
+    if (!channel && fold(destination) !== fold(nick)) {
       return
     }
     const stableAccount = message.tags.account
@@ -115,7 +119,7 @@ export function createIrcChannel(
 
     const senderId = authenticated
       ? `account:${stableAccount}`
-      : `nick:${foldNick(sender)}`
+      : `nick:${fold(sender)}`
 
     const recipient = channel ?? sender
     recipientSchema.parse(recipient)
@@ -132,7 +136,7 @@ export function createIrcChannel(
       target: {
         channel: 'irc',
         accountId: account.id,
-        chatId: channel ?? `dm:${foldNick(sender)}`,
+        chatId: channel ?? `dm:${fold(sender)}`,
         ...(message.tags.msgid ? { replyToId: message.tags.msgid } : {}),
         data: {
           recipient,
@@ -213,6 +217,24 @@ export function createIrcChannel(
     }
   }
 
+  function updateSupport(message: IrcMessage): void {
+    for (const parameter of message.params.slice(1, -1)) {
+      if (parameter === '-CASEMAPPING') {
+        caseMapping = 'rfc1459'
+      } else if (parameter.startsWith('CASEMAPPING=')) {
+        const mapping = parameter.slice(12)
+        if (
+          mapping !== 'ascii' &&
+          mapping !== 'rfc1459' &&
+          mapping !== 'rfc1459-strict'
+        ) {
+          throw new Error('unsupported_casemapping')
+        }
+        caseMapping = mapping
+      }
+    }
+  }
+
   async function handle(
     current: Socket,
     message: IrcMessage,
@@ -250,8 +272,12 @@ export function createIrcChannel(
         }
         return
       }
+      case '005': {
+        updateSupport(message)
+        return
+      }
       case 'NICK': {
-        if (foldNick(message.prefix?.split('!')[0] ?? '') === foldNick(nick)) {
+        if (fold(message.prefix?.split('!')[0] ?? '') === fold(nick)) {
           nick = nicknameSchema.parse(message.params[0])
         }
         return
@@ -272,12 +298,13 @@ export function createIrcChannel(
     const { host, config } = configured()
     ready = false
     nick = config.nick
+    caseMapping = 'rfc1459'
 
     const current: Socket = config.tls
       ? connectTls({
           host: config.server,
           port: config.port,
-          servername: config.server,
+          ...(isIP(config.server) === 0 ? { servername: config.server } : {}),
           rejectUnauthorized: true
         })
       : createConnection({ host: config.server, port: config.port })
@@ -322,7 +349,7 @@ export function createIrcChannel(
     current.once(config.tls ? 'secureConnect' : 'connect', () => {
       try {
         if (config.password) {
-          write(current, `PASS ${secret(config.password, environment)}`)
+          write(current, `PASS :${secret(config.password, environment)}`)
         }
         write(current, 'CAP LS 302')
         write(current, `NICK ${config.nick}`)
@@ -334,13 +361,21 @@ export function createIrcChannel(
     })
     current.on('data', (data: string) => {
       buffer += data
-      if (buffer.length > 16_384 || queued >= 100) {
+      const lines = buffer.split('\r\n')
+      buffer = lines.pop() ?? ''
+      if (Buffer.byteLength(buffer) > 16_384) {
         current.destroy()
         return
       }
-      const lines = buffer.split('\r\n')
-      buffer = lines.pop() ?? ''
-      lines.forEach(queueLine)
+      for (const line of lines) {
+        if (Buffer.byteLength(line) > 16_384) {
+          current.destroy()
+          return
+        }
+        if (line.length > 0) {
+          queueLine(line)
+        }
+      }
     })
     await new Promise<void>((resolve) => {
       current.once('close', () => {
@@ -382,8 +417,8 @@ export function createIrcChannel(
       target.data.port !== config.port ||
       target.data.tls !== config.tls ||
       input.target.threadId !== undefined ||
-      foldNick(input.target.chatId) !==
-        foldNick(
+      fold(input.target.chatId) !==
+        fold(
           target.data.recipient.startsWith('#') ||
             target.data.recipient.startsWith('&')
             ? target.data.recipient
