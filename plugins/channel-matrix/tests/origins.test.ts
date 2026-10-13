@@ -118,7 +118,9 @@ it.each(discoveredCases)(
       (request, response) => {
         effects += 1
         if (request.url?.includes('/state/m.room.encryption')) {
-          json(response, {}, 404)
+          // Missing room encryption state: Matrix Client-Server v1.15 state endpoint.
+          // https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
+          json(response, { errcode: 'M_NOT_FOUND' }, 404)
           return
         }
         sends.push({
