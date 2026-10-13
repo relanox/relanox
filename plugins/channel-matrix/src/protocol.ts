@@ -41,7 +41,13 @@ export async function ingest(
     await host.ingest(input)
   } catch (error) {
     const code = z
-      .object({ code: z.enum(['sender_not_allowed', 'unbound_conversation']) })
+      .object({
+        code: z.enum([
+          'sender_not_allowed',
+          'unbound_conversation',
+          'media_total_too_large'
+        ])
+      })
       .safeParse(error)
 
     if (!code.success) {

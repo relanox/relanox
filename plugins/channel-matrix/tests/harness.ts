@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as pause } from 'node:timers/promises'
 import { createCore } from '@relanox/core'
+import type { WorkerOptions } from '@relanox/core'
 import type {
   AgentPlugin,
   Binding,
@@ -227,7 +228,11 @@ export async function harness(
   chats: readonly { chatId: string; threadId?: string }[],
   senders: readonly string[],
   dispatchUrl: string,
-  options: { filename?: string; observe?: Observability } = {}
+  options: {
+    filename?: string
+    observe?: Observability
+    worker?: WorkerOptions
+  } = {}
 ): Promise<{
   runtime: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
@@ -266,6 +271,7 @@ export async function harness(
     channels: new Map([['bot', plugin]]),
     agents: new Map([['grok', protocolAgent(dispatchUrl)]]),
     ...(options.observe ? { observe: options.observe } : {}),
+    ...(options.worker ? { worker: options.worker } : {}),
     config: {
       accounts: [
         { id: 'bot', channel: plugin.channel, config, allowedSenders: senders }
