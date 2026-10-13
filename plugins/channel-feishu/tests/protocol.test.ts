@@ -588,6 +588,16 @@ describe('feishu native HTTP protocol', () => {
       expected: { status: 'rejected', errorCode: 'feishu_api_error' }
     },
     {
+      status: 401,
+      body: { code: 99_991_672 },
+      expected: { status: 'rejected', errorCode: 'platform_http_error' }
+    },
+    {
+      status: 503,
+      body: { code: 99_991_663 },
+      expected: { status: 'unknown', errorCode: 'platform_http_error' }
+    },
+    {
       status: 200,
       body: { code: 0 },
       expected: { status: 'unknown', errorCode: 'invalid_platform_response' }
@@ -610,6 +620,7 @@ describe('feishu native HTTP protocol', () => {
       cleanup.push(remote.close)
       const test = await setup(remote.url)
       expect(await test.plugin.send(sendInput(test.target))).toEqual(expected)
+      expect(remote.requests).toHaveLength(1)
     }
   )
 
@@ -704,6 +715,146 @@ it('resolves authenticated Feishu threads through their real root message while 
     )
   ).toEqual({ status: 'unavailable', reason: 'address_unresolved' })
 })
+
+it.each(
+  [200, 400, 401].flatMap((status) =>
+    ['message', 'upload'].map((operation) => ({ status, operation }))
+  )
+)(
+  'refreshes a rejected tenant token and retries the persisted $operation after HTTP $status',
+  async ({ status, operation }) => {
+    // Source: https://open.feishu.cn/document/faq/trouble-shooting/how-to-fix-99991663-error
+    // Code 99991663 is intercepted during tenant token authentication; obtain a new token and retry.
+    let tokens = 0
+    let messages = 0
+    let uploads = 0
+
+    const remote = await peer((captured) => {
+      if (captured.path.includes('tenant_access_token')) {
+        return {
+          body: {
+            code: 0,
+            tenant_access_token: `tenant-token-${++tokens}`,
+            expire: 7200
+          }
+        }
+      }
+
+      const rejected =
+        captured.path === '/open-apis/im/v1/images'
+          ? operation === 'upload' && ++uploads === 1
+          : operation === 'message' && ++messages === 1
+
+      if (rejected) {
+        return {
+          status,
+          body: {
+            code: 99_991_663,
+            msg: 'Invalid access token for authorization. Please make a request with token attached.'
+          }
+        }
+      }
+      if (captured.path === '/open-apis/im/v1/images') {
+        return { body: { code: 0, data: { image_key: 'img_uploaded' } } }
+      }
+      return { body: { code: 0, data: { message_id: 'om_recovered' } } }
+    })
+
+    cleanup.push(remote.close)
+
+    const { core, storage, agentHost } = await storedChannel(
+      cleanup,
+      environment,
+      account
+    )
+
+    expect((await core.fetch(request(event))).status).toBe(204)
+
+    const principal = agentHost.forPrincipal({
+      subject: 'first',
+      endpointIds: ['first']
+    })
+
+    const channel = (await principal.status()).channels[0]?.channel.id
+    if (!channel) {
+      throw new Error('missing_learned_channel')
+    }
+
+    const queued = await principal.sendMessage({
+      channel,
+      text: operation === 'upload' ? '' : 'The answer',
+      ...(operation === 'upload'
+        ? {
+            attachments: [
+              {
+                kind: 'image' as const,
+                mimeType: 'image/png',
+                fileName: 'answer.png',
+                data: new Uint8Array([1, 2, 3, 4])
+              }
+            ]
+          }
+        : {}),
+      idempotencyKey: 'recover-tenant-token'
+    })
+
+    expect(queued.status).toBe('queued')
+    if (queued.status !== 'queued') {
+      throw new Error('missing_queued_delivery')
+    }
+    await core.processDue()
+    const pending = await storage.getOutbound(queued.deliveryId)
+    expect(pending?.receipts).toEqual([])
+    expect(pending?.currentChunk).toBe(0)
+    expect(remote.requests).toMatchObject([
+      {
+        path:
+          operation === 'upload'
+            ? '/open-apis/im/v1/images'
+            : '/open-apis/im/v1/messages/om_message/reply',
+        headers: { authorization: 'Bearer tenant-token-1' }
+      }
+    ])
+    expect(pending).toMatchObject({
+      status: 'pending',
+      attempts: 1,
+      errorCode: 'feishu_token_invalid'
+    })
+
+    // Exercise the real core retry after its persisted due time with real SQLite.
+    await new Promise((resolve) => {
+      setTimeout(resolve, Math.max(0, (pending?.dueAt ?? 0) - Date.now()) + 10)
+    })
+    await core.processDue()
+    expect(await storage.getOutbound(queued.deliveryId)).toMatchObject({
+      status: 'sent',
+      receipts: [{ platformMessageId: 'om_recovered' }]
+    })
+    expect(remote.requests.slice(1, 3)).toMatchObject([
+      { path: '/open-apis/auth/v3/tenant_access_token/internal' },
+      {
+        path:
+          operation === 'upload'
+            ? '/open-apis/im/v1/images'
+            : '/open-apis/im/v1/messages/om_message/reply',
+        headers: { authorization: 'Bearer tenant-token-2' }
+      }
+    ])
+    expect(remote.requests.at(-1)).toMatchObject({
+      path: '/open-apis/im/v1/messages/om_message/reply',
+      headers: { authorization: 'Bearer tenant-token-2' },
+      body: {
+        msg_type: operation === 'upload' ? 'image' : 'post',
+        content:
+          operation === 'upload'
+            ? '{"image_key":"img_uploaded"}'
+            : '{"zh_cn":{"content":[[{"tag":"md","text":"The answer"}]]}}',
+        reply_in_thread: true
+      }
+    })
+    expect(remote.requests).toHaveLength(operation === 'upload' ? 4 : 3)
+  }
+)
 
 const richImage = {
   reference: {

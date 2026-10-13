@@ -4,7 +4,7 @@ import { createSqliteStorage } from '../../storage-sqlite/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentPlugin, AccountConfig } from '@relanox/sdk'
+import type { AgentHost, AgentPlugin, AccountConfig } from '@relanox/sdk'
 import { createFeishuChannel } from '../src/index.js'
 
 export async function storedChannel(
@@ -14,6 +14,7 @@ export async function storedChannel(
 ): Promise<{
   core: CoreRuntime
   storage: ReturnType<typeof createSqliteStorage>
+  agentHost: AgentHost
 }> {
   const directory = await mkdtemp(join(tmpdir(), 'relanox-feishu-policy-'))
 
@@ -26,6 +27,7 @@ export async function storedChannel(
     await rm(directory, { recursive: true, force: true })
   })
   await storage.initialize()
+  let agentHost: AgentHost | undefined
 
   const agent: AgentPlugin = {
     id: 'agent-grok',
@@ -34,7 +36,9 @@ export async function storedChannel(
     sdkMajor: 1,
     runtime: 'node',
     validateConfig: () => null,
-    async setup() {},
+    async setup(host) {
+      agentHost = host
+    },
     async dispatch() {
       return { status: 'accepted' }
     }
@@ -72,5 +76,8 @@ export async function storedChannel(
     }
   })
 
-  return { core, storage }
+  if (!agentHost) {
+    throw new Error('missing_agent_host')
+  }
+  return { core, storage, agentHost }
 }
