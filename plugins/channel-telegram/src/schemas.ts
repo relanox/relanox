@@ -49,3 +49,18 @@ export const responseSchema = z.looseObject({
     .looseObject({ retry_after: z.number().positive().optional() })
     .optional()
 })
+
+export const fileResponseSchema = z.discriminatedUnion('ok', [
+  z.looseObject({
+    ok: z.literal(true),
+    result: z.looseObject({
+      file_path: z.string().min(1),
+      file_size: z.number().int().nonnegative().optional()
+    })
+  }),
+  z.looseObject({
+    ok: z.literal(false),
+    error_code: z.number().int(),
+    description: z.string()
+  })
+])

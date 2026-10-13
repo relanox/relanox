@@ -1,5 +1,6 @@
 import type { AccountConfig, ChannelHost, ChannelPlugin } from '@relanox/sdk'
 import type { z } from 'zod'
+import { MediaDownloadError } from '@relanox/channel-media'
 import { sendOutcome } from './client.js'
 import { validateConfig, REQUEST_TIMEOUT_MS } from './config.js'
 import type { TelegramConfig } from './config.js'
@@ -154,7 +155,16 @@ export function createTelegramChannel(
             context: null
           })
           return new Response(null, { status: 204 })
-        } catch {
+        } catch (error) {
+          if (
+            error instanceof MediaDownloadError &&
+            error.code === 'media_too_large'
+          ) {
+            host.observe.log('info', 'channel_policy_rejection', {
+              errorCode: error.code
+            })
+            return new Response(null, { status: 204 })
+          }
           return new Response(null, { status: 503 })
         }
       })
