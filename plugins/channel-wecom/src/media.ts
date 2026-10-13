@@ -83,7 +83,8 @@ export async function receiveResource(
     kind,
     mimeType,
     data,
-    fileName: resource.filename ?? `attachment.${extension}`
+    fileName:
+      resource.filename ?? downloaded.fileName ?? `attachment.${extension}`
   }
 }
 
