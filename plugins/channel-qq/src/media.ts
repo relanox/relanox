@@ -36,7 +36,8 @@ export async function downloadAttachments(
     const mimeType = attachmentMimeType(
       attachment.content_type,
       downloaded.mimeType,
-      fileName
+      fileName,
+      downloaded.data
     )
 
     uploads.push({
