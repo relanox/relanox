@@ -2,7 +2,7 @@ import { discoverIdentity } from './identity.js'
 import type { AccountConfig, ChannelHost, ChannelPlugin } from '@relanox/sdk'
 import { validateConfig, API_BASE_URL } from './config.js'
 import type { DiscordConfig } from './config.js'
-import { sendMessage, mediaError } from './media.js'
+import { sendMessage, mediaError, MAX_RICH_IMAGE_TOTAL_BYTES } from './media.js'
 import type { DiscordGateway } from './gateway.js'
 import { createDiscordGateway } from './gateway.js'
 import {
@@ -41,6 +41,7 @@ export function createDiscordChannel(
       get richText() {
         return {
           maxParts: 10,
+          maxTotalImageBytes: MAX_RICH_IMAGE_TOTAL_BYTES,
           maxTextLength: 1800,
           maxImageBytes: Math.min(
             host?.maxMediaBytes ?? 25 * 1024 * 1024,

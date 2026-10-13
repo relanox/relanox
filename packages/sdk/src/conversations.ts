@@ -37,6 +37,7 @@ export type AgentChannelStatus = {
     readonly maxTextLength: number
     readonly imageMimeTypes?: readonly string[]
     readonly maxImageBytes?: number
+    readonly maxTotalImageBytes?: number
   }
   readonly maxTextLength: number
   readonly lengthUnit: 'utf16' | 'codepoint' | 'utf8'

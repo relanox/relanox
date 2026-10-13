@@ -128,6 +128,8 @@ class ChunkBuilder {
 
   private pendingLength = 0
 
+  private pendingImageBytes = 0
+
   constructor(private readonly plugin: ChannelPlugin<unknown>) {}
 
   add(part: RichTextPart): void {
@@ -146,14 +148,19 @@ class ChunkBuilder {
         ? textLength(part.text, this.plugin.capabilities.lengthUnit)
         : 0
 
+    const imageBytes = part.type === 'image' ? part.media.size : 0
+
     if (
       this.pending.length >= rich.maxParts ||
-      this.pendingLength + length > rich.maxTextLength
+      this.pendingLength + length > rich.maxTextLength ||
+      this.pendingImageBytes + imageBytes >
+        (rich.maxTotalImageBytes ?? Infinity)
     ) {
       this.flush()
     }
     this.pending.push(part)
     this.pendingLength += length
+    this.pendingImageBytes += imageBytes
   }
 
   media(reference: MediaReference): void {
@@ -173,6 +180,7 @@ class ChunkBuilder {
     }
     this.pending = []
     this.pendingLength = 0
+    this.pendingImageBytes = 0
   }
 }
 
@@ -189,7 +197,11 @@ function addMedia(
       rich &&
       ((rich.imageMimeTypes &&
         !rich.imageMimeTypes.includes(reference.mimeType)) ||
-        reference.size > (rich.maxImageBytes ?? Infinity))
+        reference.size >
+          Math.min(
+            rich.maxImageBytes ?? Infinity,
+            rich.maxTotalImageBytes ?? Infinity
+          ))
     ) {
       builder.media(reference)
       return

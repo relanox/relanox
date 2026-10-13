@@ -10,6 +10,11 @@ import { richComponents, richFileName } from './rich.js'
 // https://docs.discord.com/developers/reference#uploading-files
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
+// Create Message limits the whole request to 25 MiB. Keep binary rich content
+// At 20 MiB, leaving room for the bounded text, labels and multipart envelope.
+// https://docs.discord.com/developers/resources/message#create-message
+export const MAX_RICH_IMAGE_TOTAL_BYTES = 20 * 1024 * 1024
+
 export function mediaError(
   input: SendInput,
   host: ChannelHost
@@ -36,6 +41,10 @@ export function mediaError(
       return 'missing_media'
     }
     if (
+      (input.richMedia ?? []).reduce(
+        (total, media) => total + media.data.byteLength,
+        0
+      ) > MAX_RICH_IMAGE_TOTAL_BYTES ||
       (input.richMedia ?? []).some(
         (media) =>
           media.reference.kind !== 'image' ||

@@ -129,6 +129,8 @@ export type ChannelPlugin<C = Json> = {
       readonly maxTextLength: number
       readonly imageMimeTypes?: readonly string[]
       readonly maxImageBytes?: number
+      /** Aggregate inline image bytes per rich chunk, excluding its native envelope. */
+      readonly maxTotalImageBytes?: number
     }
     readonly media?: {
       readonly receive: readonly MediaKind[]
