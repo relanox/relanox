@@ -125,6 +125,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
         ack(200, frame.data)
       }
       if (frame.headers.topic === 'disconnect') {
+        ack(200, frame.data)
         connection.socket?.close()
       }
       return
