@@ -35,7 +35,9 @@ import {
   fresh,
   ingest,
   jsonResponse,
-  postJson
+  postJson,
+  FeishuTokenError,
+  tenantTokenRejected
 } from './transport.js'
 
 const botInfoSchema = z.object({
@@ -172,10 +174,21 @@ export function createFeishuChannel(
   }
 
   async function sendOutcome(response: Response): Promise<SendResult> {
+    if (!response.ok && ![400, 401].includes(response.status)) {
+      return failure(response)
+    }
+
+    const value = await jsonResponse(response).catch(() => {})
+
+    // The platform intercepts this code at authentication, before the message effect.
+    if (tenantTokenRejected(response, value)) {
+      token = undefined
+      return { status: 'retryable', errorCode: 'feishu_token_invalid' }
+    }
     if (!response.ok) {
       return failure(response)
     }
-    const parsed = apiSchema.safeParse(await jsonResponse(response))
+    const parsed = apiSchema.safeParse(value)
     if (!parsed.success) {
       return { status: 'unknown', errorCode: 'invalid_platform_response' }
     }
@@ -506,10 +519,18 @@ export function createFeishuChannel(
         config,
         base(),
         access
-      ).catch(() => ({
-        status: 'retryable' as const,
-        errorCode: 'media_upload_transport_error'
-      }))
+      ).catch((error: unknown) => {
+        const invalidToken = error instanceof FeishuTokenError
+        if (invalidToken) {
+          token = undefined
+        }
+        return {
+          status: 'retryable' as const,
+          errorCode: invalidToken
+            ? 'feishu_token_invalid'
+            : 'media_upload_transport_error'
+        }
+      })
 
       if ('status' in content) {
         return content

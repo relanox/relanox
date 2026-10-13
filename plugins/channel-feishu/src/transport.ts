@@ -8,6 +8,24 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 
+/** A native authentication rejection confirms that no message effect occurred. */
+export class FeishuTokenError extends Error {
+  constructor() {
+    super('feishu_token_invalid')
+    this.name = 'FeishuTokenError'
+  }
+}
+
+export function tenantTokenRejected(
+  response: Response,
+  value: unknown
+): boolean {
+  return (
+    (response.ok || [400, 401].includes(response.status)) &&
+    z.object({ code: z.literal(99_991_663) }).safeParse(value).success
+  )
+}
+
 export function credential(
   ref: SecretRef,
   environment: NodeJS.ProcessEnv

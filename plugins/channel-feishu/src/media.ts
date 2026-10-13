@@ -8,7 +8,11 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { FeishuConfig } from './config.js'
-import { jsonResponse } from './transport.js'
+import {
+  FeishuTokenError,
+  jsonResponse,
+  tenantTokenRejected
+} from './transport.js'
 
 import type { InboundContent } from './inbound-content.js'
 
@@ -120,7 +124,11 @@ async function uploadAsset(
     }
   )
 
-  const uploaded = uploadSchema.parse(await jsonResponse(response))
+  const value = await jsonResponse(response)
+  if (tenantTokenRejected(response, value)) {
+    throw new FeishuTokenError()
+  }
+  const uploaded = uploadSchema.parse(value)
   if (!response.ok) {
     throw new Error('media_upload_failed')
   }
