@@ -290,7 +290,7 @@ export function createFeishuChannel(
         outcome: 'rejected',
         error_class: 'unsupported'
       })
-      return new Response(null, { status: 204 })
+      return new Response(null, { status: 200 })
     }
     const messageEvent = messageSchema.safeParse(event.event)
     if (!messageEvent.success) {
@@ -311,7 +311,7 @@ export function createFeishuChannel(
         outcome: 'rejected',
         error_class: 'unsupported'
       })
-      return new Response(null, { status: 204 })
+      return new Response(null, { status: 200 })
     }
     if (sender.tenant_key && sender.tenant_key !== config.tenantKey) {
       return new Response(null, { status: 401 })
@@ -323,7 +323,7 @@ export function createFeishuChannel(
         outcome: 'rejected',
         error_class: 'policy'
       })
-      return new Response(null, { status: 204 })
+      return new Response(null, { status: 200 })
     }
     let content: ReturnType<typeof parseContent>
     try {
@@ -374,7 +374,7 @@ export function createFeishuChannel(
         },
         receivedAt: Date.now()
       })
-      return new Response(null, { status: 204 })
+      return new Response(null, { status: 200 })
     } catch {
       return new Response(null, { status: 503 })
     }

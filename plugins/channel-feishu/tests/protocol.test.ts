@@ -232,7 +232,7 @@ describe('feishu native HTTP protocol', () => {
         throw Object.assign(new Error(code), { code })
       })
 
-      expect((await test.handler(request(event))).status).toBe(204)
+      expect((await test.handler(request(event))).status).toBe(200)
       expect(test.received).toEqual([])
     }
   )
@@ -417,7 +417,7 @@ describe('feishu native HTTP protocol', () => {
     'normalizes signed event text/tenant/thread (encrypted=%s)',
     async (encrypted) => {
       const test = await setup()
-      expect((await test.handler(request(event, encrypted))).status).toBe(204)
+      expect((await test.handler(request(event, encrypted))).status).toBe(200)
       expect(test.received[0]).toMatchObject({
         source: { channel: 'feishu', accountId: 'fs', eventId: 'event-42' },
         senderId: 'ou_user',
@@ -460,7 +460,7 @@ describe('feishu native HTTP protocol', () => {
           })
         )
       ).status
-    ).toBe(204)
+    ).toBe(200)
     expect(
       (
         await test.handler(
@@ -473,7 +473,7 @@ describe('feishu native HTTP protocol', () => {
           })
         )
       ).status
-    ).toBe(204)
+    ).toBe(200)
     expect(test.received).toHaveLength(0)
 
     const failing = await setup(undefined, async () => {
@@ -656,6 +656,34 @@ describe('feishu native HTTP protocol', () => {
   })
 })
 
+it('acknowledges persisted and duplicate native events with HTTP 200 while retaining storage retries', async () => {
+  // Source: https://open.feishu.cn/document/event-subscription-guide/event-subscriptions/faq
+  // Feishu treats a callback without HTTP 200 as failed and redelivers its event_id.
+  const remote = await peer(() => ({
+    body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+  }))
+
+  cleanup.push(remote.close)
+  const { core, storage } = await storedChannel(cleanup, environment, account)
+  expect(await storage.listInbound({ limit: 10 })).toEqual([])
+  const accepted = await core.fetch(request(event))
+  expect(await storage.listInbound({ limit: 10 })).toHaveLength(1)
+  expect(accepted.status).toBe(200)
+  expect((await core.fetch(request(event))).status).toBe(200)
+  expect(await storage.listInbound({ limit: 10 })).toHaveLength(1)
+  await storage.close()
+  expect(
+    (
+      await core.fetch(
+        request({
+          ...event,
+          header: { ...event.header, event_id: 'event-text-storage-failed' }
+        })
+      )
+    ).status
+  ).toBe(503)
+})
+
 it('resolves authenticated Feishu threads through their real root message while omitting visual reply quoting', async () => {
   const remote = await peer((input) => ({
     body: input.path.includes('tenant_access_token')
@@ -690,7 +718,7 @@ it('resolves authenticated Feishu threads through their real root message while 
         })
       )
     ).status
-  ).toBe(204)
+  ).toBe(200)
   const learned = local.received[0]?.target
   const resolved = await local.plugin.resolveChannel?.(address, learned)
   expect(resolved).toMatchObject({
@@ -768,7 +796,7 @@ it.each(
       account
     )
 
-    expect((await core.fetch(request(event))).status).toBe(204)
+    expect((await core.fetch(request(event))).status).toBe(200)
 
     const principal = agentHost.forPrincipal({
       subject: 'first',
@@ -990,7 +1018,7 @@ it('accepts native Markdown post rows in authenticated inbound events', async ()
     })
   )
 
-  expect(response.status).toBe(204)
+  expect(response.status).toBe(200)
   expect(local.received).toHaveLength(1)
   expect(local.received[0]?.text).toBe('Question\n**Please** explain this.')
 })
@@ -1031,7 +1059,7 @@ it.each([false, true])(
       })
     )
 
-    expect(response.status).toBe(204)
+    expect(response.status).toBe(200)
     expect(local.received).toHaveLength(1)
     expect(local.received[0]?.text).toBe(
       'Question\nAnalyze [the report](https://example.com/report?version=2#summary) and explain the findings.'
@@ -1078,7 +1106,7 @@ it.each([
       })
     )
 
-    expect(response.status).toBe(204)
+    expect(response.status).toBe(200)
     expect(local.received[0]?.text).toBe('@Alice asks @Bob')
   }
 )
@@ -1140,10 +1168,10 @@ it.each([
       }
     }
 
-    expect((await core.fetch(request(denied, encrypted))).status).toBe(204)
+    expect((await core.fetch(request(denied, encrypted))).status).toBe(200)
     expect(remote.requests).toEqual([])
     expect(await storage.listInbound({ limit: 10 })).toEqual([])
-    expect((await core.fetch(request(mediaEvent, encrypted))).status).toBe(204)
+    expect((await core.fetch(request(mediaEvent, encrypted))).status).toBe(200)
     expect(remote.requests.map((captured) => captured.path)).toEqual([
       '/open-apis/auth/v3/tenant_access_token/internal',
       `/open-apis/im/v1/messages/om_message/resources/${resource}?type=${type}`
