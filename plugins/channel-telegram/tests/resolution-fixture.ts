@@ -115,7 +115,11 @@ function platformResponse(path: string): { status?: number; json: unknown } {
   }
 
   if (path.endsWith('/state/m.room.encryption')) {
-    return { status: 404, json: {} }
+    // Matrix Client-Server v1.16 GET /rooms/{roomId}/state/{eventType}/{stateKey}:
+    // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
+    // Matrix-js-sdk d633e7c1954a6b92597fbc3f8a95f183789a8d40 src/client.ts getStateEvent caller.
+    // A missing state event returns 404 with the native M_NOT_FOUND error code.
+    return { status: 404, json: { errcode: 'M_NOT_FOUND' } }
   }
   if (path === '/api/v1/rpc') {
     return {
