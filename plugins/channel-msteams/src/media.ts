@@ -164,8 +164,7 @@ export async function prepareAttachment(
   if (state.phase === 'waiting') {
     return {
       outcome: {
-        status: 'retryable',
-        errorCode: 'file_consent_pending',
+        status: 'pending',
         retryAfterMs: 30_000
       }
     }

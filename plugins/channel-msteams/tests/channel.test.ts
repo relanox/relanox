@@ -22,6 +22,7 @@ afterEach(async () => {
     await close()
   }
   vi.unstubAllEnvs()
+  vi.useRealTimers()
 })
 const issuer = 'https://api.botframework.com'
 
@@ -697,12 +698,12 @@ it.each([
     })
     local.remote.respond(200, { id: 'activity-sent' })
     expect(await local.plugin.send(input)).toMatchObject({
-      status: 'retryable',
-      errorCode: 'file_consent_pending'
+      status: 'pending',
+      retryAfterMs: 30_000
     })
     expect(await local.plugin.send(input)).toMatchObject({
-      status: 'retryable',
-      errorCode: 'file_consent_pending'
+      status: 'pending',
+      retryAfterMs: 30_000
     })
     expect(
       local.remote.traffic.filter((request) =>
@@ -733,8 +734,8 @@ it.each([
     }
     const resumedInput = { ...input, media: resumed }
     expect(await plugin.send(resumedInput)).toMatchObject({
-      status: 'retryable',
-      errorCode: 'file_consent_pending'
+      status: 'pending',
+      retryAfterMs: 30_000
     })
 
     const invoke = {
@@ -794,6 +795,151 @@ it.each([
     })
   }
 )
+
+it('keeps personal file consent pending beyond the failure budget and delivers after SQLite reopen', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'relanox-teams-consent-wait-'))
+  cleanup.push(async () => rm(directory, { recursive: true, force: true }))
+  const filename = join(directory, 'state.db')
+  const local = await setup(['msteams'], filename)
+
+  const incoming = {
+    ...local.activity,
+    conversation: {
+      ...local.activity.conversation,
+      conversationType: 'personal'
+    }
+  }
+
+  expect(
+    (await local.core.fetch(await local.incoming({}, incoming))).status
+  ).toBe(200)
+  const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
+  if (!item) {
+    throw new Error('missing_inbound')
+  }
+  const principal = local.principal()
+
+  const file = await principal.media?.upload({
+    channelId: item.channel.id,
+    mediaId: '717187d4-31d0-4c37-9d2b-4817e3efbff5',
+    upload: {
+      kind: 'file',
+      mimeType: 'application/pdf',
+      fileName: 'report.pdf',
+      data: new Uint8Array([10, 20, 30, 40])
+    }
+  })
+
+  if (!file) {
+    throw new Error('missing_file')
+  }
+
+  const queued = await principal.sendMessage({
+    channel: item.channel.id,
+    text: '',
+    attachments: [file.id],
+    idempotencyKey: 'delayed-consent'
+  })
+
+  if (queued.status !== 'queued') {
+    throw new Error('file_not_queued')
+  }
+  vi.useFakeTimers({ toFake: ['Date'] })
+  await local.core.processDue()
+  for (let wait = 0; wait < 9; wait += 1) {
+    vi.setSystemTime(Date.now() + 31_000)
+    await local.core.processDue()
+  }
+  expect(await local.storage.getOutbound(queued.deliveryId)).toMatchObject({
+    status: 'pending',
+    attempts: 0
+  })
+
+  const cards = local.remote.traffic.filter((entry) =>
+    entry.path.includes('/activities/')
+  )
+
+  expect(cards).toHaveLength(1)
+
+  // FileConsentCard acceptContext is echoed in FileConsentCardResponse.context:
+  // Microsoft/botbuilder-js@63ebf76bff71db0f7dad067624e2fc3faf342898
+  // Libraries/botframework-schema/src/teams/index.ts:1144-1270.
+  const card = z
+    .object({
+      attachments: z.array(
+        z.object({
+          content: z.object({
+            acceptContext: z.object({ consentId: z.string() })
+          })
+        })
+      )
+    })
+    .parse(JSON.parse(cards[0]?.body ?? 'null'))
+
+  const consentId = card.attachments[0]?.content.acceptContext.consentId
+  if (!consentId) {
+    throw new Error('missing_consent_id')
+  }
+  await local.close()
+
+  const reopened = await harness(
+    createTeamsChannel(),
+    local.config,
+    'conversation-1',
+    'user-id',
+    'root-1',
+    filename
+  )
+
+  cleanup.push(reopened.close)
+  local.remote.route('/upload-delayed', {})
+
+  const invoke = {
+    ...incoming,
+    type: 'invoke',
+    name: 'fileConsent/invoke',
+    value: {
+      type: 'fileUpload',
+      action: 'accept',
+      context: { consentId },
+      uploadInfo: {
+        uploadUrl: `${local.remote.base}/upload-delayed`,
+        contentUrl: 'https://tenant.sharepoint.com/report.pdf',
+        uniqueId: 'delayed-file',
+        fileType: 'pdf'
+      }
+    }
+  }
+
+  expect(
+    (await reopened.core.fetch(await local.incoming({}, invoke))).status
+  ).toBe(200)
+  expect(
+    (await reopened.core.fetch(await local.incoming({}, invoke))).status
+  ).toBe(200)
+  vi.setSystemTime(Date.now() + 31_000)
+  await reopened.core.processDue()
+  expect(await reopened.storage.getOutbound(queued.deliveryId)).toMatchObject({
+    status: 'sent'
+  })
+  expect(
+    local.remote.traffic.filter((entry) => entry.path === '/upload-delayed')
+  ).toHaveLength(1)
+
+  const messages = local.remote.traffic.filter((entry) =>
+    entry.path.includes('/activities/')
+  )
+
+  expect(messages).toHaveLength(2)
+  expect(JSON.parse(messages[1]?.body ?? 'null') as unknown).toMatchObject({
+    attachments: [
+      {
+        contentType: 'application/vnd.microsoft.teams.card.file.info',
+        content: { uniqueId: 'delayed-file', fileType: 'pdf' }
+      }
+    ]
+  })
+})
 
 it('learns trusted Teams installation context without an incoming message and keeps configured thread routing', async () => {
   const local = await setup()
