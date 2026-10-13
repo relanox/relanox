@@ -294,11 +294,11 @@ export function createMatrixChannel(
           ? null
           : { status: 'retryable', errorCode: 'encryption_check_failed' }
       }
-      await encryption.body?.cancel()
       if (encryption.ok) {
+        await encryption.body?.cancel()
         return { status: 'rejected', errorCode: 'encrypted_unsupported' }
       }
-      const failure = httpFailure(encryption)
+      const failure = await httpFailure(encryption)
       return failure.status === 'unknown'
         ? { status: 'retryable', errorCode: 'encryption_check_failed' }
         : failure
@@ -357,8 +357,7 @@ export function createMatrixChannel(
       )
 
       if (!response.ok) {
-        await response.body?.cancel()
-        return httpFailure(response)
+        return await httpFailure(response)
       }
       const result = sendResponseSchema.parse(await readJson(response))
       return { status: 'sent', receipt: { platformMessageId: result.event_id } }
