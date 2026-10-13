@@ -1,4 +1,6 @@
+import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
+import { createServer as createTlsServer } from 'node:tls'
 import type { Socket } from 'node:net'
 import type { SendInput } from '@relanox/sdk'
 import { expect, it } from 'vitest'
@@ -513,4 +515,192 @@ it('allows explicit nickname fallback with a diagnostic and keeps secure default
   expect(() =>
     plugin.validateConfig({ ...config(tcp.port), channels: ['#room'] })
   ).toThrow()
+})
+
+// Native fixtures: ircdocs/modern-irc 8f4c3cc51f0036597f5c95e595fb6ec3177ba4c9,
+// _includes/c2s_structure.md (parameters/framing) and modern-appendix.md (CASEMAPPING).
+it.each([
+  ['ascii', '#room[', '#room{', 'nick:alice^', 1],
+  ['rfc1459-strict', '#room^', '#room~', 'nick:alice^', 1],
+  ['rfc1459', '#room[', '#room{', 'nick:alice~', 2]
+])(
+  'honors advertised %s case mapping for channels and fallback identities',
+  async (mapping, bound, alias, senderId, count) => {
+    const tcp = await tcpPeer((line, socket) => {
+      register(line, socket)
+      if (line === `JOIN ${bound}`) {
+        socket.write(
+          `:server 005 relay CASEMAPPING=${mapping} :are supported\r\n`
+        )
+        socket.write(`:Alice^!u@h PRIVMSG ${alias} :alias channel\r\n`)
+        socket.write(
+          `:Alice^!u@h PRIVMSG ${bound} :bound channel\r\nPING :mapping-done\r\n`
+        )
+      }
+    })
+
+    const http = await httpPeer((_request, response) => {
+      json(response, {})
+    })
+
+    const plugin = createIrcChannel({ IRC_SASL: 'password' })
+
+    const fixture = await harness(
+      plugin,
+      { ...config(tcp.port), allowNickFallback: true },
+      [{ chatId: bound }],
+      [senderId],
+      `${http.base}/dispatch`
+    )
+
+    await plugin.start?.(new AbortController().signal)
+    await waitFor(() => tcp.lines.includes('PONG :mapping-done'))
+    await plugin.stop?.()
+    const requests = await fixture.storage.listInbound({ limit: 10 })
+    expect(requests).toHaveLength(count)
+    expect(requests.map((request) => request.snapshot.senderId)).toEqual(
+      Array.from({ length: count }, () => senderId)
+    )
+    expect(requests.map((request) => request.snapshot.target.chatId)).toEqual(
+      Array.from({ length: count }, () => bound)
+    )
+  }
+)
+
+it('preserves a server password as one trailing parameter', async () => {
+  const tcp = await tcpPeer(register)
+
+  const http = await httpPeer((_request, response) => {
+    json(response, {})
+  })
+
+  const plugin = createIrcChannel({
+    IRC_SASL: 'password',
+    IRC_PASS: ':secret with spaces'
+  })
+
+  await harness(
+    plugin,
+    { ...config(tcp.port), password: { env: 'IRC_PASS' } },
+    [{ chatId: '#room' }],
+    ['account:alice'],
+    `${http.base}/dispatch`
+  )
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(() => tcp.lines.includes('JOIN #room'))
+  await plugin.stop?.()
+  expect(tcp.lines[0]).toBe('PASS ::secret with spaces')
+})
+
+it('accepts a batch of individually bounded tagged messages and ignores empty frames', async () => {
+  const tcp = await tcpPeer((line, socket) => {
+    register(line, socket)
+    if (line === 'JOIN #room') {
+      const tag = 'x'.repeat(6000)
+      socket.write(
+        `\r\n@account=alice;msgid=batch-1;vendor/x=${tag}  :Alice!u@h  PRIVMSG #room  :one\r\n@account=alice;msgid=batch-2;vendor/x=${tag} :Alice!u@h PRIVMSG #room :two\r\n@account=alice;msgid=batch-3;vendor/x=${tag} :Alice!u@h PRIVMSG #room :three\r\nPING :batch-done\r\n`
+      )
+    }
+  })
+
+  const http = await httpPeer((_request, response) => {
+    json(response, {})
+  })
+
+  const plugin = createIrcChannel({ IRC_SASL: 'password' })
+
+  const fixture = await harness(
+    plugin,
+    config(tcp.port),
+    [{ chatId: '#room' }],
+    ['account:alice'],
+    `${http.base}/dispatch`
+  )
+
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(() => tcp.lines.includes('PONG :batch-done'))
+  await plugin.stop?.()
+  expect(
+    (await fixture.storage.listInbound({ limit: 10 }))
+      .map((request) => request.snapshot.text)
+      .toSorted()
+  ).toEqual(['one', 'three', 'two'])
+})
+
+// TLS authority: https://nodejs.org/api/tls.html#tlsconnectoptions-callback
+// A dedicated self-signed localhost fixture created with openssl req -x509,
+// RSA 2048 and SAN DNS:localhost,IP:127.0.0.1. It is deliberately not a trust anchor.
+it('connects to IP TLS endpoints without SNI and rejects an untrusted certificate', async () => {
+  const key = await readFile(
+    new URL('fixtures/untrusted-key.pem', import.meta.url)
+  )
+
+  const cert = await readFile(
+    new URL('fixtures/untrusted-cert.pem', import.meta.url)
+  )
+
+  let secureConnections = 0
+  let handshakeFailed = false
+  const sockets: Socket[] = []
+
+  const server = createTlsServer({ key, cert }, () => {
+    secureConnections += 1
+  })
+
+  server.on('connection', (socket) => {
+    sockets.push(socket)
+    socket.once('close', () => {
+      handshakeFailed = true
+    })
+  })
+  server.on('tlsClientError', () => {
+    handshakeFailed = true
+  })
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  cleanup(async () => {
+    for (const socket of sockets) {
+      socket.destroy()
+    }
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error)
+        } else {
+          resolve()
+        }
+      })
+    })
+  })
+  const address = server.address()
+  if (address === null || typeof address === 'string') {
+    throw new Error('Missing TLS address')
+  }
+
+  const http = await httpPeer((_request, response) => {
+    json(response, {})
+  })
+
+  const plugin = createIrcChannel({
+    IRC_SASL: 'password',
+    IRC_PASS: 'server-secret'
+  })
+
+  const fixture = await harness(
+    plugin,
+    { ...config(address.port), tls: true, password: { env: 'IRC_PASS' } },
+    [{ chatId: '#room' }],
+    ['account:alice'],
+    `${http.base}/dispatch`
+  )
+
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(() => handshakeFailed)
+  await plugin.stop?.()
+  expect(secureConnections).toBe(0)
+  expect((await fixture.runtime.status()).connections['channels/bot']).toBe(
+    'disconnected'
+  )
+  expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([])
 })

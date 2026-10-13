@@ -30,7 +30,7 @@ export function parseMessage(line: string): IrcMessage {
       tags[equals === -1 ? tag : tag.slice(0, equals)] =
         equals === -1 ? '' : unescapeTag(tag.slice(equals + 1))
     }
-    text = text.slice(separator + 1)
+    text = text.slice(separator + 1).replace(/^ +/u, '')
   }
   if (text.startsWith(':')) {
     const separator = text.indexOf(' ')
@@ -38,10 +38,14 @@ export function parseMessage(line: string): IrcMessage {
       throw new Error('invalid_prefix')
     }
     prefix = text.slice(1, separator)
-    text = text.slice(separator + 1)
+    text = text.slice(separator + 1).replace(/^ +/u, '')
   }
   const trailing = text.indexOf(' :')
-  const words = (trailing === -1 ? text : text.slice(0, trailing)).split(/ +/u)
+
+  const words = (trailing === -1 ? text : text.slice(0, trailing))
+    .replace(/ +$/u, '')
+    .split(/ +/u)
+
   const command = words.shift()
   if (!command) {
     throw new Error('missing_command')
@@ -57,13 +61,26 @@ export function parseMessage(line: string): IrcMessage {
   }
 }
 
-export function foldNick(value: string): string {
-  return value
-    .toLowerCase()
-    .replaceAll(
-      /[[\]\\^]/gu,
-      (char) => ({ '[': '{', ']': '}', '\\': '|', '^': '~' })[char] ?? char
-    )
+export type CaseMapping = 'ascii' | 'rfc1459' | 'rfc1459-strict'
+
+export function foldNick(
+  value: string,
+  mapping: CaseMapping = 'rfc1459'
+): string {
+  const lower = value.replaceAll(/[A-Z]/gu, (char) => char.toLowerCase())
+  if (mapping === 'ascii') {
+    return lower
+  }
+  return lower.replaceAll(
+    /[[\]\\^]/gu,
+    (char) =>
+      ({
+        '[': '{',
+        ']': '}',
+        '\\': '|',
+        '^': mapping === 'rfc1459' ? '~' : '^'
+      })[char] ?? char
+  )
 }
 
 export function wireLine(text: string): string {
