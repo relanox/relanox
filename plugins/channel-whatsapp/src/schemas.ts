@@ -55,3 +55,7 @@ export const responseSchema = z.object({
   messaging_product: z.literal('whatsapp'),
   messages: z.array(z.object({ id: platformIdSchema })).min(1)
 })
+
+export const errorResponseSchema = z.object({
+  error: z.object({ code: z.number().int() })
+})

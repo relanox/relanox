@@ -232,7 +232,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       )
 
       if (!response.ok) {
-        return failure(response)
+        return await failure(response)
       }
       const decoded = responseSchema.parse(await response.json())
       const message = decoded.messages[0]

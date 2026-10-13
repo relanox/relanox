@@ -5,6 +5,7 @@ import {
 } from '../../channel-wecom/tests/network.js'
 import { expect, it, vi } from 'vitest'
 import { createHmac } from 'node:crypto'
+import { z } from 'zod'
 import { body, httpPeer, json } from '../../channel-matrix/tests/harness.js'
 import { mediaRelay } from '../../channel-matrix/tests/media-harness.js'
 import { createWhatsAppChannel } from '../src/index.js'
@@ -319,3 +320,116 @@ it.each([
     )
   }
 )
+
+// Synchronous Graph error schema and the app-level retryable code4:
+// https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes#throttling-errors
+// Native upload and ordinary text/plain file support:
+// https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media
+it('retries a native Graph upload rate limit before sending the saved ordinary document', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    const file = Buffer.from('ordinary customer document\n')
+    let limited = true
+    const uploads: Uint8Array[] = []
+    const sent: unknown[] = []
+
+    const graph = await httpPeer(async (request, response) => {
+      const path = request.url ?? '/'
+      if (path.startsWith('/v25.0/original')) {
+        json(response, {
+          id: 'original',
+          url: 'https://graph.facebook.com/binary',
+          mime_type: 'text/plain',
+          file_size: '27'
+        })
+      } else if (path === '/binary') {
+        response.setHeader('Content-Type', 'text/plain')
+        response.end(file)
+      } else if (path.endsWith('/media')) {
+        const chunks: Buffer[] = []
+        for await (const chunk of request) {
+          chunks.push(
+            Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
+          )
+        }
+
+        const form = await new Response(Buffer.concat(chunks), {
+          headers: { 'Content-Type': request.headers['content-type'] ?? '' }
+        }).formData()
+
+        const uploaded = form.get('file')
+        if (!(uploaded instanceof File)) {
+          throw new Error('Missing native multipart document')
+        }
+        uploads.push(new Uint8Array(await uploaded.arrayBuffer()))
+        json(
+          response,
+          limited ? { error: { code: 4 } } : { id: 'generated' },
+          limited ? 400 : 200
+        )
+      } else {
+        sent.push(await body(request))
+        json(response, {
+          messaging_product: 'whatsapp',
+          messages: [{ id: 'wamid.recovered-document' }]
+        })
+      }
+    })
+
+    const fixture = await mediaRelay(
+      createWhatsAppChannel(),
+      config(graph.base),
+      [{ chatId: 'customer' }],
+      ['customer']
+    )
+
+    expect(
+      (await webhook(fixture.businessUrl, envelope('document', 'report.txt')))
+        .status
+    ).toBe(200)
+    const record = (await fixture.storage.listInbound({ limit: 10 }))[0]
+    if (!record) {
+      throw new Error('Missing ordinary inbound document')
+    }
+
+    const completion = await fixture.client.callTool({
+      name: 'relanox_send_message',
+      arguments: {
+        channel: record.snapshot.channel.id,
+        text: '',
+        attachments: record.snapshot.attachments?.map((asset) => ({
+          mediaId: asset.id
+        }))
+      }
+    })
+
+    const turn = z
+      .object({ status: z.literal('queued'), deliveryId: z.string() })
+      .parse(completion.structuredContent)
+
+    await fixture.runtime.processDue()
+    expect((await fixture.storage.getOutbound(turn.deliveryId))?.status).toBe(
+      'pending'
+    )
+    expect(uploads).toEqual([new Uint8Array(file)])
+    expect(sent).toEqual([])
+    limited = false
+    vi.setSystemTime(Date.now() + 10_000)
+    await fixture.runtime.processDue()
+    expect(uploads).toEqual([new Uint8Array(file), new Uint8Array(file)])
+    expect(sent).toEqual([
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: 'customer',
+        type: 'document',
+        document: { id: 'generated', filename: 'report.txt' }
+      }
+    ])
+    expect((await fixture.storage.getOutbound(turn.deliveryId))?.status).toBe(
+      'sent'
+    )
+  } finally {
+    vi.useRealTimers()
+  }
+})
