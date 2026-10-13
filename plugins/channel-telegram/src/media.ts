@@ -170,7 +170,7 @@ export async function sendMedia(
 
   const maximum = Math.min(
     host.maxMediaBytes ?? 25 * 1024 * 1024,
-    (kind === 'image' ? 10 : 50) * 1024 * 1024
+    (field === 'photo' ? 10 : 50) * 1024 * 1024
   )
 
   if (
