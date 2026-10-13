@@ -14,6 +14,7 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import { receiveMedia, uploadMedia } from './media.js'
+import { MediaDownloadError } from '@relanox/channel-media'
 import { z } from 'zod'
 import type { WhatsAppConfig } from './config.js'
 import {
@@ -82,7 +83,24 @@ async function receiveMessage(
   }
   const windowUntil = timestamp + 86_400_000
   await updateWindow(host, windowKey(config, message.from), windowUntil)
-  const media = await receiveMedia(message, host, config, signal)
+
+  const media = await receiveMedia(message, host, config, signal).catch(
+    (error: unknown) => {
+      if (
+        !(error instanceof MediaDownloadError) ||
+        error.code !== 'media_too_large'
+      ) {
+        throw error
+      }
+      host.observe.log('info', 'channel_policy_rejection', {
+        errorCode: error.code
+      })
+    }
+  )
+
+  if (!media) {
+    return
+  }
   if (!media.text && media.attachments.length === 0) {
     host.observe.log('debug', 'channel_event_ignored', {
       errorCode: 'unsupported_or_empty_text'
