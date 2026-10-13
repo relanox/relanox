@@ -216,7 +216,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         try {
           const { payload } = await jwtVerify(authorization.slice(7), keys, {
             algorithms: ['RS256'],
-            issuer: 'https://accounts.google.com',
+            issuer: ['accounts.google.com', 'https://accounts.google.com'],
             audience,
             requiredClaims: ['exp', 'iat', 'email', 'email_verified']
           })
