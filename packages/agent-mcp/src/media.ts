@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 import type { McpServer } from '@modelcontextprotocol/server'
 import type { ScopedAgentHost, StoredMedia } from '@relanox/sdk'
-import { validatePublicUrl } from '@relanox/sdk'
+import { attachmentDisposition, validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
 import type { McpConfig } from './config.js'
 import { equalSecret, resolveAgentSecret } from './secrets.js'
@@ -140,7 +140,7 @@ export function createMediaTransport(
     return new Response(new Uint8Array(stored.data), {
       headers: {
         'Content-Type': stored.reference.mimeType,
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(stored.reference.fileName)}`,
+        'Content-Disposition': attachmentDisposition(stored.reference.fileName),
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff'
       }

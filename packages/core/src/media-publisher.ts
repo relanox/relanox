@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import type { ChannelMediaHost, StateNamespace, Storage } from '@relanox/sdk'
-import { validatePublicUrl } from '@relanox/sdk'
+import { attachmentDisposition, validatePublicUrl } from '@relanox/sdk'
 import type { Hono } from 'hono'
 import { z } from 'zod'
 import { textId } from './validation.js'
@@ -88,7 +88,7 @@ export function createMediaPublisher(
     return new Response(new Uint8Array(media.data), {
       headers: {
         'content-type': media.reference.mimeType,
-        'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(media.reference.fileName)}`,
+        'content-disposition': attachmentDisposition(media.reference.fileName),
         'cache-control': 'no-store',
         'x-content-type-options': 'nosniff',
         'content-length': String(media.data.byteLength)

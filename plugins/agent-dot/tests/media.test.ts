@@ -142,13 +142,41 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
   )
 
   it.each([
-    ['text/plain', 'large.txt', Buffer.alloc(65_537, 97)],
-    ['text/plain', 'invalid.txt', Buffer.from([0xc3, 0x28])],
-    ['text/html', 'page.html', Buffer.from('<script>alert(1)</script>')],
-    ['application/octet-stream', 'data.bin', Buffer.from('text-like bytes')]
+    [
+      'text/plain',
+      'large.txt',
+      Buffer.alloc(65_537, 97),
+      "attachment; filename*=UTF-8''large.txt"
+    ],
+    [
+      'text/plain',
+      'invalid.txt',
+      Buffer.from([0xc3, 0x28]),
+      "attachment; filename*=UTF-8''invalid.txt"
+    ],
+    [
+      'text/html',
+      'page.html',
+      Buffer.from('<script>alert(1)</script>'),
+      "attachment; filename*=UTF-8''page.html"
+    ],
+    [
+      'application/octet-stream',
+      'data.bin',
+      Buffer.from('text-like bytes'),
+      "attachment; filename*=UTF-8''data.bin"
+    ],
+    // Native HTTP parameter grammar: RFC 8187 section 3.2.1.
+    // https://www.rfc-editor.org/rfc/rfc8187.html#section-3.2.1
+    [
+      'application/octet-stream',
+      "report (final)*'1.bin",
+      Buffer.from([1, 2, 3]),
+      "attachment; filename*=UTF-8''report%20%28final%29%2A%271.bin"
+    ]
   ])(
     'keeps %s %s as an exact downloadable resource',
-    async (mimeType, fileName, data) => {
+    async (mimeType, fileName, data, disposition) => {
       const fx = await setup(agent)
 
       const receipt = await fx.ingest(0, 'read attachment', 'fallback-event', [
@@ -172,6 +200,7 @@ describe.each(['dot', 'grok'] as const)('%s native MCP media', (agent) => {
 
       const downloaded = await fx.core.fetch(new Request(uri))
       expect(downloaded.status).toBe(200)
+      expect(downloaded.headers.get('content-disposition')).toBe(disposition)
       expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(
         new Uint8Array(data)
       )
