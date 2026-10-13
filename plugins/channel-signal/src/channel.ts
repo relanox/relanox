@@ -87,7 +87,15 @@ export function createSignalChannel(
   ): Promise<void> {
     const { host, config, account, base } = configured()
     const incoming = receiveSchema.parse(JSON.parse(data) as unknown)
+    if (incoming.exception) {
+      diagnose(host, 'daemon_receive_error')
+      await saveEventCursor(host, id)
+      return
+    }
     const envelope = incoming.envelope
+    if (!envelope) {
+      throw new Error('missing_envelope')
+    }
 
     const sender =
       envelope.sourceUuid ?? envelope.sourceNumber ?? envelope.source

@@ -675,3 +675,91 @@ it('diagnoses malformed SSE without advancing its durable replay cursor', async 
     })
   ).toThrow()
 })
+
+// Signal-cli 1da2a51c1e68c21871a96046ac8258ba1edd72e7:
+// Reference: https://github.com/AsamK/signal-cli/blob/1da2a51c1e68c21871a96046ac8258ba1edd72e7/src/main/java/org/asamk/signal/json/JsonReceiveMessageHandler.java
+// Emits account + exception without envelope for errors lacking a message envelope.
+it('consumes native receive exceptions without blocking subsequent messages or leaking error text', async () => {
+  const observation = observations()
+  const lastIds: (string | undefined)[] = []
+
+  const peer = await httpPeer((request, response) => {
+    const lastId = request.headers['last-event-id']
+    lastIds.push(typeof lastId === 'string' ? lastId : undefined)
+    response.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    frame(
+      response,
+      {
+        account: '+10000000001',
+        exception: { message: 'private upstream detail', type: 'IOException' }
+      },
+      'receive-error'
+    )
+    if (lastIds.length > 1) {
+      frame(response, envelope('alice-uuid', 'after error'), 'after-error')
+    }
+  })
+
+  const plugin = createSignalChannel({ SIGNAL_PROXY_AUTH: 'Bearer credential' })
+
+  const fixture = await harness(
+    plugin,
+    config(peer.base),
+    [{ chatId: 'direct:alice-uuid' }],
+    ['alice-uuid'],
+    `${peer.base}/dispatch`,
+    { observe: observation.observe }
+  )
+
+  await plugin.start?.(new AbortController().signal)
+  await waitFor(
+    async () =>
+      (
+        await fixture.storage.getState(
+          { pluginId: 'channel-signal', ownerId: 'bot' },
+          'events'
+        )
+      )?.value === 'receive-error'
+  )
+  await plugin.stop?.()
+  await fixture.storage.close()
+
+  const nextPlugin = createSignalChannel({
+    SIGNAL_PROXY_AUTH: 'Bearer credential'
+  })
+
+  const next = await harness(
+    nextPlugin,
+    config(peer.base),
+    [{ chatId: 'direct:alice-uuid' }],
+    ['alice-uuid'],
+    `${peer.base}/dispatch`,
+    { filename: fixture.filename, observe: observation.observe }
+  )
+
+  await nextPlugin.start?.(new AbortController().signal)
+  await waitFor(
+    async () => (await next.storage.listInbound({ limit: 10 })).length === 1
+  )
+  await nextPlugin.stop?.()
+  expect(lastIds).toEqual([undefined, 'receive-error'])
+  expect(
+    (await next.storage.listInbound({ limit: 10 }))[0]?.snapshot.text
+  ).toBe('after error')
+  expect(
+    (
+      await next.storage.getState(
+        { pluginId: 'channel-signal', ownerId: 'bot' },
+        'events'
+      )
+    )?.value
+  ).toBe('after-error')
+  expect(
+    observation.logs.some(
+      (entry) => entry.fields?.errorCode === 'daemon_receive_error'
+    )
+  ).toBe(true)
+  expect(JSON.stringify(observation.logs)).not.toContain(
+    'private upstream detail'
+  )
+})
