@@ -15,6 +15,8 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import type { z } from 'zod'
+import type { WebSocket } from 'ws'
+import { MediaDownloadError } from '@relanox/channel-media'
 import type { DingTalkConfig } from './config.js'
 import {
   streamOpenResponseSchema,
@@ -105,19 +107,52 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
     }
   }
 
-  async function receive(raw: unknown): Promise<void> {
+  async function receiveContent(
+    message: z.infer<typeof messageSchema>
+  ): Promise<Awaited<ReturnType<typeof receiveParts>> | undefined> {
+    try {
+      const credential =
+        message.msgtype === 'text'
+          ? undefined
+          : await getAccessToken(connection.signal)
+
+      return await receiveParts(
+        message,
+        config,
+        host,
+        credential,
+        connection.signal
+      )
+    } catch (error) {
+      if (
+        !(error instanceof MediaDownloadError) ||
+        error.code !== 'media_too_large'
+      ) {
+        throw error
+      }
+      host.observe.log('info', 'channel_input_discarded', {
+        errorCode: error.code
+      })
+      return undefined
+    }
+  }
+
+  async function receive(raw: unknown, socket: WebSocket): Promise<void> {
     const frame = streamSchema.parse(raw)
 
     const ack = (code: number, data: string): void => {
-      connection.send({
-        code,
-        headers: {
-          contentType: 'application/json',
-          messageId: frame.headers.messageId
+      connection.send(
+        {
+          code,
+          headers: {
+            contentType: 'application/json',
+            messageId: frame.headers.messageId
+          },
+          message: code === 200 ? 'OK' : 'Unsupported',
+          data
         },
-        message: code === 200 ? 'OK' : 'Unsupported',
-        data
-      })
+        socket
+      )
     }
 
     if (frame.type === 'SYSTEM') {
@@ -126,7 +161,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       }
       if (frame.headers.topic === 'disconnect') {
         ack(200, frame.data)
-        connection.socket?.close()
+        socket.close()
       }
       return
     }
@@ -173,18 +208,12 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       return
     }
 
-    const credential =
-      message.msgtype === 'text'
-        ? undefined
-        : await getAccessToken(connection.signal)
-
-    const { text, attachments } = await receiveParts(
-      message,
-      config,
-      host,
-      credential,
-      connection.signal
-    )
+    const content = await receiveContent(message)
+    if (!content) {
+      ack(200, '{"response":null}')
+      return
+    }
+    const { text, attachments } = content
 
     const scope = {
       clientId: config.clientId,
