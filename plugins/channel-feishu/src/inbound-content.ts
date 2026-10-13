@@ -23,6 +23,7 @@ const postElementSchema = z.looseObject({
   href: z.string().optional(),
   user_id: z.string().optional(),
   user_name: z.string().optional(),
+  emoji_type: z.string().min(1).optional(),
   image_key: z.string().optional(),
   file_key: z.string().optional(),
   file_name: z.string().optional(),
@@ -106,7 +107,9 @@ function postResource(
 
 function postText(element: z.infer<typeof postElementSchema>): string {
   if (element.tag === 'at') {
-    const name = element.user_name ?? element.user_id ?? ''
+    const displayName = element.user_name === '' ? undefined : element.user_name
+
+    const name = displayName ?? element.user_id ?? ''
     return name.startsWith('@_') ? name : `@${name}`
   }
   if (element.tag === 'a') {
@@ -115,6 +118,9 @@ function postText(element: z.infer<typeof postElementSchema>): string {
   }
   if (element.tag === 'hr') {
     return '\n'
+  }
+  if (element.tag === 'emotion' && element.emoji_type) {
+    return `:${element.emoji_type}:`
   }
   return element.text ?? ''
 }
