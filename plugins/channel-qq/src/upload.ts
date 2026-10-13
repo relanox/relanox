@@ -8,9 +8,13 @@ import type { QqConfig } from './config.js'
 import { httpJson, jsonPostRequest, RemoteError } from './transport.js'
 
 const byteCount = z
-  .string()
-  .regex(/^[0-9]+$/u)
-  .transform(Number)
+  .union([
+    z.number(),
+    z
+      .string()
+      .regex(/^[0-9]+$/u)
+      .transform(Number)
+  ])
   .pipe(z.number().int().positive().max(209_715_200))
 
 const preparedSchema = z.object({
@@ -19,9 +23,9 @@ const preparedSchema = z.object({
   parts: z
     .array(
       z.object({
-        index: z.number().int().nonnegative(),
+        index: z.number().int().positive(),
         presigned_url: z.url(),
-        block_size: byteCount
+        block_size: byteCount.optional()
       })
     )
     .min(1)
@@ -69,17 +73,18 @@ function validateParts(
   }
   return parts.map((part, index) => {
     const offset = index * prepared.block_size
+    const blockSize = Math.min(prepared.block_size, size - offset)
     if (
-      part.index !== index ||
-      part.block_size !== Math.min(prepared.block_size, size - offset)
+      part.index !== index + 1 ||
+      (part.block_size !== undefined && part.block_size !== blockSize)
     ) {
       throw new Error('invalid_upload_part_size')
     }
     const url = new URL(part.presigned_url)
 
     return {
-      index,
-      block_size: part.block_size,
+      index: part.index,
+      block_size: blockSize,
       offset,
       url: validateTransportUrl(url.href, false, false)
     }
@@ -154,7 +159,7 @@ export async function uploadMedia(
 
   const parts = validateParts(prepared, bytes.byteLength)
   for (const part of parts) {
-    if (part.index > 0) {
+    if (part.offset > 0) {
       // The native part confirmation endpoint is limited to ten requests per second.
       await pause(110, undefined, { signal: input.signal })
     }
