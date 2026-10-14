@@ -323,7 +323,11 @@ describe('grok configured Routine and scoped MCP', () => {
         request: {
           ...request,
           text: `original\n\n[Voice transcript: ${mediaId}]\n你好`,
-          transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }]
+          extensions: {
+            'speech-tencent': {
+              transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }]
+            }
+          }
         },
         signal: new AbortController().signal
       })
@@ -335,7 +339,11 @@ describe('grok configured Routine and scoped MCP', () => {
 
     expect(parseWire(outer.content)).toMatchObject({
       text: `original\n\n[Voice transcript: ${mediaId}]\n你好`,
-      transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }],
+      extensions: {
+        'speech-tencent': {
+          transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }]
+        }
+      },
       attachments: [
         {
           id: mediaId,

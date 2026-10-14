@@ -28,8 +28,12 @@ import { inbound, outbound, media, conversations } from './schema.js'
 import { jsonValue } from './expressions.js'
 
 const prepared = or(
-  isNull(jsonValue(inbound.record, '$.snapshot.speechToText')),
-  isNotNull(jsonValue(inbound.record, '$.transcriptions'))
+  isNull(jsonValue(inbound.record, '$.snapshot.middleware')),
+  eq(
+    sql<number>`json_array_length(${inbound.record}, '$.snapshot.middleware')`,
+    0
+  ),
+  isNotNull(jsonValue(inbound.record, '$.preparation'))
 )
 
 export function createInspectionOperations(
@@ -220,7 +224,7 @@ export function createInspectionOperations(
           saveInbound({
             ...record,
             version: record.version + 1,
-            ...(record.transcriptions ? { transcriptions: [] } : {}),
+            ...(record.preparation ? { preparation: [] } : {}),
             snapshot: {
               ...record.snapshot,
               text: '',

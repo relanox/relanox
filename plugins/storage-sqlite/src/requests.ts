@@ -9,7 +9,7 @@ import {
   validConversationInbound
 } from '@relanox/storage-support'
 import { decodeDurableRecord } from './record-codec.js'
-import { needsTranscription } from '@relanox/sdk'
+import { needsPreparation } from '@relanox/sdk'
 import { readMedia, insertIncomingMedia } from './media.js'
 import type {
   Storage,
@@ -264,7 +264,7 @@ function resolveReply(
     valid:
       !message.reply ||
       (source !== undefined &&
-        !needsTranscription(source) &&
+        !needsPreparation(source) &&
         validConversationInbound(source.snapshot, conversation)),
     finalId:
       message.reply?.kind === 'final'

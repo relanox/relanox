@@ -3,7 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { StoredMedia } from '@relanox/sdk'
 import { tencentSpeechPlugin } from '../src/index.js'
 import { tencentPeer } from './peer.js'
-import { speechFixture } from '../../../tests/core/speech-fixture.js'
+import { middlewareFixture } from '../../../tests/core/middleware-fixture.js'
+import { createTencentSpeechToText } from '../src/tencent.js'
 import { incoming } from '../../../tests/core/fixture.js'
 import { required } from '../../../tests/contracts/storage-contract.js'
 
@@ -17,10 +18,12 @@ const configuration = {
   engine: '16k_zh'
 }
 
-async function provider(): ReturnType<typeof tencentSpeechPlugin.setup> {
+async function provider(): Promise<
+  ReturnType<typeof createTencentSpeechToText>
+> {
   vi.stubEnv('TEST_ASR_ID', 'AKIDEXAMPLE')
   vi.stubEnv('TEST_ASR_KEY', 'SECRETEXAMPLE')
-  return tencentSpeechPlugin.setup(
+  return createTencentSpeechToText(
     tencentSpeechPlugin.validateConfig(configuration)
   )
 }
@@ -47,8 +50,17 @@ it.each(['dot', 'grok'] as const)(
   'uses the real Tencent SDK and carries its transcript through durable preparation to %s',
   async (agent) => {
     const peer = await tencentPeer()
-    const speech = await provider()
-    const fx = await speechFixture(speech, agent)
+    await provider()
+
+    const fx = await middlewareFixture(
+      [
+        await tencentSpeechPlugin.setup(
+          tencentSpeechPlugin.validateConfig(configuration)
+        )
+      ],
+      agent
+    )
+
     try {
       const audio = media()
 
@@ -86,13 +98,15 @@ it.each(['dot', 'grok'] as const)(
         /^TC3-HMAC-SHA256 Credential=AKIDEXAMPLE\//u
       )
       const record = required(await fx.storage.getInbound(receipt.requestId))
-      expect(record.transcriptions).toEqual([
-        {
-          mediaId: required(record.snapshot.attachments?.[0]).id,
-          status: 'transcribed',
-          text: '腾讯云语音识别欢迎您。'
-        }
-      ])
+      expect(fx.dispatched[0]?.extensions?.['speech-tencent']).toEqual({
+        transcriptions: [
+          {
+            mediaId: required(record.snapshot.attachments?.[0]).id,
+            status: 'transcribed',
+            text: '腾讯云语音识别欢迎您。'
+          }
+        ]
+      })
       expect(fx.dispatched[0]?.text).toContain('腾讯云语音识别欢迎您。')
       expect(fx.dispatched[0]?.attachments).toEqual(record.snapshot.attachments)
     } finally {

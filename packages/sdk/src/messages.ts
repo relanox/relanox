@@ -2,7 +2,7 @@ import type { Json, EpochMs } from './values.js'
 import type { ChannelId, EndpointConfig } from './config.js'
 import type { ChannelAddress } from './conversations.js'
 import type { MediaUpload, MediaReference, StoredMedia } from './media.js'
-import type { SpeechToTextProvider, SpeechTranscription } from './speech.js'
+import type { MiddlewarePlan, MiddlewareResult } from './middleware.js'
 
 /** Platform-specific durable address, never a reply closure or ephemeral reply token. */
 export type ReplyTarget = {
@@ -38,7 +38,7 @@ export type IngestInput = {
 
 export type InboundSnapshot = {
   /** Capture the preparation policy at acceptance, without credentials. */
-  readonly speechToText?: Pick<SpeechToTextProvider, 'provider' | 'engine'>
+  readonly middleware?: readonly MiddlewarePlan[]
   readonly channel: ChannelAddress
   readonly attachments?: readonly MediaReference[]
   readonly requestId: string
@@ -60,7 +60,7 @@ export type AgentMessage = Pick<
   | 'attachments'
 > & {
   readonly reply?: ReplyStatus
-  readonly transcriptions?: readonly SpeechTranscription[]
+  readonly extensions?: Readonly<Record<string, Json>>
 }
 
 /** Progress never completes a request; a request has at most one final delivery. */
@@ -103,7 +103,7 @@ export type Lease = {
 }
 
 export type InboundRecord = {
-  readonly transcriptions?: readonly SpeechTranscription[]
+  readonly preparation?: readonly MiddlewareResult[]
   /** Absent on historical records; webhook acceptance does not complete work. */
   readonly reply?: { readonly finalDeliveryId?: string }
   readonly snapshot: InboundSnapshot
@@ -216,7 +216,7 @@ export type SendInput = {
 
 export type DispatchInput = {
   readonly request: InboundSnapshot & {
-    readonly transcriptions?: readonly SpeechTranscription[]
+    readonly extensions?: Readonly<Record<string, Json>>
   }
   readonly signal: AbortSignal
 }

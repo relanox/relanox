@@ -24,7 +24,7 @@ const agents = ['dot', 'grok']
 export const operations = [
   'ingest',
   'dispatch',
-  'transcribe',
+  'prepare',
   'enqueue_message',
   'read_media',
   'send',
@@ -43,8 +43,9 @@ export const events = [
   'inbound.duplicate',
   'inbound.rejected',
   'dispatch.completed',
-  'transcribe.completed',
+  'prepare.completed',
   'transcription.failed',
+  'middleware.failed',
   'message.queued',
   'media.read',
   'delivery.completed',
@@ -65,6 +66,7 @@ const outcomes = [
   'error',
   'accepted',
   'prepared',
+  'completed',
   'transcribed',
   'failed',
   'duplicate',
@@ -101,6 +103,7 @@ const errorCodes = [
 const plugins = [
   ...channels.map((id) => `channel-${id}`),
   ...agents.map((id) => `agent-${id}`),
+  'speech-tencent',
   'storage-sqlite',
   'storage-postgres',
   'observability-standard',
@@ -122,6 +125,8 @@ export const labelNames = Object.keys(vocabulary)
 export const metricDefinitions = {
   relanox_inbound_total: 'counter',
   relanox_dispatch_total: 'counter',
+  relanox_middleware_total: 'counter',
+  relanox_preparation_duration_seconds: 'histogram',
   relanox_transcription_total: 'counter',
   relanox_transcription_duration_seconds: 'histogram',
   relanox_delivery_total: 'counter',
@@ -154,6 +159,8 @@ export function safeFields(fields: LogFields = {}): Record<string, string> {
     errorCode: [
       ...errorCodes,
       'call_timeout',
+      'middleware_failed',
+      'invalid_result',
       'unsupported_format',
       'audio_too_large',
       'audio_too_long',

@@ -1,8 +1,5 @@
-import type {
-  SpeechRecognition,
-  SpeechToTextProvider,
-  StoredMedia
-} from '@relanox/sdk'
+import type { StoredMedia } from '@relanox/sdk'
+import type { SpeechRecognition, SpeechToTextProvider } from './types.js'
 import { z } from 'zod'
 import { asr } from 'tencentcloud-sdk-nodejs-asr'
 import type { SentenceRecognitionRequest } from 'tencentcloud-sdk-nodejs-asr/tencentcloud/services/asr/v20190614/asr_models.js'
@@ -60,7 +57,6 @@ export function createTencentSpeechToText(
   })
 
   return {
-    provider: 'tencent',
     engine: config.engine,
     async recognize({ media, engine, signal }): Promise<SpeechRecognition> {
       const format = voiceFormat(media)

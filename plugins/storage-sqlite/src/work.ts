@@ -1,6 +1,6 @@
 import { decodeDurableRecord } from './record-codec.js'
 import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
-import { needsTranscription } from '@relanox/sdk'
+import { needsPreparation } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { randomUUID } from 'node:crypto'
 import {
@@ -150,7 +150,7 @@ export function createWorkOperations(
           }
           saveInbound(next)
           work.push({
-            kind: needsTranscription(next) ? 'transcribe' : 'dispatch',
+            kind: needsPreparation(next) ? 'prepare' : 'dispatch',
             record: next,
             lease
           })

@@ -18,7 +18,7 @@ import type {
 import type { StateNamespace, StateEntry } from './state.js'
 import type { ConversationStorage } from './conversations.js'
 import type { MediaStorage, StoredMedia } from './media.js'
-import type { SpeechTranscription } from './speech.js'
+import type { MiddlewareResult } from './middleware.js'
 
 export type StorageStats = {
   readonly pending: number
@@ -50,7 +50,7 @@ export type DueWork =
       readonly lease: Lease
     }
   | {
-      readonly kind: 'transcribe'
+      readonly kind: 'prepare'
       readonly record: InboundRecord
       readonly lease: Lease
     }
@@ -60,7 +60,7 @@ export type DueWork =
       readonly lease: Lease
     }
 
-/** Storage atomically acquires leases. Expired transcription falls back; ambiguous notification/delivery effects remain unknown unless sends are idempotent. */
+/** Storage atomically acquires leases. Expired preparation falls back; ambiguous notification/delivery effects remain unknown unless sends are idempotent. */
 export type TakeDueInput = {
   readonly now: EpochMs
   readonly leaseMs: number
@@ -71,12 +71,12 @@ export type TakeDueInput = {
 
 export type Settlement =
   | {
-      readonly kind: 'transcribe'
+      readonly kind: 'prepare'
       readonly id: string
       readonly lease: Lease
       readonly outcome: {
         readonly status: 'prepared'
-        readonly transcriptions: readonly SpeechTranscription[]
+        readonly preparation: readonly MiddlewareResult[]
       }
       readonly now: EpochMs
     }
@@ -161,7 +161,7 @@ export type Storage = ConversationStorage & {
     filter: StatusFilter & {
       /** Latest accepted first; incompatible with afterId. */
       readonly recent?: boolean
-      /** Exclude unfinished speech preparation before ordering and limiting agent history. */
+      /** Exclude unfinished middleware preparation before ordering and limiting agent history. */
       readonly readyOnly?: boolean
     }
   ): Promise<readonly InboundRecord[]>

@@ -1,5 +1,5 @@
 import type { Storage, DueWork } from '@relanox/sdk'
-import { needsTranscription } from '@relanox/sdk'
+import { needsPreparation } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { boundedLimit } from './database.js'
 import { randomUUID } from 'node:crypto'
@@ -177,7 +177,7 @@ export function createWorkOperations(
 
           await saveInbound(client, next)
           work.push({
-            kind: needsTranscription(next) ? 'transcribe' : 'dispatch',
+            kind: needsPreparation(next) ? 'prepare' : 'dispatch',
             record: next,
             lease
           })

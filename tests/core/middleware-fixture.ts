@@ -8,7 +8,7 @@ import type {
   ChannelPlugin,
   DispatchInput,
   RelanoxConfig,
-  SpeechToTextProvider
+  MessageMiddleware
 } from '../../packages/sdk/src/index.js'
 import { createCore } from '../../packages/core/src/index.js'
 import { createSqliteStorage } from '../../plugins/storage-sqlite/src/index.js'
@@ -22,16 +22,16 @@ type Fixture = {
   readonly storage: ReturnType<typeof createSqliteStorage>
   principal(): ReturnType<AgentHost['forPrincipal']>
   setRetryDispatch(value: boolean): void
-  restart(next?: SpeechToTextProvider | null): Promise<CoreRuntime>
+  restart(next?: readonly MessageMiddleware[]): Promise<CoreRuntime>
   close(): Promise<void>
 }
 
 /** Capture plugin boundaries while routing, media ownership, persistence and recovery stay real. */
-export async function speechFixture(
-  provider?: SpeechToTextProvider,
+export async function middlewareFixture(
+  middleware: readonly MessageMiddleware[] = [],
   agentId: 'dot' | 'grok' = 'dot'
 ): Promise<Fixture> {
-  const directory = await mkdtemp(join(tmpdir(), 'relanox-speech-'))
+  const directory = await mkdtemp(join(tmpdir(), 'relanox-middleware-'))
   const filename = join(directory, 'relay.sqlite')
   let storage = createSqliteStorage({ filename })
   let channelHost: ChannelHost | undefined
@@ -96,7 +96,7 @@ export async function speechFixture(
   }
 
   const assemble = async (
-    speechToText: SpeechToTextProvider | undefined
+    configured: readonly MessageMiddleware[]
   ): Promise<CoreRuntime> => {
     await storage.initialize()
     return createCore({
@@ -105,7 +105,7 @@ export async function speechFixture(
       publicUrl: 'https://relay.example',
       channels: new Map([['bot', channel]]),
       agents: new Map([[agentId, agent]]),
-      ...(speechToText ? { speechToText } : {})
+      middleware: configured
     })
   }
 
@@ -115,7 +115,7 @@ export async function speechFixture(
   }
 
   try {
-    const runtime = await assemble(provider)
+    const runtime = await assemble(middleware)
     return {
       runtime,
       dispatched,
@@ -133,10 +133,10 @@ export async function speechFixture(
       setRetryDispatch(value: boolean) {
         retryDispatch = value
       },
-      async restart(next: SpeechToTextProvider | null = provider ?? null) {
+      async restart(next: readonly MessageMiddleware[] = middleware) {
         await storage.close()
         storage = createSqliteStorage({ filename })
-        return assemble(next ?? undefined)
+        return assemble(next)
       },
       close
     }
