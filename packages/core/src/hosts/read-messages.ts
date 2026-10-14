@@ -1,27 +1,53 @@
 import { z } from 'zod'
+import { needsPreparation } from '@relanox/sdk'
 import type { AgentMessage, InboundRecord, ScopedAgentHost } from '@relanox/sdk'
 import type { AgentHostOptions } from './agent.js'
 import { authorizedConversation } from './conversations.js'
+import { replyStatus } from './reply-status.js'
 import { textId } from '../validation.js'
+import { preparedRequest } from '../middleware.js'
 
-const inputSchema = z.strictObject({
-  requestId: textId.optional(),
-  limit: z.number().int().min(1).max(20).default(5)
-})
+const inputSchema = z
+  .strictObject({
+    requestId: textId.optional(),
+    pending: z.boolean().default(false),
+    cursor: z
+      .strictObject({
+        acceptedAt: z.number().int().nonnegative(),
+        requestId: textId
+      })
+      .optional(),
+    limit: z.number().int().min(1).max(20).default(5)
+  })
+  .refine(
+    (input) =>
+      !(input.requestId && input.pending) &&
+      (input.cursor === undefined || input.pending),
+    'cursor requires pending; requestId cannot be combined with pending'
+  )
 
 export async function readMessages(
   options: AgentHostOptions,
   scope: readonly string[],
   input: Parameters<ScopedAgentHost['readMessages']>[0]
 ): Promise<readonly AgentMessage[]> {
-  const { requestId, limit } = inputSchema.parse(input ?? {})
+  const parsed = inputSchema.parse(input ?? {})
+  const { requestId, limit } = parsed
+  if (parsed.pending) {
+    return readPending(options, scope, parsed)
+  }
 
   const records =
     requestId === undefined
       ? (
           await Promise.all(
             scope.map(async (endpointId) =>
-              options.storage.listInbound({ endpointId, limit, recent: true })
+              options.storage.listInbound({
+                endpointId,
+                limit,
+                recent: true,
+                readyOnly: true
+              })
             )
           )
         ).flat()
@@ -29,10 +55,11 @@ export async function readMessages(
           (record): record is InboundRecord => record !== undefined
         )
 
-  return records
+  const visible = records
     .filter(
       (record) =>
         record.redactedAt === undefined &&
+        !needsPreparation(record) &&
         authorizedConversation(
           {
             address: record.snapshot.channel,
@@ -49,7 +76,14 @@ export async function readMessages(
         b.snapshot.requestId.localeCompare(a.snapshot.requestId)
     )
     .slice(0, limit)
-    .map(({ snapshot }) => projectMessage(snapshot))
+
+  return Promise.all(
+    visible.map(async (record) =>
+      Object.assign(projectMessage(preparedRequest(record)), {
+        reply: await replyStatus(options.storage, record)
+      })
+    )
+  )
 }
 
 function projectMessage(snapshot: AgentMessage): AgentMessage {
@@ -60,6 +94,39 @@ function projectMessage(snapshot: AgentMessage): AgentMessage {
     senderId: snapshot.senderId,
     text: snapshot.text,
     context: snapshot.context,
+    ...(snapshot.extensions ? { extensions: snapshot.extensions } : {}),
     ...(snapshot.attachments ? { attachments: snapshot.attachments } : {})
   }
+}
+
+async function readPending(
+  options: AgentHostOptions,
+  scope: readonly string[],
+  input: z.infer<typeof inputSchema>
+): Promise<readonly AgentMessage[]> {
+  const channelIds = [...options.configured.values()]
+    .filter((conversation) =>
+      authorizedConversation(
+        conversation,
+        options.agent,
+        scope,
+        options.configured
+      )
+    )
+    .map((conversation) => conversation.address.id)
+
+  const records = await options.storage.listPendingInbound({
+    channelIds,
+    endpointIds: scope,
+    limit: input.limit,
+    ...(input.cursor ? { cursor: input.cursor } : {})
+  })
+
+  return Promise.all(
+    records.map(async (record) =>
+      Object.assign(projectMessage(preparedRequest(record)), {
+        reply: await replyStatus(options.storage, record)
+      })
+    )
+  )
 }

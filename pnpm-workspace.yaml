@@ -3,6 +3,10 @@ packages:
   - plugins/*
   - apps/*
 
+# Keep the Tencent SDK's CJS v4() call while avoiding GHSA-w5hq-g745-h8pq.
+overrides:
+  tencentcloud-sdk-nodejs-common@4.1.220>uuid: 11.1.1
+
 # Exact-version exceptions to the release-age policy.
 minimumReleaseAgeExclude:
   - oxlint-tsgolint@7.0.2004

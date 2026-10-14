@@ -29,6 +29,7 @@ export const inbound = sqliteTable(
     channel: text('channel').notNull(),
     account: text('account').notNull(),
     event: text('event').notNull(),
+    finalDeliveryId: text('final_delivery_id'),
     endpoint: text('endpoint').notNull(),
     acceptedAt: integer('accepted_at').notNull(),
     status: text('status').notNull(),

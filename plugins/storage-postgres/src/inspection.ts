@@ -20,6 +20,15 @@ import {
 import { alias } from 'drizzle-orm/pg-core'
 import { conversations, inbound, outbound, media } from './schema.js'
 
+const prepared = or(
+  isNull(sql`${inbound.record}#>'{snapshot,middleware}'`),
+  eq(
+    sql<number>`jsonb_array_length(${inbound.record}#>'{snapshot,middleware}')`,
+    0
+  ),
+  isNotNull(sql`${inbound.record}->'preparation'`)
+)
+
 export function createInspectionOperations(
   context: Pick<
     DatabaseContext,
@@ -35,6 +44,7 @@ export function createInspectionOperations(
   | 'getInbound'
   | 'getOutbound'
   | 'listInbound'
+  | 'listPendingInbound'
   | 'listOutbound'
   | 'getStats'
   | 'cleanup'
@@ -68,6 +78,7 @@ export function createInspectionOperations(
             filter.dispatchStatus === undefined
               ? undefined
               : eq(inbound.status, filter.dispatchStatus),
+            filter.readyOnly ? prepared : undefined,
             filter.endpointId === undefined
               ? undefined
               : eq(inbound.endpoint, filter.endpointId),
@@ -82,6 +93,50 @@ export function createInspectionOperations(
             : [inbound.id])
         )
         .limit(boundedLimit(filter.limit))
+
+      return rows.map((row) => row.record)
+    },
+    async listPendingInbound(input) {
+      if (
+        !Number.isSafeInteger(input.limit) ||
+        input.limit < 1 ||
+        input.limit > 20
+      ) {
+        throw new TypeError('Invalid pending message limit')
+      }
+
+      const rows = await db
+        .select({ record: inbound.record })
+        .from(inbound)
+        .innerJoin(
+          conversations,
+          eq(
+            conversations.id,
+            sql<string>`${inbound.record}#>>'{snapshot,channel,id}'`
+          )
+        )
+        .leftJoin(outbound, eq(outbound.id, inbound.finalDeliveryId))
+        .where(
+          and(
+            eq(conversations.active, true),
+            prepared,
+            inArray(conversations.id, [...input.channelIds]),
+            inArray(inbound.endpoint, [...input.endpointIds]),
+            isNull(sql`${inbound.record}->'redactedAt'`),
+            or(isNull(outbound.status), ne(outbound.status, 'sent')),
+            input.cursor
+              ? or(
+                  gt(inbound.acceptedAt, input.cursor.acceptedAt),
+                  and(
+                    eq(inbound.acceptedAt, input.cursor.acceptedAt),
+                    gt(inbound.id, input.cursor.requestId)
+                  )
+                )
+              : undefined
+          )
+        )
+        .orderBy(inbound.acceptedAt, inbound.id)
+        .limit(input.limit)
 
       return rows.map((row) => row.record)
     },
@@ -179,6 +234,7 @@ export function createInspectionOperations(
           await saveInbound(client, {
             ...record,
             version: record.version + 1,
+            ...(record.preparation ? { preparation: [] } : {}),
             snapshot: {
               ...record.snapshot,
               text: '',

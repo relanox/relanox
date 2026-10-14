@@ -26,7 +26,7 @@ pnpm check
 
 存储查询使用 Drizzle 的类型化 schema、查询构建器和事务接口。根据 schema 生成迁移，并随存储包分发。运行时代码不手写数据查询或 schema DDL；数据库特有表达式和函数调用保持范围明确并使用参数，保留数据库端的过滤、排序和数量限制。
 
-修改存储 schema 后运行 `pnpm --filter @relanox/storage-sqlite db:generate` 或 `pnpm --filter @relanox/storage-postgres db:generate`，提交前检查生成的迁移。PostgreSQL 通过 `search_path` 支持配置的 schema，表和外键引用应在该 schema 中解析，不能固定指向 `public`。初始迁移使用 `IF NOT EXISTS` 接管引入 ORM 前的数据库，PostgreSQL 外键放在建表声明内，避免接管时重复添加约束。后续迁移应升级现有 schema，不能重复初始迁移。
+修改存储 schema 后运行 `pnpm --filter @relanox/storage-sqlite db:generate` 或 `pnpm --filter @relanox/storage-postgres db:generate`，提交前检查生成的迁移。PostgreSQL 通过 `search_path` 支持配置的 schema，表和外键引用应在该 schema 中解析，不能固定指向 `public`。开发阶段修改 schema 时，重新生成初始建表定义和对应快照，不维护旧开发数据库的升级路径。切换 schema 版本时使用新的临时数据库；同一版本的初始化和重启仍保持幂等。
 
 ## 选择能发现实际回归的测试
 

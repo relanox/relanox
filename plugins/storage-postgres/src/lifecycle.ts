@@ -1,4 +1,5 @@
 import type { Storage } from '@relanox/sdk'
+import { upgradeRecords } from './upgrade-records.js'
 import type { DatabaseContext } from './database.js'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
@@ -27,6 +28,7 @@ export function createLifecycle(
           ),
           migrationsSchema: config.schema
         })
+        await upgradeRecords(migrationDb)
       } catch (error) {
         discard = true
         throw error

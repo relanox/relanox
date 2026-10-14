@@ -13,7 +13,9 @@ const executable = script ? process.execPath : manager
 const names = selection.split(/\s+/u).filter(Boolean)
 for (const name of names) {
   if (
-    !/^(?:channel|agent|storage|observability)-[a-z][a-z0-9-]*$/u.test(name)
+    !/^(?:channel|agent|storage|observability|speech)-[a-z][a-z0-9-]*$/u.test(
+      name
+    )
   ) {
     throw new Error('invalid_native_plugin_package')
   }

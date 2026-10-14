@@ -8,3 +8,5 @@ export { createMediaTransport } from './media.js'
 export { projectAgentRequest, agentRequestSchema } from './request-payload.js'
 export type { AgentRequestPayload } from './request-payload.js'
 export { equalSecret, resolveAgentSecret } from './secrets.js'
+
+export { replyStatusSchema } from './status.js'

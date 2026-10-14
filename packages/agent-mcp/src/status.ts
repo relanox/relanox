@@ -24,7 +24,23 @@ export const channelAddressSchema = z.strictObject({
   threadId: z.string().optional()
 })
 
+export const replyStatusSchema = z.strictObject({
+  status: z.enum([
+    'awaiting_final',
+    'expired',
+    'pending',
+    'sent',
+    'rejected',
+    'unknown'
+  ]),
+  deliveryId: z.string().optional(),
+  errorCode: z.string().optional()
+})
+
 export const statusSchema = z.strictObject({
+  request: z
+    .strictObject({ id: z.string(), reply: replyStatusSchema })
+    .optional(),
   channels: z.array(
     z.strictObject({
       channel: channelAddressSchema,

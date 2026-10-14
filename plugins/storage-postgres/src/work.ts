@@ -1,9 +1,25 @@
 import type { Storage, DueWork } from '@relanox/sdk'
+import { needsPreparation } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { boundedLimit } from './database.js'
 import { randomUUID } from 'node:crypto'
-import { isActiveLease } from '@relanox/storage-support'
-import { and, eq, isNull, lt, lte, notExists, inArray, sql } from 'drizzle-orm'
+import {
+  isActiveLease,
+  expireInbound,
+  settleInbound
+} from '@relanox/storage-support'
+import {
+  and,
+  eq,
+  isNull,
+  lt,
+  lte,
+  ne,
+  notExists,
+  inArray,
+  or,
+  sql
+} from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { inbound, outbound } from './schema.js'
 
@@ -31,6 +47,7 @@ export function createWorkOperations(
           if (
             record.version !== input.expectedVersion ||
             record.redactedAt !== undefined ||
+            record.reply?.finalDeliveryId !== undefined ||
             !['accepted', 'unknown', 'rejected'].includes(
               record.dispatch.status
             ) ||
@@ -97,18 +114,7 @@ export function createWorkOperations(
           .limit(limit)
 
         for (const { record } of expiredRequests) {
-          const dispatch = {
-            ...record.dispatch,
-            status: 'unknown' as const,
-            errorCode: 'lease_expired'
-          }
-
-          delete dispatch.lease
-          await saveInbound(client, {
-            ...record,
-            version: record.version + 1,
-            dispatch
-          })
+          await saveInbound(client, expireInbound(record))
         }
 
         const expiredDeliveries = await client
@@ -170,7 +176,11 @@ export function createWorkOperations(
           }
 
           await saveInbound(client, next)
-          work.push({ kind: 'dispatch', record: next, lease })
+          work.push({
+            kind: needsPreparation(next) ? 'prepare' : 'dispatch',
+            record: next,
+            lease
+          })
         }
 
         const earlier = alias(outbound, 'earlier')
@@ -189,7 +199,14 @@ export function createWorkOperations(
                     and(
                       eq(earlier.channelId, outbound.channelId),
                       lt(earlier.sequence, outbound.sequence),
-                      inArray(earlier.status, ['pending', 'unknown'])
+                      inArray(earlier.status, ['pending', 'unknown']),
+                      or(
+                        eq(earlier.status, 'pending'),
+                        ne(
+                          sql<string>`${earlier.record}#>>'{target,channel}'`,
+                          'qq'
+                        )
+                      )
                     )
                   )
               ),
@@ -219,35 +236,17 @@ export function createWorkOperations(
     },
     async settleAttempt(input) {
       return transaction(async (client) => {
-        if (input.kind === 'dispatch') {
+        if (input.kind !== 'send') {
           const record = await readInbound(client, input.id)
           if (!record) {
             return { status: 'not_found' }
           }
-          if (
-            record.version !== input.lease.version ||
-            !isActiveLease(record.dispatch.lease, input.lease, input.now)
-          ) {
+          const next = settleInbound(record, input)
+          if (!next) {
             return { status: 'conflict' }
           }
-          const outcome = input.outcome
-
-          const dispatch = {
-            status:
-              outcome.status === 'retryable'
-                ? ('due' as const)
-                : outcome.status,
-            attempts: record.dispatch.attempts + 1,
-            dueAt: input.nextDueAt,
-            ...('errorCode' in outcome ? { errorCode: outcome.errorCode } : {})
-          }
-
-          await saveInbound(client, {
-            ...record,
-            version: record.version + 1,
-            dispatch
-          })
-          return { status: 'updated', version: record.version + 1 }
+          await saveInbound(client, next)
+          return { status: 'updated', version: next.version }
         }
         const record = await readOutbound(client, input.id)
         if (!record) {

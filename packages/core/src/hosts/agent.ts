@@ -10,6 +10,7 @@ import type {
   ScopedAgentHost,
   Storage
 } from '@relanox/sdk'
+import { z } from 'zod'
 import { textId, boundedText } from '../validation.js'
 import type { WorkerConfig } from '../worker/options.js'
 import { createAgentMedia } from './media.js'
@@ -17,6 +18,7 @@ import { authorizedConversation } from './conversations.js'
 import { channelStatus } from './status.js'
 import { enqueue } from './enqueue-message.js'
 import { readMessages } from './read-messages.js'
+import { replyConversation } from './reply-status.js'
 
 export type AgentHostOptions = {
   readonly agent: AgentId
@@ -58,10 +60,15 @@ export function createAgentHost(options: AgentHostOptions): AgentHost {
               )
             }
           : {}),
-        status: async (input) =>
-          channelStatus(options, scope, input?.deliveryId),
+        status: async (input) => channelStatus(options, scope, input),
         async sendMessage(input) {
           textId.parse(input.channel)
+          if (input.reply) {
+            z.strictObject({
+              requestId: textId,
+              kind: z.enum(['progress', 'final'])
+            }).parse(input.reply)
+          }
           if (input.idempotencyKey !== undefined) {
             textId.parse(input.idempotencyKey)
           }
@@ -81,7 +88,19 @@ export function createAgentHost(options: AgentHostOptions): AgentHost {
           ) {
             return { status: 'not_found' }
           }
-          return enqueue(options, scope, input, conversation)
+
+          const destination = input.reply
+            ? await replyConversation(
+                options,
+                conversation,
+                input.reply.requestId
+              )
+            : conversation
+
+          if (!destination) {
+            return { status: 'not_found' }
+          }
+          return enqueue(options, scope, input, destination)
         }
       }
     }

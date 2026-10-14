@@ -1,76 +1,18 @@
 import { createCore, safeObservability } from '@relanox/core'
 import { noopObservability } from '@relanox/sdk'
-import type {
-  AgentId,
-  AgentPlugin,
-  ChannelPlugin,
-  StoragePlugin,
-  ObservabilityPlugin,
-  ObservabilityRuntime
-} from '@relanox/sdk'
-import { appConfigSchema } from './config.js'
+import type { ObservabilityRuntime } from '@relanox/sdk'
+import { assemble } from './assembly.js'
 import type { AppConfig } from './config.js'
 import { deadline } from './deadline.js'
 import { createLifecycle } from './lifecycle.js'
 import { createListeners, listen } from './listeners.js'
-import { loadPlugins } from './plugins.js'
 import { requireHealthy } from './storage.js'
-import { createPluginLoader } from './plugin-loader.js'
 import { createWorker } from './worker.js'
 
 const noopRuntime: ObservabilityRuntime = {
   observe: noopObservability,
   async flush() {},
   async shutdown() {}
-}
-
-async function assemble(input: unknown): Promise<{
-  config: AppConfig
-  storagePlugin: StoragePlugin<unknown>
-  storageConfig: unknown
-  observabilityPlugin: ObservabilityPlugin<unknown> | undefined
-  observabilityConfig: unknown
-  channels: Map<string, ChannelPlugin<unknown>>
-  agents: Map<AgentId, AgentPlugin<unknown>>
-}> {
-  const config = appConfigSchema.parse(input)
-  const loader = await createPluginLoader(config.plugins)
-
-  const storagePlugin = await loader.load(
-    'storage',
-    config.relay.storage.plugin
-  )
-
-  if (storagePlugin.kind !== 'storage') {
-    throw new Error('plugin_kind_mismatch')
-  }
-
-  const storageConfig = storagePlugin.validateConfig(
-    config.relay.storage.config
-  )
-
-  const observabilityPlugin =
-    config.relay.observability.plugin === 'none'
-      ? undefined
-      : await loader.load('observability', 'standard')
-
-  if (observabilityPlugin && observabilityPlugin.kind !== 'observability') {
-    throw new Error('plugin_kind_mismatch')
-  }
-
-  const observabilityConfig = observabilityPlugin?.validateConfig(
-    config.relay.observability.config
-  )
-
-  const plugins = await loadPlugins(config.relay, loader)
-  return {
-    config,
-    storagePlugin,
-    storageConfig,
-    observabilityPlugin,
-    observabilityConfig,
-    ...plugins
-  }
 }
 
 export async function validateApp(input: unknown): Promise<AppConfig> {
@@ -93,7 +35,8 @@ export async function startRuntime(input: unknown): Promise<{
     storagePlugin,
     storageConfig,
     observabilityPlugin,
-    observabilityConfig
+    observabilityConfig,
+    middlewareRegistry
   } = await assemble(input)
 
   const lifecycle = createLifecycle(config.server.shutdownTimeoutMs, [
@@ -102,6 +45,8 @@ export async function startRuntime(input: unknown): Promise<{
   ])
 
   try {
+    const middleware = await middlewareRegistry.setup(config.middleware)
+
     const observability = observabilityPlugin
       ? await observabilityPlugin.setup(observabilityConfig)
       : noopRuntime
@@ -119,6 +64,7 @@ export async function startRuntime(input: unknown): Promise<{
       channels,
       agents,
       observe,
+      middleware,
       ...(config.publicUrl === undefined
         ? {}
         : { publicUrl: config.publicUrl }),

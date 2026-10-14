@@ -2,6 +2,7 @@ import type { Json, EpochMs } from './values.js'
 import type { ChannelId, EndpointConfig } from './config.js'
 import type { ChannelAddress } from './conversations.js'
 import type { MediaUpload, MediaReference, StoredMedia } from './media.js'
+import type { MiddlewarePlan, MiddlewareResult } from './middleware.js'
 
 /** Platform-specific durable address, never a reply closure or ephemeral reply token. */
 export type ReplyTarget = {
@@ -36,6 +37,8 @@ export type IngestInput = {
 }
 
 export type InboundSnapshot = {
+  /** Capture the preparation policy at acceptance, without credentials. */
+  readonly middleware?: readonly MiddlewarePlan[]
   readonly channel: ChannelAddress
   readonly attachments?: readonly MediaReference[]
   readonly requestId: string
@@ -55,9 +58,30 @@ export type AgentMessage = Pick<
   | 'text'
   | 'context'
   | 'attachments'
->
+> & {
+  readonly reply?: ReplyStatus
+  readonly extensions?: Readonly<Record<string, Json>>
+}
+
+/** Progress never completes a request; a request has at most one final delivery. */
+export type ReplyReference = {
+  readonly requestId: string
+  readonly kind: 'progress' | 'final'
+}
+
+export type MessageCursor = {
+  readonly acceptedAt: EpochMs
+  readonly requestId: string
+}
+
+export type ReplyStatus = {
+  readonly status: 'awaiting_final' | 'expired' | DeliveryStatus
+  readonly deliveryId?: string
+  readonly errorCode?: string
+}
 
 export type OutboundMessage = {
+  readonly reply?: ReplyReference
   readonly messageId: string
   readonly text: string
   readonly attachments?: readonly MediaReference[]
@@ -79,6 +103,9 @@ export type Lease = {
 }
 
 export type InboundRecord = {
+  readonly preparation?: readonly MiddlewareResult[]
+  /** Absent on historical records; webhook acceptance does not complete work. */
+  readonly reply?: { readonly finalDeliveryId?: string }
   readonly snapshot: InboundSnapshot
   readonly version: number
   readonly dispatch: AttemptState
@@ -113,6 +140,7 @@ export type SendReceipt = {
 export type DeliveryStatus = 'pending' | 'sent' | 'rejected' | 'unknown'
 
 export type OutboundRecord = {
+  readonly reply?: ReplyReference
   readonly redactedAt?: EpochMs
   readonly deliveryId: string
   readonly channelId: string
@@ -187,6 +215,8 @@ export type SendInput = {
 }
 
 export type DispatchInput = {
-  readonly request: InboundSnapshot
+  readonly request: InboundSnapshot & {
+    readonly extensions?: Readonly<Record<string, Json>>
+  }
   readonly signal: AbortSignal
 }

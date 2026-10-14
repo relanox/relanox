@@ -12,11 +12,13 @@ import type {
   MessageReceipt,
   MutationResult,
   DispatchResult,
-  SendResult
+  SendResult,
+  MessageCursor
 } from './messages.js'
 import type { StateNamespace, StateEntry } from './state.js'
 import type { ConversationStorage } from './conversations.js'
 import type { MediaStorage, StoredMedia } from './media.js'
+import type { MiddlewareResult } from './middleware.js'
 
 export type StorageStats = {
   readonly pending: number
@@ -48,12 +50,17 @@ export type DueWork =
       readonly lease: Lease
     }
   | {
+      readonly kind: 'prepare'
+      readonly record: InboundRecord
+      readonly lease: Lease
+    }
+  | {
       readonly kind: 'send'
       readonly record: OutboundRecord
       readonly lease: Lease
     }
 
-/** Storage atomically acquires leases; expired in-flight work becomes unknown unless its channel has durable idempotency. */
+/** Storage atomically acquires leases. Expired preparation falls back; ambiguous notification/delivery effects remain unknown unless sends are idempotent. */
 export type TakeDueInput = {
   readonly now: EpochMs
   readonly leaseMs: number
@@ -63,6 +70,16 @@ export type TakeDueInput = {
 }
 
 export type Settlement =
+  | {
+      readonly kind: 'prepare'
+      readonly id: string
+      readonly lease: Lease
+      readonly outcome: {
+        readonly status: 'prepared'
+        readonly preparation: readonly MiddlewareResult[]
+      }
+      readonly now: EpochMs
+    }
   | {
       readonly kind: 'dispatch'
       readonly id: string
@@ -144,8 +161,17 @@ export type Storage = ConversationStorage & {
     filter: StatusFilter & {
       /** Latest accepted first; incompatible with afterId. */
       readonly recent?: boolean
+      /** Exclude unfinished middleware preparation before ordering and limiting agent history. */
+      readonly readyOnly?: boolean
     }
   ): Promise<readonly InboundRecord[]>
+  /** Tracked, retained inputs without a fully sent final, oldest first within current active channels. */
+  listPendingInbound(input: {
+    readonly channelIds: readonly string[]
+    readonly endpointIds: readonly string[]
+    readonly limit: number
+    readonly cursor?: MessageCursor
+  }): Promise<readonly InboundRecord[]>
   listOutbound(filter: StatusFilter): Promise<readonly OutboundRecord[]>
   getStats(): Promise<StorageStats>
   cleanup(input: {

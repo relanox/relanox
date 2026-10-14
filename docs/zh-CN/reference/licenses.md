@@ -11,9 +11,10 @@ Relanox 使用 [MIT 许可证](https://github.com/relanox/relanox/blob/master/LI
 | 许可         | 运行依赖示例                                                                                                                                     |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | MIT          | Hono、Pino、better-sqlite3、PostgreSQL 的 `pg` 客户端、Zod、`ws`、Standard Webhooks、Marked、`mime-types`、`mime-db`、`file-type`、`silk-wasm`。 |
-| Apache-2.0   | Model Context Protocol 包、OpenTelemetry 包、Prometheus 客户端、Drizzle ORM。                                                                    |
+| Apache-2.0   | Model Context Protocol 包、OpenTelemetry 包、Prometheus 客户端、Drizzle ORM、腾讯云 ASR SDK 及其公共包。                                         |
 | BSD-2-Clause | `entities`。                                                                                                                                     |
-| ISC          | `pg-int8` 和 `split2`。                                                                                                                          |
+| ISC          | `pg-int8`、`split2` 和 `ini`。                                                                                                                   |
+| 0BSD         | `tslib`。                                                                                                                                        |
 | Unlicense    | `fast-sha256`。                                                                                                                                  |
 | 公有领域     | better-sqlite3 内嵌的 SQLite。                                                                                                                   |
 
@@ -24,3 +25,5 @@ Drizzle ORM 0.45.4 声明使用 Apache-2.0，但发布包缺少许可文本。`l
 如果在再分发前修改了生产依赖，请检查已安装包的许可文件，并随依赖变更更新声明。依赖维护步骤见[贡献指南](../development.md)。
 
 silk-wasm 随包内嵌的编解码器保留 Silk wrapper 的 BSD-2-Clause 和 Skype SILK SDK 的 BSD 声明。对应发布源码的声明，以及内嵌 wav-file-decoder 的 MIT 声明，保存在 licenses/；包本身的 MIT 文件也随依赖分发。
+
+腾讯云 SDK 包自带 Apache-2.0 许可文件。其依赖 `https-proxy-agent` 和 `agent-base` 的 MIT 文本在各自 README 中；`tslib` 同时附带 0BSD 许可及版权声明。`tr46` 0.0.3 声明使用 MIT，但发布包缺少许可文本；`licenses/tr46.LICENSE` 提供上游[补充缺失许可的提交](https://github.com/jsdom/tr46/blob/3a6f29721e7063b9ffd421e461a54beae6170001/LICENSE.md)中的文本。

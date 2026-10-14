@@ -69,6 +69,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "final_delivery_id": {
+          "name": "final_delivery_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "endpoint": {
           "name": "endpoint",
           "type": "text",
@@ -101,6 +107,33 @@
         }
       },
       "indexes": {
+        "inbound_pending_reply": {
+          "name": "inbound_pending_reply",
+          "columns": [
+            {
+              "expression": "endpoint",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "accepted_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "inbound_fifo": {
           "name": "inbound_fifo",
           "columns": [
