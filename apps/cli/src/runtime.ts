@@ -8,7 +8,7 @@ import { createListeners, listen } from './listeners.js'
 import { loadPlugins } from './plugins.js'
 import { openStorage, requireHealthy, validateStorage } from './storage.js'
 import { createWorker } from './worker.js'
-import { tencentSpeechPlugin } from '@relanox/speech-tencent'
+import { middlewareRegistry } from './middleware.js'
 
 export function validateApp(input: unknown): AppConfig {
   const config = appConfigSchema.parse(input)
@@ -29,11 +29,7 @@ export async function startRuntime(input: unknown): Promise<{
 }> {
   const config = validateApp(input)
 
-  const middleware = await Promise.all(
-    config.middleware.map(async (item) =>
-      tencentSpeechPlugin.setup(item.config)
-    )
-  )
+  const middleware = await middlewareRegistry.setup(config.middleware)
 
   const { channels, agents } = loadPlugins(config.relay)
 
