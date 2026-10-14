@@ -11,9 +11,10 @@ The package manifests and lockfile identify the exact versions. The shipped runt
 | License       | Examples in the runtime                                                                                                                        |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | MIT           | Hono, Pino, better-sqlite3, PostgreSQL's `pg` client, Zod, `ws`, Standard Webhooks, Marked, `mime-types`, `mime-db`, `file-type`, `silk-wasm`. |
-| Apache-2.0    | Model Context Protocol packages, OpenTelemetry packages, Prometheus client, Drizzle ORM.                                                       |
+| Apache-2.0    | Model Context Protocol packages, OpenTelemetry packages, Prometheus client, Drizzle ORM, Tencent Cloud ASR SDK and its common package.         |
 | BSD-2-Clause  | `entities`.                                                                                                                                    |
-| ISC           | `pg-int8` and `split2`.                                                                                                                        |
+| ISC           | `pg-int8`, `split2` and `ini`.                                                                                                                 |
+| 0BSD          | `tslib`.                                                                                                                                       |
 | Unlicense     | `fast-sha256`.                                                                                                                                 |
 | Public domain | SQLite embedded by better-sqlite3.                                                                                                             |
 
@@ -24,3 +25,5 @@ Drizzle ORM 0.45.4 declares Apache-2.0 but omits the license text from its publi
 If you change the production dependency set before redistributing, check the installed packages' license files and update the notices alongside the dependency change. See [Contributing](../development.md) for dependency maintenance.
 
 The bundled codecs in silk-wasm retain the BSD-2-Clause Silk wrapper and Skype's SILK SDK BSD notice. Their matching published source notices, and the bundled MIT wav-file-decoder notice, are included in licenses/ alongside the package's MIT license.
+
+The Tencent Cloud SDK packages include their Apache-2.0 license files. The MIT texts for its `https-proxy-agent` and `agent-base` dependencies are in their README files; `tslib` includes both its 0BSD license and copyright notice. `tr46` 0.0.3 declares MIT but omits the license text; `licenses/tr46.LICENSE` supplies the upstream text from the [commit that added the missing license](https://github.com/jsdom/tr46/blob/3a6f29721e7063b9ffd421e461a54beae6170001/LICENSE.md).

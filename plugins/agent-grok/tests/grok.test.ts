@@ -301,6 +301,53 @@ describe('grok configured Routine and scoped MCP', () => {
     expect(payload.attachments[0]).not.toHaveProperty('data')
   })
 
+  it('includes prepared speech text and the original audio in the hosted Routine', async () => {
+    const { fx, receiver } = await setup()
+
+    const receipt = await fx.ingest(0, 'original', 'routine-speech', [
+      {
+        kind: 'audio',
+        mimeType: 'audio/silk',
+        fileName: 'voice.silk',
+        data: new Uint8Array([1, 2, 3])
+      }
+    ])
+
+    const request = (await fx.storage.getInbound(receipt.requestId))?.snapshot
+    const mediaId = request?.attachments?.[0]?.id
+    if (!request || !mediaId) {
+      throw new Error('missing_audio_request')
+    }
+    expect(
+      await fx.agent.dispatch({
+        request: {
+          ...request,
+          text: `original\n\n[Voice transcript: ${mediaId}]\n你好`,
+          transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }]
+        },
+        signal: new AbortController().signal
+      })
+    ).toEqual({ status: 'accepted' })
+
+    const outer = z
+      .object({ content: z.string() })
+      .parse(parseWire(receiver.traffic[0]?.body ?? ''))
+
+    expect(parseWire(outer.content)).toMatchObject({
+      text: `original\n\n[Voice transcript: ${mediaId}]\n你好`,
+      transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }],
+      attachments: [
+        {
+          id: mediaId,
+          kind: 'audio',
+          mimeType: 'audio/silk',
+          fileName: 'voice.silk',
+          size: 3
+        }
+      ]
+    })
+  })
+
   it('rejects an already-aborted request without waiting for its stalled body', async () => {
     const controller = new AbortController()
     controller.abort()

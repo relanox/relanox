@@ -35,6 +35,7 @@
     "@relanox/core": "workspace:*",
     "@relanox/observability-standard": "workspace:*",
     "@relanox/sdk": "workspace:*",
+    "@relanox/speech-tencent": "workspace:*",
     "@relanox/storage-postgres": "workspace:*",
     "@relanox/storage-sqlite": "workspace:*",
     "commander": "15.0.0",

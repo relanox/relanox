@@ -109,6 +109,50 @@ Use separate MCP tokens for separate agent connections. Keep the Routine's compl
 
 To rotate a token, update the service manager's environment and restart. Keep the original bot/account identity while replies remain queued. For a new Grok Routine, use a new variable name and agent connection: pending messages still reference their original settings.
 
+## Optional Tencent speech recognition {#speech-to-text}
+
+To transcribe incoming audio for **dot or Grok**, merge this fragment into your existing `relanox.json`. Keep `relay`, `publicUrl` and the other settings. `speechToText` is a top-level section; the configurator does not generate it:
+
+```json
+{
+  "speechToText": {
+    "plugin": "tencent",
+    "config": {
+      "secretId": { "env": "TENCENT_ASR_SECRET_ID" },
+      "secretKey": { "env": "TENCENT_ASR_SECRET_KEY" },
+      "engine": "16k_zh"
+    }
+  }
+}
+```
+
+Enable Tencent Cloud ASR and supply its **SecretId and SecretKey**, preferably for a CAM subaccount allowed to call `asr:SentenceRecognition`. Store the actual values in the deployment's private `.env` or service environment, never in JSON or Git:
+
+```dotenv
+TENCENT_ASR_SECRET_ID=your-secret-id
+TENCENT_ASR_SECRET_KEY=your-secret-key
+```
+
+Compose injects these through `env_file`; shell launches must load the environment themselves. Run `relanox validate --config relanox.json`, then `relanox doctor --config relanox.json`, and restart or recreate the service with the updated environment. `validate` checks structure; `doctor` lists missing variable names. Configured but unavailable credentials stop startup with `speech_credentials_missing`. Variables alone do not enable recognition. Remove the JSON section and restart to disable it.
+
+Both credential references are required. `engine` defaults to `16k_zh`; alternatives include `16k_zh-PY` (Mandarin, English and Cantonese), `16k_en` and `16k_yue`. See Tencent's [SentenceRecognition contract](https://cloud.tencent.com/document/api/1093/35646) for available engines and audio requirements.
+
+| Situation                                                         | Forwarded to the agent                                                                |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| No `speechToText` section                                         | Original text and audio, unchanged; no ASR request.                                   |
+| Successful recognition                                            | Original text followed by a labeled voice transcript, plus every original attachment. |
+| Timeout, service error, invalid/empty result or unsupported input | Original text and audio, plus a safe failure code in `transcriptions`.                |
+
+The independent `@relanox/speech-tencent` plugin handles recognition for all agents. The CLI bundles it, but only loads the cloud SDK and resolves its credentials when `speechToText` is configured. Core and agent packages do not depend on Tencent. Only `audio` attachments are transcribed; video soundtracks and ordinary files keep their existing behavior. The plugin uses the official [`tencentcloud-sdk-nodejs-asr`](https://github.com/TencentCloud/tencentcloud-sdk-nodejs) SDK for signing, HTTPS requests and API error handling. Audio is sent in the request body; no public audio URL, local inference, transcoding or long-audio splitting is used. Formats: WAV, PCM, Ogg Opus, Speex, SILK, MP3, M4A, AAC and AMR. Ogg Vorbis and WebM fall back. QQ SILK is detected even if labeled AMR. PCM must already meet the chosen engine's requirements.
+
+The service accepts audio up to 60 seconds. Relanox conservatively limits **Base64 data to 3,000,000 bytes** (2,250,000 raw bytes). Known durations over 60 seconds are skipped; otherwise Tencent validates the actual audio. HTTP calls have an eight-second deadline, and preparation has a ten-second deadline. Multiple clips have independent outcomes in attachment order. These limits are separate from ordinary media limits.
+
+Original messages and bytes are committed before ingress is acknowledged. The worker transcribes afterward; unfinished preparation is hidden from agent message reads and cannot receive correlated replies. Results are stored separately from the immutable snapshot in SQLite or PostgreSQL. Notifications and `relanox_read_messages` expose identical prepared content, including `transcriptions` entries with `mediaId`, `status` and either `text` or `errorCode`. Message retention clears transcript text too. No database schema change is required.
+
+Each accepted audio attachment gets one recognition attempt. Stored results are reused on notification retries, explicit redispatch and restart. Waiting jobs resume after restart. If recognition was interrupted and its lease expired, Relanox records `interrupted` and forwards the original audio instead of repeating a potentially charged call. Removing configuration or switching providers makes still-waiting jobs fall back with `disabled`; completed results remain usable. Resending as a new platform message starts a new attempt.
+
+Recognition may incur charges; check Tencent's current [billing documentation](https://cloud.tencent.com/document/product/1093/35686). Safe failure codes appear in `transcription.failed` logs; metrics are `relanox_transcription_total` and `relanox_transcription_duration_seconds`. Logs omit audio, transcript text and credentials. Raw forwarding alone does not guarantee that the agent can understand audio. Local tests verify protocol and fallback behavior, not live-account recognition quality.
+
 ## Choose where messages are stored
 
 SQLite suits a single installation:

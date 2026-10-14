@@ -3,6 +3,7 @@ import { CommanderError } from 'commander'
 import { CoreError } from '@relanox/core'
 import { PublicUrlError } from '@relanox/sdk'
 import { createProgram } from './commands.js'
+import { SpeechConfigurationError } from '@relanox/speech-tencent'
 
 try {
   await createProgram().parseAsync(process.argv)
@@ -12,6 +13,7 @@ try {
   } else {
     const errorCode =
       error instanceof PublicUrlError ||
+      error instanceof SpeechConfigurationError ||
       (error instanceof CoreError && error.code === 'public_url_required')
         ? error.code
         : 'command_failed'

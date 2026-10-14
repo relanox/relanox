@@ -5,6 +5,7 @@ import {
 } from '@relanox/core'
 import { validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
+import { tencentSpeechPlugin } from '@relanox/speech-tencent'
 
 const port = z.number().int().min(0).max(65_535)
 
@@ -12,6 +13,14 @@ export const appConfigSchema = z
   .strictObject({
     publicUrl: z.string().transform(validatePublicUrl).optional(),
     relay: z.unknown().transform(validateConfig),
+    speechToText: z
+      .strictObject({
+        plugin: z.literal('tencent'),
+        config: z
+          .unknown()
+          .transform((input) => tencentSpeechPlugin.validateConfig(input))
+      })
+      .optional(),
     media: z.unknown().transform(validateMediaOptions).optional(),
     mediaLimits: z
       .strictObject({

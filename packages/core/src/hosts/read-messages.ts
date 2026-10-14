@@ -1,9 +1,11 @@
 import { z } from 'zod'
+import { needsTranscription } from '@relanox/sdk'
 import type { AgentMessage, InboundRecord, ScopedAgentHost } from '@relanox/sdk'
 import type { AgentHostOptions } from './agent.js'
 import { authorizedConversation } from './conversations.js'
 import { replyStatus } from './reply-status.js'
 import { textId } from '../validation.js'
+import { preparedRequest } from '../speech.js'
 
 const inputSchema = z
   .strictObject({
@@ -40,7 +42,12 @@ export async function readMessages(
       ? (
           await Promise.all(
             scope.map(async (endpointId) =>
-              options.storage.listInbound({ endpointId, limit, recent: true })
+              options.storage.listInbound({
+                endpointId,
+                limit,
+                recent: true,
+                readyOnly: true
+              })
             )
           )
         ).flat()
@@ -52,6 +59,7 @@ export async function readMessages(
     .filter(
       (record) =>
         record.redactedAt === undefined &&
+        !needsTranscription(record) &&
         authorizedConversation(
           {
             address: record.snapshot.channel,
@@ -71,7 +79,7 @@ export async function readMessages(
 
   return Promise.all(
     visible.map(async (record) =>
-      Object.assign(projectMessage(record.snapshot), {
+      Object.assign(projectMessage(preparedRequest(record)), {
         reply: await replyStatus(options.storage, record)
       })
     )
@@ -86,6 +94,9 @@ function projectMessage(snapshot: AgentMessage): AgentMessage {
     senderId: snapshot.senderId,
     text: snapshot.text,
     context: snapshot.context,
+    ...(snapshot.transcriptions
+      ? { transcriptions: snapshot.transcriptions }
+      : {}),
     ...(snapshot.attachments ? { attachments: snapshot.attachments } : {})
   }
 }
@@ -115,7 +126,7 @@ async function readPending(
 
   return Promise.all(
     records.map(async (record) =>
-      Object.assign(projectMessage(record.snapshot), {
+      Object.assign(projectMessage(preparedRequest(record)), {
         reply: await replyStatus(options.storage, record)
       })
     )
