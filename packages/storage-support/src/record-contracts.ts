@@ -45,6 +45,7 @@ export function matchesInitialMessage(
   return (
     outbound.channelId === input.channelId &&
     outbound.messageId === input.message.messageId &&
+    equalDurableValues(outbound.reply ?? null, input.message.reply ?? null) &&
     outbound.createdAt === input.message.createdAt &&
     equalDurableValues(outbound.endpoint, conversation.endpoint) &&
     targetMatchesConversation(outbound.target, conversation) &&

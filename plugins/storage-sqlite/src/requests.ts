@@ -9,8 +9,14 @@ import {
   validConversationInbound
 } from '@relanox/storage-support'
 import { decodeDurableRecord } from './record-codec.js'
+import { needsPreparation } from '@relanox/sdk'
 import { readMedia, insertIncomingMedia } from './media.js'
-import type { Storage, InboundRecord } from '@relanox/sdk'
+import type {
+  Storage,
+  InboundRecord,
+  OutboundMessage,
+  ConversationRecord
+} from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import {
@@ -51,6 +57,7 @@ export function createRequestOperations(
         const record: InboundRecord = {
           snapshot: decodeDurableRecord(encodeDurableRecord(snapshot)),
           version: 1,
+          reply: {},
           dispatch: { status: 'due', attempts: 0, dueAt: snapshot.acceptedAt }
         }
 
@@ -87,14 +94,21 @@ export function createRequestOperations(
           return { status: 'not_found' }
         }
 
+        const { finalId, valid } = resolveReply(context, record, input.message)
+        if (!valid) {
+          return { status: 'not_found' }
+        }
+
         const previous = db
           .select({ id: outbound.id, digest: outbound.digest })
           .from(outbound)
           .where(
-            and(
-              eq(outbound.channelId, input.channelId),
-              eq(outbound.messageId, input.message.messageId)
-            )
+            finalId
+              ? eq(outbound.id, finalId)
+              : and(
+                  eq(outbound.channelId, input.channelId),
+                  eq(outbound.messageId, input.message.messageId)
+                )
           )
           .get()
 
@@ -116,14 +130,26 @@ export function createRequestOperations(
           return { status: 'unauthorized' }
         }
 
+        const { source, finalId, valid } = resolveReply(
+          context,
+          record,
+          input.message
+        )
+
+        if (!valid) {
+          return { status: 'not_found' }
+        }
+
         const previous = db
           .select({ id: outbound.id, digest: outbound.digest })
           .from(outbound)
           .where(
-            and(
-              eq(outbound.channelId, input.channelId),
-              eq(outbound.messageId, input.message.messageId)
-            )
+            finalId
+              ? eq(outbound.id, finalId)
+              : and(
+                  eq(outbound.channelId, input.channelId),
+                  eq(outbound.messageId, input.message.messageId)
+                )
           )
           .get()
 
@@ -132,6 +158,9 @@ export function createRequestOperations(
           return previous.digest === digest
             ? { status: 'queued', deliveryId: previous.id, replay: true }
             : { status: 'conflict' }
+        }
+        if (source?.redactedAt !== undefined) {
+          return { status: 'not_found' }
         }
         if (!matchesInitialMessage(input.outbound, record, input)) {
           return { status: 'conflict' }
@@ -184,6 +213,13 @@ export function createRequestOperations(
             record: encodeDurableRecord(delivery)
           })
           .run()
+        if (source && input.message.reply?.kind === 'final') {
+          context.saveInbound({
+            ...source,
+            version: source.version + 1,
+            reply: { finalDeliveryId: delivery.deliveryId }
+          })
+        }
         insertIncomingMedia(context, input.channelId, additions)
         db.update(mediaTable)
           .set({ staged: 0 })
@@ -207,5 +243,32 @@ export function createRequestOperations(
         }
       })
     }
+  }
+}
+
+function resolveReply(
+  context: DatabaseContext,
+  conversation: ConversationRecord,
+  message: OutboundMessage
+): {
+  source: InboundRecord | undefined
+  valid: boolean
+  finalId: string | undefined
+} {
+  const source = message.reply
+    ? context.readInbound(message.reply.requestId)
+    : undefined
+
+  return {
+    source,
+    valid:
+      !message.reply ||
+      (source !== undefined &&
+        !needsPreparation(source) &&
+        validConversationInbound(source.snapshot, conversation)),
+    finalId:
+      message.reply?.kind === 'final'
+        ? source?.reply?.finalDeliveryId
+        : undefined
   }
 }

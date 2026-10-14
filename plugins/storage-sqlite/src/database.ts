@@ -65,6 +65,7 @@ export function openDatabase(config: SqliteConfig): DatabaseContext {
     db
       .update(inbound)
       .set({
+        finalDeliveryId: record.reply?.finalDeliveryId ?? null,
         status: record.dispatch.status,
         version: record.version,
         record: encodeDurableRecord(record)

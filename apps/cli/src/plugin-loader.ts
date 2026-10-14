@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { SDK_MAJOR } from '@relanox/sdk'
 import type {
   AgentPlugin,
+  MiddlewarePlugin,
   ChannelPlugin,
   ObservabilityPlugin,
   StoragePlugin,
@@ -22,6 +23,7 @@ import type { PluginPackage } from './plugin-manifest.js'
 export type NativePlugin =
   | ChannelPlugin<unknown>
   | AgentPlugin<unknown>
+  | MiddlewarePlugin<unknown>
   | StoragePlugin<unknown>
   | ObservabilityPlugin<unknown>
 
@@ -58,11 +60,12 @@ const contracts = {
     dispatch: callable
   }),
   storage: metadata.extend({ kind: z.literal('storage') }),
-  observability: metadata.extend({ kind: z.literal('observability') })
+  observability: metadata.extend({ kind: z.literal('observability') }),
+  middleware: metadata.extend({ kind: z.literal('middleware') })
 }
 
 export function officialPackage(kind: Kind, id: string): string {
-  return `@relanox/${kind}-${id}`
+  return kind === 'middleware' ? `@relanox/${id}` : `@relanox/${kind}-${id}`
 }
 
 async function packageExists(root: string): Promise<boolean> {

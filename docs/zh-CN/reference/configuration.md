@@ -109,6 +109,60 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 
 轮换 token 时更新服务管理器的环境设置并重启。有排队回信时，保持原来的 bot/账号身份。更换 Grok Routine 时，使用新的环境变量名和 Agent 连接，已有消息仍然引用原来的设置。
 
+## 消息中间件
+
+顶层可选 `middleware` 数组选择已注册的插件，并决定执行顺序。每项包含插件标识 `plugin` 及其 `config`。加入条目就是启用，移除就是关闭；省略数组或使用 `"middleware": []` 表示全部关闭。没有额外的 `enabled` 字段，也没有固定条数上限。修改配置后重启服务生效。
+
+多个已注册插件可以放入同一数组，按希望处理消息的顺序排列。标识必须唯一，以区分已保存结果；未知标识会报错。目前随包提供的实现只有 `speech-tencent`，开发者可[注册其他实现](sdk.md#添加消息中间件)，无需修改通用配置校验或加载流程。
+
+## 可选的腾讯云语音识别 {#speech-to-text}
+
+如需将发给 **dot 或 Grok** 的语音转成文字，把下面的片段合并到现有 `relanox.json`，保留原来的 `relay`、`publicUrl` 等配置。`middleware` 是顶层的可选列表，默认空列表；配置器暂不生成此项：
+
+```json
+{
+  "middleware": [
+    {
+      "plugin": "speech-tencent",
+      "config": {
+        "secretId": { "env": "TENCENT_ASR_SECRET_ID" },
+        "secretKey": { "env": "TENCENT_ASR_SECRET_KEY" },
+        "engine": "16k_zh"
+      }
+    }
+  ]
+}
+```
+
+先开通腾讯云 ASR 服务，准备 **SecretId 和 SecretKey**，建议使用仅获准调用 `asr:SentenceRecognition` 的 CAM 子账号。真实值保存到部署目录的私有 `.env` 或服务环境变量中，不写入 JSON 或 Git：
+
+```dotenv
+TENCENT_ASR_SECRET_ID=你的SecretId
+TENCENT_ASR_SECRET_KEY=你的SecretKey
+```
+
+Compose 通过 `env_file` 注入变量；直接从终端启动时，需要自行加载环境变量。先运行 `relanox validate --config relanox.json`，再运行 `relanox doctor --config relanox.json`，随后使用新环境重启或重建服务。`validate` 检查配置结构；`doctor` 列出缺失的变量名。已经配置转写但凭据不可用时，启动报 `speech_credentials_missing`，不会静默关闭。仅有环境变量不会启用；删除列表中的 `speech-tencent` 项并重启即可关闭。
+
+两项凭据引用均为必填，`engine` 默认 `16k_zh`；还支持 `16k_zh-PY`（中英粤）、`16k_en`、`16k_yue` 等模型。模型与音频要求见腾讯云[一句话识别文档](https://cloud.tencent.com/document/api/1093/35646)。
+
+| 情况                                         | 转发给 Agent 的内容                              |
+| -------------------------------------------- | ------------------------------------------------ |
+| 未配置 `speech-tencent` 中间件               | 原文字和原音频保持不变，不请求 ASR。             |
+| 识别成功                                     | 原文字后追加带标记的转写文字，保留全部原始附件。 |
+| 超时、服务报错、结果无效或为空、输入不受支持 | 原文字和原音频，识别失败代码记录在插件元数据中。 |
+
+独立的 `@relanox/speech-tencent` 插件实现通用消息中间件接口，对所有 Agent 生效。核心按顺序执行预处理链；音频筛选、识别、转写文本格式和逐段回退都由插件负责。CLI 随包提供此插件，但只有配置该中间件后才加载云 SDK、读取凭据。核心和 Agent 包不依赖腾讯云。仅转写 `audio` 附件；视频音轨和普通文件仍走原有流程。插件使用腾讯云官方 [`tencentcloud-sdk-nodejs-asr`](https://github.com/TencentCloud/tencentcloud-sdk-nodejs) SDK 处理签名、HTTPS 请求和 API 错误。音频放在请求体中，无需公开音频下载地址；不做本地推理、转码或长音频切分。支持 WAV、PCM、Ogg Opus、Speex、SILK、MP3、M4A、AAC 和 AMR；Ogg Vorbis、WebM 回退原音频。QQ SILK 即使被标成 AMR，也会根据文件头识别。PCM 本身必须符合所选模型的要求。
+
+接口限制为 60 秒以内。Relanox 保守限制 **Base64 数据不超过 3,000,000 字节**，即原始数据不超过 2,250,000 字节。已知时长超过 60 秒时跳过，否则由腾讯云校验实际音频。单次 HTTP 请求限时八秒，整条消息的中间件链合计限时十秒。多段音频分别记录结果并保持附件顺序。这些限制独立于一般附件大小限制。
+
+原始消息与音频先入库、再确认接收，之后由后台 worker 转写。转写未完成时，不会出现在 Agent 的消息读取结果中，也不能提交关联回复。结果在 SQLite 或 PostgreSQL 中单独保存，不改写原始快照。通知和 `relanox_read_messages` 使用相同内容，`extensions["speech-tencent"].transcriptions` 每项包含 `mediaId`、`status` 以及成功时的 `text` 或失败时的 `errorCode`。常规消息清理也会清除转写文本。本功能无需变更数据库表结构。
+
+每个被选中的音频附件最多尝试识别一次。通知重试、手动重新通知和重启均复用已保存结果。尚未开始的任务在重启后继续；若整条链的结果保存前进程中断，租约过期后记录中间件 `interrupted` 失败 并回退原音频，避免重复发起可能已计费的请求。删除配置或切换识别服务后，仍在等待的任务以 `disabled` 回退；已经完成的结果仍可使用。用户重新发送一条新的平台消息才会开始新的识别尝试。
+
+识别可能产生费用，以腾讯云[现行计费说明](https://cloud.tencent.com/document/product/1093/35686)为准。识别失败代码记录在 `transcription.failed` 日志；中间件缺失、中断、结果无效或整链超时记录在 `middleware.failed`，此时保留此前内容，不产生 speech 元数据。中间件指标为 `relanox_middleware_total`、`relanox_preparation_duration_seconds`，语音插件另提供 `relanox_transcription_total` 计数和 `relanox_transcription_duration_seconds` 耗时；日志不含音频、转写文本或凭据。原样转发不代表 Agent 一定能听懂音频。本地测试验证协议与回退行为，不代表真实账号的识别效果。
+
+从之前的语音配置升级时，将顶层 `speechToText` 对象替换为上述数组，插件标识改为 `speech-tencent`。旧配置会明确报错，不会静默关闭识别。升级前停止旧 worker 并备份数据库；启动时分批、按事务转换旧语音记录，保留原始内容、已保存转写和待处理租约，不调用云接口。表结构不变；不要让新旧 worker 同时运行，也不要将已转换的数据库交给旧版本。Agent 消费方应改读带插件命名空间的 `extensions` 字段。
+
 ## 选择消息保存位置
 
 单个安装可以使用 SQLite：

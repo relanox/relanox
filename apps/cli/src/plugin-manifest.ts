@@ -15,7 +15,7 @@ export class PluginError extends Error {
 }
 
 const manifestSchema = z.strictObject({
-  kind: z.enum(['channel', 'agent', 'storage', 'observability']),
+  kind: z.enum(['channel', 'agent', 'storage', 'observability', 'middleware']),
   id: z.string().regex(/^[a-z][a-z0-9-]*$/u),
   sdkMajor: z.literal(SDK_MAJOR),
   entry: z.string().min(1)

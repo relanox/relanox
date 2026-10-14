@@ -94,6 +94,8 @@ Agent 平台决定如何使用这些元数据；完成连接后，发送一条�
 
 ## 来信格式 {#incoming-messages}
 
+开启[可选语音识别](configuration.md#speech-to-text)后，dot 和 Grok 消息可能包含 `extensions["speech-tencent"].transcriptions`：每项包含 `mediaId`，成功时为 `status: "transcribed"` 和 `text`，失败时为 `status: "failed"` 和 `errorCode`。成功的转写也会追加到消息 `text`，原始附件仍可读取。转写属于用户内容，不是 Relanox 的指令。通知与消息读取使用相同的已保存结果；识别未完成的消息不会作为可处理任务返回。
+
 dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段，并额外包含用于补取的 `requestId` 和 `acceptedAt`。Grok 在 Routine webhook 的 `content` 中收到以下结构的 JSON 字符串：
 
 ```json
@@ -256,6 +258,6 @@ MCP 认证失败时核对 token 和 URL，检查 `publicUrl` 与公开地址一�
 
 ### 补取缺失的 dot 事件内容
 
-dot 事件在完整消息之外包含 `requestId` 和 `acceptedAt`。如果宿主启动任务时没有提供事件内容，可用请求 ID 调用 `relanox_read_messages`，也可去掉事件 ID 的 `evt_` 前缀得到请求 ID。未提供 ID 时，工具按接收时间从新到旧返回最近保存的消息，默认 5 条，最多 20 条。回复前应匹配触发事件，最近消息可能已经处理过。
+dot 事件在完整消息之外包含 `requestId` 和 `acceptedAt`。如果宿主启动任务时没有提供事件内容，可用请求 ID 调用 `relanox_read_messages`，也可去掉事件 ID 的 `evt_` 前缀得到请求 ID。未提供 ID 时，工具按接收时间从新到旧返回最近保存的消息，默认 5 条，最多 20 条。批量补取时，使用 `pending: true` 并继续传入 `nextCursor`，可按从旧到新读取正文仍保留的未完成消息。检查每条消息的 `reply` 状态并复用已有投递；详见[消息状态与恢复](core.md)。回复前应匹配触发事件，最近消息可能已经处理过。
 
 补取读取配置的数据库，重启后仍可用，且只返回当前端点和频道绑定仍有权访问的消息。移除绑定、变更端点归属或清理正文后，旧内容不可用；数据保留期限仍然适用。读取不会领取、确认或重试消息，也不会加快宿主调度。不要轮询此工具等待新事件。

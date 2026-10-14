@@ -20,6 +20,15 @@ try {
       errorCode = error.code
     }
 
+    // Preserve the existing actionable credential error across independently installed SDK copies.
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'speech_credentials_missing'
+    ) {
+      errorCode = error.code
+    }
+
     // Validators, providers, and drivers may include credentials or body text in errors.
     process.stderr.write(
       `${JSON.stringify({ ok: false, errorCode, ...(error instanceof PluginError && error.plugin ? { plugin: error.plugin } : {}) })}\n`

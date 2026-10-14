@@ -39,13 +39,27 @@ Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中
 
 先认证请求，再取得仅允许访问指定端点的 Agent host。`host.status()` 从当前授权绑定列出 channel，包含原生发送可用性和限制。来信携带 `source.channel` 与 `source.senderId`，公开发送和媒体工具使用 channel ID。内部来信 request ID 仍用于事件去重和通知恢复。
 
-发送调用为 `sendMessage({ channel, text, idempotencyKey?, attachments? })`，目标来自 `source.channel.id` 或 status 返回的 channel，无需先收到消息。不提供键时，每次调用都会创建新发送；仅在重试同一次发送意图、文字和有序附件都相同时复用明确的键。返回 `queued` 表示消息已经保存，等待发送。`host.status({ deliveryId })` 仅在该投递所属 channel 仍获授权时返回投递信息。
+发送调用为 `sendMessage({ channel, text, idempotencyKey?, attachments?, reply? })`，目标来自 `source.channel.id` 或 status 返回的 channel，无需先收到消息。不关联来信的发送或进度消息未提供键时，每次调用都会创建新发送；仅在重试同一次发送意图、文字和有序附件都相同时复用明确的键。返回 `queued` 表示消息已经保存，等待发送。`host.status({ deliveryId })` 仅在该投递所属 channel 仍获授权时返回投递信息。
 
 附件可以引用所选 channel 中收到或已上传的媒体，也可以包含新生成的字节。签发上传凭证前，用 `host.media.authorize({ channelId })` 检查权限；`host.media.upload({ channelId, mediaId, upload })` 保存归属于该 channel、不可覆盖的媒体。`host.media.read({ channelId, mediaId })` 读取可用字节。存储会在写入事务中重新检查当前归属、封面和未发送上传额度。入队后，引用的上传文件释放暂存额度；每条消息独立检查媒体限制。上传不会创建待发送消息，之后再将返回的 ID 传给 `sendMessage`。附件形式见[媒体传输](../media.md)和 SDK 导出的类型。
 
 通过 host 在 `/agents/<agentId>` 下注册 Agent HTTP 路由。不要把端点凭据混入通知或工具返回的字段。dot 和 Grok 已通过 `packages/agent-mcp` 共用 MCP 认证和消息工具；修改这些接入时可以复用现有辅助代码。
 
-使用 `host.readMessages({ requestId?, limit? })` 补取保留的来信内容。读取会检查当前端点和频道归属，排除已清理记录、端点配置和私有回复目标。未传入 ID 时，先查询各授权端点最近的记录，再过滤权限，最多返回 `limit` 条消息（默认 5，最大 20）。读取不会领取或确认任务。
+使用 `host.readMessages({ requestId?, limit?, pending?, cursor? })` 补取保留的来信内容。读取会检查当前端点和频道归属，排除已清理记录、端点配置和私有回复目标。未传入 ID 时，先查询各授权端点最近的记录，再过滤权限，最多返回 `limit` 条消息（默认 5，最大 20）。读取不会领取或确认任务。设置 `pending: true` 可从旧到新读取仍保留正文的未完成来信，将最后一条的 `{ acceptedAt, requestId }` 作为 `cursor` 继续读取。MCP 封装会将其作为 `nextCursor` 返回。未完成筛选在数据库限量前应用当前有效频道和端点权限。每条读取结果包含 `reply` 状态。发送时传入 `reply: { requestId, kind: "progress" | "final" }` 可关联来信，也可用 `host.status({ requestId })` 查询状态。每条来信只有一个最终投递，全部发送完成后才算完成。详见[消息状态与恢复](core.md)。
+
+## 添加消息中间件
+
+`MiddlewarePlugin` 提供 `kind: 'middleware'`、离线的 `validateConfig`，以及返回 `MessageMiddleware` 的 `setup`。嵌入时向 `createCore({ middleware: [first, second], ... })` 传入有序数组；省略时保持普通转发。中间件标识必须唯一，因为保存的结果和扩展元数据使用此标识。CLI 通过顶层可选 `middleware` 数组选择插件并确定执行顺序，没有固定的插件数量上限。
+
+- `plan(message)` 同步筛选原始来信，不调用外部服务。返回不含凭据的 JSON 选项表示参与，返回 `undefined` 则跳过。核心将选中的标识、顺序和选项随原消息保存。筛选异常会跳过；凭据留在已配置的插件实例中。
+- `process({ message, options, readMedia, signal, observe })` 接收前序成功步骤的输出、已保存选项、取消信号和受限媒体读取能力。消息只含公开内容，不含端点密钥或私有回复目标。`readMedia(id)` 只能读取这条原始消息的附件。
+- 返回 `{ text, data? }`。核心验证、保存各步结果，将可选数据放在 `extensions[id]` 下。中间件不能改变路由或原始附件。某一步失败时保留此前内容，后续步骤仍可继续。整链合计限时十秒；必须响应取消，避免重试可能已计费的外部请求。
+
+新增内置中间件时，将其包加入 CLI 依赖，并在 `apps/cli/src/middleware.ts` 中注册导出的 `MiddlewarePlugin`。注册表统一提供配置校验和实例创建，配置 schema 与启动流程无需增加插件专用分支。注册顺序不决定执行顺序；只有用户配置的条目会执行 setup。省略数组或设为空数组表示全部关闭。未知或重复的插件标识会在 setup 前被拒绝。目前随包提供的实现是 `speech-tencent`；注册机制不会自动安装或发现外部包。
+
+原消息和执行计划入库后才确认接收，之后在通知或 Agent 读取前完成预处理。整链结果一起保存，通知重试复用这些结果。重启后，待处理任务仍使用接收时保存的顺序和选项；缺失的中间件以 `disabled` 跳过。预处理租约过期则记录 `interrupted`，转发原始内容，不重新执行整条链。删除插件不会删除已完成结果；保留期清理会同时清除所有派生文本和元数据。
+
+`@relanox/speech-tencent` 通过此接口使用腾讯云官方 SDK，仅在 setup 时加载。插件负责音频筛选、模型选项、转写标记、逐段失败元数据及语音指标，在所有目标 Agent 之前生效，不导入 dot、Grok、渠道或数据库代码。Core 没有 ASR 专用的运行接口或任务类型。详见[配置与升级说明](configuration.md#speech-to-text)。
 
 ## 保存 channel 和投递
 

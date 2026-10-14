@@ -41,7 +41,8 @@
     "@relanox/channel-whatsapp": "workspace:*",
     "@relanox/observability-standard": "workspace:*",
     "@relanox/storage-postgres": "workspace:*",
-    "@relanox/storage-sqlite": "workspace:*"
+    "@relanox/storage-sqlite": "workspace:*",
+    "@relanox/speech-tencent": "workspace:*"
   },
   "engines": {
     "node": ">=26 <27"

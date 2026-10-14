@@ -1,4 +1,5 @@
 import type { Storage } from '@relanox/sdk'
+import { upgradeRecords } from './upgrade-records.js'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { fileURLToPath } from 'node:url'
 import {
@@ -21,6 +22,7 @@ export function createLifecycle(
           new URL('../migrations', import.meta.url)
         )
       })
+      upgradeRecords(db)
     },
     async health() {
       try {

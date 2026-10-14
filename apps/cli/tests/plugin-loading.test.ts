@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { noopObservability } from '@relanox/sdk'
 import { afterEach, expect, test } from 'vitest'
 import { createPluginLoader } from '../src/plugin-loader.js'
+import { validateApp } from '../src/runtime.js'
 import { readConfig } from '../src/config.js'
 import { cli } from './fixture.js'
 
@@ -202,4 +203,55 @@ test('registered third-party package names resolve through the installed directo
   } finally {
     await database.close()
   }
+})
+
+// The new middleware assembly must use the same local precedence as channels
+// And storage. Registry unit tests exercise already supplied plugin instances,
+// So they cannot detect a hard-coded Tencent import bypassing this resolver.
+test('configured middleware uses the explicit local package and validates options without setup', async () => {
+  const root = await directory()
+  const marker = join(root, 'middleware-loaded')
+
+  const entry = new URL(
+    '../../../plugins/speech-tencent/dist/plugin.js',
+    import.meta.url
+  ).href
+
+  await plugin(root, {
+    kind: 'middleware',
+    id: 'speech-tencent',
+    code: `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'loaded'); export { createPlugin } from ${JSON.stringify(entry)}`
+  })
+
+  const config = await validateApp({
+    plugins: { load: { paths: [root] } },
+    relay: {
+      accounts: [],
+      endpoints: [],
+      bindings: [],
+      storage: { plugin: 'sqlite', config: { filename: ':memory:' } },
+      observability: { plugin: 'none', config: {} }
+    },
+    middleware: [
+      {
+        plugin: 'speech-tencent',
+        config: {
+          secretId: { env: 'PLUGIN_LOADING_ASR_ID' },
+          secretKey: { env: 'PLUGIN_LOADING_ASR_KEY' }
+        }
+      }
+    ]
+  })
+
+  expect(await readFile(marker, 'utf8')).toBe('loaded')
+  expect(config.middleware).toEqual([
+    {
+      plugin: 'speech-tencent',
+      config: {
+        secretId: { env: 'PLUGIN_LOADING_ASR_ID' },
+        secretKey: { env: 'PLUGIN_LOADING_ASR_KEY' },
+        engine: '16k_zh'
+      }
+    }
+  ])
 })

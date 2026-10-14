@@ -1,5 +1,6 @@
 import {
   validateConfig,
+  validateMiddleware,
   validateMediaOptions,
   validatePublicDeployment
 } from '@relanox/core'
@@ -14,6 +15,12 @@ export const appConfigSchema = z
     plugins: pluginConfigSchema.optional(),
     publicUrl: z.string().transform(validatePublicUrl).optional(),
     relay: z.unknown().transform(validateConfig),
+    middleware: z
+      .array(z.strictObject({ plugin: z.string().min(1), config: z.unknown() }))
+      .default([])
+      .superRefine((entries) => {
+        validateMiddleware(entries.map(({ plugin }) => ({ id: plugin })))
+      }),
     media: z.unknown().transform(validateMediaOptions).optional(),
     mediaLimits: z
       .strictObject({

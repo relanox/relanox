@@ -710,6 +710,9 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
 
   expect(await runtime.processDue()).toEqual({ processed: 1, conflicts: 0 })
   expect(settlements[0]?.lease).toEqual(lease)
+  if (settlements[0]?.kind !== 'dispatch') {
+    throw new Error('Expected dispatch settlement')
+  }
   expect((settlements[0]?.nextDueAt ?? 0) - (settlements[0]?.now ?? 0)).toBe(
     300_000
   )
@@ -745,6 +748,9 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
   ])
   await runtime.processDue()
   expect(settlements[2]?.outcome).toEqual({ status: 'accepted' })
+  if (settlements[2]?.kind !== 'dispatch') {
+    throw new Error('Expected dispatch settlement')
+  }
   expect(settlements[2]?.nextDueAt).toBe(settlements[2]?.now)
 })
 

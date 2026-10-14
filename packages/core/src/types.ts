@@ -7,7 +7,8 @@ import type {
   RelanoxConfig,
   StatusFilter,
   Health,
-  MutationResult
+  MutationResult,
+  MessageMiddleware
 } from '@relanox/sdk'
 
 export type WorkerOptions = {
@@ -21,6 +22,7 @@ export type MediaPublisherOptions = {
 }
 
 export type CoreOptions = {
+  readonly middleware?: readonly MessageMiddleware[]
   readonly publicUrl?: string
   readonly media?: MediaPublisherOptions
   readonly config: unknown

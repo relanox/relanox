@@ -8,7 +8,9 @@ import type {
   Observability,
   Storage,
   MediaKind,
-  ChannelMediaHost
+  ChannelMediaHost,
+  MessageMiddleware,
+  InboundSnapshot
 } from '@relanox/sdk'
 import type { WorkerConfig } from '../worker/options.js'
 import { bindingKey } from '../config/relations.js'
@@ -18,8 +20,10 @@ import { ingestSchema, boundedText } from '../validation.js'
 import { inboundMedia } from '../media.js'
 import { conversationAddress } from './conversations.js'
 import { createOperationTracer } from './tracing.js'
+import { planMiddleware } from '../middleware.js'
 
 type ChannelHostOptions = {
+  readonly middleware: readonly MessageMiddleware[]
   readonly mediaPublisher?: ChannelMediaHost
   readonly account: AccountConfig
   readonly bindings: ReadonlyMap<string, Binding>
@@ -35,6 +39,7 @@ type ChannelHostOptions = {
 /** Authorizes sender and conversation before persisting the immutable inbound snapshot. */
 export function createChannelHost({
   account,
+  middleware,
   mediaPublisher,
   bindings,
   endpoints,
@@ -111,21 +116,28 @@ export function createChannelHost({
         throw new CoreError('media_not_supported')
       }
 
+      const snapshot: InboundSnapshot = jsonSnapshot({
+        ...message,
+        ...(media.length > 0
+          ? { attachments: media.map((item) => item.reference) }
+          : {}),
+        requestId: crypto.randomUUID(),
+        channel: conversationAddress(binding, endpoint, account.channel),
+        endpoint,
+        acceptedAt: Date.now()
+      })
+
+      const plan = planMiddleware(middleware, snapshot)
+
       const receipt = await traced(
         'ingest',
         async (trace) =>
           storage.acceptInbound(
-            jsonSnapshot({
-              ...message,
-              ...(media.length > 0
-                ? { attachments: media.map((item) => item.reference) }
-                : {}),
-              ...(trace ? { trace } : {}),
-              requestId: crypto.randomUUID(),
-              channel: conversationAddress(binding, endpoint, account.channel),
-              endpoint,
-              acceptedAt: Date.now()
-            }),
+            {
+              ...snapshot,
+              ...(plan.length > 0 ? { middleware: plan } : {}),
+              ...(trace ? { trace } : {})
+            },
             media
           ),
         input.trace
