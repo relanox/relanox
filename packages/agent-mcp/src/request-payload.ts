@@ -4,7 +4,7 @@ import type { InboundSnapshot, AgentMessage } from '@relanox/sdk'
 
 export type AgentRequestPayload = Pick<
   AgentMessage,
-  'text' | 'context' | 'attachments' | 'transcriptions'
+  'text' | 'context' | 'attachments' | 'extensions'
 > & {
   readonly source: {
     readonly channel: InboundSnapshot['channel']
@@ -15,20 +15,13 @@ export type AgentRequestPayload = Pick<
 export function projectAgentRequest(
   request: Pick<
     AgentMessage,
-    | 'text'
-    | 'context'
-    | 'attachments'
-    | 'channel'
-    | 'senderId'
-    | 'transcriptions'
+    'text' | 'context' | 'attachments' | 'channel' | 'senderId' | 'extensions'
   >
 ): AgentRequestPayload {
   return {
     text: request.text,
     context: request.context,
-    ...(request.transcriptions
-      ? { transcriptions: request.transcriptions }
-      : {}),
+    ...(request.extensions ? { extensions: request.extensions } : {}),
     ...(request.attachments ? { attachments: request.attachments } : {}),
     source: {
       channel: request.channel,
@@ -40,22 +33,7 @@ export function projectAgentRequest(
 export const agentRequestSchema = z.strictObject({
   text: z.string(),
   context: z.json(),
-  transcriptions: z
-    .array(
-      z.discriminatedUnion('status', [
-        z.strictObject({
-          mediaId: z.string(),
-          status: z.literal('transcribed'),
-          text: z.string()
-        }),
-        z.strictObject({
-          mediaId: z.string(),
-          status: z.literal('failed'),
-          errorCode: z.string()
-        })
-      ])
-    )
-    .optional(),
+  extensions: z.record(z.string(), z.json()).optional(),
   attachments: z
     .array(
       z.strictObject({

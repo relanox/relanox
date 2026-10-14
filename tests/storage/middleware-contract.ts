@@ -23,21 +23,21 @@ const audio = {
 const input = {
   ...snapshot(),
   attachments: [audio.reference],
-  speechToText: { provider: 'tencent' as const, engine: '16k_zh' }
+  middleware: [{ id: 'prefix', options: { prefix: 'processed' } }]
 }
 
 const scan = {
   now: 100,
   leaseMs: 100,
   limit: 1,
-  leaseOwner: 'speech-test',
+  leaseOwner: 'middleware-test',
   safeRetryAccountIds: []
 }
 
 const pending = { channelIds: ['channel'], endpointIds: ['ep'], limit: 20 }
 
 /** Protect preparation visibility, fencing and retention in both real storage implementations. */
-export function speechContract(
+export function middlewareContract(
   name: string,
   open: () => Promise<Storage>
 ): void {
@@ -62,7 +62,7 @@ export function speechContract(
           outbound: { ...message.outbound, reply }
         })
       ).toEqual({ status: 'not_found' })
-      await storage.acceptInbound(snapshot('ready', 90))
+      await storage.acceptInbound({ ...snapshot('ready', 90), middleware: [] })
       expect(
         (
           await storage.listInbound({
@@ -81,9 +81,9 @@ export function speechContract(
       expect(await storage.listInbound({ limit: 10 })).toHaveLength(2)
     })
 
-    it('persists derived results without changing raw content, fences settlement and redacts transcripts with messages', async () => {
+    it('persists derived results without changing raw content, fences settlement and redacts middleware outputs with messages', async () => {
       const work = required((await storage.takeDue(scan))[0])
-      expect(work.kind).toBe('transcribe')
+      expect(work.kind).toBe('prepare')
       expect(
         await storage.settleAttempt({
           kind: 'dispatch',
@@ -96,25 +96,28 @@ export function speechContract(
       ).toEqual({ status: 'conflict' })
       expect(
         await storage.settleAttempt({
-          kind: 'transcribe',
+          kind: 'prepare',
           id: 'r1',
           lease: work.lease,
-          outcome: { status: 'prepared', transcriptions: [] },
+          outcome: { status: 'prepared', preparation: [] },
           now: 101
         })
       ).toEqual({ status: 'conflict' })
 
       const settlement = {
-        kind: 'transcribe' as const,
+        kind: 'prepare' as const,
         id: 'r1',
         lease: work.lease,
         outcome: {
           status: 'prepared' as const,
-          transcriptions: [
+          preparation: [
             {
-              mediaId: 'voice',
-              status: 'transcribed' as const,
-              text: 'private transcript'
+              id: 'prefix',
+              status: 'completed' as const,
+              output: {
+                text: 'private derived text',
+                data: { detail: 'private metadata' }
+              }
             }
           ]
         },
@@ -130,7 +133,7 @@ export function speechContract(
       const prepared = required(await storage.getInbound('r1'))
       expect(prepared.snapshot).toEqual(input)
       expect(prepared.dispatch.attempts).toBe(0)
-      expect(prepared.transcriptions).toEqual(settlement.outcome.transcriptions)
+      expect(prepared.preparation).toEqual(settlement.outcome.preparation)
       expect(await storage.listPendingInbound(pending)).toHaveLength(1)
 
       const dispatch = required(
@@ -140,7 +143,7 @@ export function speechContract(
       expect(dispatch.kind).toBe('dispatch')
       expect(
         await storage.settleAttempt({
-          kind: 'transcribe',
+          kind: 'prepare',
           id: 'r1',
           lease: dispatch.lease,
           outcome: settlement.outcome,
@@ -161,15 +164,15 @@ export function speechContract(
       await storage.cleanup({ before, limit: 10 })
       expect(await storage.getInbound('r1')).toMatchObject({
         snapshot: { text: '', attachments: [] },
-        transcriptions: [],
+        preparation: [],
         redactedAt: before
       })
       expect(await storage.media?.get('channel', 'voice')).toBeUndefined()
     })
 
-    it('falls back after an expired transcription lease without repeating recognition or confusing dispatch expiry', async () => {
+    it('falls back after an expired middleware lease without repeating processing or confusing dispatch expiry', async () => {
       const first = required((await storage.takeDue(scan))[0])
-      expect(first.kind).toBe('transcribe')
+      expect(first.kind).toBe('prepare')
       expect(await storage.takeDue({ ...scan, now: 150 })).toEqual([])
 
       const recovered = required(
@@ -179,20 +182,20 @@ export function speechContract(
       expect(recovered.kind).toBe('dispatch')
       expect(await storage.getInbound('r1')).toMatchObject({
         snapshot: input,
-        transcriptions: [
-          { mediaId: 'voice', status: 'failed', errorCode: 'interrupted' }
+        preparation: [
+          { id: 'prefix', status: 'failed', errorCode: 'interrupted' }
         ],
         dispatch: { status: 'due', attempts: 0 }
       })
       expect(
         await storage.settleAttempt({
-          kind: 'transcribe',
+          kind: 'prepare',
           id: 'r1',
           lease: first.lease,
           outcome: {
             status: 'prepared',
-            transcriptions: [
-              { mediaId: 'voice', status: 'transcribed', text: 'late' }
+            preparation: [
+              { id: 'prefix', status: 'completed', output: { text: 'late' } }
             ]
           },
           now: 202

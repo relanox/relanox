@@ -21,8 +21,12 @@ import { alias } from 'drizzle-orm/pg-core'
 import { conversations, inbound, outbound, media } from './schema.js'
 
 const prepared = or(
-  isNull(sql`${inbound.record}#>'{snapshot,speechToText}'`),
-  isNotNull(sql`${inbound.record}->'transcriptions'`)
+  isNull(sql`${inbound.record}#>'{snapshot,middleware}'`),
+  eq(
+    sql<number>`jsonb_array_length(${inbound.record}#>'{snapshot,middleware}')`,
+    0
+  ),
+  isNotNull(sql`${inbound.record}->'preparation'`)
 )
 
 export function createInspectionOperations(
@@ -230,7 +234,7 @@ export function createInspectionOperations(
           await saveInbound(client, {
             ...record,
             version: record.version + 1,
-            ...(record.transcriptions ? { transcriptions: [] } : {}),
+            ...(record.preparation ? { preparation: [] } : {}),
             snapshot: {
               ...record.snapshot,
               text: '',

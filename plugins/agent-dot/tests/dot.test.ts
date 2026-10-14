@@ -964,7 +964,7 @@ describe('dot MCP Events and tools', () => {
     ).toEqual([
       'text',
       'context',
-      'transcriptions',
+      'extensions',
       'attachments',
       'source',
       'requestId',
@@ -1058,7 +1058,7 @@ describe('dot MCP Events and tools', () => {
         request: {
           ...request,
           text: `original\n\n[Voice transcript: ${mediaId}]\n你好`,
-          transcriptions
+          extensions: { 'speech-tencent': { transcriptions } }
         },
         signal: new AbortController().signal
       })
@@ -1066,7 +1066,11 @@ describe('dot MCP Events and tools', () => {
     expect(parseWire(receiver.traffic[1]?.body ?? '')).toMatchObject({
       data: {
         text: `original\n\n[Voice transcript: ${mediaId}]\n你好`,
-        transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }],
+        extensions: {
+          'speech-tencent': {
+            transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }]
+          }
+        },
         attachments: [
           {
             id: mediaId,

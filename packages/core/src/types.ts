@@ -8,7 +8,7 @@ import type {
   StatusFilter,
   Health,
   MutationResult,
-  SpeechToTextProvider
+  MessageMiddleware
 } from '@relanox/sdk'
 
 export type WorkerOptions = {
@@ -22,7 +22,7 @@ export type MediaPublisherOptions = {
 }
 
 export type CoreOptions = {
-  readonly speechToText?: SpeechToTextProvider
+  readonly middleware?: readonly MessageMiddleware[]
   readonly publicUrl?: string
   readonly media?: MediaPublisherOptions
   readonly config: unknown

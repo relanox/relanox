@@ -13,14 +13,12 @@ import { jsonSnapshot } from '../json.js'
 import { validateDispatchOutcome, validateSendOutcome } from './outcomes.js'
 import { sendChunk } from './media.js'
 import { retryDelay, retryBudgetExhausted } from './retry.js'
-import { preparedRequest, transcribeRequest } from '../speech.js'
+import { preparedRequest } from '../middleware.js'
+import { prepareRequest } from './prepare.js'
 
 /** Owns one-at-a-time leases, plugin deadlines, retry settlement, and worker readiness. */
 export function createWorker(
-  options: Pick<
-    CoreOptions,
-    'storage' | 'channels' | 'agents' | 'speechToText'
-  >,
+  options: Pick<CoreOptions, 'storage' | 'channels' | 'agents' | 'middleware'>,
   config: RelanoxConfig,
   worker: WorkerConfig,
   observe: Observability,
@@ -121,20 +119,20 @@ export function createWorker(
   }
 
   async function settlementFor(work: DueWork): Promise<Settlement> {
-    if (work.kind === 'transcribe') {
-      const transcriptions = await transcribeRequest(
+    if (work.kind === 'prepare') {
+      const preparation = await prepareRequest(
         work.record,
         storage,
-        options.speechToText,
-        worker.callTimeoutMs,
+        options.middleware ?? [],
+        worker,
         observe
       )
 
       return {
-        kind: 'transcribe',
+        kind: 'prepare',
         id: work.record.snapshot.requestId,
         lease: work.lease,
-        outcome: { status: 'prepared', transcriptions },
+        outcome: { status: 'prepared', preparation },
         now: Date.now()
       }
     }

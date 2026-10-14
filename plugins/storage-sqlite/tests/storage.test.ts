@@ -1,5 +1,5 @@
 import { replyContract } from '../../../tests/storage/reply-contract.js'
-import { speechContract } from '../../../tests/storage/speech-contract.js'
+import { middlewareContract } from '../../../tests/storage/middleware-contract.js'
 import type { Storage } from '@relanox/sdk'
 import { asset, mediaContract } from '../../../tests/storage/media-contract.js'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -15,7 +15,7 @@ import {
 } from '../../../tests/contracts/storage-contract.js'
 import { createSqliteStorage } from '../src/index.js'
 
-speechContract('SQLite speech preparation', async () =>
+middlewareContract('SQLite middleware preparation', async () =>
   createSqliteStorage({ filename: ':memory:' })
 )
 

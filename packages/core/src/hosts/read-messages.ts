@@ -1,11 +1,11 @@
 import { z } from 'zod'
-import { needsTranscription } from '@relanox/sdk'
+import { needsPreparation } from '@relanox/sdk'
 import type { AgentMessage, InboundRecord, ScopedAgentHost } from '@relanox/sdk'
 import type { AgentHostOptions } from './agent.js'
 import { authorizedConversation } from './conversations.js'
 import { replyStatus } from './reply-status.js'
 import { textId } from '../validation.js'
-import { preparedRequest } from '../speech.js'
+import { preparedRequest } from '../middleware.js'
 
 const inputSchema = z
   .strictObject({
@@ -59,7 +59,7 @@ export async function readMessages(
     .filter(
       (record) =>
         record.redactedAt === undefined &&
-        !needsTranscription(record) &&
+        !needsPreparation(record) &&
         authorizedConversation(
           {
             address: record.snapshot.channel,
@@ -94,9 +94,7 @@ function projectMessage(snapshot: AgentMessage): AgentMessage {
     senderId: snapshot.senderId,
     text: snapshot.text,
     context: snapshot.context,
-    ...(snapshot.transcriptions
-      ? { transcriptions: snapshot.transcriptions }
-      : {}),
+    ...(snapshot.extensions ? { extensions: snapshot.extensions } : {}),
     ...(snapshot.attachments ? { attachments: snapshot.attachments } : {})
   }
 }

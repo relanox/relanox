@@ -42,7 +42,7 @@ export class SpeechConfigurationError extends Error {
 
   constructor() {
     super(
-      'Tencent speechToText requires both configured SecretId and SecretKey environment variables'
+      'Tencent speech middleware requires both configured SecretId and SecretKey environment variables'
     )
     this.name = 'SpeechConfigurationError'
   }

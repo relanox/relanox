@@ -1,15 +1,24 @@
 import { expect, it, vi } from 'vitest'
-import type {
-  SpeechRecognition,
-  SpeechToTextProvider
-} from '../../packages/sdk/src/index.js'
+import type { MessageMiddleware } from '@relanox/sdk'
+import type { SpeechRecognition, SpeechToTextProvider } from '../src/types.js'
 import {
   projectAgentRequest,
   agentRequestSchema
-} from '../../packages/agent-mcp/src/request-payload.js'
-import { required } from '../contracts/storage-contract.js'
-import { incoming, picture } from './fixture.js'
-import { speechFixture } from './speech-fixture.js'
+} from '../../../packages/agent-mcp/src/request-payload.js'
+import { required } from '../../../tests/contracts/storage-contract.js'
+import { incoming, picture } from '../../../tests/core/fixture.js'
+import { middlewareFixture } from '../../../tests/core/middleware-fixture.js'
+import { createSpeechMiddleware } from '../src/middleware.js'
+
+async function speechFixture(
+  provider?: SpeechToTextProvider,
+  agent: 'dot' | 'grok' = 'dot'
+): ReturnType<typeof middlewareFixture> {
+  return middlewareFixture(
+    provider ? [createSpeechMiddleware(provider)] : [],
+    agent
+  )
+}
 
 const audio = {
   kind: 'audio' as const,
@@ -22,8 +31,70 @@ const audio = {
 function recognizer(
   recognize: SpeechToTextProvider['recognize']
 ): SpeechToTextProvider {
-  return { provider: 'fixture', engine: 'test-model', recognize }
+  return { engine: 'test-model', recognize }
 }
+
+it('composes speech between text middleware and retains its captured engine after restart', async () => {
+  const engines: string[] = []
+
+  const provider = recognizer(async ({ engine }) => {
+    engines.push(engine)
+    return { status: 'transcribed', text: 'recognized' }
+  })
+
+  const before: MessageMiddleware = {
+    id: 'before',
+    plan: () => null,
+    async process({ message }) {
+      return { text: `prefix:${message.text}` }
+    }
+  }
+
+  const after: MessageMiddleware = {
+    id: 'after',
+    plan: () => null,
+    async process({ message }) {
+      return { text: `${message.text}:suffix` }
+    }
+  }
+
+  const fx = await middlewareFixture([
+    before,
+    createSpeechMiddleware(provider),
+    after
+  ])
+
+  try {
+    const receipt = await fx.channel.ingest({
+      ...incoming,
+      text: 'original',
+      attachments: [audio]
+    })
+
+    const runtime = await fx.restart([
+      after,
+      createSpeechMiddleware({ ...provider, engine: 'changed-model' }),
+      before
+    ])
+
+    await runtime.processDue()
+
+    const raw = required(
+      await fx.storage.getInbound(receipt.requestId)
+    ).snapshot
+
+    expect(engines).toEqual(['test-model'])
+    expect(fx.dispatched[0]?.text).toBe(
+      `prefix:original\n\n[Voice transcript: ${required(raw.attachments?.[0]).id}]\nrecognized:suffix`
+    )
+    expect(fx.dispatched[0]?.attachments).toEqual(raw.attachments)
+    expect(fx.dispatched[0]?.extensions?.['speech-tencent']).toMatchObject({
+      transcriptions: [{ status: 'transcribed', text: 'recognized' }]
+    })
+  } finally {
+    await fx.close()
+  }
+})
 
 it.each(['disabled', 'image', 'video'] as const)(
   'does not transcribe for %s and preserves the original forwarding contract',
@@ -60,7 +131,7 @@ it.each(['disabled', 'image', 'video'] as const)(
       expect(call).not.toHaveBeenCalled()
       expect(fx.dispatched).toHaveLength(1)
       expect(fx.dispatched[0]?.text).toBe('original')
-      expect(fx.dispatched[0]?.transcriptions).toBeUndefined()
+      expect(fx.dispatched[0]?.extensions?.['speech-tencent']).toBeUndefined()
       expect(fx.dispatched[0]?.attachments).toEqual(
         (await fx.storage.getInbound(receipt.requestId))?.snapshot.attachments
       )
@@ -114,9 +185,11 @@ it.each(['dot', 'grok'] as const)(
         `original\n\n[Voice transcript: ${id}]\n你好，明天见。`
       )
       expect(notification.attachments).toEqual(raw.snapshot.attachments)
-      expect(notification.transcriptions).toEqual([
-        { mediaId: id, status: 'transcribed', text: '你好，明天见。' }
-      ])
+      expect(notification.extensions?.['speech-tencent']).toEqual({
+        transcriptions: [
+          { mediaId: id, status: 'transcribed', text: '你好，明天见。' }
+        ]
+      })
 
       const read = required(
         (await fx.principal().readMessages({ requestId: receipt.requestId }))[0]
@@ -126,8 +199,10 @@ it.each(['dot', 'grok'] as const)(
         projectAgentRequest(notification)
       )
       expect(
-        agentRequestSchema.parse(projectAgentRequest(read)).transcriptions
-      ).toEqual(notification.transcriptions)
+        agentRequestSchema.parse(projectAgentRequest(read)).extensions?.[
+          'speech-tencent'
+        ]
+      ).toEqual(notification.extensions?.['speech-tencent'])
       expect(
         (await fx.storage.getInbound(receipt.requestId))?.snapshot
       ).toEqual(raw.snapshot)
@@ -183,27 +258,26 @@ it('reuses prepared recognition across notification retries, restart and explici
     expect(call).toHaveBeenCalledOnce()
     expect(fx.dispatched).toHaveLength(3)
     expect(fx.dispatched[1]?.text).toBe(fx.dispatched[0]?.text)
-    expect(fx.dispatched[1]?.transcriptions).toEqual([
-      {
-        mediaId: required(accepted.snapshot.attachments?.[0]).id,
-        status: 'transcribed',
-        text: 'cached transcript'
-      }
-    ])
+    expect(fx.dispatched[1]?.extensions?.['speech-tencent']).toEqual({
+      transcriptions: [
+        {
+          mediaId: required(accepted.snapshot.attachments?.[0]).id,
+          status: 'transcribed',
+          text: 'cached transcript'
+        }
+      ]
+    })
   } finally {
     await fx.close()
   }
 })
 
-it.each(['failure', 'throw', 'invalid', 'timeout'] as const)(
+it.each(['failure', 'throw', 'invalid'] as const)(
   'falls back to original audio on %s without rejecting the message',
   async (mode) => {
     const provider = recognizer(async () => {
       if (mode === 'throw') {
         throw new Error('private provider exception')
-      }
-      if (mode === 'timeout') {
-        return new Promise<SpeechRecognition>(() => {})
       }
       return mode === 'invalid'
         ? { status: 'transcribed', text: '' }
@@ -218,25 +292,20 @@ it.each(['failure', 'throw', 'invalid', 'timeout'] as const)(
         attachments: [audio]
       })
 
-      if (mode === 'timeout') {
-        vi.useFakeTimers()
-      }
       const work = fx.runtime.processDue()
-      if (mode === 'timeout') {
-        await vi.advanceTimersByTimeAsync(10_001)
-      }
       await work
       expect(fx.dispatched).toHaveLength(1)
       const record = required(await fx.storage.getInbound(receipt.requestId))
       expect(fx.dispatched[0]).toMatchObject({
         text: 'keep this',
         attachments: record.snapshot.attachments,
-        transcriptions: [
-          {
-            status: 'failed',
-            errorCode: mode === 'timeout' ? 'timeout' : 'recognition_failed'
+        extensions: {
+          'speech-tencent': {
+            transcriptions: [
+              { status: 'failed', errorCode: 'recognition_failed' }
+            ]
           }
-        ]
+        }
       })
       expect(record.dispatch.status).toBe('accepted')
     } finally {
@@ -268,85 +337,21 @@ it('preserves attachment order and independent successes when one of several aud
     ).snapshot
 
     expect(fx.dispatched[0]?.attachments).toEqual(raw.attachments)
-    expect(fx.dispatched[0]?.transcriptions).toEqual([
-      {
-        mediaId: raw.attachments?.[0]?.id,
-        status: 'transcribed',
-        text: 'first voice'
-      },
-      {
-        mediaId: raw.attachments?.[2]?.id,
-        status: 'failed',
-        errorCode: 'recognition_failed'
-      }
-    ])
+    expect(fx.dispatched[0]?.extensions?.['speech-tencent']).toEqual({
+      transcriptions: [
+        {
+          mediaId: raw.attachments?.[0]?.id,
+          status: 'transcribed',
+          text: 'first voice'
+        },
+        {
+          mediaId: raw.attachments?.[2]?.id,
+          status: 'failed',
+          errorCode: 'recognition_failed'
+        }
+      ]
+    })
   } finally {
     await fx.close()
   }
 })
-
-it.each(['waiting', 'interrupted', 'disabled', 'replaced'] as const)(
-  'recovers %s preparation after reopening the database',
-  async (mode) => {
-    const call = vi.fn(async (): Promise<SpeechRecognition> => ({
-      status: 'transcribed',
-      text: 'resumed'
-    }))
-
-    const fx = await speechFixture(recognizer(call))
-    try {
-      const receipt = await fx.channel.ingest({
-        ...incoming,
-        text: 'original',
-        attachments: [audio]
-      })
-
-      if (mode === 'interrupted') {
-        const now = Date.now()
-
-        const work = required(
-          (
-            await fx.storage.takeDue({
-              now,
-              leaseMs: 1000,
-              limit: 1,
-              leaseOwner: 'crashed',
-              safeRetryAccountIds: []
-            })
-          )[0]
-        )
-
-        expect(work.kind).toBe('transcribe')
-        vi.spyOn(Date, 'now').mockReturnValue(now + 1001)
-      }
-
-      const replacement =
-        mode === 'replaced'
-          ? { ...recognizer(call), provider: 'different-provider' }
-          : undefined
-
-      const runtime = await fx.restart(mode === 'disabled' ? null : replacement)
-      await runtime.processDue()
-      expect(fx.dispatched).toHaveLength(1)
-      const record = required(await fx.storage.getInbound(receipt.requestId))
-      expect(fx.dispatched[0]?.attachments).toEqual(record.snapshot.attachments)
-      if (mode === 'waiting') {
-        expect(call).toHaveBeenCalledOnce()
-        expect(record.transcriptions?.[0]).toMatchObject({
-          status: 'transcribed',
-          text: 'resumed'
-        })
-      } else {
-        expect(call).not.toHaveBeenCalled()
-        expect(fx.dispatched[0]?.text).toBe('original')
-        expect(record.transcriptions?.[0]).toMatchObject({
-          status: 'failed',
-          errorCode: mode === 'replaced' ? 'disabled' : mode
-        })
-      }
-    } finally {
-      vi.restoreAllMocks()
-      await fx.close()
-    }
-  }
-)

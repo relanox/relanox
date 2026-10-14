@@ -8,7 +8,7 @@ import { cli, fixture } from './fixture.js'
 afterEach(() => vi.unstubAllEnvs())
 
 const speech = {
-  plugin: 'tencent',
+  plugin: 'speech-tencent',
   config: {
     secretId: { env: 'TEST_ASR_ID' },
     secretKey: { env: 'TEST_ASR_KEY' }
@@ -24,10 +24,10 @@ const relay = {
 }
 
 it('keeps speech opt-in, supplies the default engine and only accepts environment credential references', () => {
-  expect(appConfigSchema.parse({ relay }).speechToText).toBeUndefined()
+  expect(appConfigSchema.parse({ relay }).middleware).toEqual([])
   expect(
-    appConfigSchema.parse({ relay, speechToText: speech }).speechToText
-  ).toEqual({ ...speech, config: { ...speech.config, engine: '16k_zh' } })
+    appConfigSchema.parse({ relay, middleware: [speech] }).middleware
+  ).toEqual([{ ...speech, config: { ...speech.config, engine: '16k_zh' } }])
   for (const value of [
     { ...speech.config, secretKey: undefined },
     { ...speech.config, secretKey: 'literal-secret' },
@@ -38,14 +38,14 @@ it('keeps speech opt-in, supplies the default engine and only accepts environmen
     expect(() =>
       appConfigSchema.parse({
         relay,
-        speechToText: { ...speech, config: value }
+        middleware: [{ ...speech, config: value }]
       })
     ).toThrow()
   }
   expect(() =>
     appConfigSchema.parse({
       relay,
-      speechToText: { ...speech, plugin: 'other' }
+      middleware: [{ ...speech, plugin: 'other' }]
     })
   ).toThrow()
 })
@@ -56,7 +56,7 @@ it('reports missing top-level credentials and fails startup instead of silently 
 
   const config = appConfigSchema.parse({
     relay,
-    speechToText: speech,
+    middleware: [speech],
     server: { port: 0, managementPort: 0 }
   })
 
@@ -76,7 +76,7 @@ it('makes a missing speech credential actionable at the CLI without printing the
   vi.stubEnv('TEST_ASR_ID', 'private-secret-id')
   vi.stubEnv('TEST_ASR_KEY', '')
   try {
-    await value.save({ ...value.config, speechToText: speech })
+    await value.save({ ...value.config, middleware: [speech] })
     const result = await cli(value.configPath, ['run'])
     expect(result.code).toBe(1)
     expect(JSON.parse(result.stderr)).toEqual({

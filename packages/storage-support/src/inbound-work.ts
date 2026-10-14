@@ -1,14 +1,14 @@
-import { failedTranscriptions, needsTranscription } from '@relanox/sdk'
+import { failedPreparation, needsPreparation } from '@relanox/sdk'
 import type { InboundRecord, Settlement } from '@relanox/sdk'
 import { isActiveLease } from './record-contracts.js'
 
 /** An interrupted cloud call may have been charged. Fall back instead of repeating it. */
 export function expireInbound(record: InboundRecord): InboundRecord {
-  if (needsTranscription(record)) {
+  if (needsPreparation(record)) {
     return {
       ...record,
       version: record.version + 1,
-      transcriptions: failedTranscriptions(record.snapshot, 'interrupted'),
+      preparation: failedPreparation(record.snapshot, 'interrupted'),
       dispatch: {
         status: 'due',
         attempts: record.dispatch.attempts,
@@ -32,25 +32,23 @@ export function settleInbound(
   if (
     record.dispatch.status !== 'due' ||
     !isActiveLease(record.dispatch.lease, input.lease, input.now) ||
-    needsTranscription(record) !== (input.kind === 'transcribe')
+    needsPreparation(record) !== (input.kind === 'prepare')
   ) {
     return undefined
   }
-  if (input.kind === 'transcribe') {
-    const audioIds = (record.snapshot.attachments ?? [])
-      .filter((media) => media.kind === 'audio')
-      .map((media) => media.id)
+  if (input.kind === 'prepare') {
+    const stepIds = (record.snapshot.middleware ?? []).map((step) => step.id)
 
-    const results = input.outcome.transcriptions
+    const results = input.outcome.preparation
     if (
-      audioIds.length !== results.length ||
-      results.some((result, index) => result.mediaId !== audioIds[index])
+      stepIds.length !== results.length ||
+      results.some((result, index) => result.id !== stepIds[index])
     ) {
       return undefined
     }
     return {
       ...record,
-      transcriptions: results,
+      preparation: results,
       version: record.version + 1,
       dispatch: {
         status: 'due',

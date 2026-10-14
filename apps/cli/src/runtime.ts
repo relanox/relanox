@@ -29,9 +29,11 @@ export async function startRuntime(input: unknown): Promise<{
 }> {
   const config = validateApp(input)
 
-  const speechToText = config.speechToText
-    ? await tencentSpeechPlugin.setup(config.speechToText.config)
-    : undefined
+  const middleware = await Promise.all(
+    config.middleware.map(async (item) =>
+      tencentSpeechPlugin.setup(item.config)
+    )
+  )
 
   const { channels, agents } = loadPlugins(config.relay)
 
@@ -55,7 +57,7 @@ export async function startRuntime(input: unknown): Promise<{
       channels,
       agents,
       observe,
-      ...(speechToText ? { speechToText } : {}),
+      middleware,
       ...(config.publicUrl === undefined
         ? {}
         : { publicUrl: config.publicUrl }),

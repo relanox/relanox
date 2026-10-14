@@ -13,14 +13,17 @@ export const appConfigSchema = z
   .strictObject({
     publicUrl: z.string().transform(validatePublicUrl).optional(),
     relay: z.unknown().transform(validateConfig),
-    speechToText: z
-      .strictObject({
-        plugin: z.literal('tencent'),
-        config: z
-          .unknown()
-          .transform((input) => tencentSpeechPlugin.validateConfig(input))
-      })
-      .optional(),
+    middleware: z
+      .array(
+        z.strictObject({
+          plugin: z.literal('speech-tencent'),
+          config: z
+            .unknown()
+            .transform((input) => tencentSpeechPlugin.validateConfig(input))
+        })
+      )
+      .max(1)
+      .default([]),
     media: z.unknown().transform(validateMediaOptions).optional(),
     mediaLimits: z
       .strictObject({

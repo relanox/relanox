@@ -14,3 +14,5 @@ export const configSchema = configShapeSchema.superRefine(
 export function validateConfig(input: unknown): RelanoxConfig {
   return configSchema.parse(input) as RelanoxConfig
 }
+
+export { validateMiddleware } from './middleware.js'
