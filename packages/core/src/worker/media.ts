@@ -71,6 +71,7 @@ export async function sendChunk(
       return { status: 'rejected', errorCode: 'media_integrity_error' }
     }
   }
+  signal.throwIfAborted()
   return channel.send({
     deliveryId: record.deliveryId,
     channelId: record.channelId,

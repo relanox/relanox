@@ -2,7 +2,7 @@ import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
 import { expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { createQqChannel } from '../src/index.js'
-import { wireText } from '../src/transport.js'
+import { wireText } from '../../channel-wecom/src/transport.js'
 import {
   assemble,
   peer,
@@ -16,7 +16,10 @@ installPeerNetwork()
 // https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html
 // Native replay/RESUMED dispatch is handled independently of the READY state:
 // https://github.com/tencent-connect/qqbot-nodejs/blob/f77fab29e78f5c69a4194237aab81e12f41afb3e/src/protocol/gateway/gateway-connection.ts
-async function fixture(failure: 'byte_limit' | 'transient'): Promise<{
+async function fixture(
+  failure: 'byte_limit' | 'transient',
+  kind: 'file' | 'image' | 'video' | 'voice' | 'asr' | 'mixed' = 'file'
+): Promise<{
   remote: Awaited<ReturnType<typeof peer>>
   local: Awaited<ReturnType<typeof assemble>>
 }> {
@@ -74,16 +77,42 @@ async function fixture(failure: 'byte_limit' | 'transient'): Promise<{
               t: 'C2C_MESSAGE_CREATE',
               d: {
                 id: 'file-message',
-                content: '',
+                content: kind === 'file' ? '' : 'caption',
                 timestamp: new Date().toISOString(),
                 message_type: 0,
                 author: { user_openid: 'user' },
                 attachments: [
                   {
                     url: `${remote.http}/file`,
-                    filename: 'file.bin',
-                    content_type: 'file'
-                  }
+                    filename: {
+                      file: 'file.bin',
+                      image: 'image.png',
+                      video: 'clip.mp4',
+                      voice: 'file.bin',
+                      asr: 'file.bin',
+                      mixed: 'file.bin'
+                    }[kind],
+                    content_type: {
+                      file: 'file',
+                      image: 'image/png',
+                      video: 'file',
+                      voice: 'voice',
+                      asr: 'voice',
+                      mixed: 'file'
+                    }[kind],
+                    ...(kind === 'asr'
+                      ? { asr_refer_text: 'QQ recognized speech' }
+                      : {})
+                  },
+                  ...(kind === 'mixed'
+                    ? [
+                        {
+                          url: `${remote.http}/file`,
+                          filename: 'kept.txt',
+                          content_type: 'text/plain'
+                        }
+                      ]
+                    : [])
                 ]
               }
             })
@@ -124,50 +153,76 @@ async function fixture(failure: 'byte_limit' | 'transient'): Promise<{
   return { remote, local }
 }
 
-test('QQ progresses past an attachment rejected by the relay byte limit', async () => {
-  const { remote, local } = await fixture('byte_limit')
-  await local.start()
-  await expect
-    .poll(async () => (await records(local.storage)).length, { timeout: 3000 })
-    .toBe(1)
-  expect((await records(local.storage))[0]?.snapshot.text).toBe('Still here')
-  expect(
-    remote.requests.filter((request) => request.path === '/file')
-  ).toHaveLength(1)
-})
-
-test('QQ resumes an unavailable attachment before processing later messages', async () => {
-  const { remote, local } = await fixture('transient')
-  await local.start()
-  await expect
-    .poll(async () => (await records(local.storage)).length, { timeout: 4000 })
-    .toBe(2)
-  expect(remote.frames).toContainEqual({
-    op: 6,
-    d: { token: 'QQBot token', session_id: 'session', seq: 1 }
-  })
-  expect(
-    remote.requests.filter((request) => request.path === '/file')
-  ).toHaveLength(2)
-  const saved = await records(local.storage)
-  expect(saved.map((record) => record.snapshot.target.replyToId)).toEqual(
-    expect.arrayContaining(['file-message', 'following-message'])
-  )
-
-  const file = saved.find(
-    (record) => record.snapshot.target.replyToId === 'file-message'
-  )?.snapshot
-
-  const media = local.principal().media
-  if (!file?.attachments?.[0] || !media) {
-    throw new Error('missing_recovered_attachment')
-  }
-  expect(
-    (
-      await media.read({
-        channelId: file.channel.id,
-        mediaId: file.attachments[0].id
+// Real SQLite catches message loss on CDN failure; no production-only test hook is needed.
+test.each(['byte_limit', 'transient'] as const)(
+  'QQ retains a file description after %s and accepts following text',
+  async (failure) => {
+    const { remote, local } = await fixture(failure)
+    await local.start()
+    await expect
+      .poll(async () => (await records(local.storage)).length, {
+        timeout: 3000
       })
-    )?.data
-  ).toEqual(new Uint8Array(Buffer.from('native-file')))
-})
+      .toBe(2)
+    const saved = await records(local.storage)
+    expect(
+      saved.find((r) => r.snapshot.target.replyToId === 'file-message')
+        ?.snapshot
+    ).toMatchObject({ text: '[Attachment: file.bin]' })
+    expect(
+      saved.find((r) => r.snapshot.target.replyToId === 'file-message')
+        ?.snapshot.attachments ?? []
+    ).toHaveLength(0)
+    expect(
+      saved.find((r) => r.snapshot.target.replyToId === 'following-message')
+        ?.snapshot.text
+    ).toBe('Still here')
+    expect(
+      remote.requests.filter((request) => request.path === '/file')
+    ).toHaveLength(1)
+    expect(remote.sockets).toHaveLength(1)
+  }
+)
+
+// Native ASR metadata: SDK 1.0.5 src/protocol/types.ts MessageAttachment.
+// These cases catch silent image-only loss or accidental fake stored-media references.
+test.each(['image', 'video', 'voice', 'asr', 'mixed'] as const)(
+  'QQ preserves %s context when its CDN download fails',
+  async (kind) => {
+    const { remote, local } = await fixture('transient', kind)
+    await local.start()
+    await expect.poll(async () => (await records(local.storage)).length).toBe(2)
+
+    const message = (await records(local.storage)).find(
+      (record) => record.snapshot.target.replyToId === 'file-message'
+    )?.snapshot
+
+    const fallback = {
+      image: `[Image: ${remote.http}/file]`,
+      video: '[Attachment: clip.mp4]',
+      voice: '[Voice message - transcription unavailable]',
+      asr: 'QQ recognized speech',
+      mixed: '[Attachment: file.bin]'
+    }[kind]
+
+    expect(message?.text).toBe(`caption\n${fallback}`)
+    expect(message?.context).toEqual(
+      kind === 'image'
+        ? {
+            remoteImages: [
+              { url: `${remote.http}/file`, fileName: 'image.png' }
+            ]
+          }
+        : null
+    )
+    expect(message?.attachments ?? []).toHaveLength(kind === 'mixed' ? 1 : 0)
+    if (kind === 'mixed') {
+      expect(message?.attachments?.[0]).toMatchObject({
+        kind: 'file',
+        fileName: 'kept.txt',
+        size: 11
+      })
+    }
+    expect(remote.sockets).toHaveLength(1)
+  }
+)

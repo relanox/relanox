@@ -6,7 +6,7 @@ import type { AgentPlugin, Storage } from '@relanox/sdk'
 import type { WebSocket } from 'ws'
 import { z } from 'zod'
 import { createQqChannel } from '../src/index.js'
-import { wireText } from '../src/transport.js'
+import { wireText } from '../../channel-wecom/src/transport.js'
 import {
   peer,
   records,
@@ -227,7 +227,7 @@ test.each(['aggregate', 'count'] as const)(
     await expect
       .poll(() => local.remote.frames, { timeout: 3000 })
       .toContainEqual({ op: 1, d: 3 })
-    local.remote.sockets[0]?.close(4009)
+    local.remote.sockets[0]?.close(1000)
     await expect
       .poll(() => local.remote.frames, { timeout: 4000 })
       .toContainEqual({
@@ -237,32 +237,22 @@ test.each(['aggregate', 'count'] as const)(
   }
 )
 
-test('QQ keeps invalid Core media metadata uncommitted until the native event is corrected and replayed', async () => {
+test('QQ fills an empty filename from the URL and advances the SDK cursor', async () => {
   await using local = await fixture('invalid_metadata')
   await local.start()
-  await expect
-    .poll(async () => (await records(local.storage)).length, { timeout: 4000 })
-    .toBe(2)
-  expect(local.remote.frames).toContainEqual({
-    op: 6,
-    d: { token: 'QQBot token', session_id: 'session', seq: 1 }
-  })
-  const saved = await records(local.storage)
-  expect(saved.map((record) => record.snapshot.target.replyToId)).toEqual(
-    expect.arrayContaining(['files', 'following'])
-  )
+  await expect.poll(async () => (await records(local.storage)).length).toBe(2)
   expect(
-    saved.find((record) => record.snapshot.target.replyToId === 'files')
-      ?.snapshot.attachments
+    (await records(local.storage)).find(
+      (record) => record.snapshot.target.replyToId === 'files'
+    )?.snapshot.attachments
   ).toEqual([
-    expect.objectContaining({
-      kind: 'file',
-      mimeType: 'text/plain',
-      fileName: 'one.txt',
-      size: 5
-    })
+    expect.objectContaining({ fileName: '1', mimeType: 'text/plain', size: 5 })
   ])
+  await expect
+    .poll(() => local.remote.frames, { timeout: 3000 })
+    .toContainEqual({ op: 1, d: 3 })
+  expect(local.remote.sockets).toHaveLength(1)
   expect(
     local.remote.requests.filter((request) => request.path.startsWith('/file/'))
-  ).toHaveLength(2)
+  ).toHaveLength(1)
 })

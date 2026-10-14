@@ -45,7 +45,7 @@ For local development, build the package and point `plugins.load.paths` at its p
 ## Add a channel
 
 1. Define and validate the account configuration. Require environment references for secrets; validation should check values without making network calls.
-2. Authenticate incoming platform events, extract a stable event ID, and pass text, supported attachments and conversation information to the channel host. Wait for the host to save the input before acknowledging the platform event.
+2. Authenticate incoming platform events, extract a stable event ID, and pass text, supported attachments and conversation information to the channel host. When the transport allows acknowledgement control, wait for the host to save the input before acknowledging the platform event. SDK-managed receipt cursors may advance earlier; document that boundary.
 3. Declare platform text limits and supported media kinds. Relanox splits text before sending; your adapter handles native uploads and downloads.
 4. Implement `resolveChannel(address, learned)` to turn a bound `ChannelAddress` into a native destination, or return an unavailable reason. Use authenticated native context where the platform requires it; do not fabricate an incoming message. Availability is a snapshot, so recheck expiring windows and credentials during sending.
 5. Implement sending for one prepared message part at a time. Preserve its send identity across retries, report the platform receipt on success, and distinguish a known temporary failure from an uncertain result.
@@ -57,7 +57,7 @@ Use `capabilities.maxChunksPerMessage` to limit the total text and media parts i
 
 Return `pending` with `retryAfterMs` when a prepared reply is waiting for the platform to collect it, such as a WeCom callback refresh. The worker defers the same part without using a failure attempt or recording delivery. Return `sent` only after the channel observes the platform handoff. Use failure results for actual failures; waiting for an external callback must not exhaust delivery retries.
 
-Each configured account gets its own channel instance. Keep credentials out of message context, reply destinations and logs. If the platform needs connection state or sequence numbers, use the host's state store so that restarting does not lose them.
+Each configured account gets its own channel instance. Keep credentials out of message context, reply destinations and logs. Use the host's state store for adapter-owned durable protocol state. QQ delegates its in-memory connection state and native reply sequence to the official SDK; Core delivery IDs remain independent.
 
 Core supplies `host.boundChatIds` from this account's bindings. Connection channels can use it to subscribe to configured conversations; IRC uses it to join channels without a separate channel list. Use `host.publicUrl` for your deployment's public address.
 
@@ -91,7 +91,7 @@ A `MiddlewarePlugin` has `kind: 'middleware'`, offline `validateConfig`, and `se
 
 To bundle a new middleware, add its package to the CLI dependencies and register its exported `MiddlewarePlugin` in `apps/cli/src/middleware.ts`. That registry supplies both configuration validation and instance creation; the schema and runtime do not need plugin-specific branches. Registration order does not determine execution order. Only configured entries are set up; an omitted or empty array enables none. Unknown or duplicate plugin IDs fail validation before setup. The currently bundled implementation is `speech-tencent`; registration does not automatically install or discover external packages.
 
-Core acknowledges only after originals and the plan are durable, then prepares the message before notification or agent reads. The chain's outputs are saved together; notification retries reuse them. Waiting work uses its captured order and options after restart, even if configuration changes. Missing middleware is skipped with `disabled`. An expired preparation lease records `interrupted` and forwards the original content instead of executing the chain again. Removing a plugin does not remove completed outputs. Retention clears all derived text and metadata with the message.
+Core confirms acceptance only after originals and the plan are durable, then prepares the message before notification or agent reads. The chain's outputs are saved together; notification retries reuse them. Waiting work uses its captured order and options after restart, even if configuration changes. Missing middleware is skipped with `disabled`. An expired preparation lease records `interrupted` and forwards the original content instead of executing the chain again. Removing a plugin does not remove completed outputs. Retention clears all derived text and metadata with the message.
 
 `@relanox/speech-tencent` implements this interface using the official Tencent SDK, loaded only during setup. The plugin owns audio selection, engine options, transcript markers, per-clip error metadata and speech metrics. It works before every destination agent without importing dot, Grok, channel or database code. ASR has no dedicated runtime hook or job type in Core. See [configuration and upgrade notes](configuration.md#speech-to-text).
 

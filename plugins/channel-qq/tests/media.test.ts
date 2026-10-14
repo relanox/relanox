@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest'
 import type { MediaKind, SendInput } from '@relanox/sdk'
 import { z } from 'zod'
 import { createQqChannel } from '../src/index.js'
-import { wireText } from '../src/transport.js'
+import { wireText } from '../../channel-wecom/src/transport.js'
 import {
   assemble,
   peer,
@@ -13,8 +13,10 @@ import {
 
 installPeerNetwork()
 
+const nativeSequence: unknown = expect.any(Number)
+
 test.each([false, true])(
-  'QQ rich Markdown preserves image order and reuses the passive sequence for group=%s',
+  'QQ rich Markdown preserves image order and preserves the passive message ID for group=%s',
   async (group) => {
     const { remote, local, plugin, base } = await fixture(group)
     await local.start()
@@ -94,7 +96,7 @@ test.each([false, true])(
           content: richContent
         },
         msg_id: 'rich-in',
-        msg_seq: 1
+        msg_seq: nativeSequence
       })
     }
     expect(
@@ -162,78 +164,39 @@ const formats = [
   }
 ] as const
 
-type Fault =
-  | 'missing'
-  | 'duplicate'
-  | 'gap'
-  | 'zero'
-  | 'length'
-  | 'redirect'
-  | 'transient'
-  | 'prepare_timeout'
-  | 'message_timeout'
+type Fault = 'redirect' | 'transient' | 'prepare_timeout' | 'message_timeout'
 
-// Tencent's native prepare contract uses one-based indices and numeric block_size;
-// UploadPart has no required block_size. Keep both native and sized wire fixtures.
-// https://github.com/tencent-connect/qqbot-nodejs/blob/f77fab29e78f5c69a4194237aab81e12f41afb3e/src/protocol/types.ts#L119-L130
-// https://github.com/tencent-connect/qqbot-nodejs/blob/f77fab29e78f5c69a4194237aab81e12f41afb3e/src/protocol/api/media-chunked.ts#L159-L180
+// QQ SDK 1.0.5 owns small/base64 and large/chunked uploads. Real peers protect the adapter's bytes, target and result mapping.
+// https://github.com/tencent-connect/qqbot-nodejs/blob/429a0f1b798f3b0fcef3679e207dbc0469a1df2d/src/protocol/api/media-chunked.ts
 function prepareResponse(
   origin: string,
   size: number,
   fault?: Fault,
-  nativeShape = false
-):
-  | {
-      body: {
-        code: number
-        upload_id?: never
-        block_size?: never
-        parts?: never
-      }
-    }
-  | {
-      body: {
+  reversed = false
+): {
+  body:
+    | { code: number }
+    | {
         upload_id: string
-        block_size: string | number
-        parts: { index: number; presigned_url: string; block_size?: string }[]
-        code?: never
+        block_size: number
+        parts: { index: number; presigned_url: string }[]
       }
-    } {
+} {
   if (fault === 'prepare_timeout') {
     return { body: { code: 850_027 } }
   }
   const blockSize = Math.ceil(size / 2)
 
-  const parts = [0, 1].map((index) => ({
-    index: index + 1,
-    presigned_url: `${origin}/signed/${index}?signature=opaque`,
-    block_size: String(Math.min(blockSize, size - index * blockSize))
+  const parts = [1, 2].map((index) => ({
+    index,
+    presigned_url: `${origin}/signed/${index - 1}?signature=opaque`
   }))
 
-  if (fault === 'missing') {
-    parts.pop()
-  }
-  if (fault === 'duplicate' && parts[1]) {
-    parts[1].index = 1
-  }
-  if (fault === 'gap' && parts[1]) {
-    parts[1].index = 3
-  }
-  if (fault === 'zero' && parts[0]) {
-    parts[0].index = 0
-  }
-  if (fault === 'length' && parts[1]) {
-    parts[1].block_size = String(blockSize)
-  }
   return {
     body: {
       upload_id: 'native-upload',
-      block_size: nativeShape ? blockSize : String(blockSize),
-      parts: nativeShape
-        ? parts
-            .toReversed()
-            .map(({ index, presigned_url }) => ({ index, presigned_url }))
-        : parts
+      block_size: blockSize,
+      parts: reversed ? parts.toReversed() : parts
     }
   }
 }
@@ -355,9 +318,9 @@ function assertUpload(
   bytes: Buffer,
   blockSize: number
 ): void {
-  const parts = remote.requests.filter((request) =>
-    request.path.startsWith('/signed/')
-  )
+  const parts = remote.requests
+    .filter((request) => request.path.startsWith('/signed/'))
+    .toSorted((a, b) => a.path.localeCompare(b.path))
 
   expect(parts.map((part) => part.path)).toEqual([
     '/signed/0?signature=opaque',
@@ -379,7 +342,9 @@ function assertUpload(
   for (const part of parts) {
     expect(part.method).toBe('PUT')
     expect(part.headers.authorization).toBeUndefined()
-    expect(part.headers['content-type']).toBe('application/octet-stream')
+    expect(part.headers['content-length']).toBe(
+      String(Buffer.isBuffer(part.body) ? part.body.length : 0)
+    )
   }
   for (const request of remote.requests.filter((item) =>
     item.path.startsWith(base)
@@ -405,11 +370,11 @@ test.each(
     }))
   )
 )(
-  'QQ $chat relays $kind ($nativeContentType / $mimeType) through SQLite and native binary parts without publication',
+  'QQ $chat relays $kind ($nativeContentType / $mimeType) through SQLite and SDK direct uploads without publication',
   async (format) => {
     const { group } = format
 
-    const { remote, local, base, blockSize } = await fixture(
+    const { remote, local, base } = await fixture(
       group,
       smallBytes,
       undefined,
@@ -466,45 +431,19 @@ test.each(
       attachments: [item.attachments[0].id]
     })
     await local.runtime.processDue()
-    assertUpload(remote, base, smallBytes, blockSize)
-    expect(
-      remote.requests.find(
-        (request) => request.path === `${base}/upload_prepare`
-      )?.body
-    ).toEqual({
-      file_type: format.fileType,
-      file_size: '5',
-      file_name: format.fileName,
-      md5: 'f4c4d144ac78a1311e4425fd2d101019',
-      sha1: '42ecbc0cca81490182072bad2610f1ecb2c077e2',
-      md5_10m: 'f4c4d144ac78a1311e4425fd2d101019'
-    })
-    expect(
-      remote.requests
-        .filter((request) => request.path === `${base}/upload_part_finish`)
-        .map((request) => request.body)
-    ).toEqual([
-      {
-        upload_id: 'native-upload',
-        part_index: 1,
-        block_size: '3',
-        md5: '7f49b84d0bbc38e96493718013baace6'
-      },
-      {
-        upload_id: 'native-upload',
-        part_index: 2,
-        block_size: '2',
-        md5: 'ed670cfb05a638ac7bf9be8a09775e91'
-      }
-    ])
     expect(
       remote.requests.find((request) => request.path === `${base}/files`)?.body
     ).toEqual({
       file_type: format.fileType,
-      file_name: format.fileName,
-      upload_id: 'native-upload',
-      srv_send_msg: false
+      srv_send_msg: false,
+      file_data: 'ChQeKDI=',
+      ...(format.fileType === 4 ? { file_name: format.fileName } : {})
     })
+    expect(
+      remote.requests.some((request) =>
+        request.path.endsWith('/upload_prepare')
+      )
+    ).toBe(false)
     expect(
       remote.requests
         .filter((request) => request.path === `${base}/messages`)
@@ -514,14 +453,14 @@ test.each(
         markdown: { content: '**caption** [link](https://example.com)' },
         msg_type: 2,
         msg_id: 'file-in',
-        msg_seq: 1
+        msg_seq: nativeSequence
       },
       {
         content: '',
         msg_type: 7,
         media: { file_info: 'opaque-file-info' },
         msg_id: 'file-in',
-        msg_seq: 2
+        msg_seq: nativeSequence
       }
     ])
   }
@@ -565,32 +504,19 @@ test('QQ uploads beyond direct JSON size limits and hashes exactly the first 100
     remote.requests.find((request) => request.path === `${base}/upload_prepare`)
       ?.body
   ).toMatchObject({
-    file_size: '10002433',
+    file_size: 10_002_433,
     md5: 'db3e3f767ee5050b6404b5a680d72be4',
     sha1: '7020530634e2141e69074d672590c006d636741f',
     md5_10m: '94a14cd6c674405f82db4bfe963e9179'
   })
 })
 
-test.each([
-  'missing',
-  'duplicate',
-  'gap',
-  'zero',
-  'length',
-  'redirect',
-  'transient',
-  'prepare_timeout'
-] as const)(
+test.each(['redirect', 'transient', 'prepare_timeout'] as const)(
   'QQ %s upload failure sends no message and the same delivery can retry',
   async (fault) => {
-    const { remote, plugin, base, recover } = await fixture(
-      false,
-      smallBytes,
-      fault
-    )
-
-    const input = outbound(smallBytes)
+    const bytes = Buffer.alloc(5 * 1024 * 1024, 7)
+    const { remote, plugin, base, recover } = await fixture(false, bytes, fault)
+    const input = outbound(bytes)
     expect(await plugin.send(input)).toMatchObject({ status: 'retryable' })
     expect(
       remote.requests.filter(
@@ -607,11 +533,6 @@ test.each([
         (request) => request.path === `${base}/upload_part_finish`
       )
     ).toEqual([])
-    if (['missing', 'duplicate', 'gap', 'zero', 'length'].includes(fault)) {
-      expect(
-        remote.requests.filter((request) => request.path.startsWith('/signed/'))
-      ).toEqual([])
-    }
     recover()
     expect(await plugin.send(input)).toMatchObject({ status: 'sent' })
     expect(
@@ -624,7 +545,7 @@ test.each([
         msg_type: 7,
         media: { file_info: 'opaque-file-info' },
         msg_id: 'original',
-        msg_seq: 1
+        msg_seq: nativeSequence
       }
     ])
   }
@@ -639,21 +560,24 @@ test('QQ upload retry classification does not change final message error handlin
 })
 
 test.each([false, true])(
-  'QQ accepts native numeric prepare sizes and unordered parts without individual sizes for group=%s',
+  'QQ uploads unordered native parts for group=%s',
   async (group) => {
+    const bytes = Buffer.alloc(5 * 1024 * 1024, 7)
+
     const { remote, plugin, base, blockSize } = await fixture(
       group,
-      smallBytes,
+      bytes,
       undefined,
       true
     )
 
-    const input = outbound(smallBytes, group)
-
-    expect(await plugin.send(input)).toMatchObject({
+    expect(await plugin.send(outbound(bytes, group))).toMatchObject({
       status: 'sent'
     })
-    assertUpload(remote, base, smallBytes, blockSize)
+    assertUpload(remote, base, bytes, blockSize)
+    expect(
+      remote.requests.find((request) => request.path === `${base}/files`)?.body
+    ).toEqual({ upload_id: 'native-upload' })
     expect(
       remote.requests
         .filter((request) => request.path === `${base}/upload_part_finish`)
@@ -661,21 +585,17 @@ test.each([false, true])(
     ).toEqual([
       {
         upload_id: 'native-upload',
-        part_index: 1,
-        block_size: '3',
-        md5: '7f49b84d0bbc38e96493718013baace6'
+        part_index: 2,
+        block_size: 2_621_440,
+        md5: '771b0078b861fcaa2ed7d7561911ce6e'
       },
       {
         upload_id: 'native-upload',
-        part_index: 2,
-        block_size: '2',
-        md5: 'ed670cfb05a638ac7bf9be8a09775e91'
+        part_index: 1,
+        block_size: 2_621_440,
+        md5: '771b0078b861fcaa2ed7d7561911ce6e'
       }
     ])
-    expect(
-      remote.requests.find((request) => request.path === `${base}/messages`)
-        ?.body
-    ).toMatchObject({ media: { file_info: 'opaque-file-info' }, msg_type: 7 })
   }
 )
 
@@ -763,7 +683,7 @@ test.each(
 )(
   'QQ persists and returns $media.name without changing bytes, group=$group',
   async ({ group, media }) => {
-    const { remote, local, base, blockSize } = await fixture(
+    const { remote, local, base } = await fixture(
       group,
       media.bytes,
       undefined,
@@ -820,12 +740,13 @@ test.each(
       attachments: [attachment.id]
     })
     await local.runtime.processDue()
-    assertUpload(remote, base, media.bytes, blockSize)
     expect(
-      remote.requests.find(
-        (request) => request.path === `${base}/upload_prepare`
-      )?.body
-    ).toMatchObject({ file_type: media.fileType })
+      remote.requests.find((request) => request.path === `${base}/files`)?.body
+    ).toMatchObject({
+      file_type: media.fileType,
+      file_data: media.bytes.toString('base64'),
+      srv_send_msg: false
+    })
     expect(
       remote.requests.find((request) => request.path === `${base}/messages`)
         ?.body
@@ -861,5 +782,64 @@ test.each(['audio/amr', 'audio/wav', 'audio/mpeg'])(
           request.path.includes('upload') || request.path.endsWith('/messages')
       )
     ).toBe(false)
+  }
+)
+
+// The SDK exposes no upload AbortSignal. A delayed real upload response must not
+// Cause a fresh send after cancellation/window expiry; direct upload tests miss this race.
+test.each(['abort', 'expired'] as const)(
+  'QQ rechecks %s after an SDK upload before sending',
+  async (reason) => {
+    vi.stubEnv('QQ_MEDIA_SECRET', 'secret')
+    const uploaded = Promise.withResolvers<void>()
+
+    const remote = await peer(async (request) => {
+      if (request.path === '/app/getAppAccessToken') {
+        return { body: { access_token: 'token', expires_in: 7200 } }
+      }
+      if (request.path.endsWith('/files')) {
+        await uploaded.promise
+        return { body: { file_info: 'opaque', ttl: 60 } }
+      }
+      return { body: { id: 'unexpected-send' } }
+    })
+
+    const plugin = createQqChannel()
+    await assemble(
+      plugin,
+      { appId: 'app', clientSecret: { env: 'QQ_MEDIA_SECRET' } },
+      [{ chatId: 'group', senderId: 'member' }]
+    )
+    const controller = new AbortController()
+
+    const operation = plugin.send({
+      ...outbound(smallBytes, true),
+      signal: controller.signal
+    })
+
+    try {
+      await expect
+        .poll(() =>
+          remote.requests.some((request) => request.path.endsWith('/files'))
+        )
+        .toBe(true)
+      if (reason === 'abort') {
+        controller.abort()
+      } else {
+        vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 360_000)
+      }
+      uploaded.resolve()
+      expect(await operation).toMatchObject(
+        reason === 'abort'
+          ? { status: 'retryable' }
+          : { status: 'rejected', errorCode: 'passive_window_expired' }
+      )
+      expect(
+        remote.requests.filter((request) => request.path.endsWith('/messages'))
+      ).toEqual([])
+    } finally {
+      uploaded.resolve()
+      await operation
+    }
   }
 )

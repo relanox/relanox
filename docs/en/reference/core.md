@@ -25,6 +25,10 @@ If a call times out after it might have reached the remote service, repeating it
 
 An accepted agent notification is not automatically repeated just because the agent has not replied. Requeueing an input notifies the agent again; it does not cancel its previous work.
 
+Each channel send attempt has a ten-minute Core deadline, including media reads, preparation and upload. Channels and their SDKs apply their own request/part timeouts within that budget. Agent notification and the middleware chain keep their separate ten-second budget. Send leases last ten minutes plus thirty seconds for settlement; notification/preparation leases remain thirty seconds. A crashed send may therefore remain pending until its longer lease expires. The worker handles one call at a time, so a slow send can delay other work.
+
+A Core deadline aborts its signal and records `unknown`; it cannot guarantee cancellation of an SDK request already in flight. The QQ adapter checks cancellation and the reply window again after upload, before starting the final send. Late results do not overwrite the saved unknown outcome.
+
 ## Why can a later reply be waiting?
 
 Messages to the same channel are sent in the order they were saved. Long text is sent in platform-sized parts, followed by any attachments. An earlier pending delivery holds up later messages to that channel. An unknown delivery also blocks later messages except on QQ, where later replies can continue while the uncertain delivery retains its receipts and requires explicit recovery. Recovering that QQ delivery may send its unfinished parts after newer replies. A rejected delivery releases later messages.

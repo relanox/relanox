@@ -1,3 +1,7 @@
+import {
+  ApiError,
+  UploadDailyLimitExceededError
+} from '@tencent-connect/qqbot-nodejs'
 import type { SendResult } from '@relanox/sdk'
 import { errorSchema } from './schemas.js'
 
@@ -20,4 +24,43 @@ export function apiError(
     return { status: 'retryable', errorCode: `qq_${code}`, retryAfterMs: 1000 }
   }
   return { status: 'rejected', errorCode: `qq_${code}` }
+}
+
+export function sdkFailure(error: unknown, transmitting: boolean): SendResult {
+  if (error instanceof UploadDailyLimitExceededError) {
+    return { status: 'rejected', errorCode: 'qq_upload_daily_limit' }
+  }
+  if (
+    error instanceof Error &&
+    [
+      'media_publication_unavailable',
+      'invalid_publication_url',
+      'rich_text_limit_exceeded'
+    ].includes(error.message)
+  ) {
+    return { status: 'rejected', errorCode: error.message }
+  }
+  if (error instanceof ApiError) {
+    const business = apiError({ code: error.bizCode }, !transmitting)
+    if (business) {
+      return business
+    }
+    if (error.httpStatus === 429) {
+      return {
+        status: 'retryable',
+        errorCode: 'rate_limited',
+        retryAfterMs: 1000
+      }
+    }
+    if (error.httpStatus >= 400 && error.httpStatus < 500) {
+      return { status: 'rejected', errorCode: `http_${error.httpStatus}` }
+    }
+  }
+  return transmitting
+    ? { status: 'unknown', errorCode: 'transport_uncertain' }
+    : {
+        status: 'retryable',
+        errorCode: 'media_upload_unavailable',
+        retryAfterMs: 1000
+      }
 }

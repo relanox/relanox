@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    // Keep the actual QQ SDK while routing its WebSocket transport to protocol peers.
+    server: { deps: { inline: ['@tencent-connect/qqbot-nodejs'] } },
     include: [
       'tests/**/*.test.ts',
       'packages/**/*.test.ts',

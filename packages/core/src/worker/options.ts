@@ -15,6 +15,8 @@ export const workerDefaults = {
   batchSize: 32,
   batchDurationMs: 30_000,
   callTimeoutMs: 10_000,
+  sendTimeoutMs: 600_000,
+  sendLeaseMs: 630_000,
   leaseMs: 30_000,
   maxAttempts: 8,
   retryBaseMs: 1000,
