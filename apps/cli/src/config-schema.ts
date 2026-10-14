@@ -5,6 +5,7 @@ import {
 } from '@relanox/core'
 import { validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
+import { speechToTextSchema } from './speech/config.js'
 
 const port = z.number().int().min(0).max(65_535)
 
@@ -12,6 +13,7 @@ export const appConfigSchema = z
   .strictObject({
     publicUrl: z.string().transform(validatePublicUrl).optional(),
     relay: z.unknown().transform(validateConfig),
+    speechToText: speechToTextSchema.optional(),
     media: z.unknown().transform(validateMediaOptions).optional(),
     mediaLimits: z
       .strictObject({

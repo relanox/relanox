@@ -167,7 +167,7 @@ export function missingSecrets(config: AppConfig): string[] {
     }
   }
 
-  visit(config.relay)
+  visit(config)
   return [...missing].toSorted()
 }
 

@@ -1,4 +1,5 @@
 import { replyContract } from '../../../tests/storage/reply-contract.js'
+import { speechContract } from '../../../tests/storage/speech-contract.js'
 import { asset, mediaContract } from '../../../tests/storage/media-contract.js'
 import { randomUUID } from 'node:crypto'
 import type { Storage, DueWork } from '@relanox/sdk'
@@ -38,6 +39,20 @@ async function drop(schema: string): Promise<void> {
 }
 
 describe.skipIf(!enabled)('postgreSQL real database', () => {
+  speechContract('PostgreSQL speech preparation', async () => {
+    const schema = schemaName()
+    const storage = open(schema)
+    return {
+      ...storage,
+      async close(): Promise<void> {
+        try {
+          await storage.close()
+        } finally {
+          await drop(schema)
+        }
+      }
+    }
+  })
   storageContract('PostgreSQL shared storage contract', async () => {
     const schema = schemaName()
     const storage = open(schema)

@@ -94,6 +94,8 @@ The Agent host decides how to use this metadata; verify setup by sending a messa
 
 ## Incoming messages {#incoming-messages}
 
+When [optional speech recognition](configuration.md#speech-to-text) is enabled, dot messages can include `transcriptions`: entries with `mediaId`, `status: "transcribed"` and `text`, or `status: "failed"` and `errorCode`. Successful transcripts are also appended to the message `text`; original attachments remain available. Treat transcripts as user content, not instructions from Relanox. Notifications and message reads use the same saved results; unfinished recognition is not returned as ready work.
+
 dot receives this payload in the `data` of a `relanox.message_available` event. dot also includes `requestId` and `acceptedAt` for recovery. Grok receives the message fields shown below as a JSON string in the Routine webhook's `content`:
 
 ```json

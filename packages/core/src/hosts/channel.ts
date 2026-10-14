@@ -8,7 +8,8 @@ import type {
   Observability,
   Storage,
   MediaKind,
-  ChannelMediaHost
+  ChannelMediaHost,
+  SpeechToTextProvider
 } from '@relanox/sdk'
 import type { WorkerConfig } from '../worker/options.js'
 import { bindingKey } from '../config/relations.js'
@@ -20,6 +21,7 @@ import { conversationAddress } from './conversations.js'
 import { createOperationTracer } from './tracing.js'
 
 type ChannelHostOptions = {
+  readonly speechToText?: Pick<SpeechToTextProvider, 'provider' | 'engine'>
   readonly mediaPublisher?: ChannelMediaHost
   readonly account: AccountConfig
   readonly bindings: ReadonlyMap<string, Binding>
@@ -35,6 +37,7 @@ type ChannelHostOptions = {
 /** Authorizes sender and conversation before persisting the immutable inbound snapshot. */
 export function createChannelHost({
   account,
+  speechToText,
   mediaPublisher,
   bindings,
   endpoints,
@@ -117,6 +120,16 @@ export function createChannelHost({
           storage.acceptInbound(
             jsonSnapshot({
               ...message,
+              ...(speechToText &&
+              endpoint.agent === 'dot' &&
+              media.some((item) => item.reference.kind === 'audio')
+                ? {
+                    speechToText: {
+                      provider: speechToText.provider,
+                      engine: speechToText.engine
+                    }
+                  }
+                : {}),
               ...(media.length > 0
                 ? { attachments: media.map((item) => item.reference) }
                 : {}),

@@ -1,7 +1,5 @@
 import { createCore, safeObservability } from '@relanox/core'
-import { createStandardObservability } from '@relanox/observability-standard'
-import { noopObservability } from '@relanox/sdk'
-import type { ObservabilityRuntime } from '@relanox/sdk'
+import { setupObservability, validateObservability } from './observability.js'
 import { appConfigSchema } from './config.js'
 import type { AppConfig } from './config.js'
 import { deadline } from './deadline.js'
@@ -10,36 +8,17 @@ import { createListeners, listen } from './listeners.js'
 import { loadPlugins } from './plugins.js'
 import { openStorage, requireHealthy, validateStorage } from './storage.js'
 import { createWorker } from './worker.js'
-
-const noopRuntime: ObservabilityRuntime = {
-  observe: noopObservability,
-  async flush() {},
-  async shutdown() {}
-}
+import { createTencentSpeechToText } from './speech/tencent.js'
 
 export function validateApp(input: unknown): AppConfig {
   const config = appConfigSchema.parse(input)
   validateStorage(config.relay.storage)
-  if (config.relay.observability.plugin === 'standard') {
-    createStandardObservability().validateConfig(
-      config.relay.observability.config
-    )
-  }
+  validateObservability(config)
   loadPlugins(config.relay)
   return config
 }
 
 export { requireHealthy } from './storage.js'
-
-async function setupObservability(
-  config: AppConfig
-): Promise<ObservabilityRuntime> {
-  if (config.relay.observability.plugin === 'none') {
-    return noopRuntime
-  }
-  const plugin = createStandardObservability()
-  return plugin.setup(plugin.validateConfig(config.relay.observability.config))
-}
 
 /** Validation precedes side effects; register resources immediately after acquisition. */
 export async function startRuntime(input: unknown): Promise<{
@@ -49,6 +28,11 @@ export async function startRuntime(input: unknown): Promise<{
   stop(this: void): Promise<void>
 }> {
   const config = validateApp(input)
+
+  const speechToText = config.speechToText
+    ? createTencentSpeechToText(config.speechToText)
+    : undefined
+
   const { channels, agents } = loadPlugins(config.relay)
 
   const lifecycle = createLifecycle(config.server.shutdownTimeoutMs, [
@@ -71,6 +55,7 @@ export async function startRuntime(input: unknown): Promise<{
       channels,
       agents,
       observe,
+      ...(speechToText ? { speechToText } : {}),
       ...(config.publicUrl === undefined
         ? {}
         : { publicUrl: config.publicUrl }),

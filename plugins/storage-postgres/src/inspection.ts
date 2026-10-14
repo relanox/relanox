@@ -20,6 +20,11 @@ import {
 import { alias } from 'drizzle-orm/pg-core'
 import { conversations, inbound, outbound, media } from './schema.js'
 
+const prepared = or(
+  isNull(sql`${inbound.record}#>'{snapshot,speechToText}'`),
+  isNotNull(sql`${inbound.record}->'transcriptions'`)
+)
+
 export function createInspectionOperations(
   context: Pick<
     DatabaseContext,
@@ -69,6 +74,7 @@ export function createInspectionOperations(
             filter.dispatchStatus === undefined
               ? undefined
               : eq(inbound.status, filter.dispatchStatus),
+            filter.readyOnly ? prepared : undefined,
             filter.endpointId === undefined
               ? undefined
               : eq(inbound.endpoint, filter.endpointId),
@@ -109,6 +115,7 @@ export function createInspectionOperations(
         .where(
           and(
             eq(conversations.active, true),
+            prepared,
             inArray(conversations.id, [...input.channelIds]),
             inArray(inbound.endpoint, [...input.endpointIds]),
             isNull(sql`${inbound.record}->'redactedAt'`),
@@ -223,6 +230,7 @@ export function createInspectionOperations(
           await saveInbound(client, {
             ...record,
             version: record.version + 1,
+            ...(record.transcriptions ? { transcriptions: [] } : {}),
             snapshot: {
               ...record.snapshot,
               text: '',

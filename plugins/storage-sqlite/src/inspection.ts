@@ -27,6 +27,11 @@ import {
 import { inbound, outbound, media, conversations } from './schema.js'
 import { jsonValue } from './expressions.js'
 
+const prepared = or(
+  isNull(jsonValue(inbound.record, '$.snapshot.speechToText')),
+  isNotNull(jsonValue(inbound.record, '$.transcriptions'))
+)
+
 export function createInspectionOperations(
   context: Pick<
     DatabaseContext,
@@ -75,6 +80,7 @@ export function createInspectionOperations(
             filter.dispatchStatus
               ? eq(inbound.status, filter.dispatchStatus)
               : undefined,
+            filter.readyOnly ? prepared : undefined,
             filter.endpointId
               ? eq(inbound.endpoint, filter.endpointId)
               : undefined,
@@ -113,6 +119,7 @@ export function createInspectionOperations(
         .where(
           and(
             eq(conversations.active, 1),
+            prepared,
             inArray(conversations.id, [...input.channelIds]),
             inArray(inbound.endpoint, [...input.endpointIds]),
             isNull(jsonValue(inbound.record, '$.redactedAt')),
@@ -213,6 +220,7 @@ export function createInspectionOperations(
           saveInbound({
             ...record,
             version: record.version + 1,
+            ...(record.transcriptions ? { transcriptions: [] } : {}),
             snapshot: {
               ...record.snapshot,
               text: '',

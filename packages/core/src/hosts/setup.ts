@@ -16,7 +16,7 @@ import { createAgentHost } from './agent.js'
 type HostSetupOptions = {
   readonly options: Pick<
     CoreOptions,
-    'storage' | 'channels' | 'agents' | 'media' | 'publicUrl'
+    'storage' | 'channels' | 'agents' | 'media' | 'publicUrl' | 'speechToText'
   >
   readonly config: RelanoxConfig
   readonly worker: WorkerConfig
@@ -77,6 +77,7 @@ export async function setupPluginHosts({
 
     const host = createChannelHost({
       account,
+      ...(options.speechToText ? { speechToText: options.speechToText } : {}),
       ...(mediaPublisher ? { mediaPublisher: mediaPublisher(account.id) } : {}),
       mediaKinds: plugin.capabilities.media?.receive ?? [],
       bindings,
