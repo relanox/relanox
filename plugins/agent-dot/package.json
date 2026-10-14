@@ -30,5 +30,11 @@
   },
   "engines": {
     "node": ">=26 <27"
+  },
+  "relanox": {
+    "kind": "agent",
+    "id": "dot",
+    "sdkMajor": 1,
+    "entry": "./dist/plugin.js"
   }
 }

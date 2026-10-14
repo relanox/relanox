@@ -28,5 +28,11 @@
   },
   "engines": {
     "node": ">=26 <27"
+  },
+  "relanox": {
+    "kind": "channel",
+    "id": "dingtalk",
+    "sdkMajor": 1,
+    "entry": "./dist/plugin.js"
   }
 }

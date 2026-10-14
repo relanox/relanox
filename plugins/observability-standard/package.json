@@ -28,5 +28,11 @@
   },
   "engines": {
     "node": ">=26 <27"
+  },
+  "relanox": {
+    "kind": "observability",
+    "id": "standard",
+    "sdkMajor": 1,
+    "entry": "./dist/plugin.js"
   }
 }
