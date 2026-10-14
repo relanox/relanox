@@ -7,6 +7,9 @@ const options = z
   .parse(process.argv.slice(2))
 
 const [destination, selection] = options
+const manager = process.env.npm_execpath ?? 'pnpm'
+const script = /\.(?:c?js|mjs)$/u.test(manager)
+const executable = script ? process.execPath : manager
 const names = selection.split(/\s+/u).filter(Boolean)
 for (const name of names) {
   if (
@@ -16,8 +19,9 @@ for (const name of names) {
   }
 
   const result = spawnSync(
-    'pnpm',
+    executable,
     [
+      ...(script ? [manager] : []),
       '--fail-if-no-match',
       '--filter',
       `@relanox/${name}`,
