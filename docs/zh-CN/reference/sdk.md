@@ -49,11 +49,13 @@ Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中
 
 ## 添加消息中间件
 
-`MiddlewarePlugin` 提供 `kind: 'middleware'`、离线的 `validateConfig`，以及返回 `MessageMiddleware` 的 `setup`。嵌入时向 `createCore({ middleware: [first, second], ... })` 传入有序数组；省略时保持普通转发。核心最多接受 16 个标识不同的中间件。CLI 目前只内置 `speech-tencent`，通过顶层可选 `middleware` 数组选择。
+`MiddlewarePlugin` 提供 `kind: 'middleware'`、离线的 `validateConfig`，以及返回 `MessageMiddleware` 的 `setup`。嵌入时向 `createCore({ middleware: [first, second], ... })` 传入有序数组；省略时保持普通转发。中间件标识必须唯一，因为保存的结果和扩展元数据使用此标识。CLI 通过顶层可选 `middleware` 数组选择插件并确定执行顺序，没有固定的插件数量上限。
 
 - `plan(message)` 同步筛选原始来信，不调用外部服务。返回不含凭据的 JSON 选项表示参与，返回 `undefined` 则跳过。核心将选中的标识、顺序和选项随原消息保存。筛选异常会跳过；凭据留在已配置的插件实例中。
 - `process({ message, options, readMedia, signal, observe })` 接收前序成功步骤的输出、已保存选项、取消信号和受限媒体读取能力。消息只含公开内容，不含端点密钥或私有回复目标。`readMedia(id)` 只能读取这条原始消息的附件。
 - 返回 `{ text, data? }`。核心验证、保存各步结果，将可选数据放在 `extensions[id]` 下。中间件不能改变路由或原始附件。某一步失败时保留此前内容，后续步骤仍可继续。整链合计限时十秒；必须响应取消，避免重试可能已计费的外部请求。
+
+新增内置中间件时，将其包加入 CLI 依赖，并在 `apps/cli/src/middleware.ts` 中注册导出的 `MiddlewarePlugin`。注册表统一提供配置校验和实例创建，配置 schema 与启动流程无需增加插件专用分支。注册顺序不决定执行顺序；只有用户配置的条目会执行 setup。省略数组或设为空数组表示全部关闭。未知或重复的插件标识会在 setup 前被拒绝。目前随包提供的实现是 `speech-tencent`；注册机制不会自动安装或发现外部包。
 
 原消息和执行计划入库后才确认接收，之后在通知或 Agent 读取前完成预处理。整链结果一起保存，通知重试复用这些结果。重启后，待处理任务仍使用接收时保存的顺序和选项；缺失的中间件以 `disabled` 跳过。预处理租约过期则记录 `interrupted`，转发原始内容，不重新执行整条链。删除插件不会删除已完成结果；保留期清理会同时清除所有派生文本和元数据。
 

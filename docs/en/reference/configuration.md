@@ -109,6 +109,12 @@ Use separate MCP tokens for separate agent connections. Keep the Routine's compl
 
 To rotate a token, update the service manager's environment and restart. Keep the original bot/account identity while replies remain queued. For a new Grok Routine, use a new variable name and agent connection: pending messages still reference their original settings.
 
+## Message middleware
+
+The optional top-level `middleware` array selects registered plugins in execution order. Each entry contains a `plugin` ID and that plugin's `config`. Adding an entry enables it; removing it disables it. Omit the array or use `"middleware": []` to disable all middleware. There is no separate `enabled` flag or fixed entry-count limit. Restart after changing the configuration.
+
+Multiple registered plugins can be combined in the same array; order them as you want messages to be processed. IDs must be unique so saved results remain distinguishable. Unknown IDs are rejected. Only `speech-tencent` is currently bundled; contributors can [register additional implementations](sdk.md#add-message-middleware) without changing the generic validator or loader.
+
 ## Optional Tencent speech recognition {#speech-to-text}
 
 To transcribe incoming audio for **dot or Grok**, merge this fragment into your existing `relanox.json`. Keep `relay`, `publicUrl` and the other settings. `middleware` is an optional top-level list, empty by default; the configurator does not generate it:

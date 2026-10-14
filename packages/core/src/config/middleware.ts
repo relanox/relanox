@@ -2,7 +2,7 @@ import type { MessageMiddleware } from '@relanox/sdk'
 import { z } from 'zod'
 
 export function validateMiddleware(
-  middleware: readonly MessageMiddleware[]
+  middleware: readonly Pick<MessageMiddleware, 'id'>[]
 ): void {
   const ids = middleware.map(({ id }) =>
     z
@@ -11,7 +11,7 @@ export function validateMiddleware(
       .parse(id)
   )
 
-  if (ids.length > 16 || new Set(ids).size !== ids.length) {
+  if (new Set(ids).size !== ids.length) {
     throw new Error('invalid_middleware_configuration')
   }
 }
