@@ -1,3 +1,4 @@
+import { installPlugin } from './plugin-install.js'
 import { Command } from 'commander'
 import { z } from 'zod'
 import {
@@ -301,6 +302,17 @@ export function createProgram(): Command {
       if (!ok) {
         process.exitCode = 2
       }
+    })
+  program
+    .command('plugins')
+    .description('Manage independently installed native plugins')
+    .command('install <spec>')
+    .description(
+      'Install an exact npm version or a local .tgz without lifecycle scripts'
+    )
+    .action(async (spec: string, _options: unknown, command: Command) => {
+      const options = configOptions.parse(command.optsWithGlobals())
+      printJson({ ok: true, ...(await installPlugin(options.config, spec)) })
     })
   addStatus(program)
   addRecovery(program)

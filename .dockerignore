@@ -12,3 +12,5 @@
 !.env.example
 data
 *.log
+.relanox
+.vitest

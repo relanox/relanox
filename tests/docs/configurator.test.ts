@@ -49,7 +49,7 @@ function completedState(): ReturnType<typeof createState> {
 }
 
 describe('connection configurator production contracts', () => {
-  it('exports only selected WeCom mode credentials and validates both exports through production', () => {
+  it('exports only selected WeCom mode credentials and validates both exports through production', async () => {
     const state = completedState()
 
     const wecom = required(
@@ -66,7 +66,7 @@ describe('connection configurator production contracts', () => {
       token: { env: 'WECOM_TOKEN' },
       encodingAESKey: { env: 'WECOM_ENCODING_AES_KEY' }
     })
-    expect(() => validateApp(buildConfig(state))).not.toThrow()
+    await expect(validateApp(buildConfig(state))).resolves.toBeDefined()
     expect(webhookDetails(state)).toEqual([
       {
         id: wecom.id,
@@ -83,7 +83,7 @@ describe('connection configurator production contracts', () => {
       botId: wecom.fields.botId,
       secret: { env: 'WECOM_BOT_SECRET' }
     })
-    expect(() => validateApp(buildConfig(state))).not.toThrow()
+    await expect(validateApp(buildConfig(state))).resolves.toBeDefined()
     expect(webhookDetails(state)).toEqual([])
     expect(environmentNames(buildConfig(state))).not.toContain('WECOM_TOKEN')
   })
@@ -148,7 +148,7 @@ describe('connection configurator production contracts', () => {
     expect(validateDraft(state)).toEqual([])
   })
 
-  it('requires the application ID even after sender and conversation IDs are supplied', () => {
+  it('requires the application ID even after sender and conversation IDs are supplied', async () => {
     const state = createState()
     state.publicHost = 'relay.test.example'
 
@@ -174,7 +174,7 @@ describe('connection configurator production contracts', () => {
 
   it.each(['dot', 'grok'] as const)(
     'requires a reachable HTTPS origin for %s even with outbound channels',
-    (agentType) => {
+    async (agentType) => {
       const state = completedState()
       required(state.agents[0]).type = agentType
       for (const channel of state.channels) {
@@ -198,7 +198,7 @@ describe('connection configurator production contracts', () => {
       expect(validateDraft(state)).toEqual([])
       state.publicHost = 'https://relay.test.example:8443'
       expect(validateDraft(state)).toEqual([])
-      expect(validateApp(buildConfig(state)).publicUrl).toBe(
+      expect((await validateApp(buildConfig(state))).publicUrl).toBe(
         'https://relay.test.example:8443'
       )
       expect(webhookDetails(state)).toEqual([])
@@ -269,14 +269,14 @@ describe('connection configurator production contracts', () => {
     ])
   })
 
-  it('generates all fifteen native accounts accepted by the production validator', () => {
+  it('generates all fifteen native accounts accepted by the production validator', async () => {
     const state = completedState()
     const grok = addAgent(state)
     grok.type = 'grok'
     grok.mcpToken = generateMcpToken()
     const config = buildConfig(state)
     expect(validateDraft(state)).toEqual([])
-    expect(validateApp(config).relay.accounts).toHaveLength(15)
+    expect((await validateApp(config)).relay.accounts).toHaveLength(15)
     expect(config.relay.endpoints.map((entry) => entry.agent)).toEqual([
       'dot',
       'grok'
@@ -293,13 +293,13 @@ describe('connection configurator production contracts', () => {
     expect(config.publicUrl).toBe('https://relay.test.example:8443')
     expect(config).not.toHaveProperty('media')
     expect(config.relay).not.toHaveProperty('observability')
-    expect(validateApp(config).relay.observability).toEqual({
+    expect((await validateApp(config)).relay.observability).toEqual({
       plugin: 'standard',
       config: {}
     })
   })
 
-  it('preserves explicit routing and credentials across rename, removal and type changes', () => {
+  it('preserves explicit routing and credentials across rename, removal and type changes', async () => {
     const state = completedState()
     const second = addAgent(state)
     second.type = 'grok'
@@ -315,7 +315,7 @@ describe('connection configurator production contracts', () => {
     required(telegram.chats[0]).threadId = '42'
     second.name = 'My renamed agent'
     let config = buildConfig(state)
-    expect(validateApp(config).relay.bindings[0]).toMatchObject({
+    expect((await validateApp(config)).relay.bindings[0]).toMatchObject({
       accountId: 'telegram-main',
       endpointId: 'agent-2',
       threadId: '42'
@@ -323,7 +323,7 @@ describe('connection configurator production contracts', () => {
     expect(environmentNames(config)).toContain('RELANOX_AGENT_2_ROUTINE_URL')
     second.type = 'dot'
     config = buildConfig(state)
-    expect(validateApp(config).relay.endpoints[1]?.agent).toBe('dot')
+    expect((await validateApp(config)).relay.endpoints[1]?.agent).toBe('dot')
     expect(environmentNames(config)).not.toContain(
       'RELANOX_AGENT_2_ROUTINE_URL'
     )
@@ -343,7 +343,7 @@ describe('connection configurator production contracts', () => {
     expect(addAgent(state).id).toBe('agent-3')
   })
 
-  it('exports independent accounts and exact chat/thread routes without reusing credentials or deleted IDs', () => {
+  it('exports independent accounts and exact chat/thread routes without reusing credentials or deleted IDs', async () => {
     const state = completedState()
     for (const channel of state.channels) {
       channel.enabled = channel.channel === 'telegram'
@@ -359,7 +359,7 @@ describe('connection configurator production contracts', () => {
     required(secondAccount.chats[0]).chatId = '-100123'
     let config = buildConfig(state)
     expect(validateDraft(state)).toEqual([])
-    expect(validateApp(config).relay.bindings).toEqual([
+    expect((await validateApp(config)).relay.bindings).toEqual([
       {
         accountId: 'telegram-main',
         chatId: '123456789',
@@ -392,13 +392,13 @@ describe('connection configurator production contracts', () => {
     removeChat(telegram, chat.id)
     removeAccount(state, secondAccount.id)
     config = buildConfig(state)
-    expect(validateApp(config).relay.bindings).toHaveLength(1)
+    expect((await validateApp(config)).relay.bindings).toHaveLength(1)
     expect(environmentNames(config)).not.toContain('TELEGRAM_BOT_TOKEN_2')
     expect(addAccount(state, 'telegram').id).toBe('telegram-3')
     expect(addChat(telegram, 'agent-1').id).toBe('chat-3')
   })
 
-  it('reports duplicate chat/thread pairs before exporting an unrunnable draft', () => {
+  it('reports duplicate chat/thread pairs before exporting an unrunnable draft', async () => {
     const state = completedState()
     const telegram = required(state.channels[0])
     const duplicate = addChat(telegram, 'agent-1')
@@ -407,10 +407,12 @@ describe('connection configurator production contracts', () => {
       code: 'duplicateChat',
       target: 'telegram-main.chat-2'
     })
-    expect(() => validateApp(buildConfig(state))).toThrow()
+    await expect(validateApp(buildConfig(state))).rejects.toThrow()
     duplicate.threadId = '42'
     expect(validateDraft(state)).toEqual([])
-    expect(validateApp(buildConfig(state)).relay.bindings).toHaveLength(16)
+    expect((await validateApp(buildConfig(state))).relay.bindings).toHaveLength(
+      16
+    )
   })
 
   it('keeps unfinished values visible while reporting missing access and unsafe public hosts', () => {

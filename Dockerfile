@@ -1,9 +1,12 @@
 FROM node:26.11.1-bookworm-slim@sha256:86f07bc9c5dce4578cf37e5a418b7bfc7f817cda25cde66e2b66e95ed86c4567 AS build
 WORKDIR /build
+# Override with space-separated native package names for a smaller image.
+ARG RELANOX_PLUGINS="storage-sqlite storage-postgres observability-standard agent-dot agent-grok channel-dingtalk channel-discord channel-feishu channel-googlechat channel-irc channel-line channel-matrix channel-mattermost channel-msteams channel-qq channel-signal channel-slack channel-telegram channel-wecom channel-whatsapp"
 RUN npm install --global pnpm@12.11.2
 COPY . .
 RUN pnpm install --frozen-lockfile && pnpm build \
-    && pnpm --filter @relanox/cli deploy --legacy --prod /output
+    && pnpm --filter @relanox/cli deploy --legacy --prod /output \
+    && node scripts/assemble-plugins.mts /output "$RELANOX_PLUGINS"
 
 FROM node:26.11.1-bookworm-slim@sha256:86f07bc9c5dce4578cf37e5a418b7bfc7f817cda25cde66e2b66e95ed86c4567 AS runtime
 ENV NODE_ENV=production

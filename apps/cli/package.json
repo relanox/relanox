@@ -1,7 +1,6 @@
 {
   "name": "@relanox/cli",
   "version": "0.1.0",
-  "private": true,
   "bin": {
     "relanox": "./dist/main.js"
   },
@@ -15,6 +14,14 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.4",
+    "@relanox/core": "workspace:*",
+    "@relanox/sdk": "workspace:*",
+    "commander": "15.0.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.2",
+    "ws": "8.22.0",
     "@relanox/agent-dot": "workspace:*",
     "@relanox/agent-grok": "workspace:*",
     "@relanox/channel-dingtalk": "workspace:*",
@@ -32,17 +39,9 @@
     "@relanox/channel-telegram": "workspace:*",
     "@relanox/channel-wecom": "workspace:*",
     "@relanox/channel-whatsapp": "workspace:*",
-    "@relanox/core": "workspace:*",
     "@relanox/observability-standard": "workspace:*",
-    "@relanox/sdk": "workspace:*",
     "@relanox/storage-postgres": "workspace:*",
-    "@relanox/storage-sqlite": "workspace:*",
-    "commander": "15.0.0",
-    "zod": "4.6.5"
-  },
-  "devDependencies": {
-    "@types/ws": "8.18.2",
-    "ws": "8.22.0"
+    "@relanox/storage-sqlite": "workspace:*"
   },
   "engines": {
     "node": ">=26 <27"

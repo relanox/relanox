@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { createWeComChannel } from '@relanox/channel-wecom'
+import { createPluginLoader } from './plugin-loader.js'
+import { resolvePluginConfig } from './plugin-config.js'
 import { noopObservability } from '@relanox/sdk'
 import type { AccountConfig, ChannelHost } from '@relanox/sdk'
 import { z } from 'zod'
@@ -61,12 +62,31 @@ export async function discoverConversations(input: {
   output(value: DiscoveryOutput): void
 }): Promise<void> {
   const account = await readDiscoveryAccount(input.configPath, input.accountId)
-  const plugin = createWeComChannel()
+  const raw: unknown = JSON.parse(await readFile(input.configPath, 'utf8'))
+  const draft = z.object({ plugins: z.unknown().optional() }).parse(raw)
+
+  const loader = await createPluginLoader(
+    resolvePluginConfig(draft.plugins, input.configPath)
+  )
+
+  const plugin = await loader.load('channel', 'wecom')
+  if (plugin.kind !== 'channel') {
+    throw new Error('plugin_kind_mismatch')
+  }
+
   const config = plugin.validateConfig(account.config)
-  if (config.mode === 'webhook') {
+
+  const discoveryConfig = z
+    .object({
+      mode: z.enum(['webhook', 'websocket']).optional(),
+      secret: z.object({ env: z.string() }).optional()
+    })
+    .parse(config)
+
+  if (discoveryConfig.mode === 'webhook') {
     throw new Error('discovery_requires_websocket')
   }
-  if (!process.env[config.secret.env]) {
+  if (!discoveryConfig.secret || !process.env[discoveryConfig.secret.env]) {
     throw new Error('missing_discovery_secret')
   }
   const controller = new AbortController()

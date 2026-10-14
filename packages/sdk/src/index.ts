@@ -10,3 +10,5 @@ export * from './observability.js'
 export * from './public-url.js'
 export * from './http-headers.js'
 export type * from './plugins.js'
+
+export type { PluginManifest } from './plugin-manifest.js'

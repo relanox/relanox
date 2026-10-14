@@ -47,7 +47,7 @@ export async function fixture(
   cleanups: Cleanup[],
   sendReply?: (traffic: Traffic, index: number) => PeerReply
 ): Promise<{
-  config: ReturnType<typeof validateApp>
+  config: Awaited<ReturnType<typeof validateApp>>
   routine: Awaited<ReturnType<typeof peer>>
   telegram: Awaited<ReturnType<typeof peer>>
   start(this: void, input?: AppConfig): Promise<Runtime>
@@ -102,7 +102,7 @@ export async function fixture(
     }
   })
 
-  const config = validateApp({
+  const config = await validateApp({
     publicUrl: `http://127.0.0.1:${port}`,
     relay: {
       accounts: [
