@@ -10,6 +10,10 @@ Send a small image in the chat you selected in the [connection configurator](con
 
 Small UTF-8 text, Markdown, CSV, TSV and JSON files up to 64 KiB can be read directly through the connection. Larger files and other formats require the Agent to download them; its network or file support may limit what it can read.
 
+## Let your agent understand voice messages
+
+You can optionally enable [Tencent Cloud speech recognition](reference/configuration.md#speech-to-text). Relanox adds a transcript to incoming audio messages for dot and Grok and keeps the original audio. Without configuration, or if recognition fails, it forwards the original audio. Transcription does not analyze videos or other files.
+
 ## Receive a file from the Agent
 
 Try: “Create a small text file containing today’s checklist and send it as an attachment in this chat.” You should receive a downloadable file in the original chat, rather than only a filename or a message saying the file is ready.

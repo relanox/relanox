@@ -47,6 +47,12 @@ Register agent HTTP routes through the host beneath `/agents/<agentId>`. Keep en
 
 Use `host.readMessages({ requestId?, limit?, pending?, cursor? })` to recover retained incoming content. Reads enforce current endpoint and channel ownership and omit redacted records, endpoint configuration and private reply targets. Without an ID, the host inspects the most recent records per scoped endpoint, then filters authorization and returns up to `limit` messages (default 5, maximum 20). Reads do not claim or acknowledge work. Set `pending: true` for oldest-first retained unfinished requests and pass the last result's `{ acceptedAt, requestId }` as `cursor` to continue. The MCP wrapper returns this as `nextCursor`. Pending selection applies active channel and endpoint scope in storage before limiting. Each read includes `reply` status. Send `reply: { requestId, kind: "progress" | "final" }` to associate a source request, or inspect it with `host.status({ requestId })`. A final is unique per request, and only its fully sent delivery completes the request. See [Message status and recovery](core.md).
 
+## Add a speech plugin
+
+`SpeechPlugin` is an optional adapter with `kind: 'speech'`, `validateConfig` and `setup`. Validation is offline; setup resolves credentials and returns a `SpeechToTextProvider`. The provider identifies itself and its default engine, and recognizes stored audio with the captured engine and an `AbortSignal`. Return transcript text or a safe failure code; honor cancellation and avoid automatic retries of possibly billed calls.
+
+`@relanox/speech-tencent` uses the official Tencent Cloud ASR SDK and loads it only during setup. The CLI selects it through `speechToText: { plugin: 'tencent', config: { ... } }`. Embedders can pass any conforming provider to `createCore({ speechToText, ... })`. This boundary applies to every destination agent; the plugin has no dot, Grok, channel or database dependency. Core owns original media, preparation, persisted results and fallback. Replacing a provider leaves waiting work on the original-audio fallback rather than sending it to a different cloud service.
+
 ## Store channels and deliveries
 
 Core registers configured conversations through `registerConversations` before setting up integrations. Storage retains authenticated native targets independently of incoming messages. `enqueueMessage` authorizes the channel and saves the endpoint, resolved destination and rendered parts together. Outbound FIFO and explicit idempotency keys are scoped to the channel.

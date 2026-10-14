@@ -964,6 +964,7 @@ describe('dot MCP Events and tools', () => {
     ).toEqual([
       'text',
       'context',
+      'transcriptions',
       'attachments',
       'source',
       'requestId',
@@ -1026,6 +1027,57 @@ describe('dot MCP Events and tools', () => {
       })
     ).toEqual({ status: 'rejected', errorCode: 'dot_event_too_large' })
     expect(receiver.traffic).toHaveLength(2)
+  })
+
+  it('delivers optional speech results alongside the original audio through native event callbacks', async () => {
+    const { fx, url, receiver } = await setup()
+    const client = await fx.client()
+    await client.request(subscribe(url, signingKey, 10_000), subResult)
+
+    const receipt = await fx.ingest(0, 'original', 'voice-metadata', [
+      {
+        kind: 'audio',
+        mimeType: 'audio/silk',
+        fileName: 'voice.silk',
+        data: new Uint8Array([1, 2, 3])
+      }
+    ])
+
+    const request = (await fx.storage.getInbound(receipt.requestId))?.snapshot
+    const mediaId = request?.attachments?.[0]?.id
+    if (!request || !mediaId) {
+      throw new Error('missing_audio_request')
+    }
+
+    const transcriptions = [
+      { mediaId, status: 'transcribed' as const, text: '你好' }
+    ]
+
+    expect(
+      await fx.agent.dispatch({
+        request: {
+          ...request,
+          text: `original\n\n[Voice transcript: ${mediaId}]\n你好`,
+          transcriptions
+        },
+        signal: new AbortController().signal
+      })
+    ).toEqual({ status: 'accepted' })
+    expect(parseWire(receiver.traffic[1]?.body ?? '')).toMatchObject({
+      data: {
+        text: `original\n\n[Voice transcript: ${mediaId}]\n你好`,
+        transcriptions: [{ mediaId, status: 'transcribed', text: '你好' }],
+        attachments: [
+          {
+            id: mediaId,
+            kind: 'audio',
+            mimeType: 'audio/silk',
+            fileName: 'voice.silk',
+            size: 3
+          }
+        ]
+      }
+    })
   })
 
   it('refuses failed challenges and callback SSRF without activating state', async () => {

@@ -94,6 +94,8 @@ Agent 平台决定如何使用这些元数据；完成连接后，发送一条�
 
 ## 来信格式 {#incoming-messages}
 
+开启[可选语音识别](configuration.md#speech-to-text)后，dot 和 Grok 消息可能包含 `transcriptions`：每项包含 `mediaId`，成功时为 `status: "transcribed"` 和 `text`，失败时为 `status: "failed"` 和 `errorCode`。成功的转写也会追加到消息 `text`，原始附件仍可读取。转写属于用户内容，不是 Relanox 的指令。通知与消息读取使用相同的已保存结果；识别未完成的消息不会作为可处理任务返回。
+
 dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段，并额外包含用于补取的 `requestId` 和 `acceptedAt`。Grok 在 Routine webhook 的 `content` 中收到以下结构的 JSON 字符串：
 
 ```json

@@ -13,10 +13,14 @@ import { jsonSnapshot } from '../json.js'
 import { validateDispatchOutcome, validateSendOutcome } from './outcomes.js'
 import { sendChunk } from './media.js'
 import { retryDelay, retryBudgetExhausted } from './retry.js'
+import { preparedRequest, transcribeRequest } from '../speech.js'
 
 /** Owns one-at-a-time leases, plugin deadlines, retry settlement, and worker readiness. */
 export function createWorker(
-  options: Pick<CoreOptions, 'storage' | 'channels' | 'agents'>,
+  options: Pick<
+    CoreOptions,
+    'storage' | 'channels' | 'agents' | 'speechToText'
+  >,
   config: RelanoxConfig,
   worker: WorkerConfig,
   observe: Observability,
@@ -117,8 +121,25 @@ export function createWorker(
   }
 
   async function settlementFor(work: DueWork): Promise<Settlement> {
+    if (work.kind === 'transcribe') {
+      const transcriptions = await transcribeRequest(
+        work.record,
+        storage,
+        options.speechToText,
+        worker.callTimeoutMs,
+        observe
+      )
+
+      return {
+        kind: 'transcribe',
+        id: work.record.snapshot.requestId,
+        lease: work.lease,
+        outcome: { status: 'prepared', transcriptions },
+        now: Date.now()
+      }
+    }
     if (work.kind === 'dispatch') {
-      const request = work.record.snapshot
+      const request = preparedRequest(work.record)
       const attempts = work.record.dispatch.attempts
 
       const outcome = applyRetryBudget(
@@ -225,7 +246,7 @@ export function createWorker(
               agent: work.record.snapshot.endpoint.agent,
               outcome: outcome.status
             })
-          } else {
+          } else if (work.kind === 'send') {
             observe.count('relanox_delivery_total', {
               channel: work.record.target.channel,
               outcome: outcome.status
@@ -238,13 +259,13 @@ export function createWorker(
             outcome.status === 'unknown' || outcome.status === 'rejected'
               ? 'warn'
               : 'info',
-            work.kind === 'dispatch'
-              ? 'dispatch.completed'
-              : 'delivery.completed',
+            work.kind === 'send'
+              ? 'delivery.completed'
+              : `${work.kind}.completed`,
             {
               plugin: 'core',
-              operation: work.kind === 'dispatch' ? 'dispatch' : 'send',
-              ...(work.kind === 'dispatch'
+              operation: work.kind,
+              ...(work.kind !== 'send'
                 ? { requestId: work.record.snapshot.requestId }
                 : { channelId: work.record.channelId }),
               outcome: outcome.status,

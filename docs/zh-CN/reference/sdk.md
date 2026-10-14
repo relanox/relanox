@@ -47,6 +47,12 @@ Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中
 
 使用 `host.readMessages({ requestId?, limit?, pending?, cursor? })` 补取保留的来信内容。读取会检查当前端点和频道归属，排除已清理记录、端点配置和私有回复目标。未传入 ID 时，先查询各授权端点最近的记录，再过滤权限，最多返回 `limit` 条消息（默认 5，最大 20）。读取不会领取或确认任务。设置 `pending: true` 可从旧到新读取仍保留正文的未完成来信，将最后一条的 `{ acceptedAt, requestId }` 作为 `cursor` 继续读取。MCP 封装会将其作为 `nextCursor` 返回。未完成筛选在数据库限量前应用当前有效频道和端点权限。每条读取结果包含 `reply` 状态。发送时传入 `reply: { requestId, kind: "progress" | "final" }` 可关联来信，也可用 `host.status({ requestId })` 查询状态。每条来信只有一个最终投递，全部发送完成后才算完成。详见[消息状态与恢复](core.md)。
 
+## 添加语音插件
+
+`SpeechPlugin` 是可选适配器，提供 `kind: 'speech'`、`validateConfig` 和 `setup`。验证不联网；setup 读取凭据并返回 `SpeechToTextProvider`。服务声明自身标识与默认模型，使用接收时保存的模型和 `AbortSignal` 识别已保存的音频，返回转写文字或安全的失败代码。应响应取消信号，避免自动重试可能已计费的请求。
+
+`@relanox/speech-tencent` 使用腾讯云官方 ASR SDK，仅在 setup 时加载。CLI 通过 `speechToText: { plugin: 'tencent', config: { ... } }` 选择插件；嵌入 Core 时可传入任意符合接口的 `createCore({ speechToText, ... })`。此接口对所有目标 Agent 生效，插件不依赖 dot、Grok、渠道或数据库。原音频、转写调度、结果保存与回退由 Core 负责。更换识别服务时，等待中的任务回退原音频，不会自动转交其他云服务。
+
 ## 保存 channel 和投递
 
 Core 在设置接入之前通过 `registerConversations` 登记配置中的会话。存储独立保存已认证的原生目标信息。`enqueueMessage` 检查 channel 授权，并一起保存端点、解析后的目标及渲染分块。发送顺序和显式幂等键以 channel 为边界。
