@@ -439,6 +439,10 @@ QQ 默认使用正式环境。需要沙箱时，在账号配置中加入 `"envir
 
 `recipientTypes` 标识私聊和群聊目标。`allowProactive: false` 时仍需真实来信：私聊回复窗口为 60 分钟、4 条额度，群聊为 5 分钟、5 条额度。文字和每个附件分别占用额度。没有来信时发送，需已知的接收方类型、`allowProactive: true`、平台权限和目标的接收许可。
 
+腾讯官方 QQBot Node.js SDK 管理令牌刷新、HTTP 请求、WebSocket 心跳与恢复、上传方式和原生 `msg_seq`。Relanox 保留发送者授权、目标身份检查、回复窗口、媒体存储及 Core 投递/分块标识。回复额度由 QQ 判定，不再预留或持久化原生序号。QQ 发送仍不具备幂等保证：重试不确定结果可能产生重复消息。
+
+SDK 在应用回调完成前推进接收游标。因此，Core 接收成功前发生进程崩溃或数据库故障仍可能丢失来信，重连不等于持久化收件箱重放。单个 CDN 下载失败则降级：图片在文字和 `context.remoteImages` 中保留 HTTPS URL；文件/视频保留附件描述；语音优先保留 QQ 识别文字，否则留下转写不可用提示。原文字和其他成功附件保留。远程引用不是已存储媒体，链接可能过期。Core 授权及附件总量限制仍生效。
+
 ## Signal 与 signal-cli {#signal}
 
 用户操作：[配置 Signal 与 signal-cli](../channels/signal.md)。

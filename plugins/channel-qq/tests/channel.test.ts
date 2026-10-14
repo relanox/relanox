@@ -1,3 +1,5 @@
+// Actual SDK 1.0.5 wire contract: https://github.com/tencent-connect/qqbot-nodejs/tree/429a0f1b798f3b0fcef3679e207dbc0469a1df2d/src/protocol
+// Protect native auth, targeting, errors and deduplication; old local sequence/quota and ACK assumptions no longer apply.
 import {
   installPeerNetwork,
   outboundRequests
@@ -17,6 +19,8 @@ import { createQqChannel } from '../src/index.js'
 import type { Json } from '@relanox/sdk'
 
 installPeerNetwork()
+
+const nativeSequence: unknown = expect.any(Number)
 
 const createEvent = (
   id: string,
@@ -44,7 +48,7 @@ const createEvent = (
 const frame = (s: number, t: string, d: unknown): string =>
   JSON.stringify({ op: 0, s, t, d })
 
-test('QQ authenticates latest token protocol, receives C2C/group text and resumes committed cursor before RESUMED', async () => {
+test('QQ authenticates latest token protocol, receives C2C/group text and resumes received cursor before RESUMED', async () => {
   vi.stubEnv('QQ_SECRET', 'secret')
   let address = ''
 
@@ -101,8 +105,7 @@ test('QQ authenticates latest token protocol, receives C2C/group text and resume
     d: {
       token: 'QQBot cloud-token',
       intents: 33_554_432,
-      shard: [0, 1],
-      properties: {}
+      shard: [0, 1]
     }
   })
   expect(remote.requests[0]?.body).toEqual({
@@ -151,17 +154,17 @@ test('QQ authenticates latest token protocol, receives C2C/group text and resume
       })
     )
   )
-  await expect.poll(async () => (await records(host.storage)).length).toBe(2)
+  await expect.poll(async () => (await records(host.storage)).length).toBe(3)
   expect(
     (await records(host.storage))
       .map((record) => record.snapshot.target.chatId)
       .toSorted()
-  ).toEqual(['group', 'user'])
+  ).toEqual(['group', 'user', 'user'])
   expect(JSON.stringify(await records(host.storage))).not.toContain(
     'do-not-persist'
   )
   await expect.poll(() => remote.frames).toContainEqual({ op: 1, d: 6 })
-  socket.close(4009)
+  socket.close(1000)
   await expect.poll(() => remote.sockets.length, { timeout: 4000 }).toBe(2)
   await expect
     .poll(() => remote.frames)
@@ -169,7 +172,7 @@ test('QQ authenticates latest token protocol, receives C2C/group text and resume
       op: 6,
       d: { token: 'QQBot cloud-token', session_id: 'session', seq: 6 }
     })
-  await expect.poll(async () => (await records(host.storage)).length).toBe(3)
+  await expect.poll(async () => (await records(host.storage)).length).toBe(4)
   expect(
     (await records(host.storage)).some(
       (record) => record.snapshot.target.replyToId === 'replayed'
@@ -182,7 +185,7 @@ test('QQ authenticates latest token protocol, receives C2C/group text and resume
   expect(remote.sockets).toHaveLength(2)
 })
 
-test('QQ reserves sequences using real SQLite CAS, reuses them after reopen and preserves 429 retries', async () => {
+test('QQ uses SDK sequences across reopen while preserving native 429 retries', async () => {
   vi.stubEnv('QQ_SECRET', 'secret')
   let sends = 0
 
@@ -236,13 +239,13 @@ test('QQ reserves sequences using real SQLite CAS, reuses them after reopen and 
       markdown: { content: 'hello_*世界' },
       msg_type: 2,
       msg_id: 'incoming',
-      msg_seq: 1
+      msg_seq: nativeSequence
     },
     {
       markdown: { content: 'hello_*世界' },
       msg_type: 2,
       msg_id: 'incoming',
-      msg_seq: 2
+      msg_seq: nativeSequence
     }
   ])
   await host.storage.close()
@@ -267,25 +270,25 @@ test('QQ reserves sequences using real SQLite CAS, reuses them after reopen and 
       markdown: { content: 'hello_*世界' },
       msg_type: 2,
       msg_id: 'incoming',
-      msg_seq: 1
+      msg_seq: nativeSequence
     },
     {
       markdown: { content: 'hello_*世界' },
       msg_type: 2,
       msg_id: 'incoming',
-      msg_seq: 2
+      msg_seq: nativeSequence
     },
     {
       markdown: { content: 'hello_*世界' },
       msg_type: 2,
       msg_id: 'incoming',
-      msg_seq: 1
+      msg_seq: nativeSequence
     },
     {
       markdown: { content: 'hello_*世界' },
       msg_type: 2,
       msg_id: 'incoming',
-      msg_seq: 3
+      msg_seq: nativeSequence
     }
   ])
   expect(before[0]?.headers.authorization).toBe('QQBot token')
@@ -338,7 +341,7 @@ test.each([
   { type: 'c2c', max: 4 },
   { type: 'group', max: 5 }
 ])(
-  'QQ bounds $type passive replies and requires permission for proactive fallback',
+  'QQ delegates $type reply quotas and requires permission for proactive fallback',
   async ({ type, max }) => {
     vi.stubEnv('QQ_SECRET', 'secret')
 
@@ -373,13 +376,10 @@ test.each([
     }
     expect(
       await plugin.send(sendInput('qq', 'user', target, `chunk:${max}`))
-    ).toEqual({
-      status: 'rejected',
-      errorCode: 'passive_reply_limit'
-    })
+    ).toMatchObject({ status: 'sent' })
     expect(
       remote.requests.filter((request) => request.path.endsWith('/messages'))
-    ).toHaveLength(max)
+    ).toHaveLength(max + 1)
     const allowed = createQqChannel()
     await assemble(
       allowed,
@@ -404,7 +404,8 @@ test.each([
     ).toBe('sent')
     expect(remote.requests.at(-1)?.body).toEqual({
       markdown: { content: 'hello_*世界' },
-      msg_type: 2
+      msg_type: 2,
+      msg_seq: 1
     })
   }
 )
@@ -432,7 +433,7 @@ test.each([
   },
   {
     reply: { status: 503 },
-    result: { status: 'unknown', errorCode: 'http_503' }
+    result: { status: 'unknown', errorCode: 'transport_uncertain' }
   },
   {
     reply: { disconnect: true },
@@ -578,12 +579,12 @@ test.each([false, true])(
       msg_type: 2,
       markdown: { content: 'Here is more detail.' },
       msg_id: 'current-message',
-      msg_seq: 1
+      msg_seq: nativeSequence
     })
   }
 )
 
-test('QQ resumes before a failed SQLite write even with later dispatches already buffered', async () => {
+test('QQ keeps the SDK cursor after a failed SQLite write and accepts external redelivery', async () => {
   vi.stubEnv('QQ_SECRET', 'secret')
   let address = ''
 
@@ -645,14 +646,14 @@ test('QQ resumes before a failed SQLite write even with later dispatches already
   }
   socket.send(frame(2, 'C2C_MESSAGE_CREATE', createEvent('failed-write')))
   socket.send(frame(3, 'C2C_MESSAGE_CREATE', createEvent('next-message')))
-  await expect.poll(() => socket.readyState).toBe(3)
-  database.exec('DROP TRIGGER fail_selected')
+  await expect.poll(async () => (await records(host.storage)).length).toBe(1)
   await expect
-    .poll(() => remote.frames, { timeout: 4000 })
-    .toContainEqual({
-      op: 6,
-      d: { token: 'QQBot token', session_id: 'session', seq: 1 }
-    })
+    .poll(() => remote.frames, { timeout: 3000 })
+    .toContainEqual({ op: 1, d: 3 })
+  expect(remote.sockets).toHaveLength(1)
+  database.exec('DROP TRIGGER fail_selected')
+  socket.send(frame(4, 'C2C_MESSAGE_CREATE', createEvent('failed-write')))
+  socket.send(frame(5, 'C2C_MESSAGE_CREATE', createEvent('next-message')))
   await expect.poll(async () => (await records(host.storage)).length).toBe(2)
   expect(
     (await records(host.storage))
@@ -660,45 +661,6 @@ test('QQ resumes before a failed SQLite write even with later dispatches already
       .toSorted()
   ).toEqual(['failed-write', 'next-message'])
 })
-
-test('QQ authentication still times out when an unready gateway acknowledges heartbeats', async () => {
-  vi.stubEnv('QQ_SECRET', 'secret')
-  let address = ''
-
-  const remote = await peer(
-    (request) =>
-      request.path === '/app/getAppAccessToken'
-        ? { body: { access_token: 'token', expires_in: 7200 } }
-        : { body: { url: address } },
-    (socket) => {
-      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
-      socket.on('message', (data) => {
-        const received = z
-          .object({ op: z.number() })
-          .parse(JSON.parse(wireText(data)))
-
-        if (received.op === 1) {
-          socket.send(JSON.stringify({ op: 11 }))
-        }
-      })
-    }
-  )
-
-  address = remote.ws
-
-  const host = await assemble(
-    createQqChannel(),
-    {
-      appId: 'app',
-      clientSecret: { env: 'QQ_SECRET' }
-    },
-    [{ chatId: 'user', senderId: 'user' }]
-  )
-
-  await host.start()
-  await expect.poll(() => remote.sockets.length, { timeout: 13_000 }).toBe(2)
-  expect(await records(host.storage)).toHaveLength(0)
-}, 15_000)
 
 test.each([
   ['production', 'https://api.sgroup.qq.com'],
@@ -741,7 +703,7 @@ test.each([
   }
 )
 
-test('QQ resolution discovers the real passive window and durable quota without inventing message IDs', async () => {
+test('QQ resolution preserves passive context without predicting platform quotas', async () => {
   vi.stubEnv('QQ_SECRET', 'secret')
   let socketAddress = ''
 
@@ -811,21 +773,20 @@ test('QQ resolution discovers the real passive window and durable quota without 
       .filter((request) => request.path === '/v2/users/user/messages')
       .map((request) => request.body)
   ).toEqual([
-    expect.objectContaining({ msg_id: 'source', msg_seq: 1 }),
-    expect.objectContaining({ msg_id: 'source', msg_seq: 2 }),
-    expect.objectContaining({ msg_id: 'source', msg_seq: 3 }),
-    expect.objectContaining({ msg_id: 'source', msg_seq: 4 })
+    expect.objectContaining({ msg_id: 'source', msg_seq: nativeSequence }),
+    expect.objectContaining({ msg_id: 'source', msg_seq: nativeSequence }),
+    expect.objectContaining({ msg_id: 'source', msg_seq: nativeSequence }),
+    expect.objectContaining({ msg_id: 'source', msg_seq: nativeSequence })
   ])
-  expect(await plugin.resolveChannel?.(address, learned)).toEqual({
-    status: 'unavailable',
-    reason: 'passive_reply_limit'
+  expect(await plugin.resolveChannel?.(address, learned)).toMatchObject({
+    status: 'available'
   })
   expect(
     await plugin.send({
       ...sendInput('qq', 'user', resolved.target.data, 'fifth'),
       target: resolved.target
     })
-  ).toEqual({ status: 'rejected', errorCode: 'passive_reply_limit' })
+  ).toMatchObject({ status: 'sent' })
   expect(
     await plugin.resolveChannel?.(
       { ...address, chatId: 'another_user' },
@@ -981,8 +942,7 @@ test('QQ refreshes an otherwise cached token after gateway authentication failur
       d: {
         token: 'QQBot fresh',
         intents: 33_554_432,
-        shard: [0, 1],
-        properties: {}
+        shard: [0, 1]
       }
     })
   expect(tokenRequests).toBe(2)
@@ -1190,7 +1150,7 @@ test('QQ keeps an associated reply on the original passive message after newer i
   ).toEqual([
     expect.objectContaining({
       msg_id: 'original',
-      msg_seq: 1,
+      msg_seq: nativeSequence,
       markdown: { content: 'answer' }
     })
   ])

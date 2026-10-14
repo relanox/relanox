@@ -1,36 +1,8 @@
-import { apiBase, validateTransportUrl } from './config.js'
-import { createHash } from 'node:crypto'
-import { setTimeout as pause } from 'node:timers/promises'
+import { Buffer } from 'node:buffer'
+import type { QQBot, ReplyTarget } from '@tencent-connect/qqbot-nodejs'
 import type { SendInput, SendResult } from '@relanox/sdk'
 import { z } from 'zod'
 import { apiError } from './api-error.js'
-import type { QqConfig } from './config.js'
-import { httpJson, jsonPostRequest, RemoteError } from './transport.js'
-
-const byteCount = z
-  .union([
-    z.number(),
-    z
-      .string()
-      .regex(/^[0-9]+$/u)
-      .transform(Number)
-  ])
-  .pipe(z.number().int().positive().max(209_715_200))
-
-const preparedSchema = z.object({
-  upload_id: z.string().min(1).max(1024),
-  block_size: byteCount,
-  parts: z
-    .array(
-      z.object({
-        index: z.number().int().positive(),
-        presigned_url: z.url(),
-        block_size: byteCount.optional()
-      })
-    )
-    .min(1)
-    .max(10_000)
-})
 
 const formats: Readonly<Record<string, readonly string[]>> = {
   image: ['image/png', 'image/jpeg'],
@@ -38,87 +10,10 @@ const formats: Readonly<Record<string, readonly string[]>> = {
   video: ['video/mp4']
 }
 
-const digest = (algorithm: string, bytes: Uint8Array): string =>
-  createHash(algorithm).update(bytes).digest('hex')
-
-async function apiRequest(
-  url: string,
-  body: unknown,
-  credential: string,
-  signal: AbortSignal
-): Promise<unknown> {
-  const raw = await httpJson(
-    url,
-    jsonPostRequest(body, { Authorization: `QQBot ${credential}` }),
-    signal
-  )
-
-  const failure = apiError(raw, true)
-  if (failure) {
-    throw new RemoteError(failure, raw)
-  }
-  return raw
-}
-
-function validateParts(
-  prepared: z.infer<typeof preparedSchema>,
-  size: number
-): { index: number; block_size: number; offset: number; url: string }[] {
-  const parts = prepared.parts.toSorted(
-    (left, right) => left.index - right.index
-  )
-
-  if (parts.length !== Math.ceil(size / prepared.block_size)) {
-    throw new Error('invalid_upload_parts')
-  }
-  return parts.map((part, index) => {
-    const offset = index * prepared.block_size
-    const blockSize = Math.min(prepared.block_size, size - offset)
-    if (
-      part.index !== index + 1 ||
-      (part.block_size !== undefined && part.block_size !== blockSize)
-    ) {
-      throw new Error('invalid_upload_part_size')
-    }
-    const url = new URL(part.presigned_url)
-
-    return {
-      index: part.index,
-      block_size: blockSize,
-      offset,
-      url: validateTransportUrl(url.href, false, false)
-    }
-  })
-}
-
-async function putPart(
-  url: string,
-  bytes: Uint8Array,
-  signal: AbortSignal
-): Promise<void> {
-  // The signed URL supplies its own authorization. Never forward the QQBot credential.
-  const response = await fetch(url, {
-    method: 'PUT',
-    redirect: 'error',
-    signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
-    headers: { 'content-type': 'application/octet-stream' },
-    body: new Blob([new Uint8Array(bytes)])
-  })
-
-  await response.body?.cancel()
-  if (!response.ok) {
-    throw new RemoteError({
-      status: 'retryable',
-      errorCode: 'media_part_upload_failed'
-    })
-  }
-}
-
 export async function uploadMedia(
   input: SendInput,
-  type: 'group' | 'c2c',
-  credential: string,
-  config: QqConfig
+  target: ReplyTarget,
+  bot: QQBot
 ): Promise<string | SendResult | undefined> {
   if (!input.chunk.media) {
     return undefined
@@ -130,70 +25,26 @@ export async function uploadMedia(
   if (kind !== 'file' && !formats[kind]?.includes(mimeType)) {
     return { status: 'rejected', errorCode: 'unsupported_media_format' }
   }
-  const bytes = input.media.data
-  if (bytes.byteLength > 200_000_000) {
+  if (input.media.data.byteLength > 200_000_000) {
     return { status: 'rejected', errorCode: 'unsupported_media_size' }
   }
-  const base = `${apiBase(config).replace(/\/$/u, '')}/v2/${type === 'c2c' ? 'users' : 'groups'}/${encodeURIComponent(input.target.chatId)}`
-  const fileType = { image: 1, video: 2, audio: 3, file: 4 }[kind]
-  const md5 = digest('md5', bytes)
 
-  const prepared = preparedSchema.parse(
-    await apiRequest(
-      `${base}/upload_prepare`,
-      {
-        file_type: fileType,
-        file_size: String(bytes.byteLength),
-        file_name: fileName,
-        md5,
-        sha1: digest('sha1', bytes),
-        md5_10m:
-          bytes.byteLength <= 10_002_432
-            ? md5
-            : digest('md5', bytes.subarray(0, 10_002_432))
-      },
-      credential,
-      input.signal
-    )
-  )
+  const raw = await bot.uploadMedia({
+    target,
+    fileType: { image: 1, video: 2, audio: 3, file: 4 }[kind],
+    buffer: Buffer.from(input.media.data),
+    fileName,
+    srvSendMsg: false
+  })
 
-  const parts = validateParts(prepared, bytes.byteLength)
-  for (const part of parts) {
-    if (part.offset > 0) {
-      // The native part confirmation endpoint is limited to ten requests per second.
-      await pause(110, undefined, { signal: input.signal })
-    }
-    const data = bytes.subarray(part.offset, part.offset + part.block_size)
-    await putPart(part.url, data, input.signal)
-    await apiRequest(
-      `${base}/upload_part_finish`,
-      {
-        upload_id: prepared.upload_id,
-        part_index: part.index,
-        block_size: String(data.byteLength),
-        md5: digest('md5', data)
-      },
-      credential,
-      input.signal
-    )
+  const failure = apiError(raw, true)
+  if (failure) {
+    return failure
   }
-
-  const response = await apiRequest(
-    `${base}/files`,
-    {
-      file_type: fileType,
-      file_name: fileName,
-      upload_id: prepared.upload_id,
-      srv_send_msg: false
-    },
-    credential,
-    input.signal
-  )
-
   return z
     .object({
       file_info: z.string().min(1),
       ttl: z.number().int().nonnegative()
     })
-    .parse(response).file_info
+    .parse(raw).file_info
 }

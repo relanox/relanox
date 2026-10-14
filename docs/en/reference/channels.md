@@ -455,6 +455,10 @@ QQ uses the production environment by default. For the sandbox, add `"environmen
 
 `recipientTypes` identifies private and group destinations. With `allowProactive: false`, a real incoming message is still required: private replies have a 60-minute window and four slots; group replies have a five-minute window and five slots. Text and each attachment consume separate slots. Sending without an incoming message requires a known recipient type, `allowProactive: true`, platform permission and the recipient's receiving preference.
 
+The official Tencent QQBot Node.js SDK owns token refresh, HTTP requests, WebSocket heartbeat/resume, upload selection and native `msg_seq`. Relanox retains sender authorization, target identity checks, reply windows, media storage and Core delivery/chunk IDs. Reply quotas are decided by QQ; Relanox does not reserve or persist native sequences. QQ sends remain non-idempotent: retrying an unknown result can duplicate a message.
+
+The SDK advances its receipt cursor before the application callback finishes. A process crash or database failure before Core acceptance can therefore lose an input; reconnect is not a durable inbox replay. CDN download failure alone is degraded: images retain their HTTPS URL in text and `context.remoteImages`, files/videos retain an attachment description, and voice retains QQ's recognition text when available or an unavailable-transcription hint. Successful attachments and message text are retained. Remote references are not stored media and may expire. Core authorization and aggregate media limits still apply.
+
 ## Signal with signal-cli {#signal}
 
 User setup: [Connect Signal with signal-cli](../channels/signal.md).

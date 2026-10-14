@@ -1,12 +1,5 @@
 import { z } from 'zod'
 
-export const frameSchema = z.object({
-  op: z.number().int(),
-  s: z.number().int().nonnegative().nullish(),
-  t: z.string().optional(),
-  d: z.unknown().optional()
-})
-
 export const messageSchema = z.object({
   id: z.string().min(1),
   author: z.object({
@@ -25,7 +18,8 @@ export const messageSchema = z.object({
       z.object({
         url: z.string().min(1).optional(),
         filename: z.string().optional(),
-        content_type: z.string().optional()
+        content_type: z.string().optional(),
+        asr_refer_text: z.string().optional()
       })
     )
     .optional()
@@ -43,33 +37,6 @@ export const targetSchema = z
     (value) => (value.msgId === undefined) === (value.messageAt === undefined)
   )
 
-export const tokenSchema = z.object({
-  access_token: z.string().min(1),
-  expires_in: z
-    .union([z.number(), z.string().regex(/^\d+$/u)])
-    .transform(Number)
-    .pipe(z.number().positive())
-})
-
-export const allocationSchema = z.object({
-  next: z.number().int().positive(),
-  allocations: z.record(
-    z.string(),
-    z.object({
-      mode: z.enum(['passive', 'proactive']),
-      seq: z.number().int().positive()
-    })
-  )
-})
-
 export const errorSchema = z.object({ code: z.number().int() })
-
-export const readyEventSchema = z.object({ session_id: z.string().min(1) })
-
-export const helloEventSchema = z.object({
-  heartbeat_interval: z.number().int().min(1000).max(300_000)
-})
-
-export const gatewayResponseSchema = z.object({ url: z.url() })
 
 export const sendResponseSchema = z.object({ id: z.string().min(1) })

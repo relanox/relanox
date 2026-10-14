@@ -64,6 +64,8 @@ export type DueWork =
 export type TakeDueInput = {
   readonly now: EpochMs
   readonly leaseMs: number
+  /** Send attempts may need longer than agent notification or preparation. */
+  readonly sendLeaseMs?: number
   readonly limit: number
   readonly leaseOwner: string
   readonly safeRetryAccountIds: readonly string[]

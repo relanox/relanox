@@ -74,10 +74,15 @@ export function createWorker(
     try {
       const timeout = new Promise<{ status: 'unknown'; errorCode: string }>(
         (resolve) => {
-          timer = setTimeout(() => {
-            controller.abort()
-            resolve({ status: 'unknown', errorCode: 'call_timeout' })
-          }, worker.callTimeoutMs)
+          timer = setTimeout(
+            () => {
+              controller.abort()
+              resolve({ status: 'unknown', errorCode: 'call_timeout' })
+            },
+            operationName === 'send'
+              ? worker.sendTimeoutMs
+              : worker.callTimeoutMs
+          )
         }
       )
 
@@ -223,6 +228,7 @@ export function createWorker(
             await storage.takeDue({
               now: Date.now(),
               leaseMs: worker.leaseMs,
+              sendLeaseMs: worker.sendLeaseMs,
               limit: 1,
               leaseOwner: owner,
               safeRetryAccountIds

@@ -495,6 +495,44 @@ export function storageContract(
       expect((await s.getOutbound(record.deliveryId))?.status).toBe('sent')
     })
 
+    // Both adapters must support long sends without delaying notification recovery.
+    // Shared-lease cases cannot catch this split; this uses only real storage APIs.
+    it('leases sends longer than notifications and permits their late settlement', async () => {
+      await s.acceptInbound(snapshot())
+      await s.enqueueMessage(completion())
+
+      const work = await s.takeDue({
+        now: 110,
+        leaseMs: 30_000,
+        sendLeaseMs: 630_000,
+        limit: 2,
+        leaseOwner: 'long-send',
+        safeRetryAccountIds: []
+      })
+
+      const sending = required(work.find((item) => item.kind === 'send'))
+      expect(
+        required(work.find((item) => item.kind === 'dispatch')).lease.expiresAt
+      ).toBe(30_110)
+      expect(sending.lease.expiresAt).toBe(630_110)
+      expect(await due(45_110)).toEqual([])
+      expect((await s.getInbound('r1'))?.dispatch.status).toBe('unknown')
+      expect(
+        await s.settleAttempt({
+          kind: 'send',
+          id: 'd-channel-message',
+          lease: sending.lease,
+          outcome: { status: 'sent', receipt: { platformMessageId: 'slow' } },
+          now: 45_111,
+          nextDueAt: 45_111
+        })
+      ).toMatchObject({ status: 'updated' })
+      expect(await s.getOutbound('d-channel-message')).toMatchObject({
+        currentChunk: 1,
+        receipts: [{ platformMessageId: 'slow' }]
+      })
+    })
+
     it('allows lease expiry retry only for durable idempotent-send accounts', async () => {
       await s.acceptInbound(snapshot())
       await dispatch()

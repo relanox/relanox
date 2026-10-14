@@ -8,6 +8,7 @@ import type {
   InboundSnapshot,
   RelanoxConfig,
   Settlement,
+  SendResult,
   Storage
 } from '@relanox/sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -813,3 +814,89 @@ it('aborts bounded transport calls and preserves unknown effects', async () => {
     vi.useRealTimers()
   }
 })
+
+// Real SQLite protects the longer send deadline and its lease. The old dispatch-only
+// Timeout test cannot catch premature send aborts, lease expiry or late settlement.
+// Only the public channel plugin boundary is controlled; no production test seam is added.
+it.each(['complete', 'timeout'] as const)(
+  'keeps a long send leased and handles %s at the send deadline',
+  async (outcome) => {
+    const storage = createSqliteStorage({ filename: ':memory:' })
+    await storage.initialize()
+    testStores.push(storage)
+    const p = plugins()
+    const pending = Promise.withResolvers<SendResult>()
+    const send = vi.spyOn(p.channel, 'send').mockReturnValue(pending.promise)
+
+    const runtime = await createCore({
+      publicUrl: 'https://relay.test',
+      config,
+      channels: p.channels,
+      agents: p.agents,
+      storage
+    })
+
+    await p.channelHost.ingest(incoming)
+    await runtime.processDue()
+    const request = (await storage.listInbound({ limit: 1 }))[0]
+    if (!request) {
+      throw new Error('missing_request')
+    }
+
+    const receipt = await p.agentHost
+      .forPrincipal({ subject: 'verified', endpointIds: ['first'] })
+      .sendMessage({ channel: request.snapshot.channel.id, text: 'OK' })
+
+    if (receipt.status !== 'queued') {
+      throw new Error('missing_delivery')
+    }
+    vi.useFakeTimers()
+    try {
+      const processing = runtime.processDue()
+      await vi.advanceTimersByTimeAsync(45_000)
+      expect(send).toHaveBeenCalledOnce()
+      expect(send.mock.calls[0]?.[0].signal.aborted).toBe(false)
+      expect(
+        await storage.takeDue({
+          now: Date.now(),
+          leaseMs: 30_000,
+          limit: 1,
+          leaseOwner: 'other-worker',
+          safeRetryAccountIds: []
+        })
+      ).toEqual([])
+      if (outcome === 'complete') {
+        pending.resolve({
+          status: 'sent',
+          receipt: { platformMessageId: 'slow-result' }
+        })
+        expect(await processing).toEqual({ processed: 1, conflicts: 0 })
+        expect(await storage.getOutbound(receipt.deliveryId)).toMatchObject({
+          status: 'sent',
+          receipts: [{ platformMessageId: 'slow-result' }]
+        })
+      } else {
+        await vi.advanceTimersByTimeAsync(554_999)
+        expect(send.mock.calls[0]?.[0].signal.aborted).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(await processing).toEqual({ processed: 1, conflicts: 0 })
+        expect(send.mock.calls[0]?.[0].signal.aborted).toBe(true)
+        pending.resolve({
+          status: 'sent',
+          receipt: { platformMessageId: 'late-result' }
+        })
+        await vi.advanceTimersByTimeAsync(1)
+        await runtime.processDue()
+        expect(await storage.getOutbound(receipt.deliveryId)).toMatchObject({
+          status: 'unknown',
+          errorCode: 'call_timeout',
+          receipts: []
+        })
+        expect(send).toHaveBeenCalledOnce()
+      }
+    } finally {
+      pending.resolve({ status: 'sent', receipt: {} })
+      vi.useRealTimers()
+    }
+  }
+)

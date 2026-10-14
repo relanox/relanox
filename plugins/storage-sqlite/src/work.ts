@@ -221,7 +221,7 @@ export function createWorkOperations(
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
             version: next.version + 1,
-            expiresAt: input.now + input.leaseMs
+            expiresAt: input.now + (input.sendLeaseMs ?? input.leaseMs)
           }
 
           next = { ...next, version: lease.version, lease }

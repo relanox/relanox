@@ -37,6 +37,8 @@ Send “Hello” privately or mention the robot in the bound group. Ask for a sh
 
 Send native images, audio, videos and files. Generated replies use QQ attachments. Prepare PNG/JPEG images, MP4 video, SILK audio or ordinary files. QQ’s limits are 20 MB for images/audio, 30 MB for videos and 200 MB for files; the relay’s default 25 MiB limit may be lower. Reply text and each attachment consume separate reply slots.
 
+If an attachment download fails, the message still arrives with the image's remote URL, a file/video description, or QQ's voice recognition text when available. A voice without recognized text carries an unavailable-transcription hint. Other successful attachments remain accessible. An image URL can expire and does not guarantee readable image content.
+
 ## Troubleshooting
 
 If the gateway refuses connection, check robot release status, app credentials and event permission. If a group message is missing, mention the bot and verify the group/member OpenIDs. If a delayed answer exceeds the reply window, send a new question. Enable **Allow proactive messages** only after obtaining the platform permission and the recipient’s receiving preference.
