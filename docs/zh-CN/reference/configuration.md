@@ -270,9 +270,8 @@ node apps/cli/dist/main.js plugins install ./artifacts/relanox-channel-telegram-
 加载每个需要的原生类型和 ID 时，依次查找：
 
 1. `plugins.load.paths` 中明确指定的包。
-2. `relanox-plugins.json` 登记的已安装包名。
-3. 安装目录 `node_modules` 中的官方包名。
-4. CLI 的模块解析路径，包括工作区开发依赖或分发目录中组装的插件。
+2. 安装目录的 `node_modules`：使用 `relanox-plugins.json` 登记的包名，没有登记时使用官方包名。
+3. CLI 的模块解析路径，继续使用同一包名，包括工作区开发依赖或分发目录中组装的插件。
 
 登记表决定安装目录和 CLI 查找时使用的包名；没有登记时使用官方包名。两个覆盖包声明相同类型和 ID 时，以 `plugin_duplicate_override` 失败。无效的覆盖包会使校验或启动失败，不会退回已安装版本。
 
