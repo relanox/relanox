@@ -8,6 +8,40 @@
 
 渠道接入负责接收平台事件和发送回复；Agent 接入负责认证 Agent、通知输入以及接收回复。Relanox 会提供限定权限的 host，用于保存消息和检查访问权限。请通过 host 操作，不要直接打开数据库。
 
+## 打包原生插件
+
+插件包在 `package.json` 中声明原生身份和编译后的入口：
+
+```json
+{
+  "name": "@relanox/channel-telegram",
+  "type": "module",
+  "files": ["dist"],
+  "relanox": {
+    "kind": "channel",
+    "id": "telegram",
+    "sdkMajor": 1,
+    "entry": "./dist/plugin.js"
+  }
+}
+```
+
+SDK 导出 `PluginManifest`。`kind` 为 `channel`、`agent`、`storage`、`observability` 或 `middleware`；`id` 是原生渠道或 Agent 选择值、存储 ID（`sqlite` 或 `postgres`），标准可观测性使用 `standard`。腾讯语音包 `@relanox/speech-tencent` 声明类型 `middleware` 和清单 ID `speech-tencent`，插件实例 ID 仍为 `speech-tencent`。当前 SDK 主版本为 1。入口必须位于包内，解析符号链接后也不能越出包目录。
+
+从入口导出名为 `createPlugin` 的同步工厂，返回身份对应的类型化 SDK `ChannelPlugin`、`AgentPlugin`、`StoragePlugin`、`ObservabilityPlugin` 或 `MiddlewarePlugin`。例如，Telegram 包的 `src/plugin.ts` 调用现有工厂：
+
+```ts
+import { createTelegramChannel } from './index.js'
+
+export function createPlugin(): ReturnType<typeof createTelegramChannel> {
+  return createTelegramChannel()
+}
+```
+
+保留供直接调用者使用的现有命名导出。编译入口，并在打包文件中包含 `dist`；存储包还必须包含生成的 `migrations` 目录。工厂和模块导入不能建立连接，因为配置校验会在 setup 前导入包并调用工厂。通过插件的 setup 生命周期启动平台和存储连接。
+
+本地开发先构建包，再将 `plugins.load.paths` 指向包目录；修改后重新构建并重启。测试安装时打包为 `.tgz`，再使用[配置参考](configuration.md#安装和加载原生插件)中的 CLI 安装命令。该接口用于 Relanox 原生接入。
+
 ## 添加渠道
 
 1. 定义并验证账号配置。凭据字段使用环境变量引用；验证配置只检查值，不发起网络请求。

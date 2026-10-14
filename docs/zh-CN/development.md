@@ -16,6 +16,10 @@ pnpm check
 
 先构建，再运行类型检查或 lint，因为工作区包使用构建后的类型声明。`pnpm check` 会运行格式检查、lint、类型检查和 Vitest。安装依赖时也会设置仓库跟踪的提交前钩子。
 
+原生插件作为 CLI 的工作区开发依赖提供，`pnpm install --frozen-lockfile` 和 `pnpm build` 保持原有源码流程。CLI 包可以独立打包；生产分发需要安装或组装所用的原生包。支持打包不表示对应版本已经发布到 npm。
+
+需要在正常工作区解析之外开发插件时，先构建，再在测试配置中用 `plugins.load.paths` 指向包目录。相对覆盖路径以该配置文件所在目录为准。覆盖包需要 `relanox` 清单，以及导出 `createPlugin` 的编译入口 `dist/plugin.js`；详见[打包原生插件](reference/sdk.md#打包原生插件)。重复身份或无效覆盖会直接失败，不会使用已安装副本。修改后重新构建并重启。
+
 ## 保持修改集中
 
 阅读[消息如何到达 Agent](architecture.md)和对应接入的指南。修改 SDK 时，阅读[扩展接入](reference/sdk.md)并查看导出的类型。每次修改围绕明确的可观察行为展开。

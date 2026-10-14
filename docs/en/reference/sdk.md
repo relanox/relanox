@@ -8,6 +8,40 @@ This guide is for contributors adding a native messaging integration or extendin
 
 A channel integration receives platform events and sends replies. An agent integration authenticates an agent, notifies it of inputs, and accepts its replies. Relanox supplies each integration with a scoped host that saves messages and checks access. Use that host rather than opening the database directly.
 
+## Package a native plugin
+
+A plugin package declares its native identity and compiled entrypoint in `package.json`:
+
+```json
+{
+  "name": "@relanox/channel-telegram",
+  "type": "module",
+  "files": ["dist"],
+  "relanox": {
+    "kind": "channel",
+    "id": "telegram",
+    "sdkMajor": 1,
+    "entry": "./dist/plugin.js"
+  }
+}
+```
+
+The SDK exports `PluginManifest`. Its `kind` is `channel`, `agent`, `storage`, `observability` or `middleware`; `id` is the native channel/agent selector, storage ID (`sqlite` or `postgres`) or `standard` for standard observability. Tencent speech middleware declares kind `middleware` and manifest ID `speech-tencent` in `@relanox/speech-tencent`; its plugin instance ID remains `speech-tencent`. The current SDK major is 1. The entrypoint must exist inside the package, including after resolving symlinks.
+
+Export a synchronous named `createPlugin` factory from that entrypoint. Return a typed SDK `ChannelPlugin`, `AgentPlugin`, `StoragePlugin`, `ObservabilityPlugin` or `MiddlewarePlugin` with the corresponding identity. For example, the Telegram package's `src/plugin.ts` wraps its existing factory:
+
+```ts
+import { createTelegramChannel } from './index.js'
+
+export function createPlugin(): ReturnType<typeof createTelegramChannel> {
+  return createTelegramChannel()
+}
+```
+
+Keep existing named public exports available for direct consumers. Compile the entrypoint and include `dist` in packed files; storage packages must also include their generated `migrations` directory. Factories and module imports must not open connections: configuration validation imports the package and calls the factory before setup. Start platform and storage connections through the plugin's setup lifecycle.
+
+For local development, build the package and point `plugins.load.paths` at its package directory. Rebuild and restart after changes. For an installation test, pack a `.tgz` and use the CLI installer described in [Configuration reference](configuration.md#install-and-load-native-plugins). This contract is for native Relanox integrations.
+
 ## Add a channel
 
 1. Define and validate the account configuration. Require environment references for secrets; validation should check values without making network calls.
