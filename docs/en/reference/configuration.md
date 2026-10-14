@@ -270,9 +270,8 @@ The default directory is `.relanox/plugins` beside the configuration file. To ch
 For each required native kind and ID, loading uses this order:
 
 1. An explicit package in `plugins.load.paths`.
-2. The installed package name recorded in `relanox-plugins.json`.
-3. The official package name in the installation directory's `node_modules`.
-4. CLI module resolution, including workspace development dependencies or plugins assembled into a distribution.
+2. The installation directory's `node_modules`, using the package name recorded in `relanox-plugins.json`, or the official name when no mapping exists.
+3. CLI module resolution for that same package name, including workspace development dependencies or plugins assembled into a distribution.
 
 A registry mapping chooses the package name for the installation-directory and CLI lookup; the official name is used when no mapping exists. Two override packages declaring the same kind and ID fail with `plugin_duplicate_override`. An invalid override fails validation or startup instead of falling back to an installed copy.
 
