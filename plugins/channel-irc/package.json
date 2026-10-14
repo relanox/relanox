@@ -26,5 +26,11 @@
   },
   "engines": {
     "node": ">=26 <27"
+  },
+  "relanox": {
+    "kind": "channel",
+    "id": "irc",
+    "sdkMajor": 1,
+    "entry": "./dist/plugin.js"
   }
 }

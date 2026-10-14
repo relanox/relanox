@@ -31,5 +31,11 @@
   },
   "engines": {
     "node": ">=26 <27"
+  },
+  "relanox": {
+    "kind": "channel",
+    "id": "qq",
+    "sdkMajor": 1,
+    "entry": "./dist/plugin.js"
   }
 }
