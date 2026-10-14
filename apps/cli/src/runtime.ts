@@ -1,14 +1,21 @@
 import { createCore, safeObservability } from '@relanox/core'
-import { createStandardObservability } from '@relanox/observability-standard'
 import { noopObservability } from '@relanox/sdk'
-import type { ObservabilityRuntime } from '@relanox/sdk'
+import type {
+  AgentId,
+  AgentPlugin,
+  ChannelPlugin,
+  StoragePlugin,
+  ObservabilityPlugin,
+  ObservabilityRuntime
+} from '@relanox/sdk'
 import { appConfigSchema } from './config.js'
 import type { AppConfig } from './config.js'
 import { deadline } from './deadline.js'
 import { createLifecycle } from './lifecycle.js'
 import { createListeners, listen } from './listeners.js'
 import { loadPlugins } from './plugins.js'
-import { openStorage, requireHealthy, validateStorage } from './storage.js'
+import { requireHealthy } from './storage.js'
+import { createPluginLoader } from './plugin-loader.js'
 import { createWorker } from './worker.js'
 
 const noopRuntime: ObservabilityRuntime = {
@@ -17,29 +24,60 @@ const noopRuntime: ObservabilityRuntime = {
   async shutdown() {}
 }
 
-export function validateApp(input: unknown): AppConfig {
+async function assemble(input: unknown): Promise<{
+  config: AppConfig
+  storagePlugin: StoragePlugin<unknown>
+  storageConfig: unknown
+  observabilityPlugin: ObservabilityPlugin<unknown> | undefined
+  observabilityConfig: unknown
+  channels: Map<string, ChannelPlugin<unknown>>
+  agents: Map<AgentId, AgentPlugin<unknown>>
+}> {
   const config = appConfigSchema.parse(input)
-  validateStorage(config.relay.storage)
-  if (config.relay.observability.plugin === 'standard') {
-    createStandardObservability().validateConfig(
-      config.relay.observability.config
-    )
+  const loader = await createPluginLoader(config.plugins)
+
+  const storagePlugin = await loader.load(
+    'storage',
+    config.relay.storage.plugin
+  )
+
+  if (storagePlugin.kind !== 'storage') {
+    throw new Error('plugin_kind_mismatch')
   }
-  loadPlugins(config.relay)
-  return config
+
+  const storageConfig = storagePlugin.validateConfig(
+    config.relay.storage.config
+  )
+
+  const observabilityPlugin =
+    config.relay.observability.plugin === 'none'
+      ? undefined
+      : await loader.load('observability', 'standard')
+
+  if (observabilityPlugin && observabilityPlugin.kind !== 'observability') {
+    throw new Error('plugin_kind_mismatch')
+  }
+
+  const observabilityConfig = observabilityPlugin?.validateConfig(
+    config.relay.observability.config
+  )
+
+  const plugins = await loadPlugins(config.relay, loader)
+  return {
+    config,
+    storagePlugin,
+    storageConfig,
+    observabilityPlugin,
+    observabilityConfig,
+    ...plugins
+  }
+}
+
+export async function validateApp(input: unknown): Promise<AppConfig> {
+  return (await assemble(input)).config
 }
 
 export { requireHealthy } from './storage.js'
-
-async function setupObservability(
-  config: AppConfig
-): Promise<ObservabilityRuntime> {
-  if (config.relay.observability.plugin === 'none') {
-    return noopRuntime
-  }
-  const plugin = createStandardObservability()
-  return plugin.setup(plugin.validateConfig(config.relay.observability.config))
-}
 
 /** Validation precedes side effects; register resources immediately after acquisition. */
 export async function startRuntime(input: unknown): Promise<{
@@ -48,8 +86,15 @@ export async function startRuntime(input: unknown): Promise<{
   core: Awaited<ReturnType<typeof createCore>>
   stop(this: void): Promise<void>
 }> {
-  const config = validateApp(input)
-  const { channels, agents } = loadPlugins(config.relay)
+  const {
+    config,
+    channels,
+    agents,
+    storagePlugin,
+    storageConfig,
+    observabilityPlugin,
+    observabilityConfig
+  } = await assemble(input)
 
   const lifecycle = createLifecycle(config.server.shutdownTimeoutMs, [
     ...channels.values(),
@@ -57,10 +102,13 @@ export async function startRuntime(input: unknown): Promise<{
   ])
 
   try {
-    const observability = await setupObservability(config)
+    const observability = observabilityPlugin
+      ? await observabilityPlugin.setup(observabilityConfig)
+      : noopRuntime
+
     lifecycle.registerObservability(observability)
     const observe = safeObservability(observability.observe)
-    const storage = await openStorage(config.relay.storage, observe)
+    const storage = await storagePlugin.setup(storageConfig, observe)
     lifecycle.registerStorage(storage)
     await storage.initialize()
     await requireHealthy(storage)

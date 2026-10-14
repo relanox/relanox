@@ -1,60 +1,26 @@
-import { createDotAgentPlugin } from '@relanox/agent-dot'
-import { createGrokAgentPlugin } from '@relanox/agent-grok'
 import type {
   AgentId,
   AgentPlugin,
-  ChannelId,
   ChannelPlugin,
   RelanoxConfig
 } from '@relanox/sdk'
-import { createTelegramChannel } from '@relanox/channel-telegram'
-import { createFeishuChannel } from '@relanox/channel-feishu'
-import { createTeamsChannel } from '@relanox/channel-msteams'
-import { createWhatsAppChannel } from '@relanox/channel-whatsapp'
-import { createGoogleChatChannel } from '@relanox/channel-googlechat'
-import { createLineChannel } from '@relanox/channel-line'
+import type { createPluginLoader } from './plugin-loader.js'
 
-import { createDiscordChannel } from '@relanox/channel-discord'
-import { createSlackChannel } from '@relanox/channel-slack'
-import { createWeComChannel } from '@relanox/channel-wecom'
-import { createDingTalkChannel } from '@relanox/channel-dingtalk'
-import { createQqChannel } from '@relanox/channel-qq'
-import { createMatrixChannel } from '@relanox/channel-matrix'
-import { createMattermostChannel } from '@relanox/channel-mattermost'
-import { createSignalChannel } from '@relanox/channel-signal'
-import { createIrcChannel } from '@relanox/channel-irc'
+export type PluginLoader = Awaited<ReturnType<typeof createPluginLoader>>
 
-const channelFactories: Record<ChannelId, () => ChannelPlugin<unknown>> = {
-  telegram: createTelegramChannel,
-  discord: createDiscordChannel,
-  slack: createSlackChannel,
-  feishu: createFeishuChannel,
-  wecom: createWeComChannel,
-  dingtalk: createDingTalkChannel,
-  qq: createQqChannel,
-  msteams: createTeamsChannel,
-  whatsapp: createWhatsAppChannel,
-  matrix: createMatrixChannel,
-  googlechat: createGoogleChatChannel,
-  line: createLineChannel,
-  mattermost: createMattermostChannel,
-  signal: createSignalChannel,
-  irc: createIrcChannel
-}
-
-const agentFactories: Record<AgentId, () => AgentPlugin<unknown>> = {
-  dot: createDotAgentPlugin,
-  grok: createGrokAgentPlugin
-}
-
-export function loadPlugins(config: RelanoxConfig): {
+export async function loadPlugins(
+  config: RelanoxConfig,
+  loader: PluginLoader
+): Promise<{
   channels: Map<string, ChannelPlugin<unknown>>
   agents: Map<AgentId, AgentPlugin<unknown>>
-} {
+}> {
   const channels = new Map<string, ChannelPlugin<unknown>>()
   for (const account of config.accounts) {
-    const factory = channelFactories[account.channel]
-    const plugin = factory()
+    const plugin = await loader.load('channel', account.channel)
+    if (plugin.kind !== 'channel') {
+      throw new Error('plugin_kind_mismatch')
+    }
     plugin.validateConfig(account.config)
     channels.set(account.id, plugin)
   }
@@ -62,7 +28,11 @@ export function loadPlugins(config: RelanoxConfig): {
   for (const endpoint of config.endpoints) {
     let plugin = agents.get(endpoint.agent)
     if (!plugin) {
-      plugin = agentFactories[endpoint.agent]()
+      const loaded = await loader.load('agent', endpoint.agent)
+      if (loaded.kind !== 'agent') {
+        throw new Error('plugin_kind_mismatch')
+      }
+      plugin = loaded
       agents.set(endpoint.agent, plugin)
     }
     plugin.validateConfig(endpoint.config)

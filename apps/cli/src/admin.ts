@@ -15,7 +15,12 @@ export async function withStorage<T>(
   config: AppConfig,
   action: (storage: Storage) => Promise<T>
 ): Promise<T> {
-  const storage = await openStorage(config.relay.storage)
+  const storage = await openStorage(
+    config.relay.storage,
+    undefined,
+    config.plugins
+  )
+
   try {
     return await deadline(action(storage), config.server.startupTimeoutMs)
   } finally {

@@ -37,7 +37,7 @@ export async function mediaRuntime(
   vi.stubEnv('MEDIA_ROUTINE_URL', 'https://routine.test/routine')
   vi.stubEnv('MEDIA_ROUTINE_AUTH', 'Bearer media-routine-token')
 
-  const app = validateApp({
+  const app = await validateApp({
     publicUrl: `http://127.0.0.1:${port}`,
     relay: {
       accounts: [{ id: 'business', channel, config, allowedSenders: ['42'] }],
@@ -81,8 +81,8 @@ export async function mediaRuntime(
 
   const capture = vi
     .spyOn(catalog, 'loadPlugins')
-    .mockImplementation((relayConfig) => {
-      const plugins = loadPlugins(relayConfig)
+    .mockImplementation(async (relayConfig, loader) => {
+      const plugins = await loadPlugins(relayConfig, loader)
       const agent = plugins.agents.get('grok')
       if (agent) {
         const setup = agent.setup.bind(agent)

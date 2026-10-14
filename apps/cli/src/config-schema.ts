@@ -5,11 +5,13 @@ import {
 } from '@relanox/core'
 import { validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
+import { pluginConfigSchema } from './plugin-config.js'
 
 const port = z.number().int().min(0).max(65_535)
 
 export const appConfigSchema = z
   .strictObject({
+    plugins: pluginConfigSchema.optional(),
     publicUrl: z.string().transform(validatePublicUrl).optional(),
     relay: z.unknown().transform(validateConfig),
     media: z.unknown().transform(validateMediaOptions).optional(),
