@@ -234,6 +234,54 @@ Native hosted platforms use their protocol endpoints automatically.
 
 QQ defaults to production; set `environment` to `"sandbox"` for its sandbox. Relanox manages WhatsApp's Graph API version, currently `v25.0`. Telegram's local Bot API address and the self-hosted Matrix, Mattermost and Signal addresses remain configurable. Teams retains `tokenUrl` for a single-tenant application authority, along with its trusted service, media and upload origins.
 
+## Install and load native plugins
+
+Channels, agents, storage, observability and message middleware are independent packages. Official names follow `@relanox/channel-<channel>`, `@relanox/agent-<agent>`, `@relanox/storage-<storage>` and `@relanox/observability-standard`; Tencent speech middleware uses `@relanox/speech-tencent`. Account and endpoint selectors keep their native IDs, such as `telegram`, `grok`, `sqlite` and `standard`. Configured message middleware uses the same installation directory and override rules; the optional top-level `middleware` array controls which middleware runs and in what order.
+
+Use the explicit installer when you need a separately installed package. This npm example works only after the exact version exists on your configured npm registry; it does not establish that version 0.1.0 has been published:
+
+```sh
+node apps/cli/dist/main.js plugins install @relanox/channel-telegram@0.1.0 --config relanox.json
+```
+
+Registry packages require an exact version; tags and version ranges are rejected. You can also install a locally packed archive:
+
+```sh
+node apps/cli/dist/main.js plugins install ./artifacts/relanox-channel-telegram-0.1.0.tgz --config relanox.json
+```
+
+The installer reads only the top-level `plugins` settings, so it can run before the relay, bindings or credentials are complete. A JSON file containing `{}` uses the default installation directory. Installation uses npm with lifecycle scripts disabled, checks the package manifest and compiled entrypoint, and records its native kind and ID. It does not start the plugin.
+
+The default directory is `.relanox/plugins` beside the configuration file. To choose another directory or override an installed plugin with a local package, add this top-level object:
+
+```json
+{
+  "plugins": {
+    "directory": "./data/plugins",
+    "load": {
+      "paths": ["./local/channel-telegram"]
+    }
+  }
+}
+```
+
+`plugins.directory`, `plugins.load.paths` and relative installer archive paths resolve beside the configuration file, independently of the launch directory. Each override path points to a package directory containing its `package.json` and compiled entrypoint, not to a TypeScript file.
+
+For each required native kind and ID, loading uses this order:
+
+1. An explicit package in `plugins.load.paths`.
+2. The installed package name recorded in `relanox-plugins.json`.
+3. The official package name in the installation directory's `node_modules`.
+4. CLI module resolution, including workspace development dependencies or plugins assembled into a distribution.
+
+A registry mapping chooses the package name for the installation-directory and CLI lookup; the official name is used when no mapping exists. Two override packages declaring the same kind and ID fail with `plugin_duplicate_override`. An invalid override fails validation or startup instead of falling back to an installed copy.
+
+`validate` loads the required plugin modules and checks their contracts and configuration asynchronously, without opening platform or storage connections. Importing executes package code; use trusted packages. Validation and normal startup do not install packages or contact an npm registry. Plugin changes require a rebuild when developing locally, then a service restart; there is no hot reload.
+
+Preserve the installation directory's `package.json`, npm lockfile, `relanox-plugins.json`, installed packages and any local archives when backing up or moving the installation. The registry maps native kind/ID pairs to installed npm package names.
+
+See [Adding an integration](sdk.md) for the package manifest and factory contract, and [Operations](../operations.md) for selecting plugins in a container.
+
 ## Use the CLI
 
 Run the built CLI from the repository root. Every command takes `--config <file>` (or `-c`):
@@ -254,7 +302,9 @@ node apps/cli/dist/main.js status --config relanox.json --limit 100
 | `requeue`  | Retry a retained notification or reply after investigating                                   |
 | `cleanup`  | Remove eligible old content according to your retention policy                               |
 
-`validate` checks configuration structure. Use `doctor` for missing variables, then send a message to verify the platform connection. A fresh installation needs its first `run` before storage checks become healthy. The management URL for `doctor` is a local HTTP origin such as the example above.
+`plugins install <spec>` installs an exact npm package version or a local `.tgz` using only the configuration's plugin settings. See [Install and load native plugins](#install-and-load-native-plugins).
+
+`validate` checks configuration structure and required plugin contracts without opening connections. Use `doctor` for missing variables, then send a message to verify the platform connection. A fresh installation needs its first `run` before storage checks become healthy. The management URL for `doctor` is a local HTTP origin such as the example above.
 
 Narrow status queries with:
 

@@ -234,6 +234,54 @@ Relanox 启动时使用配置的凭据向 Slack、Discord、飞书/Lark、LINE�
 
 QQ 默认使用正式环境，需要沙箱时将 `environment` 设为 `"sandbox"`。WhatsApp 的 Graph API 版本由 Relanox 管理，目前为 `v25.0`。Telegram 本地 Bot API 地址，以及 Matrix、Mattermost 和 Signal 自托管地址仍可配置。Teams 保留用于单租户应用认证地址的 `tokenUrl`，以及服务、媒体和上传的可信来源。
 
+## 安装和加载原生插件
+
+渠道、Agent、存储、可观测性和消息中间件分别作为独立包提供。官方包名为 `@relanox/channel-<渠道>`、`@relanox/agent-<Agent>`、`@relanox/storage-<存储>` 和 `@relanox/observability-standard`；腾讯语音中间件使用 `@relanox/speech-tencent`。账号和端点配置继续使用原生 ID，例如 `telegram`、`grok`、`sqlite` 和 `standard`。配置的消息中间件使用相同的安装目录和覆盖规则；顶层可选的 `middleware` 数组决定启用哪些中间件及其顺序。
+
+需要单独安装插件时，使用显式安装命令。以下 npm 示例仅在配置的 npm registry 已有该精确版本时可用，不表示 0.1.0 已经发布：
+
+```sh
+node apps/cli/dist/main.js plugins install @relanox/channel-telegram@0.1.0 --config relanox.json
+```
+
+registry 包必须指定精确版本，不接受标签或版本范围。也可以安装本地打包文件：
+
+```sh
+node apps/cli/dist/main.js plugins install ./artifacts/relanox-channel-telegram-0.1.0.tgz --config relanox.json
+```
+
+安装器只读取顶层 `plugins` 设置，所以 relay、绑定或凭据尚未完成时也能安装。只包含 `{}` 的 JSON 文件使用默认安装目录。安装通过 npm 执行，禁用生命周期脚本，检查包清单和编译后的入口，并登记原生类型和 ID，不启动插件。
+
+默认目录是配置文件旁的 `.relanox/plugins`。需要更换目录，或用本地包覆盖已安装插件时，添加以下顶层对象：
+
+```json
+{
+  "plugins": {
+    "directory": "./data/plugins",
+    "load": {
+      "paths": ["./local/channel-telegram"]
+    }
+  }
+}
+```
+
+`plugins.directory`、`plugins.load.paths` 和安装命令中的相对压缩包路径都以配置文件所在目录为准，与启动目录无关。每个覆盖路径指向包含 `package.json` 和编译入口的包目录，而不是 TypeScript 文件。
+
+加载每个需要的原生类型和 ID 时，依次查找：
+
+1. `plugins.load.paths` 中明确指定的包。
+2. `relanox-plugins.json` 登记的已安装包名。
+3. 安装目录 `node_modules` 中的官方包名。
+4. CLI 的模块解析路径，包括工作区开发依赖或分发目录中组装的插件。
+
+登记表决定安装目录和 CLI 查找时使用的包名；没有登记时使用官方包名。两个覆盖包声明相同类型和 ID 时，以 `plugin_duplicate_override` 失败。无效的覆盖包会使校验或启动失败，不会退回已安装版本。
+
+`validate` 异步加载所需插件模块，检查接口和配置，不建立平台或存储连接。导入会执行包代码，请使用可信包。校验和正常启动不会安装包，也不会访问 npm registry。本地开发修改插件后需要重新构建，再重启服务；不支持热重载。
+
+备份或迁移时保留安装目录中的 `package.json`、npm 锁文件、`relanox-plugins.json`、已安装包和本地压缩包。登记表将原生类型和 ID 对应到已安装的 npm 包名。
+
+包清单和工厂接口见[扩展接入](sdk.md)，容器选择插件的方法见[部署与备份](../operations.md)。
+
 ## 使用 CLI
 
 从仓库根目录运行构建后的 CLI。每条命令带 `--config <文件>`，也可简写为 `-c`：
@@ -254,7 +302,9 @@ node apps/cli/dist/main.js status --config relanox.json --limit 100
 | `requeue`  | 查明原因后重试保留的通知或回信                               |
 | `cleanup`  | 按保留策略清理符合条件的旧消息内容                           |
 
-`validate` 检查配置结构，`doctor` 查找缺失变量，再发送消息验证平台连接。新安装应先运行一次 `run`，让存储检查正常。`doctor` 的管理 URL 使用本地 HTTP 来源，例如上述地址。
+`plugins install <spec>` 只读取配置中的插件设置，安装精确 npm 版本或本地 `.tgz`。详见[安装和加载原生插件](#安装和加载原生插件)。
+
+`validate` 检查配置结构和所需插件接口，不建立连接；`doctor` 查找缺失变量，再发送消息验证平台连接。新安装应先运行一次 `run`，让存储检查正常。`doctor` 的管理 URL 使用本地 HTTP 来源，例如上述地址。
 
 缩小状态查询范围：
 

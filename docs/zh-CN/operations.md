@@ -60,6 +60,18 @@ node apps/cli/dist/main.js discover --config relanox.json --account wecom-main -
 
 超时范围为 1–600 秒，默认 120 秒；可按 Ctrl+C 提前停止。
 
+## 为容器选择插件
+
+默认 Docker 构建包含全部 21 个原生插件包，包括 `speech-tencent`，现有标准配置和 Compose 流程可继续使用。需要组装更小的镜像时，通过 `RELANOX_PLUGINS` 传入空格分隔的包名，不带 `@relanox/` scope：
+
+```sh
+docker build --build-arg "RELANOX_PLUGINS=storage-sqlite observability-standard agent-grok channel-telegram" -t relanox:telegram .
+```
+
+包含配置使用的存储、可观测性、Agent、渠道和启用的中间件。使用腾讯语音识别时，在构建参数中加入 `speech-tencent`。省略 `relay.observability` 时仍需要标准可观测性插件。配置需要镜像未包含的包时，校验或启动会失败；镜像组装不会改变 JSON 中的选择值。
+
+运行时单独安装插件，应将 `plugins.directory` 设为可写的持久目录，例如 `/data/plugins`。随附的配置挂载只读，所以位于 `/config/relanox.json` 旁的默认目录不适合安装。备份时将插件目录的 npm 锁文件、`package.json`、`relanox-plugins.json`、已安装包和本地压缩包与配置、数据库一起保留。修改后重新构建镜像或更新单独安装的包，校验配置，再重启加载。安装和覆盖路径见[配置参考](reference/configuration.md#安装和加载原生插件)。
+
 ## 提供 HTTPS 地址
 
 将公开域名指向主机，使用带可信 TLS 证书的反向代理。同一主机上的 Caddy 可以使用以下 `Caddyfile`：

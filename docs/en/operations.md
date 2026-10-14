@@ -60,6 +60,18 @@ node apps/cli/dist/main.js discover --config relanox.json --account wecom-main -
 
 The timeout accepts 1–600 seconds (default 120); press Ctrl+C to stop sooner.
 
+## Select plugins for a container
+
+The default Docker build includes all 21 native plugin packages, including `speech-tencent`, preserving the standard configuration and Compose flow. To assemble a smaller image, pass space-separated package names without the `@relanox/` scope in `RELANOX_PLUGINS`:
+
+```sh
+docker build --build-arg "RELANOX_PLUGINS=storage-sqlite observability-standard agent-grok channel-telegram" -t relanox:telegram .
+```
+
+Include the configured storage, observability, agents, channels and any enabled middleware. Add `speech-tencent` to the build argument when using Tencent speech recognition. Standard observability is needed even when `relay.observability` is omitted. A configuration requiring a package omitted from the image fails validation or startup; image assembly does not change the JSON selectors.
+
+For plugins installed separately at runtime, set `plugins.directory` to a writable persistent directory, such as `/data/plugins`. The supplied configuration mount is read-only, so the default directory beside `/config/relanox.json` is unsuitable for installation. Preserve that directory's npm lockfile, `package.json`, `relanox-plugins.json`, installed packages and local archives along with your configuration and database. Rebuild the image or update the separately installed package, validate, then restart to load a change. See [Configuration reference](reference/configuration.md#install-and-load-native-plugins) for installation and override paths.
+
 ## Give the service an HTTPS address
 
 Point your public domain at the host and use a reverse proxy with a trusted TLS certificate. Caddy on the same host can use this `Caddyfile`:

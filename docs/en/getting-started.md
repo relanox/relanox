@@ -20,6 +20,8 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
+The source installation includes all native plugins as workspace development dependencies; no separate plugin installation is needed for this flow. Independently installed packages and local development overrides are described in [Configuration reference](reference/configuration.md#install-and-load-native-plugins).
+
 Open the [connection configurator](connect.md). Enter your public HTTPS address, change the default Agent from dot to Grok, and enable Telegram. Fill in your allowed Telegram user ID and private chat ID, then select your Grok Agent for that chat. Keep the generated environment variable names and download `relanox.json` to the repository root.
 
 Open **Your setup guide** and save the generated MCP password before closing or reloading the page. Complete any draft warnings. The guide lists the variables and connection addresses for your choices. For manual setup using the shipped example, see [Configuration reference](reference/configuration.md).

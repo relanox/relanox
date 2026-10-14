@@ -16,6 +16,10 @@ pnpm check
 
 Build before type checking or linting: workspace packages use compiled declarations. `pnpm check` runs formatting checks, lint, type checking and Vitest. Installation also sets up the tracked pre-commit hook.
 
+Native plugins are workspace development dependencies of the CLI, so `pnpm install --frozen-lockfile` and `pnpm build` retain the standard source workflow. The CLI package can be packed independently; production distributions must install or assemble the native packages they need. Packaging support does not mean a package version is already available on npm.
+
+To work on a plugin outside the normal workspace resolution, build it and set `plugins.load.paths` to its package directory in the test configuration. Relative override paths resolve beside that configuration file. Override packages need a `relanox` manifest and compiled `dist/plugin.js` exporting `createPlugin`; see [Package a native plugin](reference/sdk.md#package-a-native-plugin). Duplicate identities or broken overrides fail instead of using an installed copy. Rebuild and restart after edits.
+
 ## Make a focused change
 
 Read [How messages reach your Agent](architecture.md) and the guide for the integration you are changing. For SDK work, read [Build an integration](reference/sdk.md) and inspect the exported types. Keep each change focused on an observable behavior.
