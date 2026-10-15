@@ -7,14 +7,27 @@ import { createSqliteStorage } from '../../storage-sqlite/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentHost, AgentPlugin, AccountConfig } from '@relanox/sdk'
+import type {
+  AgentHost,
+  AgentPlugin,
+  AccountConfig,
+  Binding
+} from '@relanox/sdk'
 import { createFeishuChannel } from '../src/index.js'
 
 export async function storedChannel(
   cleanup: (() => Promise<void>)[],
   environment: NodeJS.ProcessEnv,
   account: AccountConfig,
-  worker?: WorkerOptions
+  worker?: WorkerOptions,
+  bindings: Binding[] = [
+    {
+      accountId: 'fs',
+      chatId: 'oc_chat',
+      threadId: 'omt_thread',
+      endpointId: 'first'
+    }
+  ]
 ): Promise<{
   core: CoreRuntime
   storage: ReturnType<typeof createSqliteStorage>
@@ -68,14 +81,7 @@ export async function storedChannel(
         }
       ],
       endpoints: [{ id: 'first', agent: 'grok', config: null }],
-      bindings: [
-        {
-          accountId: 'fs',
-          chatId: 'oc_chat',
-          threadId: 'omt_thread',
-          endpointId: 'first'
-        }
-      ],
+      bindings,
       storage: { plugin: 'sqlite', config: {} },
       observability: { plugin: 'none', config: {} }
     }

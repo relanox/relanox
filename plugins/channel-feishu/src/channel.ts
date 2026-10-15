@@ -352,7 +352,7 @@ export function createFeishuChannel(
       return new Response(null, { status: 400 })
     }
     try {
-      const threadId = message.thread_id ?? message.root_id
+      const threadId = message.thread_id
 
       const access =
         content.resources.length > 0

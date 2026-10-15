@@ -857,6 +857,86 @@ it.each([
   }
 )
 
+it.each(['group', 'p2p'] as const)(
+  'keeps an ordinary $0 quote in its chat binding and preserves native reply context',
+  async (chatType) => {
+    // Feishu EventMessage defines root_id for replies and thread_id only for topics:
+    // https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/intro
+    // https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/thread-introduction
+    const remote = await peer((input) => ({
+      body: input.path.includes('tenant_access_token')
+        ? { code: 0, tenant_access_token: 'token', expire: 7200 }
+        : { code: 0, data: { message_id: 'sent' } }
+    }))
+
+    cleanup.push(remote.close)
+
+    const { core, storage, agentHost } = await storedChannel(
+      cleanup,
+      environment,
+      account,
+      undefined,
+      [
+        { accountId: 'fs', chatId: 'oc_chat', endpointId: 'first' },
+        {
+          accountId: 'fs',
+          chatId: 'oc_chat',
+          threadId: 'omt_thread',
+          endpointId: 'first'
+        }
+      ]
+    )
+
+    const quote = {
+      ...event,
+      header: { ...event.header, event_id: `quote-${chatType}` },
+      event: {
+        ...event.event,
+        message: {
+          ...event.event.message,
+          message_id: `om_quote_${chatType}`,
+          chat_type: chatType,
+          root_id: 'om_original',
+          parent_id: 'om_original',
+          thread_id: undefined
+        }
+      }
+    }
+
+    expect((await core.fetch(request(quote))).status).toBe(200)
+    const records = await storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    expect(records[0]?.snapshot).toMatchObject({
+      source: { eventId: `quote-${chatType}` },
+      target: { chatId: 'oc_chat', replyToId: `om_quote_${chatType}` }
+    })
+    expect(records[0]?.snapshot.target.threadId).toBeUndefined()
+
+    const principal = agentHost.forPrincipal({
+      subject: 'first',
+      endpointIds: ['first']
+    })
+
+    const record = records[0]?.snapshot
+    if (!record) {
+      throw new Error('missing_quote')
+    }
+    expect(
+      await principal.sendMessage({
+        channel: record.channel.id,
+        text: 'reply',
+        idempotencyKey: `answer-${chatType}`,
+        reply: { requestId: record.requestId, kind: 'final' }
+      })
+    ).toMatchObject({ status: 'queued' })
+    await core.processDue()
+    expect(remote.requests.at(-1)).toMatchObject({
+      path: `/open-apis/im/v1/messages/om_quote_${chatType}/reply`,
+      body: { reply_in_thread: false }
+    })
+  }
+)
+
 it('resolves authenticated Feishu threads through their real root message while omitting visual reply quoting', async () => {
   const remote = await peer((input) => ({
     body: input.path.includes('tenant_access_token')
