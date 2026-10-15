@@ -26,6 +26,8 @@ Set `serverUrl` to the HTTPS base address of your Mattermost server. Start Relan
 
 Send “Hello” from an allowed user in the bound channel. For a thread binding, reply under the root post. The bot posts the answer to the same channel/thread.
 
+When the Agent specifies `reply.requestId`, the answer is posted as a native reply under that incoming post, or under its existing thread root. Sending without `reply` posts an ordinary message in the bound channel or thread. File attachments follow the same reply target.
+
 ## Images and files
 
 Attach images, audio, videos or files as usual. Relanox sends generated files back as native post attachments, and Mattermost creates available previews. Respect the server’s upload-size setting and the Relanox media limit.
