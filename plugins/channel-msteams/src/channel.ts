@@ -20,7 +20,7 @@ import type { z } from 'zod'
 import {
   prepareAttachment,
   consentPosted,
-  consentThrottled,
+  consentPostRefused,
   richAttachment,
   richPreparationFailure,
   richError,
@@ -158,10 +158,13 @@ async function sendFailure(
   if (response.status === 401) {
     invalidateAccessToken(config, token)
     await response.body?.cancel()
+    if (consentKey) {
+      await consentPostRefused(host, consentKey)
+    }
     return { status: 'retryable', errorCode: 'oauth_token_rejected' }
   }
   if (consentKey && response.status === 429) {
-    await consentThrottled(host, consentKey)
+    await consentPostRefused(host, consentKey)
   }
   return failure(response)
 }

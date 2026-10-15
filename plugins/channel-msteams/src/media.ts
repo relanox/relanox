@@ -252,7 +252,7 @@ function uploadStatus(status: number): 'retryable' | 'rejected' {
   return status === 429 || status >= 500 ? 'retryable' : 'rejected'
 }
 
-export async function consentThrottled(
+export async function consentPostRefused(
   host: ChannelHost,
   key: string
 ): Promise<void> {

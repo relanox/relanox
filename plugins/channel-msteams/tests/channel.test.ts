@@ -215,6 +215,132 @@ it.each([429, 503])(
 // Token and expiry validation protects the external protocol boundary, independently
 // Of the library's permissive parser; ordinary successful fixtures cannot detect this.
 // https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
+it('reposts a personal file consent card with fresh OAuth after a definitive 401', async () => {
+  // Bot Connector rejects an expired bearer credential with HTTP 401:
+  // https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
+  // Teams FileConsentCard is an outbound activity with an acceptContext:
+  // https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/file-upload
+  const local = await setup()
+
+  const incoming = {
+    ...local.activity,
+    conversation: {
+      ...local.activity.conversation,
+      conversationType: 'personal'
+    }
+  }
+
+  expect(
+    (await local.core.fetch(await local.incoming({}, incoming))).status
+  ).toBe(200)
+  const record = (await local.storage.listInbound({ limit: 1 }))[0]?.snapshot
+  if (!record) {
+    throw new Error('missing_incoming_activity')
+  }
+
+  const principal = local.principal()
+
+  const reference = await principal.media?.upload({
+    channelId: record.channel.id,
+    mediaId: '74733a43-9676-4dd8-9051-0233ddc6eec1',
+    upload: {
+      kind: 'file',
+      mimeType: 'application/pdf',
+      fileName: 'report.pdf',
+      data: new Uint8Array([10, 20, 30, 40])
+    }
+  })
+
+  if (!reference) {
+    throw new Error('missing_file')
+  }
+
+  const media = await principal.media?.read({
+    channelId: record.channel.id,
+    mediaId: reference.id
+  })
+
+  if (!media) {
+    throw new Error('missing_file_bytes')
+  }
+
+  const input: SendInput = {
+    deliveryId: 'consent-401',
+    channelId: record.channel.id,
+    target: record.target,
+    chunkIndex: 0,
+    chunk: {
+      text: '',
+      state: null,
+      idempotencyKey: 'consent-401:0',
+      media: media.reference
+    },
+    media,
+    signal: new AbortController().signal
+  }
+
+  const namespace = { pluginId: 'channel-msteams', ownerId: 'business' }
+  const consentKey = 'consent:consent-401:0'
+
+  local.remote.token(200, {
+    access_token: 'expired-token',
+    token_type: 'Bearer',
+    expires_in: 3600
+  })
+  local.remote.respond(401, { error: { code: 'Unauthorized' } })
+  expect(await local.plugin.send(input)).toEqual({
+    status: 'retryable',
+    errorCode: 'oauth_token_rejected'
+  })
+  expect(await local.storage.getState(namespace, consentKey)).toBeUndefined()
+
+  local.remote.token(200, {
+    access_token: 'replacement-token',
+    token_type: 'Bearer',
+    expires_in: 3600
+  })
+  local.remote.respond(200, { id: 'consent-card' })
+  expect(await local.plugin.send(input)).toEqual({
+    status: 'pending',
+    retryAfterMs: 30_000
+  })
+  expect(await local.plugin.send(input)).toMatchObject({ status: 'pending' })
+  expect(
+    (await local.storage.getState(namespace, consentKey))?.value
+  ).toMatchObject({
+    phase: 'waiting',
+    conversationId: 'conversation-1',
+    userId: 'user-id'
+  })
+
+  const posts = local.remote.traffic.filter((entry) =>
+    entry.path.includes('/activities/')
+  )
+
+  expect(posts).toHaveLength(2)
+  expect(posts.map((entry) => entry.headers.authorization)).toEqual([
+    'Bearer expired-token',
+    'Bearer replacement-token'
+  ])
+  expect(posts.map((entry) => JSON.parse(entry.body) as unknown)).toMatchObject(
+    [
+      {
+        attachments: [
+          { contentType: 'application/vnd.microsoft.teams.card.file.consent' }
+        ]
+      },
+      {
+        attachments: [
+          { contentType: 'application/vnd.microsoft.teams.card.file.consent' }
+        ]
+      }
+    ]
+  )
+  expect(
+    local.remote.traffic.filter((entry) => entry.path === tokenPath)
+  ).toHaveLength(2)
+})
+
 it.each([
   { access_token: 123, expires_in: 3600 },
   { access_token: 'bad-expiry', expires_in: 'invalid' },
