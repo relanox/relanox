@@ -28,7 +28,7 @@ The official [Matrix JavaScript SDK](https://github.com/matrix-org/matrix-js-sdk
 
 Send “Hello” from an allowed account in the bound unencrypted room. For a thread binding, reply inside that thread. The dedicated account sends the agent’s answer into the same room or thread.
 
-The Agent can quote a specific incoming event with `reply.requestId`, even after later messages arrive. Sends without `reply` omit the message quote while retaining the configured thread destination.
+The Agent can quote a specific incoming event with `reply.requestId`, even after later messages arrive. Thread placement and fallback metadata follow the official SDK. Sends without `reply` retain the configured thread destination without selecting an incoming event to quote.
 
 ## Images and files
 

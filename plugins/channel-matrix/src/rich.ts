@@ -1,6 +1,6 @@
 import { escapeHtml, markdownText, renderHtml } from '@relanox/markdown'
 import type { SendInput } from '@relanox/sdk'
-import { MsgType } from 'matrix-js-sdk'
+import { ContentHelpers } from 'matrix-js-sdk'
 import type { RoomMessageTextEventContent } from 'matrix-js-sdk/lib/@types/events.js'
 
 export function richError(input: SendInput): string | undefined {
@@ -59,10 +59,9 @@ export function richContent(
       )
     }
   }
-  return {
-    msgtype: MsgType.Text,
-    body: body.join('\n\n'),
-    format: 'org.matrix.custom.html',
-    formatted_body: html.join('')
-  }
+  // The SDK helper creates m.text; its declaration also includes unrelated event kinds.
+  return ContentHelpers.makeHtmlMessage(
+    body.join('\n\n'),
+    html.join('')
+  ) as RoomMessageTextEventContent
 }

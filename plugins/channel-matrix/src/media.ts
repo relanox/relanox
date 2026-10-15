@@ -9,8 +9,8 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import type { MatrixClient } from 'matrix-js-sdk'
-import { MsgType } from 'matrix-js-sdk'
-import type { MessageContent } from './client.js'
+import { ContentHelpers, MsgType } from 'matrix-js-sdk'
+import type { MediaEventContent } from 'matrix-js-sdk/lib/@types/media.js'
 import { z } from 'zod'
 import type { MatrixConfig } from './config.js'
 import { sendFailure } from './protocol.js'
@@ -40,45 +40,41 @@ const kinds = {
   'm.file': 'file'
 } as const
 
-function contentUri(value: string): { server: string; id: string } {
-  const match = /^mxc:\/\/(?<server>[^/?#@\s]+)\/(?<id>[A-Za-z0-9_-]+)$/u.exec(
-    value
-  )?.groups
-
-  if (!match?.server || !match.id) {
-    throw new Error('invalid_media_uri')
-  }
-  return { server: match.server, id: match.id }
-}
-
 export async function receiveMedia(
   content: unknown,
   host: ChannelHost,
   config: MatrixConfig,
-  base: string,
+  client: MatrixClient,
   headers: Readonly<Record<string, string>>,
   signal: AbortSignal
 ): Promise<MediaUpload[]> {
-  if (content !== null && typeof content === 'object' && 'file' in content) {
-    throw new Error('encrypted_unsupported')
-  }
   const parsed = mediaSchema.safeParse(content)
   if (!parsed.success) {
     return []
   }
   const data = parsed.data
-  const uri = contentUri(data.url)
 
-  const downloaded = await downloadMedia(
-    `${base}/_matrix/client/v1/media/download/${encodeURIComponent(uri.server)}/${encodeURIComponent(uri.id)}`,
-    {
-      maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
-      signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
-      headers,
-      trustedOrigins: [new URL(base).origin],
-      allowInsecureLocalhost: config.allowInsecureLocalhost
-    }
+  const url = client.mxcUrlToHttp(
+    data.url,
+    undefined,
+    undefined,
+    undefined,
+    false,
+    false,
+    true
   )
+
+  if (!url) {
+    throw new Error('invalid_media_uri')
+  }
+
+  const downloaded = await downloadMedia(url, {
+    maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
+    signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
+    headers,
+    trustedOrigins: [new URL(client.getHomeserverUrl()).origin],
+    allowInsecureLocalhost: config.allowInsecureLocalhost
+  })
 
   return [
     {
@@ -111,7 +107,9 @@ async function upload(
       type: media.reference.mimeType
     })
 
-    contentUri(result.content_uri)
+    if (!client.mxcUrlToHttp(result.content_uri)) {
+      throw new Error('invalid_media_uri')
+    }
     return result.content_uri
   } catch (error) {
     const failure = sendFailure(error)
@@ -125,7 +123,7 @@ async function upload(
 export async function messageContent(
   input: SendInput,
   client: MatrixClient
-): Promise<SendResult | MessageContent> {
+): Promise<SendResult | ReturnType<typeof richContent> | MediaEventContent> {
   if (input.chunk.richText) {
     const urls: string[] = []
     for (const media of input.richMedia ?? []) {
@@ -143,12 +141,11 @@ export async function messageContent(
     return content
   }
   if (!input.media) {
-    return {
-      msgtype: MsgType.Text,
-      body: input.chunk.text,
-      format: 'org.matrix.custom.html',
-      formatted_body: renderHtml(input.chunk.text)
-    }
+    // MakeHtmlMessage always creates m.text, despite its broader SDK return type.
+    return ContentHelpers.makeHtmlMessage(
+      input.chunk.text,
+      renderHtml(input.chunk.text)
+    ) as ReturnType<typeof richContent>
   }
   const media = input.media
   const url = await upload(client, media)
@@ -186,19 +183,12 @@ export async function messageContent(
     }
   }
 
-  switch (media.reference.kind) {
-    case 'image': {
-      return { ...content, msgtype: MsgType.Image }
-    }
-    case 'audio': {
-      return { ...content, msgtype: MsgType.Audio }
-    }
-    case 'video': {
-      return { ...content, msgtype: MsgType.Video }
-    }
-    case 'file': {
-      return { ...content, msgtype: MsgType.File }
-    }
-  }
-  throw new Error('unsupported_media')
+  const types = {
+    image: MsgType.Image,
+    audio: MsgType.Audio,
+    video: MsgType.Video,
+    file: MsgType.File
+  } as const
+
+  return { ...content, msgtype: types[media.reference.kind] }
 }

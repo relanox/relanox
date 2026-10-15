@@ -90,6 +90,9 @@ export async function httpPeer(
     const path = new URL(request.url ?? '/', 'http://peer').pathname
     // Bootstrap responses required by the real matrix-js-sdk 43.0.0 client:
     // Src/sync.ts:prepareSync/prepareFilter and src/client.ts:startClient.
+    // Protect the SDK's stable thread negotiation; advertising v1.11 alone omits
+    // The v1.4 capability Client.isVersionSupported actually checks. Earlier tests
+    // Hand-built relations and missed this. Real protocol fixtures need no seam.
     // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientversions
     // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3pushrules
     // https://spec.matrix.org/v1.16/client-server-api/#post_matrixclientv3useruseridfilter
@@ -101,7 +104,7 @@ export async function httpPeer(
       return
     }
     if (path === '/_matrix/client/versions') {
-      json(response, { versions: ['v1.11'], unstable_features: {} })
+      json(response, { versions: ['v1.4', 'v1.11'], unstable_features: {} })
       return
     }
     if (path.endsWith('/pushrules/')) {

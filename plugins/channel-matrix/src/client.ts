@@ -1,11 +1,7 @@
 import { MatrixClient, MemoryStore } from 'matrix-js-sdk'
 import type { Logger } from 'matrix-js-sdk/lib/logger.js'
-import type { RoomMessageTextEventContent } from 'matrix-js-sdk/lib/@types/events.js'
-import type { MediaEventContent } from 'matrix-js-sdk/lib/@types/media.js'
 import loglevel from 'loglevel'
 import { requestTimeoutMs } from './constants.js'
-
-export type MessageContent = RoomMessageTextEventContent | MediaEventContent
 
 // SDK diagnostics can contain event bodies and URLs. Report only adapter-owned
 // Operational codes through ChannelHost instead of forwarding those diagnostics.

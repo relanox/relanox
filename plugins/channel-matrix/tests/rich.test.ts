@@ -3,6 +3,10 @@ import { createMatrixChannel } from '../src/index.js'
 import { body, httpPeer, json } from './harness.js'
 import { richHost, richInput } from './rich-fixture.js'
 
+// Protect ordered HTML, native thread placement and a stable transaction on HTTP.
+// A manual relation can omit fallback metadata; the previous assertion encoded
+// That builder rather than SDK 43.0.0 Client.addThreadRelationIfNeeded and
+// ContentHelpers.makeHtmlMessage. The existing public setup/send APIs need no seam.
 it('uploads inline images and sends one ordered Matrix HTML event with a stable transaction', async () => {
   const sent: {
     path: string
@@ -71,7 +75,8 @@ it('uploads inline images and sends one ordered Matrix HTML event with a stable 
           '<p><strong>Before</strong></p>\n<img src="mxc://server.example/chart" alt="Chart ] &lt;unsafe&gt;"><p><em>After</em></p>\n',
         'm.relates_to': {
           rel_type: 'm.thread',
-          event_id: '$thread'
+          event_id: '$thread',
+          is_falling_back: true
         }
       }
     }

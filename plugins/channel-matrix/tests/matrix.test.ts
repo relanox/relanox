@@ -80,6 +80,10 @@ function input(
   }
 }
 
+// Protect native thread placement and frozen targets through HTTP/Core/SQLite.
+// Hand-built relations can omit SDK fallback metadata; previous expectations
+// Covered that old builder only. SDK 43.0.0 Client.addThreadRelationIfNeeded is
+// The fixture source; the real client and existing public APIs need no seam.
 it('persists SDK thread events, filters identities and sends the frozen delayed target', async () => {
   const syncs: { since: string | null; authorization: string | undefined }[] =
     []
@@ -224,7 +228,8 @@ it('persists SDK thread events, filters identities and sends the frozen delayed 
       '<p><strong>answer</strong> <a href="https://example.com/">link</a> &lt;script&gt;alert(1)&lt;/script&gt;</p>\n',
     'm.relates_to': {
       rel_type: 'm.thread',
-      event_id: thread
+      event_id: thread,
+      is_falling_back: true
     }
   })
   await plugin.send(input(request.snapshot.target))
@@ -302,6 +307,9 @@ it('bounds the combined Markdown and HTML text sent to Matrix after escaping exp
 })
 
 // The SDK owns receipt progress, while accepted Core work survives a restart.
+// Protect the recovered thread destination and SDK fallback metadata; stale manual
+// Relations otherwise pass the old recovery expectation. The send fixture follows
+// SDK 43.0.0 Client.addThreadRelationIfNeeded; real SQLite needs no extra seam.
 // Native events and PUT send transactions: Matrix Client-Server v1.16 /sync and
 // https://spec.matrix.org/v1.16/client-server-api/#put_matrixclientv3roomsroomidsendeventtypetxnid
 it('recovers an accepted question and queued reply from SQLite after the SDK client is replaced', async () => {
@@ -382,7 +390,11 @@ it('recovers an accepted question and queued reply from SQLite after the SDK cli
   expect(sent).toEqual([
     expect.objectContaining({
       body: 'saved answer',
-      'm.relates_to': { rel_type: 'm.thread', event_id: thread }
+      'm.relates_to': {
+        rel_type: 'm.thread',
+        event_id: thread,
+        is_falling_back: true
+      }
     })
   ])
   expect((await next.storage.getOutbound(reply.deliveryId))?.status).toBe(
@@ -626,7 +638,7 @@ it.each(['stop', 'abort'] as const)(
             versionsClosed = true
           })
         } else {
-          json(response, { versions: ['v1.11'], unstable_features: {} })
+          json(response, { versions: ['v1.4', 'v1.11'], unstable_features: {} })
         }
       }
     )
