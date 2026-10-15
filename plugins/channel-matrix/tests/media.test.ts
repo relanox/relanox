@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { createMatrixChannel } from '../src/index.js'
-import { body, httpPeer, json, waitFor } from './harness.js'
+import { body, harness, httpPeer, json, waitFor } from './harness.js'
 import { mediaRelay } from './media-harness.js'
 
 const kinds = [
@@ -13,6 +13,99 @@ const kinds = [
   ['image', 'image/png', 'picture.png', 503, 'pending'],
   ['image', 'image/png', 'picture.png', 200, 'pending']
 ] as const
+
+// AudioInfo/VideoInfo duration is an optional integer, including zero:
+// https://spec.matrix.org/v1.16/client-server-api/#maudio
+// https://spec.matrix.org/v1.16/client-server-api/#mvideo
+// Protect native media acceptance when a client reports zero duration; the
+// Previous positive-only schema discarded the media and committed the sync cursor.
+// Existing fixtures use 1500ms only. Real HTTP/Core/SQLite need no new seam.
+it.each([
+  ['audio', 'audio/ogg', 'voice.ogg'],
+  ['video', 'video/mp4', 'clip.mp4']
+])(
+  'retains native %s bytes with zero duration before committing sync',
+  async (kind, mimeType, filename) => {
+    const peer = await httpPeer((request, response) => {
+      if (request.url?.includes('/media/download/')) {
+        response.writeHead(200, { 'Content-Type': mimeType })
+        response.end(new Uint8Array([1, 2, 3]))
+        return
+      }
+      json(response, {
+        next_batch: 'after-zero-duration',
+        rooms: {
+          join: {
+            '!room:example': {
+              timeline: {
+                events: [
+                  {
+                    event_id: '$zero',
+                    sender: '@alice:example',
+                    type: 'm.room.message',
+                    content: {
+                      msgtype: `m.${kind}`,
+                      body: filename,
+                      url: 'mxc://remote.example/short',
+                      info: { duration: 0, mimetype: mimeType, size: 3 }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      })
+    })
+
+    const plugin = createMatrixChannel({ MATRIX_TOKEN: 'matrix-secret' })
+
+    const fixture = await harness(
+      plugin,
+      {
+        homeserver: peer.base,
+        accessToken: { env: 'MATRIX_TOKEN' },
+        allowInsecureLocalhost: true
+      },
+      [{ chatId: '!room:example' }],
+      ['@alice:example'],
+      `${peer.base}/dispatch`
+    )
+
+    await plugin.start?.(new AbortController().signal)
+    await waitFor(
+      async () =>
+        (
+          await fixture.storage.getState(
+            { pluginId: 'channel-matrix', ownerId: 'bot' },
+            'sync'
+          )
+        )?.value === 'after-zero-duration'
+    )
+    await plugin.stop?.()
+    const messages = await fixture.storage.listInbound({ limit: 10 })
+    expect(messages).toHaveLength(1)
+    const reference = messages[0]?.snapshot.attachments?.[0]
+    expect(reference).toMatchObject({
+      kind,
+      mimeType,
+      fileName: filename,
+      size: 3
+    })
+    expect(reference?.durationMs).toBeUndefined()
+    if (!reference || !messages[0] || !fixture.storage.media) {
+      throw new Error('Missing persisted attachment')
+    }
+    expect(
+      (
+        await fixture.storage.media.get(
+          messages[0].snapshot.channel.id,
+          reference.id
+        )
+      )?.data
+    ).toEqual(new Uint8Array([1, 2, 3]))
+  }
+)
 
 it.each(kinds)(
   'relays native Matrix %s (%s, %s) upload HTTP %s settles %s through SQLite and authenticated MCP',
