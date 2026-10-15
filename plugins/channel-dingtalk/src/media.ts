@@ -73,17 +73,7 @@ async function upload(
   credential: string,
   signal: AbortSignal
 ): Promise<string> {
-  const { kind, mimeType } = media.reference
-
-  const formats: Record<string, readonly string[]> = {
-    image: ['image/png', 'image/jpeg', 'image/gif', 'image/bmp'],
-    audio: ['audio/amr'],
-    video: ['video/mp4']
-  }
-
-  if (kind !== 'file' && !formats[kind]?.includes(mimeType)) {
-    throw new Error('unsupported_media_format')
-  }
+  const { kind } = media.reference
   const url = new URL(`${UPLOAD_BASE.replace(/\/$/u, '')}/media/upload`)
   url.searchParams.set('access_token', credential)
   url.searchParams.set('type', kind === 'audio' ? 'voice' : kind)
@@ -174,14 +164,6 @@ export async function mediaMessage(
   if (kind === 'video' && !input.preview) {
     throw new Error('missing_video_preview')
   }
-  if (
-    kind === 'file' &&
-    !['xlsx', 'pdf', 'zip', 'rar', 'doc', 'docx'].includes(
-      fileName.split('.').at(-1)?.toLowerCase() ?? ''
-    )
-  ) {
-    throw new Error('unsupported_file_format')
-  }
   const mediaId = await upload(input.media, credential, input.signal)
   if (kind === 'image') {
     return {
@@ -260,13 +242,10 @@ export function uploadFailure(error: unknown): SendResult {
   }
 
   const invalid = new Set([
-    'invalid_rich_text',
     'invalid_rich_media',
-    'unsupported_media_format',
     'missing_media',
     'missing_media_duration',
     'missing_video_preview',
-    'unsupported_file_format',
     'rich_text_limit_exceeded',
     'invalid_media_id'
   ])
