@@ -124,7 +124,7 @@ export async function peer(): Promise<{
       return
     }
     response.setHeader('content-type', 'application/json')
-    if (path === '/oauth2/v3/certs') {
+    if (path === '/oauth2/v1/certs') {
       response.end(JSON.stringify(jwks))
       return
     }

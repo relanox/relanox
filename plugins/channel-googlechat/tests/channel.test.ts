@@ -14,7 +14,7 @@ import type {
   OutboundRecord
 } from '@relanox/sdk'
 import {
-  exportJWK,
+  exportSPKI,
   exportPKCS8,
   generateKeyPair,
   jwtVerify,
@@ -87,8 +87,9 @@ async function setup(
   const remote = await peer()
   cleanup.push(remote.close)
   const keys = await generateKeyPair('RS256', { extractable: true })
-  const publicKey = await exportJWK(keys.publicKey)
-  remote.keys({ keys: [{ ...publicKey, kid: 'google-key' }] })
+  // OAuth2Client uses Google's PEM certificate map in Node:
+  // https://github.com/googleapis/google-cloud-node/blob/google-auth-library-v11.1.0/core/packages/google-auth-library-nodejs/src/auth/oauth2client.ts
+  remote.keys({ 'google-key': await exportSPKI(keys.publicKey) })
   vi.stubEnv(
     'CHAT_SERVICE',
     JSON.stringify({
@@ -782,7 +783,7 @@ describe('native Google Chat', () => {
     { iss: 'https://attacker.example' },
     { email: 'attacker@example.com' },
     { verified: false },
-    { exp: '-1s' }
+    { exp: '-10m' }
   ])(
     'rejects a cryptographically signed token outside caller trust %j',
     async (overrides) => {
@@ -793,6 +794,14 @@ describe('native Google Chat', () => {
       expect((await local.storage.getStats()).pending).toBe(0)
     }
   )
+
+  it('uses the official verifier clock tolerance for recently expired tokens', async () => {
+    const local = await setup()
+    expect(
+      (await local.core.fetch(await local.incoming({ exp: '-1s' }))).status
+    ).toBe(200)
+    expect((await local.storage.getStats()).pending).toBe(1)
+  })
 
   it('rejects invalid signatures and ignores app-authored/non-text events', async () => {
     const local = await setup()
@@ -1008,6 +1017,21 @@ describe('native Google Chat', () => {
       local.remote.traffic.filter((request) => request.path.startsWith('/v1/'))
     ).toHaveLength(1)
   })
+
+  it.each([{}, { name: 3 }])(
+    'keeps an invalid provider receipt unknown without replay %j',
+    async (receipt) => {
+      const local = await setup()
+      await local.core.fetch(await local.incoming())
+      local.remote.respond(200, receipt)
+      expect((await local.sendReply()).delivery?.status).toBe('unknown')
+      expect(
+        local.remote.traffic.filter((request) =>
+          request.path.startsWith('/v1/')
+        )
+      ).toHaveLength(1)
+    }
+  )
 
   it('requires service-account SecretRefs and secure operator endpoints', () => {
     const plugin = createGoogleChatChannel()
