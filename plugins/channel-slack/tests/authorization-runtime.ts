@@ -15,7 +15,8 @@ export async function fixture(
   filename: string,
   cleanup: (() => Promise<void>)[],
   socket = false,
-  worker: WorkerOptions = {}
+  worker: WorkerOptions = {},
+  chatIds: readonly string[] = ['C7']
 ): Promise<{
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
@@ -73,7 +74,11 @@ export async function fixture(
           }
         }
       ],
-      bindings: [{ accountId: 'sl', chatId: 'C7', endpointId: 'agent' }],
+      bindings: chatIds.map((chatId) => ({
+        accountId: 'sl',
+        chatId,
+        endpointId: 'agent'
+      })),
       storage: { plugin: 'sqlite', config: { filename } },
       observability: { plugin: 'none', config: {} }
     }

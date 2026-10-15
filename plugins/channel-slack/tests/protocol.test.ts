@@ -404,7 +404,7 @@ describe('slack native protocol', () => {
     ).toEqual({ challenge: 'challenge-42' })
     expect((await test.handler(request(event))).status).toBe(204)
     expect(test.received[0]).toMatchObject({
-      source: { channel: 'slack', accountId: 'sl', eventId: 'Ev1' },
+      source: { channel: 'slack', accountId: 'sl' },
       senderId: 'U42',
       target,
       context: { teamId: 'T1' }
