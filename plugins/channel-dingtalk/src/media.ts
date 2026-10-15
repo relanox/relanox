@@ -1,6 +1,10 @@
-import { API_BASE, UPLOAD_BASE } from './config.js'
-import { richError } from './rich.js'
-import { downloadMedia, mediaBlob, mediaKind } from '@relanox/channel-media'
+import { UPLOAD_BASE } from './config.js'
+import {
+  downloadMedia,
+  mediaBlob,
+  mediaKind,
+  MediaDownloadError
+} from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,
@@ -10,8 +14,8 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { messageSchema } from './schemas.js'
-import type { DingTalkConfig } from './config.js'
-import { httpJson, jsonPostRequest } from './transport.js'
+import { uploadJson, RemoteError, sendFailure } from './transport.js'
+import type { DingTalkApi } from './native.js'
 
 export const contentSchema = z.object({
   downloadCode: z.string().optional(),
@@ -31,31 +35,22 @@ export const contentSchema = z.object({
     .optional()
 })
 
-export async function downloadAttachment(
+async function downloadAttachment(
   content: z.infer<typeof contentSchema>,
-  config: DingTalkConfig,
   host: ChannelHost,
   credential: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  api: DingTalkApi
 ): Promise<MediaUpload> {
   const code = content.downloadCode ?? content.pictureDownloadCode
   if (!code) {
     throw new Error('missing_download_code')
   }
 
-  const response = await httpJson(
-    `${API_BASE.replace(/\/$/u, '')}/v1.0/robot/messageFiles/download`,
-    jsonPostRequest(
-      { downloadCode: code, robotCode: config.robotCode },
-      { 'x-acs-dingtalk-access-token': credential }
-    ),
-    signal
-  )
-
-  const url = z.object({ downloadUrl: z.url() }).parse(response).downloadUrl
+  const url = await api.downloadUrl(code, credential)
 
   const downloaded = await downloadMedia(url, {
-    maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
+    maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
     signal,
     trustedOrigins: [],
     allowInsecureLocalhost: false
@@ -75,7 +70,6 @@ export async function downloadAttachment(
 
 async function upload(
   media: StoredMedia,
-  config: DingTalkConfig,
   credential: string,
   signal: AbortSignal
 ): Promise<string> {
@@ -87,11 +81,8 @@ async function upload(
     video: ['video/mp4']
   }
 
-  if (
-    (kind !== 'file' && !formats[kind]?.includes(mimeType)) ||
-    media.data.byteLength > (kind === 'audio' ? 2 : 20) * 1024 * 1024
-  ) {
-    throw new Error('unsupported_media_format_or_size')
+  if (kind !== 'file' && !formats[kind]?.includes(mimeType)) {
+    throw new Error('unsupported_media_format')
   }
   const url = new URL(`${UPLOAD_BASE.replace(/\/$/u, '')}/media/upload`)
   url.searchParams.set('access_token', credential)
@@ -99,7 +90,7 @@ async function upload(
   const form = new FormData()
   form.set('media', mediaBlob(media), media.reference.fileName)
 
-  const response = await httpJson(
+  const response = await uploadJson(
     url.href,
     { method: 'POST', body: form },
     signal
@@ -110,7 +101,16 @@ async function upload(
     .parse(response)
 
   if (result.errcode && result.errcode !== 0) {
-    throw new Error('media_upload_failed')
+    const retryable = [-1, 40_014, 42_001, 45_009].includes(result.errcode)
+    throw new RemoteError(
+      retryable
+        ? {
+            status: 'retryable',
+            errorCode: `media_upload_${result.errcode}`,
+            retryAfterMs: 1000
+          }
+        : { status: 'rejected', errorCode: `media_upload_${result.errcode}` }
+    )
   }
   if (!result.media_id) {
     throw new Error('media_upload_failed')
@@ -120,7 +120,6 @@ async function upload(
 
 async function richMessage(
   input: SendInput,
-  config: DingTalkConfig,
   credential: string
 ): Promise<{ msgKey: string; msgParam: string }> {
   const fragments: string[] = []
@@ -133,7 +132,7 @@ async function richMessage(
       if (!media) {
         throw new Error('missing_media')
       }
-      const mediaId = await upload(media, config, credential, input.signal)
+      const mediaId = await upload(media, credential, input.signal)
       if (!/^[-@A-Za-z0-9_=]+$/u.test(mediaId) || mediaId.length > 256) {
         throw new Error('invalid_media_id')
       }
@@ -154,16 +153,10 @@ async function richMessage(
 
 export async function mediaMessage(
   input: SendInput,
-  config: DingTalkConfig,
-  credential: string,
-  host: ChannelHost
+  credential: string
 ): Promise<{ msgKey: string; msgParam: string }> {
-  const invalid = richError(input, host)
-  if (invalid) {
-    throw new Error(invalid)
-  }
   if (input.chunk.richText) {
-    return richMessage(input, config, credential)
+    return richMessage(input, credential)
   }
   if (!input.chunk.media) {
     return {
@@ -189,7 +182,7 @@ export async function mediaMessage(
   ) {
     throw new Error('unsupported_file_format')
   }
-  const mediaId = await upload(input.media, config, credential, input.signal)
+  const mediaId = await upload(input.media, credential, input.signal)
   if (kind === 'image') {
     return {
       msgKey: 'sampleImageMsg',
@@ -203,12 +196,7 @@ export async function mediaMessage(
     }
   }
   if (kind === 'video' && input.preview) {
-    const picMediaId = await upload(
-      input.preview,
-      config,
-      credential,
-      input.signal
-    )
+    const picMediaId = await upload(input.preview, credential, input.signal)
 
     return {
       msgKey: 'sampleVideo',
@@ -232,10 +220,10 @@ export async function mediaMessage(
 
 export async function receiveParts(
   message: z.infer<typeof messageSchema>,
-  config: DingTalkConfig,
   host: ChannelHost,
   credential: string | undefined,
-  signal: AbortSignal
+  signal: AbortSignal,
+  api: DingTalkApi
 ): Promise<{ text: string; attachments: MediaUpload[] }> {
   const attachments: MediaUpload[] = []
   let text = message.text?.content ?? message.content?.recognition ?? ''
@@ -255,7 +243,7 @@ export async function receiveParts(
     }
     if (item.downloadCode || item.pictureDownloadCode) {
       attachments.push(
-        await downloadAttachment(item, config, host, credential, signal)
+        await downloadAttachment(item, host, credential, signal, api)
       )
     }
   }
@@ -266,10 +254,15 @@ export async function receiveParts(
 }
 
 export function uploadFailure(error: unknown): SendResult {
+  const remote = sendFailure(error)
+  if (remote.status !== 'unknown') {
+    return remote
+  }
+
   const invalid = new Set([
     'invalid_rich_text',
     'invalid_rich_media',
-    'unsupported_media_format_or_size',
+    'unsupported_media_format',
     'missing_media',
     'missing_media_duration',
     'missing_video_preview',
@@ -285,5 +278,30 @@ export function uploadFailure(error: unknown): SendResult {
     status: 'retryable',
     errorCode: 'media_upload_unavailable',
     retryAfterMs: 1000
+  }
+}
+
+export async function receiveContent(
+  message: z.infer<typeof messageSchema>,
+  host: ChannelHost,
+  api: DingTalkApi,
+  signal: AbortSignal
+): Promise<Awaited<ReturnType<typeof receiveParts>> | undefined> {
+  try {
+    const credential =
+      message.msgtype === 'text' ? undefined : await api.token(signal)
+
+    return await receiveParts(message, host, credential, signal, api)
+  } catch (error) {
+    if (
+      !(error instanceof MediaDownloadError) ||
+      error.code !== 'media_too_large'
+    ) {
+      throw error
+    }
+    host.observe.log('info', 'channel_input_discarded', {
+      errorCode: error.code
+    })
+    return undefined
   }
 }

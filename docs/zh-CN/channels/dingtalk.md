@@ -25,7 +25,9 @@
 
 ## 启用连接
 
-保存账号配置后启动 Relanox。它会使用应用凭据自动建立 Stream 连接，请保持出站 HTTPS 和 WebSocket 可用。
+保存账号配置后启动 Relanox。它会使用应用凭据自动建立 Stream 连接，请保持出站 HTTPS 和 WebSocket 可用。轮换应用密钥后请重启 Relanox，让 Stream SDK 取得新凭据。
+
+channel 使用官方 [`dingtalk-stream` SDK](https://github.com/open-dingtalk/dingtalk-stream-sdk-nodejs) 处理建连、心跳、恢复、回调分发和 ACK 帧，并使用 `@alicloud/dingtalk` 处理 OAuth、消息发送和下载地址。Stream 精确锁定官方 [2.1.7-beta.1 预发布版](https://github.com/open-dingtalk/dingtalk-stream-sdk-nodejs/releases/tag/v2.1.7-beta.1)，该版本修复了取消时的连接清理，并保证延迟回调的 ACK 留在接收它的 socket。恢复和队列行为遵循 SDK 默认规则。接受的回调在持久化入库后确认；已知权限或不支持输入的拒绝使用 SDK 的成功 ACK 终止重投。存储或下载失败保持未确认，等待平台重投。Core 继续管理权限、绑定和发送重试。SDK 消息 POST 重试已关闭；生成的 gateway 不暴露 `Retry-After`，限流使用 Core 的 1 秒重试间隔。已发出的 OpenAPI 调用可能在取消期间完成；媒体下载与旧版上传仍支持中止。
 
 ## 发送第一条消息
 
@@ -35,7 +37,7 @@
 
 当前应用机器人发送接口没有已验证的原生引用参数。Agent 可以提供 `reply.requestId`，将回复关联到选定请求并追踪完成状态，但钉钉会将其作为普通会话消息发送，不显示引用气泡。省略 `reply` 也普通发送。[官方 SDK 请求模型](https://github.com/alibabacloud-go/dingtalk/blob/1986c966942afc67b8ccae59d29d57989a45fe76/robot_1_0/client.go)定义了群聊和单聊接口支持的参数；Relanox 不会把消息 ID 填入未经文档确认的字段。
 
-可发送图片、音频、视频、文件或富文本消息。回复可包含 20 MB 内的 JPEG/PNG/GIF/BMP 图片、MP4 视频和文件，以及 2 MB 内的 AMR 音频，同时受 Relanox 限制。生成音频需带时长；视频还需图片预览和时长。文件回复使用 XLSX、PDF、ZIP、RAR、DOC 或 DOCX 格式。
+可发送图片、音频、视频、文件或富文本消息。回复可包含 JPEG/PNG/GIF/BMP 图片、MP4 视频、AMR 音频和支持的文件。Core 媒体预算为 100 MiB；钉钉执行自身当前上传限制，其拒绝结果交回 Core，channel 不再重复预判字节上限。生成的 SDK 未覆盖旧版 `/media/upload` multipart 接口，因此仅此上传保留窄 HTTP 调用。入站下载继续执行 URL、重定向和字节上限保护。生成音频需带时长；视频还需图片预览和时长。文件回复使用 XLSX、PDF、ZIP、RAR、DOC 或 DOCX 格式。
 
 ## 常见问题
 
