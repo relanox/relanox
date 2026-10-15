@@ -28,6 +28,8 @@ An ordinary chat destination uses the configured chat ID and app permissions. Se
 
 Configure event subscription v2.0 with `https://relay.example.com/channels/feishu-main/events`, subscribe to `im.message.receive_v1`, and configure the same verification token and encryption key. Start Relanox before verifying the callback, then publish the app changes and make the bot available to your users.
 
+Relanox uses the [official Feishu/Lark Node SDK](https://github.com/larksuite/node-sdk) for identity, credentials, message normalization, uploads and sending. HTTP callbacks remain on the configured Relanox address. Accepted messages are acknowledged after Core saves them; storage or download failures return an error so the platform can retry. SDK normalization supplies Markdown titles, mentions and media descriptions; message types without a textual representation can use an SDK placeholder. Delivery after a process or platform interruption still depends on the platform redelivering the callback.
+
 ## Send your first message
 
 Open a conversation with the bot, or add it to the bound group and mention it with “Hello”. Use a user inside the app’s availability range and your sender allowlist.
@@ -37,6 +39,8 @@ When the Agent supplies `reply.requestId`, the reply references that exact incom
 ## Images and files
 
 Send images, audio, videos, files or rich posts with your question. Grant resource download/upload permissions such as `im:resource` or the applicable upload scope. Replies can contain images up to 10 MB and other uploads up to 30 MB, within the relay limit.
+
+Uploads use the SDK and the platform enforces its current size and format limits. Relanox retains its configured media budget (100 MiB by default) and bounds incoming downloads while reading them. A rejected native reply stays rejected if its source message disappears; it is not resent as an unrelated conversation message. Uncertain send results remain uncertain instead of automatically repeating a possibly accepted message.
 
 ## Troubleshooting
 

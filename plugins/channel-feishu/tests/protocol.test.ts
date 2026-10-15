@@ -7,9 +7,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { HttpHandler, ChannelHost, IngestInput } from '@relanox/sdk'
 import { createCipheriv, createHash } from 'node:crypto'
 import { createFeishuChannel } from '../src/index.js'
-import { peer, recorder, sendInput } from './peer.js'
+import { peer, recorder, sendInput, installSdkNetwork } from './peer.js'
 
 installPeerNetwork()
+installSdkNetwork()
 
 const environment = {
   APPSECRET: 'app-secret',
@@ -121,6 +122,7 @@ async function setup(
       ...overrides
     })
   )
+  cleanup.push(async () => plugin.stop?.())
   return {
     plugin,
     ...recorded,
@@ -371,7 +373,7 @@ describe('feishu native HTTP protocol', () => {
       await test.plugin.send(sendInput(test.target, controller.signal))
     ).toEqual({
       status: 'retryable',
-      errorCode: 'tenant_token_transport_error'
+      errorCode: 'feishu_prepare_unavailable'
     })
     expect(remote.requests).toEqual([])
   })
@@ -542,7 +544,7 @@ describe('feishu native HTTP protocol', () => {
       body: {
         msg_type: 'post',
         content:
-          '{"zh_cn":{"content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}',
+          '{"zh_cn":{"title":"","content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}',
         reply_in_thread: true
       }
     })
@@ -567,7 +569,7 @@ describe('feishu native HTTP protocol', () => {
         receive_id: 'oc_chat',
         msg_type: 'post',
         content:
-          '{"zh_cn":{"content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}'
+          '{"zh_cn":{"title":"","content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}'
       }
     })
   })
@@ -588,6 +590,11 @@ describe('feishu native HTTP protocol', () => {
       expected: { status: 'rejected', errorCode: 'feishu_api_error' }
     },
     {
+      status: 200,
+      body: { code: 230_020, msg: 'reply target gone' },
+      expected: { status: 'rejected', errorCode: 'feishu_api_error' }
+    },
+    {
       status: 401,
       body: { code: 99_991_672 },
       expected: { status: 'rejected', errorCode: 'platform_http_error' }
@@ -600,7 +607,7 @@ describe('feishu native HTTP protocol', () => {
     {
       status: 200,
       body: { code: 0 },
-      expected: { status: 'unknown', errorCode: 'invalid_platform_response' }
+      expected: { status: 'unknown', errorCode: 'feishu_transport_error' }
     }
   ])(
     'maps message API errors without raw fields',
@@ -1215,7 +1222,7 @@ it.each(
         content:
           operation === 'upload'
             ? '{"image_key":"img_uploaded"}'
-            : '{"zh_cn":{"content":[[{"tag":"md","text":"The answer"}]]}}',
+            : '{"zh_cn":{"title":"","content":[[{"tag":"md","text":"The answer"}]]}}',
         reply_in_thread: true
       }
     })
@@ -1325,8 +1332,8 @@ it('does not post a rich Feishu message without a successful uploaded image key'
       richMedia: [richImage]
     })
   ).toMatchObject({
-    status: 'retryable',
-    errorCode: 'media_upload_transport_error'
+    status: 'rejected',
+    errorCode: 'feishu_api_error'
   })
   expect(remote.requests.map((captured) => captured.path)).toEqual([
     '/open-apis/im/v1/images'
@@ -1359,7 +1366,9 @@ it('accepts native Markdown post rows in authenticated inbound events', async ()
 
   expect(response.status).toBe(200)
   expect(local.received).toHaveLength(1)
-  expect(local.received[0]?.text).toBe('Question\n**Please** explain this.')
+  expect(local.received[0]?.text).toBe(
+    '**Question**\n\n**Please** explain this.'
+  )
 })
 
 it.each([false, true])(
@@ -1401,7 +1410,7 @@ it.each([false, true])(
     expect(response.status).toBe(200)
     expect(local.received).toHaveLength(1)
     expect(local.received[0]?.text).toBe(
-      'Question\nAnalyze [the report](https://example.com/report?version=2#summary) and explain the findings.'
+      '**Question**\n\nAnalyze [the report](https://example.com/report?version=2#summary) and explain the findings.'
     )
   }
 )
@@ -1413,9 +1422,9 @@ it.each([
     content: {
       content: [
         [
-          { tag: 'at', user_id: '@_user_1', user_name: '' },
+          { tag: 'at', user_id: 'ou_alice', user_name: '' },
           { tag: 'text', text: ' asks ' },
-          { tag: 'at', user_id: '@_user_10', user_name: '' }
+          { tag: 'at', user_id: 'ou_bob', user_name: '' }
         ]
       ]
     }
@@ -1451,9 +1460,10 @@ it.each([
   }
 )
 
-it('preserves the native shortcode in emotion-only rich posts', async () => {
+it('uses the official SDK fallback for emotion-only rich posts', async () => {
   // Source: https://open.feishu.cn/document/server-docs/im-v1/message-content-description/message_content
   // Native emotion elements carry emoji_type, including SMILE, without a text field.
+  // @larksuiteoapi/node-sdk 1.75.0 convertPost uses this nonempty fallback.
   const local = await setup()
 
   const response = await local.handler(
@@ -1475,7 +1485,58 @@ it('preserves the native shortcode in emotion-only rich posts', async () => {
 
   expect(response.status).toBe(200)
   expect(local.received).toHaveLength(1)
-  expect(local.received[0]?.text).toBe(':SMILE:')
+  expect(local.received[0]?.text).toBe('[rich text message]')
+})
+
+it('does not repeat an SDK message POST after the connection drops without a receipt', async () => {
+  // Real HTTP disconnect after request capture, not a simulated Relanox retry.
+  const remote = await peer((captured) =>
+    captured.path.includes('tenant_access_token')
+      ? { body: { code: 0, tenant_access_token: 'token', expire: 7200 } }
+      : { body: null, disconnect: true }
+  )
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+  expect(await local.plugin.send(sendInput(local.target))).toEqual({
+    status: 'unknown',
+    errorCode: 'feishu_transport_error'
+  })
+  expect(remote.requests.map((captured) => captured.path)).toEqual([
+    '/open-apis/im/v1/messages/om_message/reply'
+  ])
+})
+
+it('stops an SDK media send before the next request after cancellation', async () => {
+  const controller = new AbortController()
+
+  const remote = await peer((captured) => {
+    if (captured.path.includes('tenant_access_token')) {
+      return { body: { code: 0, tenant_access_token: 'token', expire: 7200 } }
+    }
+    controller.abort()
+    return { body: { code: 0, data: { image_key: 'img_uploaded' } } }
+  })
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+  const input = sendInput(local.target, controller.signal)
+  expect(
+    await local.plugin.send({
+      ...input,
+      chunk: { ...input.chunk, text: '', media: richImage.reference },
+      media: richImage
+    })
+  ).toMatchObject({ status: 'retryable' })
+  expect(remote.requests.map((captured) => captured.path)).toEqual([
+    '/open-apis/im/v1/images'
+  ])
+  await local.plugin.stop?.()
+  const count = remote.requests.length
+  expect(await local.plugin.send(sendInput(local.target))).toMatchObject({
+    status: 'retryable'
+  })
+  expect(remote.requests).toHaveLength(count)
 })
 
 it.each([

@@ -1,30 +1,7 @@
 import { readBounded } from '@relanox/transport'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import type {
-  ChannelHost,
-  IngestInput,
-  SecretRef,
-  SendResult
-} from '@relanox/sdk'
+import type { ChannelHost, IngestInput, SecretRef } from '@relanox/sdk'
 import { z } from 'zod'
-
-/** A native authentication rejection confirms that no message effect occurred. */
-export class FeishuTokenError extends Error {
-  constructor() {
-    super('feishu_token_invalid')
-    this.name = 'FeishuTokenError'
-  }
-}
-
-export function tenantTokenRejected(
-  response: Pick<Response, 'ok' | 'status'>,
-  value: unknown
-): boolean {
-  return (
-    (response.ok || [400, 401].includes(response.status)) &&
-    z.object({ code: z.literal(99_991_663) }).safeParse(value).success
-  )
-}
 
 export function credential(
   ref: SecretRef,
@@ -49,43 +26,6 @@ export async function bytes(
   max = 1024 * 1024
 ): Promise<Buffer> {
   return readBounded(request.body, max)
-}
-
-export async function jsonResponse(response: Response): Promise<unknown> {
-  return JSON.parse((await readBounded(response.body)).toString('utf8'))
-}
-
-export async function postJson(
-  url: string,
-  headers: Record<string, string>,
-  body: unknown,
-  signal: AbortSignal,
-  timeoutMs: number
-): Promise<Response> {
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-    signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
-    redirect: 'error'
-  })
-}
-
-export function failure(response: Response): SendResult {
-  if (response.status === 429) {
-    const delay = Number(response.headers.get('retry-after'))
-    return {
-      status: 'retryable',
-      errorCode: 'rate_limited',
-      ...(Number.isFinite(delay) && delay > 0
-        ? { retryAfterMs: Math.ceil(delay * 1000) }
-        : {})
-    }
-  }
-  return {
-    status: response.status >= 500 ? 'unknown' : 'rejected',
-    errorCode: 'platform_http_error'
-  }
 }
 
 export function fresh(value: string | null): boolean {
