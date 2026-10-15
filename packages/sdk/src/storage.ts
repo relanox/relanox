@@ -69,6 +69,8 @@ export type TakeDueInput = {
   readonly limit: number
   readonly leaseOwner: string
   readonly safeRetryAccountIds: readonly string[]
+  /** Prefer the other work category after a lease; fall back when it has no due work. */
+  readonly preferredKind?: 'inbound' | 'send'
 }
 
 export type Settlement =

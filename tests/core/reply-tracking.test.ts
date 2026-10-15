@@ -2,6 +2,37 @@ import { expect, it } from 'vitest'
 import { incoming, mediaFixture, picture } from './fixture.js'
 import { required } from '../contracts/storage-contract.js'
 
+it('sends a queued reply during sustained due inbound work', async () => {
+  const fx = await mediaFixture()
+  try {
+    const principal = fx.agent.forPrincipal({
+      subject: 'agent',
+      endpointIds: ['first']
+    })
+
+    const queued = await principal.sendMessage({
+      channel: fx.channelId,
+      text: 'ok'
+    })
+
+    expect(queued.status).toBe('queued')
+
+    for (let index = 0; index < 40; index++) {
+      await fx.channel.ingest({
+        ...incoming,
+        source: { ...incoming.source, eventId: `busy-${index}` },
+        text: `question ${index}`
+      })
+    }
+
+    await fx.runtime.processDue()
+    expect(fx.sent).toMatchObject([{ chunk: { text: 'ok' } }])
+    expect((await fx.storage.getStats()).pending).toBeGreaterThan(0)
+  } finally {
+    await fx.close()
+  }
+})
+
 it('keeps a text and image final pending until every chunk succeeds and replays it after restart and cleanup', async () => {
   const fx = await mediaFixture()
   try {

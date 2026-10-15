@@ -163,27 +163,6 @@ export function createWorkOperations(
           .orderBy(inbound.acceptedAt, inbound.id)
           .limit(limit)
 
-        for (const { record } of requests) {
-          const lease = {
-            token: `${input.leaseOwner}:${randomUUID()}`,
-            version: record.version + 1,
-            expiresAt: input.now + input.leaseMs
-          }
-
-          const next = {
-            ...record,
-            version: lease.version,
-            dispatch: { ...record.dispatch, lease }
-          }
-
-          await saveInbound(client, next)
-          work.push({
-            kind: needsPreparation(next) ? 'prepare' : 'dispatch',
-            record: next,
-            lease
-          })
-        }
-
         const earlier = alias(outbound, 'earlier')
 
         const deliveries = await client
@@ -219,18 +198,62 @@ export function createWorkOperations(
             )
           )
           .orderBy(outbound.sequence)
-          .limit(limit - work.length)
+          .limit(limit)
 
-        for (const { record } of deliveries) {
-          const lease = {
-            token: `${input.leaseOwner}:${randomUUID()}`,
-            version: record.version + 1,
-            expiresAt: input.now + (input.sendLeaseMs ?? input.leaseMs)
+        let requestIndex = 0
+        let deliveryIndex = 0
+        let preferredKind = input.preferredKind ?? 'inbound'
+
+        while (work.length < limit) {
+          const selectInbound =
+            (preferredKind === 'inbound' ||
+              deliveryIndex >= deliveries.length) &&
+            requestIndex < requests.length
+
+          if (selectInbound) {
+            const record = requests[requestIndex++]?.record
+            if (!record) {
+              break
+            }
+
+            const lease = {
+              token: `${input.leaseOwner}:${randomUUID()}`,
+              version: record.version + 1,
+              expiresAt: input.now + input.leaseMs
+            }
+
+            const next = {
+              ...record,
+              version: lease.version,
+              dispatch: { ...record.dispatch, lease }
+            }
+
+            await saveInbound(client, next)
+            work.push({
+              kind: needsPreparation(next) ? 'prepare' : 'dispatch',
+              record: next,
+              lease
+            })
+            preferredKind = 'send'
+          } else if (deliveryIndex < deliveries.length) {
+            const record = deliveries[deliveryIndex++]?.record
+            if (!record) {
+              break
+            }
+
+            const lease = {
+              token: `${input.leaseOwner}:${randomUUID()}`,
+              version: record.version + 1,
+              expiresAt: input.now + (input.sendLeaseMs ?? input.leaseMs)
+            }
+
+            const next = { ...record, version: lease.version, lease }
+            await saveOutbound(client, next)
+            work.push({ kind: 'send', record: next, lease })
+            preferredKind = 'inbound'
+          } else {
+            break
           }
-
-          const next = { ...record, version: lease.version, lease }
-          await saveOutbound(client, next)
-          work.push({ kind: 'send', record: next, lease })
         }
         return work
       })
