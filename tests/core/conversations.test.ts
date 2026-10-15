@@ -246,3 +246,50 @@ it('hides retained message content after cleanup or channel rebinding', async ()
     await fixture.close()
   }
 })
+
+it('recovers recent content after a removed binding has more than one page of newer messages', async () => {
+  const fixture = await mediaFixture()
+  try {
+    const twoBindings = {
+      ...fixture.runtime.config,
+      bindings: [
+        { accountId: 'bot', chatId: 'chat', endpointId: 'first' },
+        { accountId: 'bot', chatId: 'removed', endpointId: 'first' }
+      ]
+    }
+
+    await fixture.restart(twoBindings)
+
+    const kept = await fixture.channel.ingest({
+      ...incoming,
+      text: 'retained and authorized'
+    })
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 5)
+    })
+    for (let index = 0; index < 25; index++) {
+      await fixture.channel.ingest({
+        ...incoming,
+        source: { ...incoming.source, eventId: `removed-${index}` },
+        target: { ...incoming.target, chatId: 'removed' },
+        text: `removed ${index}`
+      })
+    }
+
+    await fixture.restart(fixture.runtime.config)
+
+    const principal = fixture.agent.forPrincipal({
+      subject: 'first',
+      endpointIds: ['first']
+    })
+
+    expect(
+      (await principal.readMessages({ limit: 20 })).map(
+        (message) => message.requestId
+      )
+    ).toEqual([kept.requestId])
+  } finally {
+    await fixture.close()
+  }
+})

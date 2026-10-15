@@ -126,6 +126,27 @@ export function storageContract(
       ).rejects.toThrow('recent_cursor_unsupported')
     })
 
+    it('filters recent agent history by authorized channel before its limit', async () => {
+      await s.acceptInbound(snapshot('kept', 100, 'ep', 'channel'))
+      for (let index = 0; index < 25; index++) {
+        await s.acceptInbound(
+          snapshot(`removed-${index}`, 200 + index, 'ep', 'independent')
+        )
+      }
+
+      expect(
+        (
+          await s.listInbound({
+            endpointId: 'ep',
+            channelIds: ['channel'],
+            limit: 20,
+            recent: true,
+            readyOnly: true
+          })
+        ).map((record) => record.snapshot.requestId)
+      ).toEqual(['kept'])
+    })
+
     const due = async (
       now = 110,
       safeRetryAccountIds: string[] = []

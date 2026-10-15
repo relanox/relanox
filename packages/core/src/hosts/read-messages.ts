@@ -37,23 +37,30 @@ export async function readMessages(
     return readPending(options, scope, parsed)
   }
 
-  const records =
-    requestId === undefined
-      ? (
-          await Promise.all(
-            scope.map(async (endpointId) =>
-              options.storage.listInbound({
-                endpointId,
-                limit,
-                recent: true,
-                readyOnly: true
-              })
-            )
-          )
-        ).flat()
-      : [await options.storage.getInbound(requestId)].filter(
-          (record): record is InboundRecord => record !== undefined
+  const channelIds = authorizedChannelIds(options, scope)
+
+  let records: readonly InboundRecord[]
+  if (requestId !== undefined) {
+    records = [await options.storage.getInbound(requestId)].filter(
+      (record): record is InboundRecord => record !== undefined
+    )
+  } else if (channelIds.length === 0) {
+    records = []
+  } else {
+    records = (
+      await Promise.all(
+        scope.map(async (endpointId) =>
+          options.storage.listInbound({
+            endpointId,
+            channelIds,
+            limit,
+            recent: true,
+            readyOnly: true
+          })
         )
+      )
+    ).flat()
+  }
 
   const visible = records
     .filter(
@@ -105,16 +112,7 @@ async function readPending(
   scope: readonly string[],
   input: z.infer<typeof inputSchema>
 ): Promise<readonly AgentMessage[]> {
-  const channelIds = [...options.configured.values()]
-    .filter((conversation) =>
-      authorizedConversation(
-        conversation,
-        options.agent,
-        scope,
-        options.configured
-      )
-    )
-    .map((conversation) => conversation.address.id)
+  const channelIds = authorizedChannelIds(options, scope)
 
   const records = await options.storage.listPendingInbound({
     channelIds,
@@ -130,4 +128,20 @@ async function readPending(
       })
     )
   )
+}
+
+function authorizedChannelIds(
+  options: AgentHostOptions,
+  scope: readonly string[]
+): string[] {
+  return [...options.configured.values()]
+    .filter((conversation) =>
+      authorizedConversation(
+        conversation,
+        options.agent,
+        scope,
+        options.configured
+      )
+    )
+    .map((conversation) => conversation.address.id)
 }

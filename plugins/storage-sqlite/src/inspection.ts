@@ -90,7 +90,14 @@ export function createInspectionOperations(
             filter.dispatchStatus
               ? eq(inbound.status, filter.dispatchStatus)
               : undefined,
-            filter.readyOnly ? prepared : undefined,
+            filter.readyOnly
+              ? and(prepared, isNull(jsonValue(inbound.record, '$.redactedAt')))
+              : undefined,
+            filter.channelIds
+              ? inArray(jsonValue(inbound.record, '$.snapshot.channel.id'), [
+                  ...filter.channelIds
+                ])
+              : undefined,
             filter.endpointId
               ? eq(inbound.endpoint, filter.endpointId)
               : undefined,
