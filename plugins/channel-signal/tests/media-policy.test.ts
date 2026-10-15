@@ -143,6 +143,21 @@ const cases: readonly {
     downloads: 2,
     errorCode: 'too_many_attachments'
   },
+  // JsonDataMessage.java preserves the attachment list without a ten-item cap;
+  // See the pinned signal-cli source above and native multi-image messages:
+  // https://github.com/signalapp/Signal-iOS/issues/5616
+  // Core's count policy must reject an excess rather than
+  // A schema parse failure blocking this event and all later SSE messages.
+  // Existing count coverage has two files only and cannot expose the schema cap.
+  // The existing HTTP/Core/SQLite fixture needs no additional production seam.
+  {
+    name: 'native attachment count above ten',
+    bytes: 1,
+    count: 11,
+    worker: { maxAttachments: 10 },
+    downloads: 11,
+    errorCode: 'too_many_attachments'
+  },
   {
     name: 'empty generic file policy',
     bytes: 0,
