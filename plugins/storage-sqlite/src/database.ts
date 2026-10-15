@@ -110,3 +110,10 @@ export type DatabaseContext = {
   saveInbound(this: void, record: InboundRecord): Database.RunResult
   saveOutbound(this: void, record: OutboundRecord): Database.RunResult
 }
+
+export const boundedLimit = (limit: number): number => {
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new TypeError('Invalid storage limit')
+  }
+  return Math.min(limit, 1000)
+}

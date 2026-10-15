@@ -15,10 +15,14 @@ CREATE TABLE `inbound` (
 	`accepted_at` integer NOT NULL,
 	`status` text NOT NULL,
 	`version` integer NOT NULL,
-	`record` text NOT NULL
+	`record` text NOT NULL,
+	`due_at` integer GENERATED ALWAYS AS (json_extract("record", '$.dispatch.dueAt')) VIRTUAL,
+	`lease_expires_at` integer GENERATED ALWAYS AS (json_extract("record", '$.dispatch.lease.expiresAt')) VIRTUAL
 );
 --> statement-breakpoint
 CREATE INDEX `inbound_fifo` ON `inbound` (`endpoint`,`accepted_at`,`id`);--> statement-breakpoint
+CREATE INDEX `inbound_due` ON `inbound` (`lease_expires_at`,`due_at`,`accepted_at`,`id`) WHERE "inbound"."status" = 'due';--> statement-breakpoint
+CREATE INDEX `inbound_lease` ON `inbound` (`lease_expires_at`) WHERE "inbound"."status" = 'due';--> statement-breakpoint
 CREATE UNIQUE INDEX `inbound_channel_account_event_unique` ON `inbound` (`channel`,`account`,`event`);--> statement-breakpoint
 CREATE TABLE `media` (
 	`id` text PRIMARY KEY NOT NULL,
@@ -40,10 +44,14 @@ CREATE TABLE `outbound` (
 	`status` text NOT NULL,
 	`version` integer NOT NULL,
 	`record` text NOT NULL,
+	`due_at` integer GENERATED ALWAYS AS (json_extract("record", '$.dueAt')) VIRTUAL,
+	`lease_expires_at` integer GENERATED ALWAYS AS (json_extract("record", '$.lease.expiresAt')) VIRTUAL,
 	FOREIGN KEY (`channel_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
 CREATE INDEX `outbound_channel_order` ON `outbound` (`channel_id`) WHERE "outbound"."status" in ('pending','unknown');--> statement-breakpoint
+CREATE INDEX `outbound_due` ON `outbound` (`lease_expires_at`,`due_at`) WHERE "outbound"."status" = 'pending';--> statement-breakpoint
+CREATE INDEX `outbound_lease` ON `outbound` (`lease_expires_at`) WHERE "outbound"."status" = 'pending';--> statement-breakpoint
 CREATE UNIQUE INDEX `outbound_channel_id_message_id_unique` ON `outbound` (`channel_id`,`message_id`);--> statement-breakpoint
 CREATE TABLE `plugin_state` (
 	`plugin` text NOT NULL,
