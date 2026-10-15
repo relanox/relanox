@@ -45,6 +45,7 @@ export function createMattermostChannel(
         config: MattermostConfig
         base: string
         botUserId: string
+        webSocketUrl: string
       }
     | undefined
 
@@ -53,13 +54,7 @@ export function createMattermostChannel(
   const pending = new Set<Promise<void>>()
   let removeAbort: (() => void) | undefined
 
-  function configured(): {
-    host: ChannelHost
-    account: AccountConfig
-    config: MattermostConfig
-    base: string
-    botUserId: string
-  } {
+  function configured(): NonNullable<typeof runtime> {
     if (!runtime) {
       throw new Error('not_setup')
     }
@@ -296,14 +291,15 @@ export function createMattermostChannel(
         account,
         config,
         base,
-        botUserId
+        botUserId,
+        webSocketUrl: client.getWebSocketUrl()
       }
     },
     async start(signal) {
       if (controller || signal.aborted) {
         return
       }
-      const { host, config, base } = configured()
+      const { host, config, webSocketUrl } = configured()
       const active = new AbortController()
       controller = active
       const connection = mattermostWebSocket()
@@ -343,7 +339,7 @@ export function createMattermostChannel(
       removeAbort = (): void => {
         signal.removeEventListener('abort', abort)
       }
-      const url = new URL(`${base}/api/v4/websocket`)
+      const url = new URL(webSocketUrl)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
       current.initialize(url.href, secret(config.token, environment))
     },
