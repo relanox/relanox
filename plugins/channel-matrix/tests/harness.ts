@@ -78,7 +78,8 @@ export async function httpPeer(
   identityHandler?: (
     request: IncomingMessage,
     response: ServerResponse
-  ) => Promise<void> | void
+  ) => Promise<void> | void,
+  versionsHandler?: (response: ServerResponse) => Promise<void> | void
 ): Promise<{
   server: ReturnType<typeof createServer>
   base: string
@@ -92,6 +93,13 @@ export async function httpPeer(
     // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientversions
     // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3pushrules
     // https://spec.matrix.org/v1.16/client-server-api/#post_matrixclientv3useruseridfilter
+    if (path === '/_matrix/client/versions' && versionsHandler) {
+      Promise.resolve(versionsHandler(response)).catch((error: unknown) => {
+        errors.push(error)
+        response.destroy()
+      })
+      return
+    }
     if (path === '/_matrix/client/versions') {
       json(response, { versions: ['v1.11'], unstable_features: {} })
       return

@@ -24,7 +24,7 @@ export function matrixClient(
   baseUrl: string,
   accessToken: string,
   userId?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal | (() => AbortSignal | undefined)
 ): MatrixClient {
   // Some SDK room/RTC helpers still use its shared logger instead of the client logger.
   const sdkLogger = loglevel.getLogger('matrix')
@@ -39,14 +39,16 @@ export function matrixClient(
     localTimeoutMs: requestTimeoutMs,
     // Core owns delivery retries. Do not install the optional MatrixScheduler.
     async fetchFn(input, init) {
+      const currentSignal = typeof signal === 'function' ? signal() : signal
+      currentSignal?.throwIfAborted()
       return fetch(input, {
         ...init,
         redirect: 'error',
-        ...(signal
+        ...(currentSignal
           ? {
               signal: init?.signal
-                ? AbortSignal.any([signal, init.signal])
-                : signal
+                ? AbortSignal.any([currentSignal, init.signal])
+                : currentSignal
             }
           : {})
       })
