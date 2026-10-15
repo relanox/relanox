@@ -20,7 +20,7 @@ Download the configuration as `relanox.json` and set the secret variables in the
 
 Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-Use the message event’s sender `open_id` for **Allowed user IDs** and `message.chat_id` for **Chat ID**. The event header supplies `tenant_key`. A thread binding uses `message.thread_id`, or `root_id` when that is the supplied thread reference.
+Use the message event’s sender `open_id` for **Allowed user IDs** and `message.chat_id` for **Chat ID**. The event header supplies `tenant_key`. A topic binding uses `message.thread_id`. An ordinary reply may have `root_id` without `thread_id`; bind it to the chat without a thread ID.
 
 An ordinary chat destination uses the configured chat ID and app permissions. Sending inside a thread also requires a real message anchor received in an authenticated event for that account, chat and thread. Send a message in the chosen thread while Relanox is connected to establish it; a thread ID alone cannot supply that anchor.
 
