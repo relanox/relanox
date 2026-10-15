@@ -73,6 +73,7 @@ export async function sendChunk(
   }
   signal.throwIfAborted()
   return channel.send({
+    ...(record.reply ? { reply: structuredClone(record.reply) } : {}),
     deliveryId: record.deliveryId,
     channelId: record.channelId,
     target: structuredClone(record.target),

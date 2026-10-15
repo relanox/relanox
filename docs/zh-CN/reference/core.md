@@ -51,7 +51,7 @@ Core 到期会中止 signal 并记录 `unknown`，但不能保证取消 SDK 已�
 
 ## 将最终回复关联到来信
 
-回复带有 `requestId` 的来信时，在一次 `relanox_send_message` 调用中提交完整文本、有序媒体和 `reply: { requestId, kind: "final" }`。进度消息使用 `kind: "progress"`。关联回复必须使用来信的源频道及当前授权端点；原生回复上下文取自这条来信。主动发送省略 `reply`。
+回复带有 `requestId` 的来信时，在一次 `relanox_send_message` 调用中提交完整文本、有序媒体和 `reply: { requestId, kind: "final" }`。进度消息使用 `kind: "progress"`。关联回复必须使用来信的源频道及当前授权端点；原生回复上下文取自这条来信。传入 `reply.requestId` 时，在平台支持的范围内原生引用或回复指定来信，后来的新消息不会替换引用目标。普通发送省略 `reply`，既不引用来信，也不标记来信已完成。
 
 使用 `relanox_status` 的 `requestId` 参数，或查看 `relanox_read_messages` 返回的 `reply`。`awaiting_final` 表示尚无最终回复入队；入队后的 `pending`、`sent`、`rejected`、`unknown` 对应最终回复的投递状态。只有 `sent` 表示平台已接受全部文本和媒体分片，不代表收件人已读。读取、进度消息和事件接收成功都不会完成来信。
 

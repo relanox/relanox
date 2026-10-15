@@ -359,7 +359,7 @@ export function registerTools(
           .strictObject({ requestId: id, kind: z.enum(['progress', 'final']) })
           .optional()
           .describe(
-            'Associate this send with an incoming request in the same channel. Progress does not complete it. One final delivery is allowed per request: identical retries replay it, changed content conflicts even with a new idempotencyKey. Omit for proactive sends.'
+            'Reply to this incoming request in the same channel, using its native quote or reply where supported. Progress does not complete it. One final delivery is allowed per request: identical retries replay it, changed content conflicts even with a new idempotencyKey. Omit for an ordinary send without quoting or completing an incoming request.'
           ),
         channel: id.describe(
           'An authorized channel ID from relanox_status or source.channel.id.'
