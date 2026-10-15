@@ -64,7 +64,6 @@ function platformConfig(
     qq: {
       appId: 'app',
       clientSecret: credential,
-      allowProactive: true,
       recipientTypes: { user: 'c2c', group: 'group' }
     },
     wecom: {

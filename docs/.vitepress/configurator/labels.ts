@@ -25,7 +25,6 @@ export const fieldLabels: Record<string, [string, string]> = {
   clientSecret: ['Client secret environment variable', '客户端密钥环境变量'],
   robotCode: ['Robot code', '机器人代码'],
   environment: ['QQ environment', 'QQ 环境'],
-  allowProactive: ['Allow proactive messages', '允许主动消息'],
   tenantId: ['Tenant ID', '租户 ID'],
   trustedServiceOrigins: [
     'Trusted service origins (comma separated)',

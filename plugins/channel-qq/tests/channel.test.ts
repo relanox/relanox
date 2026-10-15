@@ -295,13 +295,15 @@ test('QQ uses SDK sequences across reopen while preserving native 429 retries', 
   expect(first.capabilities.idempotentSend).toBe(false)
 })
 
+// Native windows and active requests: https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/overview.html
 test.each([
-  { type: 'c2c', ageMs: 30 * 60_000, expected: 'sent' },
-  { type: 'c2c', ageMs: 61 * 60_000, expected: 'rejected' },
-  { type: 'group', ageMs: 6 * 60_000, expected: 'rejected' }
+  { type: 'c2c', ageMs: 30 * 60_000, passive: true },
+  { type: 'c2c', ageMs: 61 * 60_000, passive: false },
+  { type: 'group', ageMs: 4 * 60_000, passive: true },
+  { type: 'group', ageMs: 6 * 60_000, passive: false }
 ])(
-  'QQ applies documented passive $type window at $ageMs milliseconds',
-  async ({ type, ageMs, expected }) => {
+  'QQ selects passive or proactive $type wire requests at $ageMs milliseconds',
+  async ({ type, ageMs, passive }) => {
     vi.stubEnv('QQ_SECRET', 'secret')
 
     const remote = await peer((request) =>
@@ -330,10 +332,19 @@ test.each([
           })
         )
       ).status
-    ).toBe(expected)
-    expect(
-      remote.requests.filter((request) => request.path.endsWith('/messages'))
-    ).toHaveLength(expected === 'sent' ? 1 : 0)
+    ).toBe('sent')
+
+    const sends = remote.requests.filter((request) =>
+      request.path.endsWith('/messages')
+    )
+
+    expect(sends).toHaveLength(1)
+    expect(sends[0]?.body).toEqual({
+      markdown: { content: 'hello_*世界' },
+      msg_type: 2,
+      msg_seq: passive ? nativeSequence : 1,
+      ...(passive ? { msg_id: 'incoming' } : {})
+    })
   }
 )
 
@@ -341,7 +352,7 @@ test.each([
   { type: 'c2c', max: 4 },
   { type: 'group', max: 5 }
 ])(
-  'QQ delegates $type reply quotas and requires permission for proactive fallback',
+  'QQ delegates $type reply quotas and sends proactively after the window expires',
   async ({ type, max }) => {
     vi.stubEnv('QQ_SECRET', 'secret')
 
@@ -380,20 +391,9 @@ test.each([
     expect(
       remote.requests.filter((request) => request.path.endsWith('/messages'))
     ).toHaveLength(max + 1)
-    const allowed = createQqChannel()
-    await assemble(
-      allowed,
-      {
-        appId: 'app',
-        clientSecret: { env: 'QQ_SECRET' },
-
-        allowProactive: true
-      },
-      [{ chatId: 'user', senderId: 'user' }]
-    )
     expect(
       (
-        await allowed.send(
+        await plugin.send(
           sendInput('qq', 'user', {
             ...target,
             messageAt: Date.now() - 7_200_000,
@@ -455,9 +455,7 @@ test.each([
       plugin,
       {
         appId: 'app',
-        clientSecret: { env: 'QQ_SECRET' },
-
-        allowProactive: true
+        clientSecret: { env: 'QQ_SECRET' }
       },
       [{ chatId: 'user', senderId: 'user' }]
     )
@@ -787,6 +785,29 @@ test('QQ resolution preserves passive context without predicting platform quotas
       target: resolved.target
     })
   ).toMatchObject({ status: 'sent' })
+
+  const expired = await plugin.resolveChannel?.(address, {
+    ...resolved.target,
+    data: {
+      ...(resolved.target.data as Record<string, Json>),
+      messageAt: Date.now() - 7_200_000
+    }
+  })
+
+  if (expired?.status !== 'available') {
+    throw new Error('missing_proactive_target')
+  }
+  expect(
+    await plugin.send({
+      ...sendInput('qq', 'user', expired.target.data, 'expired'),
+      target: expired.target
+    })
+  ).toMatchObject({ status: 'sent' })
+  expect(remote.requests.at(-1)?.body).toEqual({
+    markdown: { content: 'hello_*世界' },
+    msg_type: 2,
+    msg_seq: 1
+  })
   expect(
     await plugin.resolveChannel?.(
       { ...address, chatId: 'another_user' },

@@ -786,7 +786,7 @@ test.each(['audio/amr', 'audio/wav', 'audio/mpeg'])(
 )
 
 // The SDK exposes no upload AbortSignal. A delayed real upload response must not
-// Cause a fresh send after cancellation/window expiry; direct upload tests miss this race.
+// Cause a fresh send after cancellation or use an expired msg_id; direct upload tests miss this race.
 test.each(['abort', 'expired'] as const)(
   'QQ rechecks %s after an SDK upload before sending',
   async (reason) => {
@@ -801,7 +801,7 @@ test.each(['abort', 'expired'] as const)(
         await uploaded.promise
         return { body: { file_info: 'opaque', ttl: 60 } }
       }
-      return { body: { id: 'unexpected-send' } }
+      return { body: { id: 'sent' } }
     })
 
     const plugin = createQqChannel()
@@ -830,13 +830,24 @@ test.each(['abort', 'expired'] as const)(
       }
       uploaded.resolve()
       expect(await operation).toMatchObject(
-        reason === 'abort'
-          ? { status: 'retryable' }
-          : { status: 'rejected', errorCode: 'passive_window_expired' }
+        reason === 'abort' ? { status: 'retryable' } : { status: 'sent' }
       )
-      expect(
-        remote.requests.filter((request) => request.path.endsWith('/messages'))
-      ).toEqual([])
+
+      const sends = remote.requests.filter((request) =>
+        request.path.endsWith('/messages')
+      )
+
+      if (reason === 'abort') {
+        expect(sends).toEqual([])
+      } else {
+        expect(sends).toHaveLength(1)
+        expect(sends[0]?.body).toEqual({
+          msg_type: 7,
+          media: { file_info: 'opaque' },
+          msg_seq: 1,
+          content: ''
+        })
+      }
     } finally {
       uploaded.resolve()
       await operation

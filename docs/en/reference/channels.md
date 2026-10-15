@@ -8,24 +8,24 @@ Merge these fragments into `relay.accounts` and `relay.bindings` in a complete c
 
 A binding selects an account, `chatId` and optional `threadId`. The channel resolves that destination using its native protocol. A destination can be addressed without a prior incoming message when the configured IDs, account permissions and platform requirements are sufficient. Event-dependent destinations need authentic platform metadata; entering IDs does not create a message, reply window or thread anchor.
 
-| Channel         | Native destination and requirements                                                                                                                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Telegram        | Chat ID, with a topic ID where applicable; the bot must have access to the chat.                                                                                                     |
-| Discord         | Channel ID, with a thread channel ID where applicable; the bot needs access and send permissions.                                                                                    |
-| Slack           | Conversation ID; omit `threadId` for ordinary messages, or use a real root message timestamp for a thread.                                                                           |
-| Feishu / Lark   | Chat ID; a thread additionally needs a real message anchor from an authenticated event for that destination.                                                                         |
-| WeCom WebSocket | Member userid or group chat ID; `recipientTypes` can specify `single` or `group` before an incoming message.                                                                         |
-| WeCom HTTP      | An authenticated message callback with an available reply window; a configured chat ID alone is insufficient.                                                                        |
-| DingTalk        | Staff user ID or open conversation ID; `recipientTypes` can specify `single` or `group`. Independent message API permissions are required.                                           |
-| QQ              | User or group OpenID and recipient type. Passive sends need a real incoming message with remaining time and quota; proactive sends require `allowProactive` and platform permission. |
-| Microsoft Teams | Conversation ID and authenticated conversation metadata, including a trusted service address; installation or conversation activities can establish it without a message.            |
-| WhatsApp        | Customer number and a real incoming message within the 24-hour service window. Template sends outside that window are unavailable.                                                   |
-| Google Chat     | Full space name and optional thread name; the app must have access to the space.                                                                                                     |
-| LINE            | User, group or room ID with the account's push-message permissions and quota.                                                                                                        |
-| Matrix          | Joined room ID and optional root event ID for a thread; only unencrypted rooms are supported.                                                                                        |
-| Mattermost      | Channel ID and optional root post ID for a thread; the bot needs access to the channel.                                                                                              |
-| Signal          | `direct:` recipient or `group:` ID, using the configured signal-cli account.                                                                                                         |
-| IRC             | Channel or `dm:<folded-nick>` on the configured server; the bot must be connected and join configured channels.                                                                      |
+| Channel         | Native destination and requirements                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Telegram        | Chat ID, with a topic ID where applicable; the bot must have access to the chat.                                                                                          |
+| Discord         | Channel ID, with a thread channel ID where applicable; the bot needs access and send permissions.                                                                         |
+| Slack           | Conversation ID; omit `threadId` for ordinary messages, or use a real root message timestamp for a thread.                                                                |
+| Feishu / Lark   | Chat ID; a thread additionally needs a real message anchor from an authenticated event for that destination.                                                              |
+| WeCom WebSocket | Member userid or group chat ID; `recipientTypes` can specify `single` or `group` before an incoming message.                                                              |
+| WeCom HTTP      | An authenticated message callback with an available reply window; a configured chat ID alone is insufficient.                                                             |
+| DingTalk        | Staff user ID or open conversation ID; `recipientTypes` can specify `single` or `group`. Independent message API permissions are required.                                |
+| QQ              | User or group OpenID and recipient type. A valid incoming reply window selects passive sending; otherwise, QQ decides whether proactive sending is permitted.             |
+| Microsoft Teams | Conversation ID and authenticated conversation metadata, including a trusted service address; installation or conversation activities can establish it without a message. |
+| WhatsApp        | Customer number and a real incoming message within the 24-hour service window. Template sends outside that window are unavailable.                                        |
+| Google Chat     | Full space name and optional thread name; the app must have access to the space.                                                                                          |
+| LINE            | User, group or room ID with the account's push-message permissions and quota.                                                                                             |
+| Matrix          | Joined room ID and optional root event ID for a thread; only unencrypted rooms are supported.                                                                             |
+| Mattermost      | Channel ID and optional root post ID for a thread; the bot needs access to the channel.                                                                                   |
+| Signal          | `direct:` recipient or `group:` ID, using the configured signal-cli account.                                                                                              |
+| IRC             | Channel or `dm:<folded-nick>` on the configured server; the bot must be connected and join configured channels.                                                           |
 
 `recipientTypes` is an optional account `config` map keyed by the binding's exact `chatId`. It is supported by WeCom WebSocket, DingTalk and QQ. Without it, those channels can use recipient types learned from authenticated messages. The map does not bypass platform permissions, reply windows or quotas. WeCom, DingTalk, QQ, WhatsApp, LINE, Signal and IRC do not support `threadId`.
 
@@ -433,7 +433,6 @@ User setup: [Connect QQ robot](../channels/qq.md).
         "clientSecret": {
           "env": "QQ_CLIENT_SECRET"
         },
-        "allowProactive": false,
         "recipientTypes": {
           "user-openid": "c2c",
           "group-openid": "group"
@@ -453,7 +452,7 @@ User setup: [Connect QQ robot](../channels/qq.md).
 
 QQ uses the production environment by default. For the sandbox, add `"environment": "sandbox"` to the account configuration. Relanox selects the native API and token endpoints automatically.
 
-`recipientTypes` identifies private and group destinations. With `allowProactive: false`, a real incoming message is still required: private replies have a 60-minute window and four slots; group replies have a five-minute window and five slots. Text and each attachment consume separate slots. Sending without an incoming message requires a known recipient type, `allowProactive: true`, platform permission and the recipient's receiving preference.
+`recipientTypes` identifies private and group destinations. Private replies have a 60-minute window and four slots; group replies have a five-minute window and five slots. Text and each attachment consume separate slots. Relanox includes the incoming message ID while its reply window is valid; without a valid window it sends proactively without that ID. Sending without an incoming message requires a known recipient type. QQ enforces platform permissions, quotas and the recipient's receiving preference; Relanox has no separate proactive-send switch. Remove `allowProactive` from older configurations before upgrading.
 
 The official Tencent QQBot Node.js SDK owns token refresh, HTTP requests, WebSocket heartbeat/resume, upload selection and native `msg_seq`. Relanox retains sender authorization, target identity checks, reply windows, media storage and Core delivery/chunk IDs. Reply quotas are decided by QQ; Relanox does not reserve or persist native sequences. QQ sends remain non-idempotent: retrying an unknown result can duplicate a message.
 

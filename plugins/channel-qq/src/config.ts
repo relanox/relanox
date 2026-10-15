@@ -9,7 +9,6 @@ export const configSchema = z
     appId: z.string().min(1),
     clientSecret: secretRefSchema,
     environment: z.enum(['production', 'sandbox']).default('production'),
-    allowProactive: z.boolean().default(false),
     recipientTypes: z
       .record(z.string().min(1), z.enum(['c2c', 'group']))
       .optional()
