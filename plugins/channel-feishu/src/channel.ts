@@ -59,11 +59,11 @@ function matchesIdentity(
   )
 }
 
-function learnedAnchor(
+function learnedReply(
   address: ChannelAddress,
   learned: ReplyTarget | undefined,
   current: Omit<z.infer<typeof targetSchema>, 'threadAnchor'>
-): string | undefined {
+): ReplyTarget | undefined {
   const prior = targetSchema.safeParse(learned?.data)
   if (
     learned?.channel !== 'feishu' ||
@@ -75,7 +75,7 @@ function learnedAnchor(
   ) {
     return undefined
   }
-  return prior.data.threadAnchor ?? learned.replyToId
+  return learned
 }
 
 function threadIdentity(
@@ -94,11 +94,13 @@ function threadIdentity(
 
 function threadReply(
   target: ReplyTarget,
-  data: z.infer<typeof targetSchema>
+  data: z.infer<typeof targetSchema>,
+  explicit: boolean
 ): string | undefined {
-  return target.threadId
-    ? (data.threadAnchor ?? target.replyToId)
-    : target.replyToId
+  if (explicit) {
+    return target.replyToId
+  }
+  return target.threadId ? (data.threadAnchor ?? target.replyToId) : undefined
 }
 
 export function createFeishuChannel(
@@ -428,9 +430,13 @@ export function createFeishuChannel(
         return { status: 'unavailable', reason: 'invalid_address' }
       }
       const current = identity()
+      const prior = learnedReply(address, learned, current)
       let threadAnchor: string | undefined
       if (address.threadId !== undefined) {
-        threadAnchor = learnedAnchor(address, learned, current)
+        const data = targetSchema.safeParse(prior?.data)
+        threadAnchor = data.success
+          ? (data.data.threadAnchor ?? prior?.replyToId)
+          : undefined
         if (!threadAnchor || !/^[A-Za-z0-9_-]+$/u.test(threadAnchor)) {
           return { status: 'unavailable', reason: 'address_unresolved' }
         }
@@ -441,6 +447,7 @@ export function createFeishuChannel(
           channel: 'feishu',
           accountId: account.id,
           chatId: address.chatId,
+          ...(prior?.replyToId ? { replyToId: prior.replyToId } : {}),
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
             : {}),
@@ -513,7 +520,10 @@ export function createFeishuChannel(
       ) {
         return { status: 'rejected', errorCode: 'invalid_target' }
       }
-      if (input.target.threadId && !threadReply(input.target, data.data)) {
+      if (
+        (input.target.threadId || input.reply) &&
+        !threadReply(input.target, data.data, Boolean(input.reply))
+      ) {
         return { status: 'rejected', errorCode: 'address_unresolved' }
       }
       // Authentication precedes the message effect, so failures here are safe to retry.
@@ -554,7 +564,7 @@ export function createFeishuChannel(
         return content
       }
       try {
-        const reply = threadReply(input.target, data.data)
+        const reply = threadReply(input.target, data.data, Boolean(input.reply))
 
         const response = await postJson(
           `${base().replace(/\/$/u, '')}/open-apis/im/v1/messages${reply ? `/${encodeURIComponent(reply)}/reply` : '?receive_id_type=chat_id'}`,
