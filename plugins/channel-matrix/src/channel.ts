@@ -12,7 +12,7 @@ import {
   HTTPError,
   MatrixError,
   SyncState,
-  RelationType
+  THREAD_RELATION_TYPE
 } from 'matrix-js-sdk'
 import type { MatrixClient, MatrixEvent } from 'matrix-js-sdk'
 import { matrixClient } from './client.js'
@@ -21,67 +21,7 @@ import type { MatrixConfig } from './config.js'
 import { mediaCaption, messageContent, receiveMedia } from './media.js'
 import { diagnose, ingest, secret, sendFailure } from './protocol.js'
 import { richError } from './rich.js'
-import {
-  eventSchema,
-  identitySchema,
-  textSchema,
-  targetSchema
-} from './schemas.js'
-import type { InboundEvent } from './schemas.js'
-
-function outboundRelation(input: SendInput):
-  | {
-      rel_type: RelationType.Thread
-      event_id: string
-      is_falling_back?: false
-      'm.in_reply_to'?: { event_id: string }
-    }
-  | { 'm.in_reply_to': { event_id: string } }
-  | null {
-  const { target } = input
-  const replyToId = input.reply ? target.replyToId : undefined
-  if (target.threadId) {
-    return {
-      rel_type: RelationType.Thread,
-      event_id: target.threadId,
-      ...(replyToId
-        ? {
-            is_falling_back: false,
-            'm.in_reply_to': { event_id: replyToId }
-          }
-        : {})
-    }
-  }
-  return replyToId ? { 'm.in_reply_to': { event_id: replyToId } } : null
-}
-
-function encryptedEvent(event: InboundEvent): boolean {
-  return (
-    event.type === 'm.room.encrypted' ||
-    (event.type === 'm.room.message' && 'file' in event.content)
-  )
-}
-
-function inboundThread(
-  host: ChannelHost,
-  content: InboundEvent['content']
-): { threadId?: string } | null {
-  const relation = textSchema.shape['m.relates_to'].parse(
-    content['m.relates_to']
-  )
-
-  if (relation?.rel_type && relation.rel_type !== 'm.thread') {
-    diagnose(host, 'relation_unsupported')
-    return null
-  }
-  if (relation?.rel_type !== 'm.thread') {
-    return {}
-  }
-  if (!relation.event_id) {
-    throw new Error('invalid_thread')
-  }
-  return { threadId: relation.event_id }
-}
+import { textSchema, targetSchema } from './schemas.js'
 
 export function createMatrixChannel(
   environment: Readonly<Record<string, string | undefined>> = process.env
@@ -115,43 +55,46 @@ export function createMatrixChannel(
     event: MatrixEvent,
     signal: AbortSignal
   ): Promise<void> {
-    const { host, account, config, base, userId } = configured()
+    const { host, account, config, base, userId, client } = configured()
     const room = event.getRoomId()
     if (!room || (host.boundChatIds && !host.boundChatIds.includes(room))) {
       return
     }
 
-    const data = eventSchema.parse({
-      event_id: event.getId(),
-      sender: event.getSender(),
-      type: event.getType(),
-      origin_server_ts: event.getTs(),
-      content: event.getContent()
-    })
-
-    if (data.sender === userId) {
+    const sender = event.getSender()
+    if (sender === userId) {
       return
     }
-    if (encryptedEvent(data)) {
+    if (event.isEncrypted()) {
       diagnose(host, 'encrypted_unsupported')
       return
     }
-    if (data.type !== 'm.room.message') {
+    if (event.getType() !== 'm.room.message') {
       return
     }
-    if (!account.allowedSenders.includes(data.sender)) {
+    if (!sender || !account.allowedSenders.includes(sender)) {
       diagnose(host, 'sender_not_allowed')
       return
     }
-    const parsed = textSchema.safeParse(data.content)
+    const content = event.getContent()
+    if ('file' in content) {
+      diagnose(host, 'encrypted_unsupported')
+      return
+    }
+    const relation = event.getRelation()
+    if (relation && !THREAD_RELATION_TYPE.matches(relation.rel_type ?? '')) {
+      diagnose(host, 'relation_unsupported')
+      return
+    }
+    const parsed = textSchema.safeParse(content)
 
     const attachments = parsed.success
       ? []
       : await receiveMedia(
-          data.content,
+          content,
           host,
           config,
-          base,
+          client,
           {
             Authorization: `Bearer ${secret(config.accessToken, environment)}`
           },
@@ -163,26 +106,24 @@ export function createMatrixChannel(
       return
     }
 
-    const thread = inboundThread(host, data.content)
-    if (!thread) {
-      return
-    }
+    const eventId = platformIdSchema.parse(event.getId())
+    const threadId = event.threadRootId
     await ingest(host, {
       source: {
         channel: 'matrix',
         accountId: account.id,
-        eventId: data.event_id
+        eventId
       },
-      senderId: data.sender,
-      text: parsed.success ? parsed.data.body : mediaCaption(data.content),
+      senderId: sender,
+      text: parsed.success ? parsed.data.body : mediaCaption(content),
       ...(attachments.length > 0 ? { attachments } : {}),
-      receivedAt: data.origin_server_ts ?? Date.now(),
+      receivedAt: event.getTs() ?? Date.now(),
       target: {
         channel: 'matrix',
         accountId: account.id,
         chatId: room,
-        replyToId: data.event_id,
-        ...thread,
+        replyToId: eventId,
+        ...(threadId ? { threadId } : {}),
         data: { homeserver: base, userId }
       },
       context: null
@@ -270,13 +211,16 @@ export function createMatrixChannel(
       if ('status' in content) {
         return content
       }
-      const relation = outboundRelation(input)
+      const replyToId = input.reply ? input.target.replyToId : undefined
 
       const result = await client.sendMessage(
         input.target.chatId,
+        input.target.threadId ?? null,
         {
           ...content,
-          ...(relation ? { 'm.relates_to': relation } : {})
+          ...(replyToId
+            ? { 'm.relates_to': { 'm.in_reply_to': { event_id: replyToId } } }
+            : {})
         },
         input.chunk.idempotencyKey
       )
@@ -407,14 +351,14 @@ export function createMatrixChannel(
         () => receiveSignal
       )
 
-      const identity = identitySchema.parse(await client.whoami())
-      client.credentials.userId = identity.user_id
+      const userId = platformIdSchema.parse((await client.whoami()).user_id)
+      client.credentials.userId = userId
       runtime = {
         host,
         account,
         config,
         base,
-        userId: identity.user_id,
+        userId,
         client
       }
       client.on(ClientEvent.Event, received)

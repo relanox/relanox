@@ -62,6 +62,85 @@ function config(base: string): {
   }
 }
 
+// Protect the MXC-only media boundary after delegating URI conversion to SDK
+// 43.0.0 content-repo.getHttpUriForMxc. Enabling direct links or accepting a
+// Malformed MXC would fetch an event-supplied URL. Existing fixtures contain only
+// Valid MXCs; real HTTP/Core/SQLite exercise rejection without a production seam.
+it.each(['direct URL', 'extra MXC path'])(
+  'rejects %s before any media fetch and preserves subsequent text',
+  async (uri) => {
+    const fetched: string[] = []
+
+    const peer = await httpPeer((request, response) => {
+      const url = new URL(request.url ?? '/', 'http://peer')
+      if (url.pathname.endsWith('/sync')) {
+        json(response, {
+          next_batch: 'after-invalid-uri',
+          rooms: {
+            join: {
+              [room]: {
+                timeline: {
+                  events: url.searchParams.has('since')
+                    ? []
+                    : [
+                        {
+                          event_id: '$invalid-uri',
+                          sender,
+                          type: 'm.room.message',
+                          content: {
+                            msgtype: 'm.file',
+                            body: 'file.bin',
+                            url:
+                              uri === 'direct URL'
+                                ? `${peer.base}/direct-download`
+                                : 'mxc://media.example.org/id/extra'
+                          }
+                        },
+                        {
+                          event_id: '$valid-text',
+                          sender,
+                          type: 'm.room.message',
+                          content: { msgtype: 'm.text', body: 'following text' }
+                        }
+                      ]
+                }
+              }
+            }
+          }
+        })
+      } else {
+        fetched.push(url.pathname)
+        response.writeHead(200, { 'Content-Type': 'application/octet-stream' })
+        response.end(new Uint8Array([1, 2, 3]))
+      }
+    })
+
+    const plugin = createMatrixChannel({ MATRIX_TOKEN: 'matrix-secret' })
+
+    const fixture = await harness(
+      plugin,
+      config(peer.base),
+      [{ chatId: room }],
+      [sender],
+      `${peer.base}/dispatch`
+    )
+
+    await plugin.start?.(new AbortController().signal)
+    await waitFor(
+      async () =>
+        (await fixture.storage.listInbound({ limit: 10 })).length === 1
+    )
+    await plugin.stop?.()
+    const records = await fixture.storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    expect(records[0]?.snapshot).toMatchObject({
+      source: { eventId: '$valid-text' },
+      text: 'following text'
+    })
+    expect(fetched).toEqual([])
+  }
+)
+
 // Protect Core's file/aggregate budgets after replacing the receive driver. A
 // Lost host budget or swallowed total-limit rejection would persist the file.
 // SDK callback timing is independent of downloads; real SQLite needs no seam.

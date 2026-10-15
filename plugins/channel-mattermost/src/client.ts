@@ -29,14 +29,6 @@ export class MattermostClient extends Client4 {
       ])
     }
   }
-
-  // Client4 has no single-file metadata convenience method in this release.
-  async fileInfo(id: string): Promise<unknown> {
-    return this.doFetch<unknown>(
-      `${this.getFileRoute(encodeURIComponent(id))}/info`,
-      { method: 'get' }
-    )
-  }
 }
 
 /** The official SDK supports a Node WebSocket factory; keep transport bounds there. */

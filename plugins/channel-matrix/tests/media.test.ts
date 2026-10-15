@@ -102,6 +102,11 @@ it.each([
   }
 )
 
+// Protect SDK MXC conversion, bytes, thread placement and delivery classification.
+// A legacy download path or manual thread builder loses the authenticated URL or
+// SDK fallback metadata. Old fixtures asserted only manual output; SDK 43.0.0
+// Content-repo.getHttpUriForMxc and Client.addThreadRelationIfNeeded supply this
+// Wire contract. Real HTTP/Core/SQLite exercise it without a production seam.
 it.each(kinds)(
   'relays native Matrix %s (%s, %s) upload HTTP %s settles %s through SQLite and authenticated MCP',
   async (kind, mimeType, fileName, uploadStatus, expected) => {
@@ -159,7 +164,7 @@ it.each(kinds)(
         })
       } else if (url.pathname.includes('/media/download/')) {
         downloads.push({
-          path: url.pathname,
+          path: `${url.pathname}${url.search}`,
           authorization: request.headers.authorization
         })
         response.writeHead(200, { 'Content-Type': mimeType })
@@ -234,7 +239,7 @@ it.each(kinds)(
     expect(turn.inbound[0]?.data).toEqual(new Uint8Array([1, 2, 3]))
     expect(downloads).toEqual([
       {
-        path: '/_matrix/client/v1/media/download/remote.example/original',
+        path: '/_matrix/client/v1/media/download/remote.example/original?allow_redirect=true',
         authorization: 'Bearer matrix-secret'
       }
     ])
@@ -262,7 +267,8 @@ it.each(kinds)(
         },
         'm.relates_to': {
           rel_type: 'm.thread',
-          event_id: '$thread'
+          event_id: '$thread',
+          is_falling_back: true
         }
       }
     ])

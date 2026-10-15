@@ -34,6 +34,10 @@ const connectionId = 'abcdefghijklmnopqrstuvwxyz'
 // Channels/app/file.go UploadFileX, and channels/app/platform/web_conn.go replay.
 // FileInfo uses native size and optional empty MIME, uploads allow empty files,
 // And the authenticated reconnect query requests the next server sequence.
+// SDK 11.9.0 Client4.getFileInfosForPost returns FileInfo[] for the post route.
+// Protect media identity/budgets and later text in real HTTP/WS/Core/SQLite;
+// An old per-file route or wrong batch association must fail. Existing fixtures
+// Used only single-file objects and missed this contract. No new seam is needed.
 function posted(
   seq: number,
   id: string,
@@ -213,14 +217,16 @@ it.each(policies)(
       (request, response) => {
         const path = request.url ?? ''
         requests.push(path)
-        const id = path.split('/')[4]
         if (path.endsWith('/info')) {
-          json(response, {
-            id,
-            name: 'file.bin',
-            mime_type: 'application/octet-stream',
-            size
-          })
+          json(
+            response,
+            ids.map((id) => ({
+              id,
+              name: 'file.bin',
+              mime_type: 'application/octet-stream',
+              size
+            }))
+          )
         } else {
           response.writeHead(200, {
             'Content-Type': 'application/octet-stream'
@@ -250,6 +256,93 @@ it.each(policies)(
     ).toEqual([nextPostId])
   }
 )
+
+// Protect each native file's identity, order and bytes when batch metadata arrives
+// In a different order. Index-based pairing would silently swap attachments;
+// Existing cases use one file or reject the whole post. SDK 11.9.0
+// Client4.getFileInfosForPost returns FileInfo[] without an order guarantee.
+// Real HTTP/WS/Core/SQLite use the existing production interfaces only.
+it('associates unordered SDK file metadata with the post file identities', async () => {
+  const requests: string[] = []
+
+  const peer = await httpPeer(
+    (request, response) => {
+      const path = request.url ?? ''
+      requests.push(path)
+      if (path === `/api/v4/posts/${firstPostId}/files/info`) {
+        json(response, [
+          {
+            id: secondFileId,
+            name: 'second.pdf',
+            mime_type: 'application/pdf',
+            size: 2
+          },
+          {
+            id: firstFileId,
+            name: 'first.txt',
+            mime_type: 'text/plain',
+            size: 3
+          }
+        ])
+      } else if (path === `/api/v4/files/${firstFileId}`) {
+        response.writeHead(200, { 'Content-Type': 'text/plain' })
+        response.end(new Uint8Array([1, 2, 3]))
+      } else if (path === `/api/v4/files/${secondFileId}`) {
+        response.writeHead(200, { 'Content-Type': 'application/pdf' })
+        response.end(new Uint8Array([4, 5]))
+      } else {
+        json(response, {}, 404)
+      }
+    },
+    (_request, response) => {
+      json(response, { id: botId })
+    }
+  )
+
+  stream(peer, [posted(1, firstPostId, [firstFileId, secondFileId])])
+  const fixture = await receiver(peer.base, { maxMediaBytes: 4 })
+  await fixture.plugin.start?.(new AbortController().signal)
+  await expect
+    .poll(async () => (await fixture.storage.listInbound({ limit: 10 })).length)
+    .toBe(1)
+  await fixture.plugin.stop?.()
+  const record = (await fixture.storage.listInbound({ limit: 10 }))[0]
+  const attachments = record?.snapshot.attachments
+  expect(attachments).toEqual([
+    expect.objectContaining({
+      kind: 'file',
+      fileName: 'first.txt',
+      mimeType: 'text/plain',
+      size: 3
+    }),
+    expect.objectContaining({
+      kind: 'file',
+      fileName: 'second.pdf',
+      mimeType: 'application/pdf',
+      size: 2
+    })
+  ])
+  if (!record || !attachments || !fixture.storage.media) {
+    throw new Error('Missing persisted attachments')
+  }
+  const bytes: (Uint8Array | undefined)[] = []
+  for (const attachment of attachments) {
+    bytes.push(
+      (
+        await fixture.storage.media.get(
+          record.snapshot.channel.id,
+          attachment.id
+        )
+      )?.data
+    )
+  }
+  expect(bytes).toEqual([new Uint8Array([1, 2, 3]), new Uint8Array([4, 5])])
+  expect(requests).toEqual([
+    `/api/v4/posts/${firstPostId}/files/info`,
+    `/api/v4/files/${firstFileId}`,
+    `/api/v4/files/${secondFileId}`
+  ])
+})
 
 // Mattermost FileInfo.IsValidFilename bounds names to 256 Unicode code points:
 // 2b64fd09d3839007887662c191bd5d7af113a385 server/public/model/file_info.go.
@@ -292,12 +385,14 @@ it.each([
     const peer = await httpPeer(
       (request, response) => {
         if (request.url?.endsWith('/info')) {
-          json(response, {
-            id: firstFileId,
-            name,
-            mime_type: nativeMime,
-            size: 3
-          })
+          json(response, [
+            {
+              id: firstFileId,
+              name,
+              mime_type: nativeMime,
+              size: 3
+            }
+          ])
         } else {
           response.writeHead(200, {
             'Content-Type': 'application/octet-stream'
@@ -352,15 +447,17 @@ it.each(['download 503', 'metadata identity mismatch'])(
     const peer = await httpPeer(
       (request, response) => {
         if (request.url?.endsWith('/info')) {
-          json(response, {
-            id:
-              failure === 'metadata identity mismatch'
-                ? secondFileId
-                : firstFileId,
-            name: 'file.bin',
-            mime_type: 'application/octet-stream',
-            size: 3
-          })
+          json(response, [
+            {
+              id:
+                failure === 'metadata identity mismatch'
+                  ? secondFileId
+                  : firstFileId,
+              name: 'file.bin',
+              mime_type: 'application/octet-stream',
+              size: 3
+            }
+          ])
         } else {
           downloads += 1
           json(

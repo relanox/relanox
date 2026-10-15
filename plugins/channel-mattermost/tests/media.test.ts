@@ -22,6 +22,10 @@ const kinds = [
   ['image', 'image/png', 'picture.png', 200, 'pending']
 ] as const
 
+// Protect native attachment bytes/identity and send results through Core/SQLite.
+// Retaining the old per-file route breaks SDK batch metadata reception; the old
+// Peer implemented only that route. @mattermost/client 11.9.0
+// Client4.getFileInfosForPost supplies the array contract. Real HTTP/WS need no seam.
 it.each(kinds)(
   'relays native Mattermost %s (%s, %s) upload HTTP %s settles %s through SQLite and authenticated MCP',
   async (kind, mimeType, fileName, uploadStatus, expected) => {
@@ -37,14 +41,16 @@ it.each(kinds)(
 
     const peer = await httpPeer(async (request, response) => {
       const path = request.url ?? '/'
-      if (path === '/api/v4/files/asset/info') {
+      if (path === '/api/v4/posts/incoming/files/info') {
         received.push({ path, authorization: request.headers.authorization })
-        json(response, {
-          id: 'asset',
-          name: fileName,
-          mime_type: mimeType,
-          size: 3
-        })
+        json(response, [
+          {
+            id: 'asset',
+            name: fileName,
+            mime_type: mimeType,
+            size: 3
+          }
+        ])
       } else if (path === '/api/v4/files/asset') {
         received.push({ path, authorization: request.headers.authorization })
         response.writeHead(200, { 'Content-Type': mimeType })
@@ -147,7 +153,7 @@ it.each(kinds)(
     expect(turn.inbound[0]?.data).toEqual(new Uint8Array([1, 2, 3]))
     expect(received).toEqual([
       {
-        path: '/api/v4/files/asset/info',
+        path: '/api/v4/posts/incoming/files/info',
         authorization: expect.stringMatching(
           /^Bearer mattermost-secret$/iu
         ) as unknown

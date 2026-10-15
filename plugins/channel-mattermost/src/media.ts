@@ -11,31 +11,29 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
-import { z } from 'zod'
+import { platformIdSchema } from './config.js'
 import type { MattermostConfig } from './config.js'
 import type { MattermostClient } from './client.js'
+import type { Post } from '@mattermost/types/posts'
 import { diagnose, sendFailure } from './protocol.js'
 
-const infoSchema = z.object({
-  id: z.string().min(1).max(1024),
-  name: z.string().min(1).max(256),
-  mime_type: z.string().max(128),
-  size: z.number().int().nonnegative()
-})
-
 async function collectFiles(
-  ids: readonly string[],
+  post: Pick<Post, 'id' | 'file_ids'>,
   host: ChannelHost,
   config: MattermostConfig,
   client: MattermostClient,
   signal: AbortSignal
 ): Promise<MediaUpload[]> {
   const attachments: MediaUpload[] = []
+  if (!post.file_ids?.length) {
+    return attachments
+  }
+  const metadata = await client.getFileInfosForPost(post.id)
   const bound = AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)])
-  for (const id of ids) {
+  for (const id of post.file_ids) {
     const url = client.getFileUrl(encodeURIComponent(id), 0)
-    const info = infoSchema.parse(await client.fileInfo(id))
-    if (info.id !== id) {
+    const info = metadata.find((file) => file.id === id)
+    if (!info) {
       throw new Error('invalid_media_metadata')
     }
     if (info.size > (host.maxMediaBytes ?? 100 * 1024 * 1024)) {
@@ -68,14 +66,14 @@ async function collectFiles(
 }
 
 export async function receiveFiles(
-  ids: readonly string[],
+  post: Pick<Post, 'id' | 'file_ids'>,
   host: ChannelHost,
   config: MattermostConfig,
   client: MattermostClient,
   signal: AbortSignal
 ): Promise<MediaUpload[] | undefined> {
   try {
-    return await collectFiles(ids, host, config, client, signal)
+    return await collectFiles(post, host, config, client, signal)
   } catch (error) {
     if (
       error instanceof MediaDownloadError &&
@@ -99,19 +97,11 @@ export async function uploadFile(
   form.set('channel_id', input.target.chatId)
   form.set('files', mediaBlob(input.media), input.media.reference.fileName)
   try {
-    const uploaded = z
-      .object({
-        file_infos: z
-          .array(z.object({ id: z.string().min(1).max(1024) }))
-          .length(1)
-      })
-      .parse(await client.uploadFile(form))
-
-    const file = uploaded.file_infos[0]
-    if (!file) {
+    const uploaded = await client.uploadFile(form)
+    if (uploaded.file_infos.length !== 1) {
       throw new Error('media_upload_failed')
     }
-    return { fileId: file.id }
+    return { fileId: platformIdSchema.parse(uploaded.file_infos[0]?.id) }
   } catch (error) {
     const failure = sendFailure(error)
     // A failed blob upload cannot have delivered a channel post.

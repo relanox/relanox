@@ -10,17 +10,11 @@ import type {
 import { receiveFiles, uploadFile } from './media.js'
 import { richError, richMarkdown } from './rich.js'
 import { MattermostClient, mattermostWebSocket } from './client.js'
-import { z } from 'zod'
+import type { WebSocketEvents, WebSocketMessage } from '@mattermost/client'
 import { validateConfig, validateBaseUrl, platformIdSchema } from './config.js'
 import type { MattermostConfig } from './config.js'
 import { diagnose, sendFailure, ingest, secret } from './protocol.js'
-import {
-  sendResponseSchema,
-  postedEventSchema,
-  frameSchema,
-  postSchema,
-  targetSchema
-} from './schemas.js'
+import { postSchema, targetSchema } from './schemas.js'
 
 function sourceReplyId(
   address: ChannelAddress,
@@ -72,14 +66,16 @@ export function createMattermostChannel(
     return runtime
   }
 
-  async function receive(value: unknown, signal: AbortSignal): Promise<void> {
+  async function receive(
+    frame: WebSocketMessage,
+    signal: AbortSignal
+  ): Promise<void> {
     const { host, account, config, base, botUserId } = configured()
-    const frame = frameSchema.parse(value)
-    if (frame.event !== 'posted') {
+    // SDK event constants are declaration-only const enums under verbatim modules.
+    if (frame.event !== ('posted' as WebSocketEvents.Posted)) {
       return
     }
-    const encoded = postedEventSchema.parse(frame.data)
-    const post = postSchema.parse(JSON.parse(encoded.post) as unknown)
+    const post = postSchema.parse(JSON.parse(frame.data.post) as unknown)
     if (post.user_id === botUserId) {
       return
     }
@@ -96,7 +92,7 @@ export function createMattermostChannel(
     }
 
     const attachments = await receiveFiles(
-      post.file_ids,
+      post,
       host,
       config,
       new MattermostClient(base, secret(config.token, environment), signal),
@@ -129,7 +125,7 @@ export function createMattermostChannel(
     })
   }
 
-  function received(frame: unknown, signal: AbortSignal): void {
+  function received(frame: WebSocketMessage, signal: AbortSignal): void {
     if (signal.aborted) {
       return
     }
@@ -206,8 +202,10 @@ export function createMattermostChannel(
         ...(rootId ? { root_id: rootId } : {})
       })
 
-      const post = sendResponseSchema.parse(result)
-      return { status: 'sent', receipt: { platformMessageId: post.id } }
+      return {
+        status: 'sent',
+        receipt: { platformMessageId: platformIdSchema.parse(result.id) }
+      }
     } catch (error) {
       return sendFailure(error)
     }
@@ -291,16 +289,14 @@ export function createMattermostChannel(
         secret(config.token, environment)
       )
 
-      const identity = z
-        .object({ id: platformIdSchema })
-        .parse(await client.getMe())
+      const botUserId = platformIdSchema.parse((await client.getMe()).id)
 
       runtime = {
         host,
         account,
         config,
         base,
-        botUserId: identity.id
+        botUserId
       }
     },
     async start(signal) {
