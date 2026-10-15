@@ -29,6 +29,8 @@
 
 登录自己的 IRC 账号，在绑定频道或机器人昵称的私聊中发送“你好”。回答以普通文字行显示，较长回答会拆为多行。
 
+Agent 可通过 `reply.requestId` 引用指定来信。服务器确认 `message-tags` 且来信带有服务器 `msgid` 时，使用 IRCv3 `+reply` 原生引用；其他网络收到普通文本。引用是否显示还取决于接收方 IRC 客户端。不传 `reply` 时不添加回复标签。
+
 ## 图片和文件
 
 IRC 适合文字提问。需要向 Agent 提交图片或文件时，可在[渠道指南](../configuration.md)中选择 Telegram、Discord 或 Matrix 等带附件的渠道。

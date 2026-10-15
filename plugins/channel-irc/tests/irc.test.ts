@@ -13,6 +13,7 @@ import {
   waitFor
 } from '../../channel-matrix/tests/harness.js'
 import { createIrcChannel } from '../src/index.js'
+import { assemble, records } from '../../channel-wecom/tests/test-support.js'
 
 async function tcpPeer(
   onLine: (line: string, socket: Socket) => void
@@ -125,6 +126,115 @@ function sendInput(
     signal: new AbortController().signal
   }
 }
+
+// IRCv3 native quote, tag escaping and separate line budgets:
+// https://ircv3.net/specs/client-tags/reply
+// https://ircv3.net/specs/extensions/message-tags.html
+// Protects three persisted inputs answered out of order, ordinary noquote sends,
+// And capability fallback/revocation; selected-ID loss, missing escaping or tags without
+// Negotiation fail real socket assertions. Existing direct sends skip Core.
+// Production AgentHost/Core/SQLite and a TCP peer add no production testing seam.
+it.each([true, false])(
+  'quotes selected IRC requests only with message-tags support (%s)',
+  async (supported) => {
+    const ids = ['one', String.raw`two\:\sx\\y`, 'x'.repeat(900)]
+
+    const tcp = await tcpPeer((line, socket) => {
+      if (line === 'CAP LS 302') {
+        socket.write(
+          `:server CAP relay LS :account-tag server-time${supported ? ' message-tags' : ''} sasl=PLAIN\r\n`
+        )
+        return
+      }
+      register(line, socket)
+      if (line === 'JOIN #room') {
+        for (const [index, id] of ids.entries()) {
+          socket.write(
+            `@account=alice;msgid=${id} :Alice!u@h PRIVMSG #room :question ${index + 1}\r\n`
+          )
+        }
+      }
+    })
+
+    const plugin = createIrcChannel({ IRC_SASL: 'password' })
+
+    const fixture = await assemble(plugin, config(tcp.port), [
+      { chatId: '#room', senderId: 'account:alice' }
+    ])
+
+    await fixture.start()
+    await waitFor(async () => (await records(fixture.storage)).length === 3)
+    const received = await records(fixture.storage)
+    for (const id of [2, 1, 3]) {
+      const request = received.find(
+        (item) => item.snapshot.text === `question ${id}`
+      )
+
+      if (!request) {
+        throw new Error('missing_request')
+      }
+      expect(
+        await fixture.principal().sendMessage({
+          channel: request.snapshot.channel.id,
+          text: `answer ${id}`,
+          reply: { requestId: request.snapshot.requestId, kind: 'final' }
+        })
+      ).toMatchObject({ status: 'queued' })
+      await fixture.runtime.processDue()
+    }
+    const channel = received[0]?.snapshot.channel.id
+    if (!channel) {
+      throw new Error('missing_channel')
+    }
+    expect(
+      await fixture.principal().sendMessage({ channel, text: 'ordinary' })
+    ).toMatchObject({ status: 'queued' })
+    await fixture.runtime.processDue()
+    await waitFor(
+      () =>
+        tcp.lines.filter((line) => line.includes('PRIVMSG #room :')).length ===
+        4
+    )
+    const sent = tcp.lines.filter((line) => line.includes('PRIVMSG #room :'))
+    expect(sent).toEqual(
+      supported
+        ? [
+            `@+reply=two\\:\\sx\\\\y PRIVMSG #room :answer 2`,
+            '@+reply=one PRIVMSG #room :answer 1',
+            `@+reply=${'x'.repeat(900)} PRIVMSG #room :answer 3`,
+            'PRIVMSG #room :ordinary'
+          ]
+        : [
+            'PRIVMSG #room :answer 2',
+            'PRIVMSG #room :answer 1',
+            'PRIVMSG #room :answer 3',
+            'PRIVMSG #room :ordinary'
+          ]
+    )
+    if (supported) {
+      tcp.sockets[0]?.write(
+        ':server CAP relay DEL :message-tags\r\nPING :caps-removed\r\n'
+      )
+      await waitFor(() => tcp.lines.includes('PONG :caps-removed'))
+      const request = received[0]
+      if (!request) {
+        throw new Error('missing_request')
+      }
+      expect(
+        await fixture.principal().sendMessage({
+          channel,
+          text: 'after revocation',
+          reply: { requestId: request.snapshot.requestId, kind: 'progress' }
+        })
+      ).toMatchObject({ status: 'queued' })
+      await fixture.runtime.processDue()
+      await waitFor(() => tcp.lines.includes('PRIVMSG #room :after revocation'))
+      expect(
+        tcp.lines.filter((line) => line.includes('after revocation'))
+      ).toEqual(['PRIVMSG #room :after revocation'])
+    }
+  }
+)
 
 it('renders Markdown using IRC controls and budgets styled UTF-8 text with the actual target', async () => {
   const tcp = await tcpPeer(register)
