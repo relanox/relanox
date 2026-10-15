@@ -253,11 +253,22 @@ function protocolAgent(dispatchUrl: string): AgentPlugin {
           .object({
             channel: z.string(),
             idempotencyKey: z.string(),
-            text: z.string()
+            text: z.string(),
+            reply: z
+              .object({
+                requestId: z.string(),
+                kind: z.enum(['progress', 'final'])
+              })
+              .optional()
           })
           .parse((await request.json()) as unknown)
 
-        const output = await host.forPrincipal(principal).sendMessage(input)
+        const { reply, ...message } = input
+
+        const output = await host.forPrincipal(principal).sendMessage({
+          ...message,
+          ...(reply ? { reply } : {})
+        })
 
         return Response.json(output)
       })
@@ -291,6 +302,13 @@ export async function harness(
     filename?: string
     observe?: Observability
     worker?: WorkerOptions
+    accounts?: readonly {
+      id: string
+      plugin: ChannelPlugin<unknown>
+      config: Json
+      chats: readonly { chatId: string; threadId?: string }[]
+      senders: readonly string[]
+    }[]
   } = {}
 ): Promise<{
   runtime: Awaited<ReturnType<typeof createCore>>
@@ -299,7 +317,8 @@ export async function harness(
   sendReply(
     this: void,
     requestId: string,
-    text?: string
+    text?: string,
+    replyKind?: 'progress' | 'final'
   ): Promise<{
     status: 'queued'
     deliveryId: string
@@ -313,28 +332,40 @@ export async function harness(
 
   await storage.initialize()
 
+  const accounts = [
+    { id: 'bot', plugin, config, chats, senders },
+    ...(options.accounts ?? [])
+  ]
+
   cleanup(async () => {
-    await plugin.stop?.()
+    for (const account of accounts) {
+      await account.plugin.stop?.()
+    }
     await storage.close()
   })
 
-  const bindings: Binding[] = chats.map((chat) => ({
-    accountId: 'bot',
-    endpointId: 'worker',
-    ...chat
-  }))
+  const bindings: Binding[] = accounts.flatMap((account) =>
+    account.chats.map((chat) => ({
+      accountId: account.id,
+      endpointId: 'worker',
+      ...chat
+    }))
+  )
 
   const runtime = await createCore({
     publicUrl: 'https://relay.example',
     storage,
-    channels: new Map([['bot', plugin]]),
+    channels: new Map(accounts.map((account) => [account.id, account.plugin])),
     agents: new Map([['grok', protocolAgent(dispatchUrl)]]),
     ...(options.observe ? { observe: options.observe } : {}),
     ...(options.worker ? { worker: options.worker } : {}),
     config: {
-      accounts: [
-        { id: 'bot', channel: plugin.channel, config, allowedSenders: senders }
-      ],
+      accounts: accounts.map((account) => ({
+        id: account.id,
+        channel: account.plugin.channel,
+        config: account.config,
+        allowedSenders: account.senders
+      })),
       endpoints: [{ id: 'worker', agent: 'grok', config: {} }],
       bindings,
       storage: { plugin: 'sqlite', config: {} },
@@ -344,7 +375,8 @@ export async function harness(
 
   async function sendReply(
     requestId: string,
-    text = 'delayed answer'
+    text = 'delayed answer',
+    replyKind?: 'progress' | 'final'
   ): Promise<{ status: 'queued'; deliveryId: string }> {
     const call = async (input: unknown): Promise<Response> =>
       runtime.fetch(
@@ -365,8 +397,9 @@ export async function harness(
 
     const completed = await call({
       channel: stored.snapshot.channel.id,
-      idempotencyKey: `reply:${requestId}`,
-      text
+      idempotencyKey: `reply:${requestId}${replyKind ? `:${replyKind}` : ''}`,
+      text,
+      ...(replyKind ? { reply: { requestId, kind: replyKind } } : {})
     })
 
     return z

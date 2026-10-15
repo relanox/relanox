@@ -11,10 +11,11 @@ import {
   ClientEvent,
   HTTPError,
   MatrixError,
+  RelationType,
   SyncState,
   THREAD_RELATION_TYPE
 } from 'matrix-js-sdk'
-import type { MatrixClient, MatrixEvent } from 'matrix-js-sdk'
+import type { IEventRelation, MatrixClient, MatrixEvent } from 'matrix-js-sdk'
 import { matrixClient } from './client.js'
 import { validateConfig, platformIdSchema, validateBaseUrl } from './config.js'
 import type { MatrixConfig } from './config.js'
@@ -22,6 +23,41 @@ import { mediaCaption, messageContent, receiveMedia } from './media.js'
 import { diagnose, ingest, secret, sendFailure } from './protocol.js'
 import { richError } from './rich.js'
 import { textSchema, targetSchema } from './schemas.js'
+
+// SDK thread negotiation changes a process-global preference. Keep native
+// Relations stable for each frozen destination, independent of other accounts.
+function messageRelation(input: SendInput):
+  | {
+      rel_type: RelationType.Thread
+      event_id: string
+      is_falling_back: boolean
+      'm.in_reply_to'?: { event_id: string }
+    }
+  | { 'm.in_reply_to': { event_id: string } }
+  | undefined {
+  const replyToId = input.reply ? input.target.replyToId : undefined
+
+  const quote = replyToId
+    ? { 'm.in_reply_to': { event_id: replyToId } }
+    : undefined
+
+  if (input.target.threadId) {
+    return {
+      ...quote,
+      rel_type: RelationType.Thread,
+      event_id: input.target.threadId,
+      is_falling_back: !replyToId
+    }
+  }
+  return quote
+}
+
+function isThreadRelation(relation: IEventRelation): boolean {
+  return (
+    relation.rel_type === THREAD_RELATION_TYPE.stable ||
+    relation.rel_type === THREAD_RELATION_TYPE.unstable
+  )
+}
 
 export function createMatrixChannel(
   environment: Readonly<Record<string, string | undefined>> = process.env
@@ -82,7 +118,7 @@ export function createMatrixChannel(
       return
     }
     const relation = event.getRelation()
-    if (relation && !THREAD_RELATION_TYPE.matches(relation.rel_type ?? '')) {
+    if (relation && !isThreadRelation(relation)) {
       diagnose(host, 'relation_unsupported')
       return
     }
@@ -107,7 +143,11 @@ export function createMatrixChannel(
     }
 
     const eventId = platformIdSchema.parse(event.getId())
-    const threadId = event.threadRootId
+
+    const threadId = relation
+      ? platformIdSchema.parse(relation.event_id)
+      : undefined
+
     await ingest(host, {
       source: {
         channel: 'matrix',
@@ -211,16 +251,14 @@ export function createMatrixChannel(
       if ('status' in content) {
         return content
       }
-      const replyToId = input.reply ? input.target.replyToId : undefined
+      const relation = messageRelation(input)
 
       const result = await client.sendMessage(
         input.target.chatId,
         input.target.threadId ?? null,
         {
           ...content,
-          ...(replyToId
-            ? { 'm.relates_to': { 'm.in_reply_to': { event_id: replyToId } } }
-            : {})
+          ...(relation ? { 'm.relates_to': relation } : {})
         },
         input.chunk.idempotencyKey
       )
