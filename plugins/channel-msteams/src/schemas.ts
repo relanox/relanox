@@ -56,5 +56,6 @@ export const receiptSchema = z.object({ id: platformIdSchema })
 
 export const oauthTokenResponseSchema = z.object({
   access_token: z.string().min(1),
-  token_type: z.string().optional()
+  token_type: z.string().optional(),
+  expires_in: z.number().int().positive()
 })
