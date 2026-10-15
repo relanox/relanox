@@ -10,7 +10,15 @@ import { readBounded } from '@relanox/transport'
 import type { SendResult } from '@relanox/sdk'
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from './config.js'
 
-export function sdkOptions(signal?: AbortSignal): WebClientOptions {
+type UploadState = { publicationAttempted: boolean }
+
+const uploads = new WeakMap<WebClient, UploadState>()
+const completionUrl = new URL(`${API_BASE_URL}/files.completeUploadExternal`)
+
+export function sdkOptions(
+  signal?: AbortSignal,
+  upload?: UploadState
+): WebClientOptions {
   return {
     slackApiUrl: `${API_BASE_URL}/`,
     retryConfig: { retries: 0 },
@@ -50,6 +58,15 @@ export function sdkOptions(signal?: AbortSignal): WebClientOptions {
       const bounded = AbortSignal.any(signals)
       bounded.throwIfAborted()
 
+      if (
+        upload &&
+        init?.method === 'POST' &&
+        address.origin === completionUrl.origin &&
+        address.pathname === completionUrl.pathname
+      ) {
+        upload.publicationAttempted = true
+      }
+
       const response = await fetch(url, {
         ...init,
         signal: bounded,
@@ -70,10 +87,17 @@ export function sdkOptions(signal?: AbortSignal): WebClientOptions {
 }
 
 export function createClient(token: string, signal?: AbortSignal): WebClient {
-  return new WebClient(token, sdkOptions(signal))
+  const upload = { publicationAttempted: false }
+  const client = new WebClient(token, sdkOptions(signal, upload))
+  uploads.set(client, upload)
+  return client
 }
 
-function apiError(error: string): SendResult {
+export function uploadFailure(client: WebClient, error: unknown): SendResult {
+  return sdkFailure(error, uploads.get(client)?.publicationAttempted === false)
+}
+
+function apiError(error: string, preparing: boolean): SendResult {
   if (error === 'ratelimited') {
     return { status: 'retryable', errorCode: 'rate_limited' }
   }
@@ -81,7 +105,7 @@ function apiError(error: string): SendResult {
     status: ['internal_error', 'fatal_error', 'service_unavailable'].includes(
       error
     )
-      ? 'unknown'
+      ? uncertain(preparing)
       : 'rejected',
     errorCode: 'slack_api_error'
   }
@@ -93,7 +117,7 @@ function uncertain(preparing: boolean): 'retryable' | 'unknown' {
 
 export function sdkFailure(error: unknown, preparing = false): SendResult {
   if (error instanceof WebAPIPlatformError) {
-    return apiError(error.data.error)
+    return apiError(error.data.error, preparing)
   }
   if (error instanceof WebAPIRateLimitedError) {
     return {
