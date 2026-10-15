@@ -22,6 +22,8 @@ Use Mattermost user IDs in **Allowed user IDs** and channel IDs in **Chat ID**. 
 
 Set `serverUrl` to the HTTPS base address of your Mattermost server. Start Relanox; it opens the server’s WebSocket connection automatically. Ensure your reverse proxy passes WebSocket connections and keep the process running.
 
+The official [Mattermost JavaScript client](https://github.com/mattermost/mattermost/tree/master/webapp/platform/client) manages the connection, authentication, heartbeats and reconnects. Its in-memory event cursor can advance before Relanox finishes saving a post or downloading its attachments. Failed downloads, interruptions and restarts can therefore leave posts unaccepted; resend questions that still need an answer. Messages and deliveries already accepted by Core remain in the configured database and resume after restart.
+
 ## Send your first message
 
 Send “Hello” from an allowed user in the bound channel. For a thread binding, reply under the root post. The bot posts the answer to the same channel/thread.
@@ -30,7 +32,7 @@ When the Agent specifies `reply.requestId`, the answer is posted as a native rep
 
 ## Images and files
 
-Attach images, audio, videos or files as usual. Relanox sends generated files back as native post attachments, and Mattermost creates available previews. Respect the server’s upload-size setting and the Relanox media limit.
+Attach images, audio, videos or files as usual. Relanox uploads generated files through the SDK as native post attachments, and Mattermost creates available previews. Relanox defaults to 100 MiB per attachment and for all attachments in one message; configured media limits also bound incoming downloads. The server decides its upload limit, so this resource budget does not guarantee that it accepts a 100 MiB file. Oversized uploads are rejected, rate limits defer delivery, and uncertain post-send results remain unknown rather than being retried as known refusals.
 
 ## Troubleshooting
 

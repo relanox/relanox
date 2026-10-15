@@ -13,7 +13,8 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { MattermostConfig } from './config.js'
-import { diagnose, httpFailure, readJson } from './protocol.js'
+import type { MattermostClient } from './client.js'
+import { diagnose, sendFailure } from './protocol.js'
 
 const infoSchema = z.object({
   id: z.string().min(1).max(1024),
@@ -26,38 +27,26 @@ async function collectFiles(
   ids: readonly string[],
   host: ChannelHost,
   config: MattermostConfig,
-  base: string,
-  authorization: string,
+  client: MattermostClient,
   signal: AbortSignal
 ): Promise<MediaUpload[]> {
   const attachments: MediaUpload[] = []
   const bound = AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)])
   for (const id of ids) {
-    const url = `${base}/api/v4/files/${encodeURIComponent(id)}`
-
-    const response = await fetch(`${url}/info`, {
-      headers: { Authorization: authorization },
-      redirect: 'error',
-      signal: bound
-    })
-
-    if (!response.ok) {
-      await response.body?.cancel()
-      throw new Error('media_metadata_failed')
-    }
-    const info = infoSchema.parse(await readJson(response))
+    const url = client.getFileUrl(encodeURIComponent(id), 0)
+    const info = infoSchema.parse(await client.fileInfo(id))
     if (info.id !== id) {
       throw new Error('invalid_media_metadata')
     }
-    if (info.size > (host.maxMediaBytes ?? 16 * 1024 * 1024)) {
+    if (info.size > (host.maxMediaBytes ?? 100 * 1024 * 1024)) {
       throw new MediaDownloadError('media_too_large')
     }
 
     const downloaded = await downloadMedia(url, {
-      maxBytes: host.maxMediaBytes ?? 16 * 1024 * 1024,
+      maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
       signal: bound,
-      headers: { Authorization: authorization },
-      trustedOrigins: [new URL(base).origin],
+      headers: { Authorization: `Bearer ${client.getToken()}` },
+      trustedOrigins: [new URL(client.getUrl()).origin],
       allowInsecureLocalhost: config.allowInsecureLocalhost
     })
 
@@ -82,12 +71,11 @@ export async function receiveFiles(
   ids: readonly string[],
   host: ChannelHost,
   config: MattermostConfig,
-  base: string,
-  authorization: string,
+  client: MattermostClient,
   signal: AbortSignal
 ): Promise<MediaUpload[] | undefined> {
   try {
-    return await collectFiles(ids, host, config, base, authorization, signal)
+    return await collectFiles(ids, host, config, client, signal)
   } catch (error) {
     if (
       error instanceof MediaDownloadError &&
@@ -102,9 +90,7 @@ export async function receiveFiles(
 
 export async function uploadFile(
   input: SendInput,
-  base: string,
-  authorization: string,
-  signal: AbortSignal
+  client: MattermostClient
 ): Promise<{ fileId: string } | SendResult> {
   if (!input.media) {
     throw new Error('media_missing')
@@ -113,36 +99,24 @@ export async function uploadFile(
   form.set('channel_id', input.target.chatId)
   form.set('files', mediaBlob(input.media), input.media.reference.fileName)
   try {
-    const response = await fetch(`${base}/api/v4/files`, {
-      method: 'POST',
-      body: form,
-      headers: { Authorization: authorization },
-      redirect: 'error',
-      signal
-    })
-
-    if (!response.ok) {
-      await response.body?.cancel()
-      const result = httpFailure(response)
-      return result.status === 'unknown'
-        ? { status: 'retryable', errorCode: 'media_upload_failed' }
-        : result
-    }
-
     const uploaded = z
       .object({
         file_infos: z
           .array(z.object({ id: z.string().min(1).max(1024) }))
           .length(1)
       })
-      .parse(await readJson(response))
+      .parse(await client.uploadFile(form))
 
     const file = uploaded.file_infos[0]
     if (!file) {
       throw new Error('media_upload_failed')
     }
     return { fileId: file.id }
-  } catch {
-    return { status: 'retryable', errorCode: 'media_upload_failed' }
+  } catch (error) {
+    const failure = sendFailure(error)
+    // A failed blob upload cannot have delivered a channel post.
+    return failure.status === 'unknown'
+      ? { status: 'retryable', errorCode: 'media_upload_failed' }
+      : failure
   }
 }

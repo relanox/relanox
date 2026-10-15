@@ -618,6 +618,12 @@ importers:
 
   plugins/channel-mattermost:
     dependencies:
+      '@mattermost/client':
+        specifier: 11.9.0
+        version: 11.9.0(@mattermost/types@11.9.0(typescript@7.0.2))(typescript@7.0.2)
+      '@mattermost/types':
+        specifier: 11.9.0
+        version: 11.9.0(typescript@7.0.2)
       '@relanox/channel-media':
         specifier: workspace:*
         version: link:../../packages/channel-media
@@ -627,9 +633,6 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      '@relanox/transport':
-        specifier: workspace:*
-        version: link:../../packages/transport
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -1756,6 +1759,23 @@ packages:
   '@matrix-org/matrix-sdk-crypto-wasm@18.9.0':
     resolution: {integrity: sha512-NtLzNDTEfNASBjNCTGZHuk7N0jrQhS6Zx2CM857rCHZYYh/rpbKGQNrJ7azktm4S1P5Jy3WU3nwJTGohGw26qQ==}
     engines: {node: '>= 18'}
+
+  '@mattermost/client@11.9.0':
+    resolution: {integrity: sha512-831seVBDQqoOrnQl1bVjJgzQVk3iV0rr3RHaYVitnQWBPn56MZIJUly7hgKbsrfkMB9+6rxxa9Yp/G9n55uKMw==}
+    peerDependencies:
+      '@mattermost/types': 11.9.0
+      typescript: ^4.3.0 || ^5.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  '@mattermost/types@11.9.0':
+    resolution: {integrity: sha512-ep/t6tA/yLOop3zObNmkclKjPHrNqLPWJ0BkV2ubYAUxO3KBWdXP0jErz7+8ipXf/VmiPeHFEijGPat2DYGu3Q==}
+    peerDependencies:
+      typescript: ^4.3.0 || ^5.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   '@metamask/oxlint-config-typescript@0.1.1':
     resolution: {integrity: sha512-3lAoJRXa0Txery62wChma8DfkUYSrZe0pSXyciN9inVkCBtJzCj+h7sSxg2GCp74jCWfeuCHdzHCsxznfo2qMA==}
@@ -4970,6 +4990,16 @@ snapshots:
       '@types/node': 24.19.2
 
   '@matrix-org/matrix-sdk-crypto-wasm@18.9.0': {}
+
+  '@mattermost/client@11.9.0(@mattermost/types@11.9.0(typescript@7.0.2))(typescript@7.0.2)':
+    dependencies:
+      '@mattermost/types': 11.9.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+
+  '@mattermost/types@11.9.0(typescript@7.0.2)':
+    optionalDependencies:
+      typescript: 7.0.2
 
   '@metamask/oxlint-config-typescript@0.1.1(@metamask/oxlint-config@0.1.1(oxlint@1.87.0(oxlint-tsgolint@7.0.2004)))(oxlint-tsgolint@7.0.2004)(oxlint@1.87.0(oxlint-tsgolint@7.0.2004))':
     dependencies:

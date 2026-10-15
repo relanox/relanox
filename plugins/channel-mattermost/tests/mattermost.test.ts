@@ -1,12 +1,9 @@
-import type { Server } from 'ws'
 import type { SendInput } from '@relanox/sdk'
 import { expect, it } from 'vitest'
-import { WebSocketServer } from 'ws'
 import { z } from 'zod'
 import {
   body,
   cleanup,
-  databaseFile,
   harness,
   httpPeer,
   json,
@@ -14,6 +11,7 @@ import {
   waitFor
 } from '../../channel-matrix/tests/harness.js'
 import { createMattermostChannel } from '../src/index.js'
+import { websocketPeer } from './peer.js'
 
 function config(base: string): {
   serverUrl: string
@@ -47,7 +45,7 @@ function posted(
         type: ''
       })
     },
-    seq: 2
+    seq: 1
   }
 }
 
@@ -68,31 +66,12 @@ function sendInput(base: string): SendInput {
   }
 }
 
-function sockets(peer: Awaited<ReturnType<typeof httpPeer>>): Server {
-  const server = new WebSocketServer({
-    server: peer.server,
-    path: '/api/v4/websocket'
-  })
-
-  cleanup(async () => {
-    for (const socket of server.clients) {
-      socket.terminate()
-    }
-    await new Promise<void>((resolve) => {
-      server.close(() => {
-        resolve()
-      })
-    })
-  })
-  return server
-}
-
 it('receives native /me text at the channel and thread while filtering system posts', async () => {
   const peer = await httpPeer((_request, response) => {
     json(response, {})
   })
 
-  const server = sockets(peer)
+  const server = websocketPeer(peer)
   server.on('connection', (socket) => {
     socket.once('message', () => {
       socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
@@ -100,15 +79,16 @@ it('receives native /me text at the channel and thread while filtering system po
       // Server/public/model/post.go PostTypeMe and Post, and
       // Server/public/model/websocket_message.go WebsocketEventPosted.
       // /me is a native text post type; system_join_channel is a system event.
-      for (const [id, type, rootId] of [
+      for (const [index, [id, type, rootId]] of [
         ['action-channel', 'me', ''],
         ['action-thread', 'me', 'root'],
         ['system-post', 'system_join_channel', ''],
         ['custom-post', 'custom_unknown', '']
-      ]) {
+      ].entries()) {
         socket.send(
           JSON.stringify({
             event: 'posted',
+            seq: index + 1,
             data: {
               post: JSON.stringify({
                 id,
@@ -167,151 +147,72 @@ it('receives native /me text at the channel and thread while filtering system po
   ])
 })
 
-it('resumes a native bounded WebSocket stream after reopening SQLite and waits for authentication', async () => {
-  const upgrades: {
-    url: string | undefined
-    authorization: string | undefined
-  }[] = []
+// SDK cursor state is memory-only; Core's accepted work remains durable.
+// Exercises an actual SQLite reopen and native SDK REST post, without replay peers.
+it('recovers accepted input and a queued thread reply after replacing the SDK client', async () => {
+  const sent: unknown[] = []
+  const dispatches: unknown[] = []
 
-  let identity = 'self-bot'
-
-  const peer = await httpPeer(
-    (_request, response) => {
-      json(response, {})
-    },
-    (_request, response) => {
-      json(response, { id: identity })
-    }
-  )
-
-  const server = sockets(peer)
-  // Primary Mattermost 2b64fd09d3839007887662c191bd5d7af113a385:
-  // Server/channels/api4/websocket.go authenticated upgrade query;
-  // Server/channels/app/platform/web_conn.go PopulateWebConnConfig and
-  // WritePump replay the next sequence before authentication_challenge reply.
-  // Fixed wire fixtures describe a retained server cache, not historical backfill.
-  const connectionId = 'abcdefghijklmnopqrstuvwxyz'
-  let releaseAuthentication: (() => void) | undefined
-
-  function authenticate(): void {
-    if (!releaseAuthentication) {
-      throw new Error('Missing authentication challenge')
-    }
-    releaseAuthentication()
-  }
-
-  server.on('connection', (socket, request) => {
-    upgrades.push({
-      url: request.url,
-      authorization: request.headers.authorization
-    })
-    if (upgrades.length !== 2) {
-      socket.send(
-        JSON.stringify({
-          event: 'hello',
-          seq: 0,
-          data: { connection_id: connectionId }
-        })
-      )
-      socket.send(
-        JSON.stringify({
-          ...posted(
-            upgrades.length === 1
-              ? 'saved-before-restart'
-              : 'after-identity-rotation'
-          ),
-          seq: 1
-        })
-      )
+  const peer = await httpPeer(async (request, response) => {
+    const payload = await body(request)
+    if (request.url === '/api/v4/posts') {
+      sent.push(payload)
+      json(response, { id: 'restored-reply' }, 201)
     } else {
-      socket.send(
-        JSON.stringify({ ...posted('replayed-after-restart'), seq: 2 })
-      )
+      dispatches.push(payload)
+      json(response, {})
     }
+  })
+
+  const server = websocketPeer(peer)
+  server.on('connection', (socket) => {
     socket.once('message', () => {
-      releaseAuthentication = (): void => {
-        socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
-      }
+      socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
+      socket.send(JSON.stringify(posted('saved-before-restart')))
     })
   })
-  const filename = await databaseFile()
-  const first = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
+  const firstPlugin = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
 
-  const initial = await harness(
-    first,
+  const first = await harness(
+    firstPlugin,
+    config(peer.base),
+    [{ chatId: 'channel', threadId: 'root' }],
+    ['alice'],
+    `${peer.base}/dispatch`
+  )
+
+  await firstPlugin.start?.(new AbortController().signal)
+  await waitFor(
+    async () => (await first.storage.listInbound({ limit: 10 })).length === 1
+  )
+  await firstPlugin.stop?.()
+  const record = (await first.storage.listInbound({ limit: 10 }))[0]
+  if (!record) {
+    throw new Error('Missing accepted request')
+  }
+  const reply = await first.sendReply(record.snapshot.requestId, 'saved answer')
+  await first.storage.close()
+  const nextPlugin = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
+
+  const next = await harness(
+    nextPlugin,
     config(peer.base),
     [{ chatId: 'channel', threadId: 'root' }],
     ['alice'],
     `${peer.base}/dispatch`,
-    { filename }
+    { filename: first.filename }
   )
 
-  await first.start?.(new AbortController().signal)
-  await waitFor(() => releaseAuthentication !== undefined)
-  expect(await initial.storage.listInbound({ limit: 10 })).toEqual([])
-  authenticate()
-  await waitFor(
-    async () => (await initial.storage.listInbound({ limit: 10 })).length === 1
-  )
-  await first.stop?.()
-  await initial.storage.close()
-  releaseAuthentication = undefined
-  const second = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
-
-  const restored = await harness(
-    second,
-    config(peer.base),
-    [{ chatId: 'channel', threadId: 'root' }],
-    ['alice'],
-    `${peer.base}/dispatch`,
-    { filename }
-  )
-
-  await second.start?.(new AbortController().signal)
-  await waitFor(() => releaseAuthentication !== undefined)
-  expect(await restored.storage.listInbound({ limit: 10 })).toHaveLength(1)
-  authenticate()
-  await waitFor(
-    async () => (await restored.storage.listInbound({ limit: 10 })).length === 2
-  )
-  await second.stop?.()
-  expect(upgrades).toEqual([
-    { url: '/api/v4/websocket', authorization: 'Bearer token' },
-    {
-      url: '/api/v4/websocket?connection_id=abcdefghijklmnopqrstuvwxyz&sequence_number=2',
-      authorization: 'Bearer token'
-    }
+  await next.runtime.processDue()
+  expect(dispatches).toEqual([
+    { channel: record.snapshot.channel.id, text: 'question' }
   ])
-  expect(
-    (await restored.storage.listInbound({ limit: 10 }))
-      .map((request) => request.snapshot.source.eventId)
-      .toSorted()
-  ).toEqual(['replayed-after-restart', 'saved-before-restart'])
-  await restored.storage.close()
-  identity = 'rotated-bot'
-  releaseAuthentication = undefined
-  const rotated = createMattermostChannel({ MATTERMOST_TOKEN: 'rotated-token' })
-
-  const rotation = await harness(
-    rotated,
-    config(peer.base),
-    [{ chatId: 'channel', threadId: 'root' }],
-    ['alice'],
-    `${peer.base}/dispatch`,
-    { filename }
+  expect(sent).toEqual([
+    { channel_id: 'channel', root_id: 'root', message: 'saved answer' }
+  ])
+  expect((await next.storage.getOutbound(reply.deliveryId))?.status).toBe(
+    'sent'
   )
-
-  await rotated.start?.(new AbortController().signal)
-  await waitFor(() => releaseAuthentication !== undefined)
-  expect(upgrades[2]).toEqual({
-    url: '/api/v4/websocket',
-    authorization: 'Bearer rotated-token'
-  })
-  authenticate()
-  await waitFor(
-    async () => (await rotation.storage.listInbound({ limit: 10 })).length === 3
-  )
-  await rotated.stop?.()
 })
 
 it('authenticates WebSocket, deduplicates posted frames across reconnect and sends delayed thread posts', async () => {
@@ -330,22 +231,30 @@ it('authenticates WebSocket, deduplicates posted frames across reconnect and sen
     }
   })
 
-  const server = sockets(peer)
-  server.on('connection', (socket) => {
+  const server = websocketPeer(peer)
+  server.on('connection', (socket, request) => {
+    const since = Number(
+      new URL(request.url ?? '/', peer.base).searchParams.get(
+        'sequence_number'
+      ) ?? 0
+    )
+
     socket.once('message', (bytes) => {
       if (!Buffer.isBuffer(bytes)) {
         throw new TypeError('Unexpected peer frame')
       }
       challenges.push(JSON.parse(bytes.toString('utf8')) as unknown)
       socket.send(JSON.stringify({ status: 'OK', seq_reply: 1, data: {} }))
-      for (const frame of [
+      for (const [index, frame] of [
         posted('post-1'),
         posted('post-1'),
         posted('post-own', 'self-bot'),
         posted('post-blocked', 'mallory'),
         posted('post-unbound', 'alice', 'unbound')
-      ]) {
-        socket.send(JSON.stringify(frame))
+      ].entries()) {
+        socket.send(
+          JSON.stringify({ ...frame, seq: Math.max(1, since) + index })
+        )
       }
     })
   })
@@ -406,7 +315,9 @@ it('authenticates WebSocket, deduplicates posted frames across reconnect and sen
   await fixture.runtime.processDue()
   expect(sent).toEqual([
     {
-      authorization: 'Bearer mattermost-access-secret',
+      authorization: expect.stringMatching(
+        /^Bearer mattermost-access-secret$/iu
+      ) as unknown,
       data: {
         channel_id: 'channel',
         message: '**answer** [link](https://example.com)',
@@ -420,48 +331,80 @@ it('authenticates WebSocket, deduplicates posted frames across reconnect and sen
   expect(plugin.capabilities.idempotentSend).toBe(false)
 })
 
-it('diagnoses failed authentication and refuses posted frames before an OK response', async () => {
-  const observation = observations()
+it('refuses an SDK identity authentication failure before opening the event connection', async () => {
+  let connections = 0
+
+  const peer = await httpPeer(
+    (_request, response) => {
+      json(response, {})
+    },
+    (_request, response) => {
+      json(
+        response,
+        {
+          id: 'api.context.session_expired.app_error',
+          message: 'Unauthorized',
+          status_code: 401
+        },
+        401
+      )
+    }
+  )
+
+  const server = websocketPeer(peer)
+  server.on('connection', () => {
+    connections += 1
+  })
+  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'invalid' })
+  await expect(
+    harness(
+      plugin,
+      config(peer.base),
+      [{ chatId: 'channel' }],
+      ['alice'],
+      `${peer.base}/dispatch`
+    )
+  ).rejects.toThrow()
+  expect(connections).toBe(0)
+})
+
+// Official WebSocketClient 11.9.0 close() only closes an OPEN socket. Core stop
+// Must also release a handshake in progress. Existing receive tests stop after
+// An authenticated post; a real delayed peer needs no test-only production seam.
+it('closes an unfinished WebSocket handshake when Core stops the SDK client', async () => {
+  let upgraded = false
+  let closed = false
 
   const peer = await httpPeer((_request, response) => {
     json(response, {})
   })
 
-  const server = sockets(peer)
-  server.on('connection', (socket) => {
-    socket.once('message', () => {
-      socket.send(
-        JSON.stringify({
-          status: 'FAIL',
-          seq_reply: 1,
-          error: { id: 'unauthorized' }
-        })
-      )
-      socket.send(JSON.stringify(posted('unauthenticated')))
+  peer.server.on('upgrade', (_request, socket) => {
+    upgraded = true
+    socket.resume()
+    socket.on('end', () => {
+      socket.end()
+    })
+    socket.on('close', () => {
+      closed = true
+    })
+    cleanup(async () => {
+      socket.destroy()
     })
   })
-  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'invalid' })
-
-  const fixture = await harness(
+  const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
+  await harness(
     plugin,
     config(peer.base),
-    [{ chatId: 'channel', threadId: 'root' }],
+    [{ chatId: 'channel' }],
     ['alice'],
-    `${peer.base}/dispatch`,
-    { observe: observation.observe }
+    `${peer.base}/dispatch`
   )
-
   await plugin.start?.(new AbortController().signal)
-  await waitFor(() =>
-    observation.logs.some(
-      (entry) => entry.fields?.errorCode === 'authentication_failed'
-    )
-  )
+  await waitFor(() => upgraded)
   await plugin.stop?.()
-  expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([])
-  expect((await fixture.runtime.status()).connections['channels/bot']).toBe(
-    'disconnected'
-  )
+  await waitFor(() => closed)
+  expect(closed).toBe(true)
 })
 
 it('keeps an uncertain REST POST unknown without automatic resend', async () => {
@@ -477,7 +420,7 @@ it('keeps an uncertain REST POST unknown without automatic resend', async () => 
     json(response, {})
   })
 
-  const server = sockets(peer)
+  const server = websocketPeer(peer)
   server.on('connection', (socket) => {
     socket.once('message', () => {
       socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
@@ -517,14 +460,25 @@ it('keeps an uncertain REST POST unknown without automatic resend', async () => 
   expect(sends).toBe(1)
 })
 
+// Official @mattermost/client 11.9.0 Client4.doFetchWithResponse/ClientError
+// Preserves ServerError.status_code; it does not expose Retry-After headers.
 it.each([
   [429, 'retryable'],
+  [413, 'rejected'],
   [403, 'rejected'],
   [503, 'unknown']
 ] as const)('maps REST HTTP %i conservatively', async (status, outcome) => {
   const peer = await httpPeer((_request, response) => {
     response.setHeader('Retry-After', '7')
-    json(response, {}, status)
+    json(
+      response,
+      {
+        id: 'api.test.error',
+        message: 'Native server refusal',
+        status_code: status
+      },
+      status
+    )
   })
 
   const plugin = createMattermostChannel({ MATTERMOST_TOKEN: 'token' })
@@ -538,7 +492,7 @@ it.each([
   const result = await plugin.send(sendInput(peer.base))
   expect(result.status).toBe(outcome)
   if (result.status === 'retryable') {
-    expect(result.retryAfterMs).toBe(7000)
+    expect(result.retryAfterMs).toBe(1000)
   }
 })
 
@@ -549,12 +503,12 @@ it('validates protocol JSON instead of admitting malformed nested posts', async 
     json(response, {})
   })
 
-  const server = sockets(peer)
+  const server = websocketPeer(peer)
   server.on('connection', (socket) => {
     socket.once('message', () => {
       socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
       socket.send(
-        JSON.stringify({ event: 'posted', data: { post: '{invalid' } })
+        JSON.stringify({ event: 'posted', seq: 1, data: { post: '{invalid' } })
       )
     })
   })

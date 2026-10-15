@@ -1,15 +1,16 @@
 import { expect, it } from 'vitest'
-import { WebSocketServer } from 'ws'
 import {
   body,
-  cleanup,
   httpPeer,
   json,
   waitFor
 } from '../../channel-matrix/tests/harness.js'
 import { mediaRelay } from '../../channel-matrix/tests/media-harness.js'
 import { createMattermostChannel } from '../src/index.js'
+import { websocketPeer } from './peer.js'
 
+// Upload errors use the native ServerError fields consumed by official
+// @mattermost/client 11.9.0 Client4.doFetchWithResponse (id/message/status_code).
 const kinds = [
   ['image', 'image/png', 'picture.png', 201, 'sent'],
   ['audio', 'audio/ogg', 'voice.ogg', 201, 'sent'],
@@ -60,7 +61,13 @@ it.each(kinds)(
         })
         json(
           response,
-          uploadStatus === 201 ? { file_infos: [{ id: 'generated' }] } : {},
+          uploadStatus === 201
+            ? { file_infos: [{ id: 'generated' }] }
+            : {
+                id: 'api.test.upload_error',
+                message: 'Upload refused',
+                status_code: uploadStatus
+              },
           uploadStatus
         )
       } else if (path === '/api/v4/posts') {
@@ -71,21 +78,7 @@ it.each(kinds)(
       }
     })
 
-    const sockets = new WebSocketServer({
-      server: peer.server,
-      path: '/api/v4/websocket'
-    })
-
-    cleanup(async () => {
-      for (const socket of sockets.clients) {
-        socket.terminate()
-      }
-      await new Promise<void>((resolve) => {
-        sockets.close(() => {
-          resolve()
-        })
-      })
-    })
+    const sockets = websocketPeer(peer)
     sockets.on('connection', (socket) => {
       socket.once('message', (bytes) => {
         if (!Buffer.isBuffer(bytes)) {
@@ -99,6 +92,7 @@ it.each(kinds)(
         socket.send(
           JSON.stringify({
             event: 'posted',
+            seq: 1,
             data: {
               post: JSON.stringify({
                 id: 'incoming',
@@ -154,7 +148,9 @@ it.each(kinds)(
     expect(received).toEqual([
       {
         path: '/api/v4/files/asset/info',
-        authorization: 'Bearer mattermost-secret'
+        authorization: expect.stringMatching(
+          /^Bearer mattermost-secret$/iu
+        ) as unknown
       },
       { path: '/api/v4/files/asset', authorization: 'Bearer mattermost-secret' }
     ])
@@ -179,7 +175,7 @@ it.each(kinds)(
     expect(new Uint8Array(await file.arrayBuffer())).toEqual(
       new Uint8Array([9, 8, 7])
     )
-    expect(upload.authorization).toBe('Bearer mattermost-secret')
+    expect(upload.authorization).toMatch(/^Bearer mattermost-secret$/iu)
     if (expected !== 'sent') {
       expect(posts).toEqual([])
       expect((await fixture.storage.getOutbound(turn.deliveryId))?.status).toBe(

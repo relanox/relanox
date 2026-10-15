@@ -3,10 +3,7 @@ import { platformIdSchema } from './config.js'
 
 export const frameSchema = z.object({
   event: z.string().optional(),
-  seq: z.number().int().nonnegative().optional(),
-  data: z.record(z.string(), z.unknown()).optional(),
-  seq_reply: z.number().int().optional(),
-  status: z.string().optional()
+  data: z.record(z.string(), z.unknown()).optional()
 })
 
 export const postSchema = z.object({
