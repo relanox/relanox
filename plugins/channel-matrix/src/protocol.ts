@@ -47,6 +47,7 @@ export async function ingest(
         code: z.enum([
           'sender_not_allowed',
           'unbound_conversation',
+          'media_too_large',
           'media_total_too_large'
         ])
       })

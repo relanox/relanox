@@ -132,6 +132,119 @@ it.each([
   }
 )
 
+it('commits past a native empty file and keeps later text after SQLite restart', async () => {
+  // Matrix SDK accepts zero-byte media; Matrix events can report info.size: 0.
+  // https://github.com/matrix-org/matrix-js-sdk/pull/2155
+  // https://spec.matrix.org/v1.15/client-server-api/#mfile
+  const syncs: (string | null)[] = []
+  const dispatches: unknown[] = []
+
+  const peer = await httpPeer(async (request, response) => {
+    const url = new URL(request.url ?? '/', 'http://peer')
+    if (url.pathname.endsWith('/sync')) {
+      const since = url.searchParams.get('since')
+      syncs.push(since)
+      json(response, {
+        next_batch: 'after-empty',
+        rooms: {
+          join: {
+            [room]: {
+              timeline: {
+                events:
+                  since === 'before-empty'
+                    ? [
+                        {
+                          event_id: '$empty-file',
+                          sender,
+                          type: 'm.room.message',
+                          content: {
+                            msgtype: 'm.file',
+                            body: 'empty.txt',
+                            url: 'mxc://media.example.org/empty',
+                            info: { mimetype: 'text/plain', size: 0 }
+                          }
+                        },
+                        {
+                          event_id: '$later-text',
+                          sender,
+                          type: 'm.room.message',
+                          content: {
+                            msgtype: 'm.text',
+                            body: 'still delivered'
+                          }
+                        }
+                      ]
+                    : []
+              }
+            }
+          }
+        }
+      })
+    } else if (url.pathname.includes('/media/download/')) {
+      response.writeHead(200, {
+        'Content-Type': 'text/plain',
+        'Content-Length': '0'
+      })
+      response.end()
+    } else {
+      dispatches.push(await body(request))
+      json(response, {})
+    }
+  })
+
+  const firstPlugin = createMatrixChannel({ MATRIX_TOKEN: 'matrix-secret' })
+
+  const first = await harness(
+    firstPlugin,
+    config(peer.base),
+    [{ chatId: room }],
+    [sender],
+    `${peer.base}/dispatch`
+  )
+
+  await first.storage.compareAndSetState(namespace, {
+    key: 'sync',
+    expectedVersion: null,
+    value: 'before-empty'
+  })
+  await firstPlugin.start?.(new AbortController().signal)
+  await waitFor(
+    async () =>
+      (await first.storage.getState(namespace, 'sync'))?.value === 'after-empty'
+  )
+  await firstPlugin.stop?.()
+  await first.storage.close()
+
+  const restartedPlugin = createMatrixChannel({ MATRIX_TOKEN: 'matrix-secret' })
+
+  const restarted = await harness(
+    restartedPlugin,
+    config(peer.base),
+    [{ chatId: room }],
+    [sender],
+    `${peer.base}/dispatch`,
+    { filename: first.filename }
+  )
+
+  await restartedPlugin.start?.(new AbortController().signal)
+  await waitFor(() => syncs.length >= 2)
+  await restartedPlugin.stop?.()
+  expect(syncs.slice(0, 2)).toEqual(['before-empty', 'after-empty'])
+  expect((await restarted.storage.getState(namespace, 'sync'))?.value).toBe(
+    'after-empty'
+  )
+  const records = await restarted.storage.listInbound({ limit: 10 })
+  expect(records).toHaveLength(1)
+  expect(records[0]?.snapshot).toMatchObject({
+    source: { eventId: '$later-text' },
+    text: 'still delivered'
+  })
+  await restarted.runtime.processDue()
+  expect(dispatches).toEqual([
+    { channel: records[0]?.snapshot.channel.id, text: 'still delivered' }
+  ])
+})
+
 it('retains the sync token on media HTTP 503 and replays the complete batch after SQLite restart', async () => {
   const syncs: (string | null)[] = []
   const observation = observations()
