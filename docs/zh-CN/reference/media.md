@@ -92,13 +92,13 @@ Teams 私聊中的大图片和文件使用平台的文件接收确认流程。IR
 
 ## 调整附件大小
 
-默认每个附件最多 25 MiB，一条消息合计 50 MiB，最多 10 个附件。可以在配置顶层添加 `mediaLimits` 调整：
+默认每个附件和一条消息合计均不超过 100 MiB（104,857,600 字节），最多 10 个附件。可以在配置顶层添加 `mediaLimits` 调整：
 
 ```json
 {
   "mediaLimits": {
-    "maxMediaBytes": 26214400,
-    "maxTotalMediaBytes": 52428800,
+    "maxMediaBytes": 104857600,
+    "maxTotalMediaBytes": 104857600,
     "maxAttachments": 10
   }
 }

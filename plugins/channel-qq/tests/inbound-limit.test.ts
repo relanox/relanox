@@ -11,7 +11,7 @@ import {
 
 installPeerNetwork()
 
-// QQ supports files up to 200 MB; the relay's default individual limit is 25 MiB.
+// Exercise an explicit 25 MiB relay limit independently of the default upload allowance.
 // https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/rich-media.html
 // https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html
 // Native replay/RESUMED dispatch is handled independently of the READY state:
@@ -147,7 +147,10 @@ async function fixture(
   const local = await assemble(
     createQqChannel(),
     { appId: 'app', clientSecret: { env: 'QQ_SECRET' } },
-    [{ chatId: 'user', senderId: 'user' }]
+    [{ chatId: 'user', senderId: 'user' }],
+    ':memory:',
+    undefined,
+    { maxMediaBytes: 25 * 1024 * 1024 }
   )
 
   return { remote, local }

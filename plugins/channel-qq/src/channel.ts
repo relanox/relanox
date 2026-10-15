@@ -1,4 +1,9 @@
-import { QQBot, GatewayError } from '@tencent-connect/qqbot-nodejs'
+import {
+  QQBot,
+  GatewayError,
+  concurrencyGuard
+} from '@tencent-connect/qqbot-nodejs'
+import type { QQBotInboundMessage } from '@tencent-connect/qqbot-nodejs'
 import { apiBase, configSchema, MAX_RECONNECT_ATTEMPTS } from './config.js'
 import { downloadAttachments } from './media.js'
 import { apiError, sdkFailure } from './api-error.js'
@@ -47,8 +52,7 @@ function configuredType(
 
 function supportedMessage(message: z.infer<typeof messageSchema>): boolean {
   return !(
-    (message.message_type !== undefined &&
-      ![0, 7, 103].includes(message.message_type)) ||
+    (message.msgType !== undefined && ![0, 7, 103].includes(message.msgType)) ||
     (!message.attachments?.length && !message.content.trim())
   )
 }
@@ -61,11 +65,12 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
   let controller = new AbortController()
   let receiveSignal = controller.signal
   let running: Promise<void> | undefined
-  let inbound = Promise.resolve()
+  const inbound = new Set<Promise<void>>()
 
-  async function ingestMessage(eventType: string, raw: unknown): Promise<void> {
-    const message = messageSchema.parse(raw)
-    if (message.author.bot) {
+  async function ingestMessage(input: QQBotInboundMessage): Promise<void> {
+    receiveSignal.throwIfAborted()
+    const message = messageSchema.parse(input)
+    if (message.senderIsBot || message.raw.author.bot) {
       return
     }
     if (!supportedMessage(message)) {
@@ -74,16 +79,8 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       })
       return
     }
-    const group = eventType === 'GROUP_AT_MESSAGE_CREATE'
-
-    const senderId = group
-      ? message.author.member_openid
-      : message.author.user_openid
-
-    const chatId = group ? message.group_openid : senderId
-    if (!senderId || !chatId) {
-      throw new Error('missing_sender_address')
-    }
+    const { senderId, replyTarget } = message
+    const chatId = replyTarget.targetId
 
     if (!account.allowedSenders.includes(senderId)) {
       host.observe.log('info', 'channel_input_discarded', {
@@ -92,15 +89,11 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       return
     }
 
-    // Current docs distinguish indexed parts; never persist auth_token from message_scene.
-    const index = message.message_scene?.ext
-      ?.find((entry) => entry.startsWith('msg_idx='))
-      ?.slice(8)
-
+    // Use SDK-normalized part indices; retain the native sequence when no index exists.
     const eventId = JSON.stringify([
-      eventType,
-      message.id,
-      index ?? message.msg_seq ?? null
+      message.rawEventType,
+      message.messageId,
+      message.msgIdx ?? message.raw.msg_seq ?? null
     ])
 
     const attachments = await downloadAttachments(
@@ -120,10 +113,10 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         channel: 'qq',
         accountId: account.id,
         chatId,
-        replyToId: message.id,
+        replyToId: message.messageId,
         data: {
-          type: group ? 'group' : 'c2c',
-          msgId: message.id,
+          type: replyTarget.scope,
+          msgId: replyTarget.msgId,
           messageAt: Date.parse(message.timestamp),
           scope: { appId: config.appId, apiBase: new URL(apiBase(config)).href }
         }
@@ -184,11 +177,10 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         target: nativeTarget,
         ...(media
           ? {
-              msgType: 7,
               content: input.chunk.text,
               media: { file_info: media }
             }
-          : { msgType: 2, markdown: { content: markdown } })
+          : { markdown: { content: markdown } })
       })
 
       const failure = apiError(raw)
@@ -288,22 +280,27 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       bot.on('error', () => {
         host.connection('degraded', 'qq_sdk_error')
       })
-      bot.on('message', async (_, message) => {
-        // Preserve event order across slow downloads; SDK receipt acknowledgement stays independent.
-        inbound = inbound
-          .then(async () => {
-            receiveSignal.throwIfAborted()
-            return ingestMessage(message.rawEventType, message.raw)
-          })
-          .catch(() => {
-            if (!receiveSignal.aborted) {
-              host.observe.log('error', 'channel_ingest_failed', {
-                errorCode: 'qq_input_failed'
-              })
-            }
-          })
-        return inbound
+      // SDK stop closes the transport but does not await inbound processing.
+      bot.use(async (_, proceed) => {
+        const work = proceed()
+        inbound.add(work)
+        try {
+          await work
+        } finally {
+          inbound.delete(work)
+        }
       })
+      // The SDK orders each conversation; do not discard input at its default queue limit.
+      bot.use(concurrencyGuard({ strategy: 'queue', maxQueue: Infinity }))
+      bot.on('message', async (_, message) =>
+        ingestMessage(message).catch(() => {
+          if (!receiveSignal.aborted) {
+            host.observe.log('error', 'channel_ingest_failed', {
+              errorCode: 'qq_input_failed'
+            })
+          }
+        })
+      )
     },
     async start(signal) {
       if (running) {
@@ -327,7 +324,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       controller.abort()
       bot.stop()
       await running
-      await inbound
+      await Promise.all(inbound)
     },
     async send(input: SendInput): Promise<SendResult> {
       const target = targetSchema.safeParse(input.target.data)

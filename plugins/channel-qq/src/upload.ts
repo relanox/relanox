@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { MediaFileType } from '@tencent-connect/qqbot-nodejs'
 import type { QQBot, ReplyTarget } from '@tencent-connect/qqbot-nodejs'
 import type { SendInput, SendResult } from '@relanox/sdk'
 import { z } from 'zod'
@@ -25,13 +26,15 @@ export async function uploadMedia(
   if (kind !== 'file' && !formats[kind]?.includes(mimeType)) {
     return { status: 'rejected', errorCode: 'unsupported_media_format' }
   }
-  if (input.media.data.byteLength > 200_000_000) {
-    return { status: 'rejected', errorCode: 'unsupported_media_size' }
-  }
 
   const raw = await bot.uploadMedia({
     target,
-    fileType: { image: 1, video: 2, audio: 3, file: 4 }[kind],
+    fileType: {
+      image: MediaFileType.IMAGE,
+      video: MediaFileType.VIDEO,
+      audio: MediaFileType.VOICE,
+      file: MediaFileType.FILE
+    }[kind],
     buffer: Buffer.from(input.media.data),
     fileName,
     srvSendMsg: false

@@ -38,7 +38,7 @@ The result depends on the channel. Some channels display text and pictures toget
 
 ## Choose a suitable file size
 
-Start with files below 25 MiB each, at most 50 MiB in one message and no more than 10 attachments. Your chat platform may have lower limits. If a file is too large, compress it or send smaller batches.
+The default limits allow 100 MiB per attachment and 100 MiB in one message, with no more than 10 attachments. Your chat platform or its SDK may have lower limits. Start with small files; if a file is too large, compress it or send smaller batches.
 
 To change the size limits or download-link lifetime, use [Media configuration and protocol](reference/media.md). That chapter also documents manual JSON settings and the tools used by the Agent.
 
