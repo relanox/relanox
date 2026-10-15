@@ -24,8 +24,15 @@ export function textLength(
     : Array.from(text, (character) => character).length
 }
 
-function escaped(text: string): string {
-  return text.replaceAll(/[\\&`*_{}[\]()#+.!>~|=-]/gu, String.raw`\$&`)
+function escaped(text: string, literalAmpersand = false): string {
+  // Reparsed fragments need protection only where an ampersand starts an entity.
+  return text.replaceAll(
+    /&(?:#(?:[xX][0-9a-fA-F]+|[0-9]+)|[A-Za-z][A-Za-z0-9]*)?;?|[\\`*_{}[\]()#+.!>~|=-]/gu,
+    (match) =>
+      match.startsWith('&') && !literalAmpersand && decodeHTML(match) === match
+        ? match
+        : `\\${match}`
+  )
 }
 
 function longestBacktickRun(text: string): number {
@@ -251,7 +258,13 @@ function inlineToken(token: MarkedToken, fits: Fits, depth: number): string[] {
         : splitCharacters(decodeHTML(token.text), escaped, fits, true)
     }
     case 'escape': {
-      return splitCharacters(token.text, escaped, fits, true)
+      // Marked separates \&copy; into an escape token and following text.
+      return splitCharacters(
+        token.text,
+        (text) => escaped(text, true),
+        fits,
+        true
+      )
     }
     case 'br': {
       return ['  \n']

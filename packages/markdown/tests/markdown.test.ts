@@ -111,6 +111,8 @@ test('HTML entity text keeps its literal meaning across long Markdown fragments'
   for (const [source, visible] of [
     ['&amp;copy; '.repeat(600), '&copy; '.repeat(600)],
     [String.raw`\&copy; `.repeat(600), '&copy; '.repeat(600)],
+    ['&amp;#169; '.repeat(600), '&#169; '.repeat(600)],
+    ['&amp;copy '.repeat(600), '&copy '.repeat(600)],
     ['&copy; '.repeat(600), '© '.repeat(600)]
   ] as const) {
     const chunks = splitMarkdown(source, { maxLength: 100, unit: 'utf16' })
@@ -122,7 +124,7 @@ test('HTML entity text keeps its literal meaning across long Markdown fragments'
         .map((run) => run.text)
         .join('')
     ).toBe(visible)
-    if (visible.includes('&copy;')) {
+    if (visible.startsWith('&')) {
       expect(chunks.map(renderHtml).join('')).not.toContain('©')
     }
   }
