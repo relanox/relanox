@@ -20,7 +20,7 @@
 
 在配置器中将公网地址填为 `https://relay.example.com`。在 Google Chat 控制台将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`，认证 audience 模式选择 **HTTP endpoint URL**。如果修改了账号名，请同步替换端点路径中的 `googlechat-main`。发送应用交互前启动 Relanox。
 
-Relanox 使用 Google 持续维护的官方 Chat REST SDK 和认证库，包括其证书缓存和五分钟令牌时钟容差。Core 调度消息重试，SDK 不会自行重发失败的消息请求。适配层检查验签后的调用方身份，并有界读取附件。
+Relanox 使用 Google 官方 Chat REST SDK 和认证库处理服务账号令牌获取、缓存和刷新、调用方验签及附件下载。验签采用 SDK 的证书缓存和五分钟令牌时钟容差。Core 调度消息重试，SDK 传输层重试已关闭。已经交给 SDK 的发送可能在取消期间完成，包括共享认证正在刷新时；Relanox 会记录实际取得的回执。入站附件保留空间归属检查、拒绝重定向，并在读取下载流时执行 Core 媒体预算，未声明大小的响应也受限。
 
 ## 发送第一条消息
 
@@ -31,6 +31,8 @@ Agent 指定 `reply.requestId` 时，Google Chat 会在绑定的会话或消息�
 ## 图片和文件
 
 提问时可直接上传附件到 Chat。接收生成媒体需按[媒体](../media.md)配置 公网地址。图片回复显示为卡片，音频、视频和文件显示为带名称的下载按钮。公网媒体地址需让收件者访问，并供 Google 获取图片。
+
+Core 执行媒体预算，默认 100 MiB。Google 判断支持的图片格式和平台限制，适配层不再单独预判上传大小或图片格式。原生卡片的排版限制仍适用。
 
 ## 常见问题
 

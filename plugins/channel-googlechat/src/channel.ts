@@ -10,7 +10,7 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import { validatePublicUrl } from '@relanox/sdk'
-import { chatClient, chatVerifier, sendFailure, accessToken } from './sdk.js'
+import { chatClient, chatVerifier, sendFailure } from './sdk.js'
 import type { chat_v1 } from './sdk.js'
 import { validateConfig, platformIdSchema } from './config.js'
 import type { GoogleChatConfig } from './config.js'
@@ -102,18 +102,9 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     if (input.reply && !target.quotedMessageMetadata) {
       return { status: 'rejected', errorCode: 'reply_context_unavailable' }
     }
-    const errorCode = richError(input, runtime.host)
+    const errorCode = richError(input)
     if (errorCode) {
       return { status: 'rejected', errorCode }
-    }
-    let token: string | SendResult
-    try {
-      token = await accessToken(config, input.signal)
-    } catch {
-      return { status: 'retryable', errorCode: 'oauth_unavailable' }
-    }
-    if (typeof token !== 'string') {
-      return token
     }
     let cardsV2: Awaited<ReturnType<typeof mediaCards>>
     try {
@@ -121,8 +112,9 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     } catch (error) {
       return preparationFailure(error)
     }
+    let started = false
     try {
-      const response = await chatClient.spaces.messages.create(
+      const response = await chatClient(config).spaces.messages.create(
         {
           parent: target.space,
           ...(target.thread
@@ -130,7 +122,15 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
             : {}),
           requestBody: messagePayload(input, target, cardsV2)
         },
-        { headers: { authorization: `Bearer ${token}` }, signal: input.signal }
+        {
+          signal: input.signal,
+          // Observe the actual SDK API dispatch, after authentication. A failed
+          // Or canceled call after this point must not become a blind retry.
+          fetchImplementation: async (url, init): Promise<Response> => {
+            started = true
+            return fetch(url, init)
+          }
+        }
       )
 
       return {
@@ -140,7 +140,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         }
       }
     } catch (error) {
-      return sendFailure(config, token, error)
+      return sendFailure(config, error, started)
     }
   }
 

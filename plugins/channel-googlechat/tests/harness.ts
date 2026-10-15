@@ -79,6 +79,7 @@ export async function peer(): Promise<{
   ): void
   token(this: void, code: number, body: Json): void
   holdToken(this: void): () => void
+  holdBody(this: void, path: string): () => void
   keys(this: void, value: Json): void
   disconnect(this: void, path: string): void
   close(this: void): Promise<void>
@@ -88,7 +89,12 @@ export async function peer(): Promise<{
 
   const routes = new Map<
     string,
-    { status: number; body: Json | Uint8Array; headers: Record<string, string> }
+    {
+      status: number
+      body: Json | Uint8Array
+      headers: Record<string, string>
+      wait?: Promise<void>
+    }
   >()
 
   let status = 200
@@ -138,11 +144,19 @@ export async function peer(): Promise<{
     const route = routes.get(path)
     if (route) {
       response.writeHead(route.status, route.headers)
-      response.end(
+
+      const data =
         route.body instanceof Uint8Array
           ? route.body
           : JSON.stringify(route.body)
-      )
+
+      if (route.wait) {
+        response.write(data)
+        await route.wait
+        response.end()
+      } else {
+        response.end(data)
+      }
       return
     }
     response.writeHead(status, headers)
@@ -213,6 +227,16 @@ export async function peer(): Promise<{
       tokenWait = new Promise<void>((resolve) => {
         release = resolve
       })
+      return release
+    },
+    holdBody(path): () => void {
+      let release: () => void = () => {}
+
+      const wait = new Promise<void>((resolve) => {
+        release = resolve
+      })
+
+      routes.set(path, { status: 503, body: {}, headers: {}, wait })
       return release
     },
     keys(value: Json): void {
