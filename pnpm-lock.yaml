@@ -166,6 +166,7 @@ overrides:
   tencentcloud-sdk-nodejs-common@4.1.220>uuid: 11.1.1
 
 patchedDependencies:
+  '@slack/socket-mode@3.1.0': 04a0a652dd061fdd10fd3fa92fdfbce957825680962a9560ca6bbd43860929ad
   '@wecom/aibot-node-sdk@1.0.7': 31fd481b37fa607dc482f597c3647178bc6bff515f5f4c1acb3810bccbfe6e12
 
 importers:
@@ -777,7 +778,7 @@ importers:
         version: link:../../packages/transport
       '@slack/socket-mode':
         specifier: 3.1.0
-        version: 3.1.0(undici@8.11.2)
+        version: 3.1.0(patch_hash=04a0a652dd061fdd10fd3fa92fdfbce957825680962a9560ca6bbd43860929ad)(undici@8.11.2)
       '@slack/types':
         specifier: 3.2.0
         version: 3.2.0
@@ -5689,7 +5690,7 @@ snapshots:
     dependencies:
       '@types/node': 26.6.5
 
-  '@slack/socket-mode@3.1.0(undici@8.11.2)':
+  '@slack/socket-mode@3.1.0(patch_hash=04a0a652dd061fdd10fd3fa92fdfbce957825680962a9560ca6bbd43860929ad)(undici@8.11.2)':
     dependencies:
       '@slack/logger': 5.0.0
       '@slack/web-api': 8.2.0

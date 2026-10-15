@@ -29,5 +29,7 @@ allowBuilds:
   esbuild@0.25.12: true
 
 patchedDependencies:
+  # Own reconnect rejections: consume during shutdown; otherwise notify SDK error listeners.
+  '@slack/socket-mode@3.1.0': plugins/channel-slack/patches/@slack__socket-mode@3.1.0.patch
   # SDK issue #27: tolerate delayed ACKs; retain upload errors for Core classification.
   '@wecom/aibot-node-sdk@1.0.7': plugins/channel-wecom/patches/@wecom__aibot-node-sdk@1.0.7.patch

@@ -22,8 +22,8 @@ for (const name of names) {
   }
 }
 
-// Each deploy installs only one production graph. Most graphs do not contain
-// WeCom, so the workspace's WeCom patch is intentionally unused in those calls.
+// Each deploy installs only one production graph. Graphs do not contain every
+// SDK, so some workspace patches are intentionally unused in those calls.
 // This command-local option still fails if a required patch cannot be applied.
 for (const name of ['cli', ...names]) {
   const result = spawnSync(
