@@ -20,6 +20,8 @@
 
 启用 Webhooks，将地址填为 `https://relay.example.com/channels/line-main/webhook`。启动 Relanox 后执行平台回调验证；需要 LINE 重试失败回调时，可启用 webhook redelivery。
 
+Relanox 使用 LINE 持续维护的官方 Node.js SDK 验证回调签名、查询账号身份和发送消息。Core 持久化投递重试键。取消后，SDK 中已开始的请求仍可能完成；结果可能暂时未知，后续重试可通过 LINE 的已接受回执确认。
+
 ## 发送第一条消息
 
 用允许的用户向官方账号或绑定群组/聊天室发送“你好”。官方账号会将回复发到对应会话。

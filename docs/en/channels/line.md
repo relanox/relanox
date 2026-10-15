@@ -20,6 +20,8 @@ Use event `source.userId` in **Allowed user IDs**. For a private conversation us
 
 Enable Webhooks and set the URL to `https://relay.example.com/channels/line-main/webhook`. Start Relanox, then use the platform’s webhook verification. Enable webhook redelivery if you want LINE to retry failed event delivery.
 
+Relanox uses LINE's maintained official Node.js SDK for webhook signature verification, account identity and message delivery. Core keeps the durable delivery retry key. An in-flight SDK request can finish after cancellation, so its outcome may remain unknown until a retry returns LINE's accepted-request receipt.
+
 ## Send your first message
 
 Send “Hello” from an allowed user to the Official Account or into the bound group/room. The reply is sent by the Official Account to that conversation.
