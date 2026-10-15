@@ -26,6 +26,8 @@ Start Relanox to begin receiving messages from the homeserver automatically. Kee
 
 Send “Hello” from an allowed account in the bound unencrypted room. For a thread binding, reply inside that thread. The dedicated account sends the agent’s answer into the same room or thread.
 
+The Agent can quote a specific incoming event with `reply.requestId`, even after later messages arrive. Sends without `reply` omit the message quote while retaining the configured thread destination.
+
 ## Images and files
 
 Attach images, audio, videos or files to your room message. Generated attachments are uploaded to the homeserver and appear as native room messages. Keep them within both your homeserver upload limit and the Relanox media limit.
