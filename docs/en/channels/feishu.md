@@ -28,7 +28,7 @@ An ordinary chat destination uses the configured chat ID and app permissions. Se
 
 Configure event subscription v2.0 with `https://relay.example.com/channels/feishu-main/events`, subscribe to `im.message.receive_v1`, and configure the same verification token and encryption key. Start Relanox before verifying the callback, then publish the app changes and make the bot available to your users.
 
-Relanox uses the [official Feishu/Lark Node SDK](https://github.com/larksuite/node-sdk) for identity, credentials, message normalization, uploads and sending. HTTP callbacks remain on the configured Relanox address. Accepted messages are acknowledged after Core saves them; storage or download failures return an error so the platform can retry. SDK normalization supplies Markdown titles, mentions and media descriptions; message types without a textual representation can use an SDK placeholder. Delivery after a process or platform interruption still depends on the platform redelivering the callback.
+Relanox uses the [official Feishu/Lark Node SDK](https://github.com/larksuite/node-sdk) for identity, credentials, message normalization, resource downloads, uploads and sending. HTTP callbacks remain on the configured Relanox address. Accepted messages are acknowledged after Core saves them; storage or download failures return an error so the platform can retry. SDK normalization supplies Markdown titles, mentions and media descriptions; message types without a textual representation can use an SDK placeholder. Delivery after a process or platform interruption still depends on the platform redelivering the callback.
 
 ## Send your first message
 

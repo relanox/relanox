@@ -7,6 +7,7 @@ import {
 } from '@larksuiteoapi/node-sdk'
 import type { HttpInstance, LarkChannel } from '@larksuiteoapi/node-sdk'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { addAbortSignal, Readable } from 'node:stream'
 import type { SendResult } from '@relanox/sdk'
 import { z } from 'zod'
 import { REQUEST_TIMEOUT_MS } from './config.js'
@@ -28,6 +29,10 @@ const responseErrorSchema = z.object({
   response: z.object({
     status: z.number(),
     data: z.unknown(),
+    config: z.object({
+      responseType: z.string().optional(),
+      signal: z.instanceof(AbortSignal).optional()
+    }),
     headers: z.object({ 'retry-after': z.coerce.number().optional() })
   })
 })
@@ -92,8 +97,16 @@ export function createSdk(
     active?.signal.throwIfAborted()
     request.signal = AbortSignal.any([
       lifetime.signal,
-      ...(active ? [active.signal] : [])
+      ...(active ? [active.signal] : []),
+      ...(request.responseType === 'stream'
+        ? [AbortSignal.timeout(REQUEST_TIMEOUT_MS)]
+        : [])
     ])
+    if (request.responseType === 'stream') {
+      // Axios's limiting wrapper does not close unread source streams on destroy.
+      // The media boundary uses readBounded so early rejection closes the HTTP stream.
+      request.maxContentLength = -1
+    }
     if (
       active &&
       request.method?.toLowerCase() === 'post' &&
@@ -110,11 +123,25 @@ export function createSdk(
       if (parsed.success && parsed.data.code !== 0) {
         throw new PlatformError(result(response.status, body))
       }
-      return body as typeof response
+      return (
+        '$return_headers' in response.config &&
+        response.config.$return_headers === true
+          ? { data: body, headers: response.headers }
+          : body
+      ) as typeof response
     },
     (error: unknown) => {
       const parsed = responseErrorSchema.safeParse(error)
       if (parsed.success) {
+        // Resource errors are streams too; the media boundary reads only bounded JSON.
+        if (parsed.data.response.config.responseType === 'stream') {
+          const { data, config: request } = parsed.data.response
+          if (data instanceof Readable && request.signal) {
+            // Axios detaches cancellation after rejecting at the response headers.
+            addAbortSignal(request.signal, data)
+          }
+          throw error
+        }
         const { status, data, headers } = parsed.data.response
         throw new PlatformError(result(status, data, headers['retry-after']))
       }
@@ -133,7 +160,7 @@ export function createSdk(
         ? 'https://open.larksuite.com'
         : 'https://open.feishu.cn',
     cache,
-    // The response interceptor unwraps AxiosResponse to the SDK's data-only contract.
+    // Honor the SDK's data-only and $return_headers response contracts.
     httpInstance: http as unknown as HttpInstance,
     logger: {
       error: quiet,

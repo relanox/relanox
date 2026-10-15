@@ -1,8 +1,4 @@
-import {
-  downloadMedia,
-  mediaKind,
-  MediaDownloadError
-} from '@relanox/channel-media'
+import { mediaKind, MediaDownloadError } from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,
@@ -14,7 +10,101 @@ import type {
   ResourceDescriptor,
   SendInput as NativeInput
 } from '@larksuiteoapi/node-sdk'
-import { REQUEST_TIMEOUT_MS } from './config.js'
+import { Readable } from 'node:stream'
+import { readBounded } from '@relanox/transport'
+import { z } from 'zod'
+
+const resourceHeadersSchema = z.object({
+  'content-type': z.string().optional(),
+  'content-length': z.coerce.number().optional()
+})
+
+const resourceErrorSchema = z.object({
+  response: z.object({
+    status: z.number(),
+    data: z.instanceof(Readable),
+    headers: resourceHeadersSchema
+  })
+})
+
+function contentType(headers: z.infer<typeof resourceHeadersSchema>): string {
+  return (
+    headers['content-type']?.split(';')[0]?.trim().toLowerCase() ??
+    'application/octet-stream'
+  )
+}
+
+async function resourceFailure(error: unknown): Promise<never> {
+  const parsed = resourceErrorSchema.safeParse(error)
+  if (!parsed.success) {
+    throw error
+  }
+  const { status, data: stream, headers } = parsed.data.response
+  let body: unknown
+  try {
+    const mimeType = contentType(headers)
+    const maxErrorBytes = 64 * 1024
+    if (
+      (mimeType === 'application/json' || mimeType.endsWith('+json')) &&
+      !(Number(headers['content-length']) > maxErrorBytes)
+    ) {
+      const input = Readable.toWeb(
+        stream
+      ) as unknown as ReadableStream<Uint8Array>
+
+      body = JSON.parse(
+        (await readBounded(input, maxErrorBytes)).toString('utf8')
+      ) as unknown
+    }
+  } catch {
+    // Incomplete, oversized and non-JSON errors cannot establish a native code.
+  } finally {
+    stream.destroy()
+  }
+  throw new MediaDownloadError('media_download_failed', status, body)
+}
+
+async function downloadResource(
+  messageId: string,
+  resource: ResourceDescriptor,
+  channel: LarkChannel,
+  maxBytes: number
+): Promise<{ data: Buffer; mimeType: string }> {
+  let stream: Readable | undefined
+  try {
+    const downloaded = await channel.rawClient.im.v1.messageResource.get({
+      path: {
+        message_id: encodeURIComponent(messageId),
+        file_key: encodeURIComponent(resource.fileKey)
+      },
+      params: { type: resource.type === 'image' ? 'image' : 'file' }
+    })
+
+    stream = downloaded.getReadableStream()
+    const headers = resourceHeadersSchema.parse(downloaded.headers)
+    if (Number(headers['content-length']) > maxBytes) {
+      throw new MediaDownloadError('media_too_large')
+    }
+
+    const input = Readable.toWeb(
+      stream
+    ) as unknown as ReadableStream<Uint8Array>
+
+    return {
+      data: await readBounded(input, maxBytes).catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'payload_too_large') {
+          throw new MediaDownloadError('media_too_large')
+        }
+        throw error
+      }),
+      mimeType: contentType(headers)
+    }
+  } catch (error) {
+    return await resourceFailure(error)
+  } finally {
+    stream?.destroy()
+  }
+}
 
 export function isMediaSizeRejection(error: unknown): boolean {
   return error instanceof MediaDownloadError && error.code === 'media_too_large'
@@ -36,20 +126,15 @@ export async function receiveMedia(
   messageId: string,
   resources: ResourceDescriptor[],
   host: ChannelHost,
-  base: string,
-  access: string
+  channel: LarkChannel
 ): Promise<MediaUpload[]> {
   return Promise.all(
     resources.map(async (resource) => {
-      const downloaded = await downloadMedia(
-        `${base}/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(resource.fileKey)}?type=${resource.type === 'image' ? 'image' : 'file'}`,
-        {
-          maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          trustedOrigins: [new URL(base).origin],
-          allowInsecureLocalhost: false,
-          headers: { authorization: `Bearer ${access}` }
-        }
+      const downloaded = await downloadResource(
+        messageId,
+        resource,
+        channel,
+        host.maxMediaBytes ?? 100 * 1024 * 1024
       )
 
       const fallback: Readonly<Record<string, string>> = {
