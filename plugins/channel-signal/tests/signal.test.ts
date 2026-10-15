@@ -376,13 +376,19 @@ it('ingests SSE envelopes and independently sends direct and group replies throu
     kind: 'direct',
     recipient: 'alice-uuid',
     serviceUrl: peer.base,
-    account: '+10000000001'
+    account: '+10000000001',
+    quote: {
+      author: 'alice-uuid',
+      timestamp: 1_800_000_000_000,
+      text: 'direct 中文😀'
+    }
   })
   expect(group.snapshot.target.data).toEqual({
     kind: 'group',
     groupId: 'GROUP_BASE64=',
     serviceUrl: peer.base,
-    account: '+10000000001'
+    account: '+10000000001',
+    quote: { author: 'alice-uuid', timestamp: 1_800_000_000_000, text: 'group' }
   })
   await fixture.runtime.processDue()
   expect(dispatches).toHaveLength(2)
