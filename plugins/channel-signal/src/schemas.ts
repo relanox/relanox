@@ -11,7 +11,7 @@ export const attachmentSchema = z.object({
 const messageSchema = z.object({
   timestamp: z.number().int().nonnegative(),
   message: z.string().nullable().optional(),
-  attachments: z.array(attachmentSchema).max(10).default([]),
+  attachments: z.array(attachmentSchema).default([]),
   groupInfo: z.object({ groupId: platformIdSchema }).nullable().optional(),
   viewOnce: z.boolean().nullable().optional()
 })
