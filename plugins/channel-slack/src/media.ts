@@ -17,7 +17,7 @@ import type { KnownBlock } from '@slack/types'
 import { fileSchema } from './schemas.js'
 import type { messageSchema } from './schemas.js'
 import type { z } from 'zod'
-import { sdkFailure } from './client.js'
+import { sdkFailure, uploadFailure } from './client.js'
 
 export { MediaDownloadError } from '@relanox/channel-media'
 
@@ -123,7 +123,7 @@ export async function sendMedia(
       ? { status: 'sent', receipt: { platformMessageId: id } }
       : { status: 'unknown', errorCode: 'invalid_upload_completion' }
   } catch (error) {
-    return sdkFailure(error)
+    return uploadFailure(client, error)
   }
 }
 
