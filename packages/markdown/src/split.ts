@@ -28,24 +28,22 @@ function escaped(text: string): string {
   return text.replaceAll(/[\\`*_{}[\]()#+.!>~|=-]/gu, String.raw`\$&`)
 }
 
-function codeSpan(text: string): string {
-  const longest = Math.max(
-    0,
-    ...[...text.matchAll(/`+/gu)].map((match) => match[0].length)
-  )
+function longestBacktickRun(text: string): number {
+  let longest = 0
+  for (const match of text.matchAll(/`+/gu)) {
+    longest = Math.max(longest, match[0].length)
+  }
+  return longest
+}
 
-  const marker = '`'.repeat(longest + 1)
+function codeSpan(text: string): string {
+  const marker = '`'.repeat(longestBacktickRun(text) + 1)
   const pad = /^`|`$|^ .* $/u.test(text) ? ' ' : ''
   return `${marker}${pad}${text}${pad}${marker}`
 }
 
 function fence(text: string, language = ''): string {
-  const size = Math.max(
-    3,
-    ...[...text.matchAll(/`+/gu)].map((match) => match[0].length + 1)
-  )
-
-  const marker = '`'.repeat(size)
+  const marker = '`'.repeat(Math.max(3, longestBacktickRun(text) + 1))
   const safeLanguage = language.replaceAll(/[\r\n`]/gu, '')
   return `${marker}${safeLanguage}\n${text}\n${marker}`
 }
@@ -54,12 +52,31 @@ function startsIndented(text: string): boolean {
   return /^(?:[ \t]*\n)*(?: {4}| {0,3}\t)/u.test(text)
 }
 
+function startsIndentedAt(
+  characters: readonly string[],
+  offset: number
+): boolean {
+  let spaces = 0
+  for (let index = offset; index < characters.length; index += 1) {
+    const character = characters[index]
+    if (character === '\t' || (character === ' ' && ++spaces === 4)) {
+      return true
+    }
+    if (character === '\n') {
+      spaces = 0
+    } else if (character !== ' ') {
+      return false
+    }
+  }
+  return false
+}
+
 function paragraphBoundary(
   characters: readonly string[],
   offset: number,
   count: number
 ): number {
-  if (!startsIndented(characters.slice(offset + count).join(''))) {
+  if (!startsIndentedAt(characters, offset + count)) {
     return count
   }
   let boundary = count
@@ -69,7 +86,42 @@ function paragraphBoundary(
   return Math.max(0, boundary - 1)
 }
 
-/** Binary-search scalar boundaries; formatting is regenerated for every completed fragment. */
+/** Bound each search to the next fragment instead of rendering the entire remaining suffix. */
+function fittingPrefix(
+  characters: readonly string[],
+  offset: number,
+  render: (part: string) => string,
+  fits: Fits
+): number {
+  const remaining = characters.length - offset
+
+  const accepts = (count: number): boolean =>
+    fits(render(characters.slice(offset, offset + count).join('')))
+
+  let count = 0
+  let high = 1
+  while (accepts(high)) {
+    count = high
+    if (high === remaining) {
+      return count
+    }
+    high = Math.min(remaining, high * 2)
+  }
+  let low = count + 1
+  high -= 1
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    if (accepts(middle)) {
+      count = middle
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  return count
+}
+
+/** Search scalar boundaries; formatting is regenerated for every completed fragment. */
 function splitCharacters(
   text: string,
   render: (part: string) => string,
@@ -86,18 +138,7 @@ function splitCharacters(
   const output: string[] = []
   let offset = 0
   while (offset < characters.length) {
-    let low = 1
-    let high = characters.length - offset
-    let count = 0
-    while (low <= high) {
-      const middle = Math.floor((low + high) / 2)
-      if (fits(render(characters.slice(offset, offset + middle).join('')))) {
-        count = middle
-        low = middle + 1
-      } else {
-        high = middle - 1
-      }
-    }
+    let count = fittingPrefix(characters, offset, render, fits)
     if (paragraph && count < characters.length - offset) {
       count = paragraphBoundary(characters, offset, count)
     }

@@ -47,6 +47,25 @@ test('splitting long fenced code keeps complete code fences and all original Uni
   )
 })
 
+test('large code blocks with many backtick runs split without exhausting the call stack', () => {
+  // CommonMark 4.5 keeps backticks shorter than the fence literal inside code.
+  // https://spec.commonmark.org/0.31.2/#fenced-code-blocks
+  // Short code fixtures cannot expose an argument-list overflow during splitting.
+  const code = '`x'.repeat(500_000)
+
+  const chunks = splitMarkdown(`\`\`\`\n${code}\n\`\`\``, {
+    maxLength: 2000,
+    unit: 'utf16'
+  })
+
+  expect(chunks.length).toBeGreaterThan(1)
+  for (const chunk of chunks) {
+    expect(chunk.length).toBeLessThanOrEqual(2000)
+    expect(chunk).toMatch(/^```\n[\s\S]*\n```$/u)
+  }
+  expect(chunks.map((chunk) => chunk.slice(4, -4)).join('')).toBe(code)
+})
+
 test('splitting emphasis and reference links reopens complete markup without losing the destination', () => {
   const chunks = splitMarkdown(`**${'字'.repeat(40)}**`, {
     maxLength: 34,
