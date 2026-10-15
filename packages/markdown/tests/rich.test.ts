@@ -17,7 +17,7 @@ test('rich Markdown preserves text and media order and closes nested styles', ()
       label: 'photo',
       image: true
     },
-    { type: 'text', text: ' ***after*** ' },
+    { type: 'text', text: ' **_after_** ' },
     {
       type: 'media',
       reference: { kind: 'attachment', index: 2 },
@@ -31,8 +31,29 @@ test('rich Markdown preserves text and media order and closes nested styles', ()
     .map((part) => renderHtml(part.text))
     .join('')
 
-  expect(html).toContain('<em><strong>after</strong></em>')
+  expect(html).toContain('<strong><em>after</em></strong>')
 })
+
+test.each([
+  ['**a**__b__', '<p><strong>a</strong><strong>b</strong></p>\n'],
+  ['__a__**b**', '<p><strong>a</strong><strong>b</strong></p>\n'],
+  ['*a*_b_', '<p><em>a</em><em>b</em></p>\n'],
+  ['_a_*b*', '<p><em>a</em><em>b</em></p>\n']
+])(
+  'adjacent styles %s retain visible text before native media',
+  (source, expected) => {
+    const parts = parseRichMarkdown(`${source}![photo](${uri})`)
+    expect(parts.map((part) => part.type)).toEqual(['text', 'media'])
+    const first = parts[0]
+    expect(first?.type === 'text' ? renderHtml(first.text) : '').toBe(expected)
+    expect(parts[1]).toEqual({
+      type: 'media',
+      reference: { kind: 'media', id },
+      label: 'photo',
+      image: true
+    })
+  }
+)
 
 test('ordinary Markdown, escaped syntax, code and HTML remain byte exact', () => {
   for (const markdown of [
