@@ -20,6 +20,8 @@ Read the message event’s sender resource name (`users/<id>`) for **Allowed use
 
 In the configurator, set the public address to `https://relay.example.com`. In the Google Chat console, configure the app’s HTTP endpoint as `https://relay.example.com/channels/googlechat-main/webhook` and select **HTTP endpoint URL** as the authentication audience mode. If you rename the account, replace `googlechat-main` in the endpoint path too. Start Relanox before sending app interactions.
 
+Relanox uses Google's maintained official Chat REST SDK and authentication library, including its certificate cache and five-minute token clock tolerance. Core schedules message retries; the SDK does not replay failed message requests. The adapter checks the verified caller identity and downloads attachments with bounded reads.
+
 ## Send your first message
 
 Mention the installed app with “Hello” inside the configured space/thread. For a direct conversation, bind the actual space and thread fields from its message event first. Open the same thread to see its answer.

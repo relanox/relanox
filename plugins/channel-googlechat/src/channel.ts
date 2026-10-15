@@ -1,36 +1,23 @@
 import { richError, richCapabilities } from './rich.js'
-import { apiBase, jwksUrl } from './constants.js'
+import { apiBase } from './constants.js'
 import type {
   AccountConfig,
   ChannelHost,
   ChannelPlugin,
-  Json,
   ChannelAddress,
   ReplyTarget,
   SendInput,
   SendResult
 } from '@relanox/sdk'
 import { validatePublicUrl } from '@relanox/sdk'
-import { createRemoteJWKSet, jwtVerify } from 'jose'
-import { accessToken, invalidateAccessToken } from './client.js'
-import { validateConfig } from './config.js'
+import { chatClient, chatVerifier, sendFailure, accessToken } from './sdk.js'
+import type { chat_v1 } from './sdk.js'
+import { validateConfig, platformIdSchema } from './config.js'
 import type { GoogleChatConfig } from './config.js'
 import { mediaCards } from './media.js'
 import { receive } from './inbound.js'
-import {
-  failure,
-  parseBody,
-  rawBody,
-  request,
-  secret,
-  unavailable
-} from './io.js'
-import {
-  serviceSchema,
-  eventSchema,
-  targetSchema,
-  receiptSchema
-} from './schemas.js'
+import { parseBody, rawBody, secret } from './io.js'
+import { serviceSchema, eventSchema, targetSchema } from './schemas.js'
 
 function sourceQuote(
   address: ChannelAddress,
@@ -60,7 +47,7 @@ function messagePayload(
   input: SendInput,
   target: ReturnType<typeof targetSchema.parse>,
   cardsV2: Awaited<ReturnType<typeof mediaCards>>
-): Json {
+): chat_v1.Schema$Message {
   return {
     ...(input.chunk.text
       ? { text: input.chunk.text, markupSyntax: 'MARKUP_SYNTAX_MARKDOWN' }
@@ -71,19 +58,6 @@ function messagePayload(
       : {}),
     ...(target.thread ? { thread: { name: target.thread } } : {})
   }
-}
-
-async function sendFailure(
-  config: GoogleChatConfig,
-  token: string,
-  response: Response
-): Promise<SendResult> {
-  if (response.status === 401) {
-    invalidateAccessToken(config, token)
-    await response.body?.cancel()
-    return { status: 'retryable', errorCode: 'oauth_token_rejected' }
-  }
-  return failure(response)
 }
 
 export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
@@ -148,36 +122,25 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       return preparationFailure(error)
     }
     try {
-      const url = new URL(`${apiBase}/v1/${target.space}/messages`)
-
-      if (target.thread) {
-        url.searchParams.set('messageReplyOption', 'REPLY_MESSAGE_OR_FAIL')
-      }
-
-      const response = await request(
-        url,
+      const response = await chatClient.spaces.messages.create(
         {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${token}`,
-            'content-type': 'application/json'
-          },
-          body: JSON.stringify(messagePayload(input, target, cardsV2))
+          parent: target.space,
+          ...(target.thread
+            ? { messageReplyOption: 'REPLY_MESSAGE_OR_FAIL' }
+            : {}),
+          requestBody: messagePayload(input, target, cardsV2)
         },
-        input.signal
+        { headers: { authorization: `Bearer ${token}` }, signal: input.signal }
       )
 
-      if (!response.ok) {
-        return await sendFailure(config, token, response)
-      }
       return {
         status: 'sent',
         receipt: {
-          platformMessageId: receiptSchema.parse(await response.json()).name
+          platformMessageId: platformIdSchema.parse(response.data.name)
         }
       }
-    } catch {
-      return unavailable()
+    } catch (error) {
+      return sendFailure(config, token, error)
     }
   }
 
@@ -257,10 +220,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       const audience = `${validatePublicUrl(host.publicUrl)}/channels/${account.id}/webhook`
       runtime = { host, account, config }
 
-      const keys = createRemoteJWKSet(new URL(jwksUrl), {
-        timeoutDuration: 5000,
-        cacheMaxAge: 3_600_000
-      })
+      const verifier = chatVerifier()
 
       host.mountHttp('/webhook', async (incoming) => {
         if (incoming.method !== 'POST') {
@@ -271,15 +231,15 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
           return new Response(null, { status: 401 })
         }
         try {
-          const { payload } = await jwtVerify(authorization.slice(7), keys, {
-            algorithms: ['RS256'],
-            issuer: ['accounts.google.com', 'https://accounts.google.com'],
-            audience,
-            requiredClaims: ['exp', 'iat', 'email', 'email_verified']
+          const ticket = await verifier.verifyIdToken({
+            idToken: authorization.slice(7),
+            audience
           })
 
+          const payload = ticket.getPayload()
+
           if (
-            payload.email !== 'chat@system.gserviceaccount.com' ||
+            payload?.email !== 'chat@system.gserviceaccount.com' ||
             payload.email_verified !== true
           ) {
             return new Response(null, { status: 401 })

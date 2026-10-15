@@ -20,6 +20,8 @@
 
 在配置器中将公网地址填为 `https://relay.example.com`。在 Google Chat 控制台将应用 HTTP 端点设为 `https://relay.example.com/channels/googlechat-main/webhook`，认证 audience 模式选择 **HTTP endpoint URL**。如果修改了账号名，请同步替换端点路径中的 `googlechat-main`。发送应用交互前启动 Relanox。
 
+Relanox 使用 Google 持续维护的官方 Chat REST SDK 和认证库，包括其证书缓存和五分钟令牌时钟容差。Core 调度消息重试，SDK 不会自行重发失败的消息请求。适配层检查验签后的调用方身份，并有界读取附件。
+
 ## 发送第一条消息
 
 在配置的空间/消息串中 @ 已安装应用并发送“你好”。私聊也需先按其消息事件中的实际空间和消息串字段完成绑定。打开同一消息串查看回答。

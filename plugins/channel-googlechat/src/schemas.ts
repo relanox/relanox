@@ -55,5 +55,3 @@ export const targetSchema = z.strictObject({
     .optional(),
   scope: z.strictObject({ clientEmail: z.email(), apiBase: z.url() })
 })
-
-export const receiptSchema = z.object({ name: platformIdSchema })

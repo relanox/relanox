@@ -5,7 +5,8 @@ import {
   mediaKind,
   MediaDownloadError
 } from '@relanox/channel-media'
-import type { Json, ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
+import type { ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
+import type { chat_v1 } from '@googleapis/chat'
 import type { z } from 'zod'
 import { accessToken, invalidateAccessToken } from './client.js'
 import type { GoogleChatConfig } from './config.js'
@@ -40,7 +41,7 @@ export async function downloadAttachments(
       const downloaded = await downloadMedia(
         `${apiBase}/v1/media/${name}?alt=media`,
         {
-          maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
+          maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
           signal,
           trustedOrigins: [new URL(apiBase).origin],
           headers: { authorization: `Bearer ${token}` }
@@ -67,12 +68,12 @@ export async function downloadAttachments(
 export async function mediaCards(
   input: SendInput,
   host: ChannelHost
-): Promise<Json[] | undefined> {
+): Promise<chat_v1.Schema$CardWithId[] | undefined> {
   if (input.chunk.richText) {
     if (!host.media) {
       throw new Error('media_publication_unavailable')
     }
-    const widgets: Json[] = []
+    const widgets: chat_v1.Schema$GoogleAppsCardV1Widget[] = []
     for (const part of input.chunk.richText) {
       if (part.type === 'text') {
         widgets.push({
