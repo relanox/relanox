@@ -137,7 +137,10 @@ export async function nativePeers(): Promise<{
 
   const sockets = new WebSocketServer({ server })
   sockets.on('connection', (socket, incoming) => {
-    if (incoming.url !== '/wecom') {
+    // The real SDK's CJS ws path uses an HTTP upgrade and normalizes the root
+    // Endpoint with '/'; the local transport mapping retains that trailing slash.
+    // Auth ACK: @wecom/aibot-node-sdk 1.0.7, dist/index.cjs.js handleFrame.
+    if (incoming.url !== '/wecom' && incoming.url !== '/wecom/') {
       return
     }
     fastSocket = socket
