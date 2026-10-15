@@ -946,6 +946,12 @@ describe('native Google Chat', () => {
       local.remote.token(status, { error: 'temporarily_unavailable' })
       const completed = await local.sendReply()
       expect(completed.delivery?.status).toBe(expected)
+      // A token endpoint failure must return to Core without SDK POST retries.
+      // Gtoken sets retryConfig.httpMethodsToRetry independently of retry:false:
+      // Google-auth-library 11.1.0, build/src/gtoken/getToken.js.
+      expect(
+        local.remote.traffic.filter((request) => request.path === '/token')
+      ).toHaveLength(1)
       expect(
         local.remote.traffic.filter((request) =>
           request.path.startsWith('/v1/')
