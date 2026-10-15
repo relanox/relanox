@@ -98,6 +98,9 @@ export function createMatrixChannel(
     | undefined
 
   let controller: AbortController | undefined
+  let receiveSignal: AbortSignal | undefined
+  let starting: Promise<void> | undefined
+  let stopping: Promise<void> | undefined
   const pending = new Set<Promise<void>>()
   let removeAbort: (() => void) | undefined
 
@@ -288,13 +291,32 @@ export function createMatrixChannel(
   }
 
   async function stop(): Promise<void> {
+    if (stopping) {
+      return stopping
+    }
     removeAbort?.()
     removeAbort = undefined
     controller?.abort()
-    controller = undefined
-    runtime?.client.stopClient()
-    await Promise.all(pending)
-    runtime?.host.connection('disconnected')
+
+    // StartClient initializes services after awaiting /versions. Let that finish
+    // Before stopClient clears clientRunning, or its late services evade cleanup.
+    const task = (async (): Promise<void> => {
+      try {
+        await starting
+      } finally {
+        runtime?.client.stopClient()
+        await Promise.all(pending)
+        controller = undefined
+        runtime?.host.connection('disconnected')
+      }
+    })()
+
+    stopping = task
+    try {
+      await task
+    } finally {
+      stopping = undefined
+    }
   }
 
   return {
@@ -378,7 +400,13 @@ export function createMatrixChannel(
         config.allowInsecureLocalhost
       )
 
-      const client = matrixClient(base, secret(config.accessToken, environment))
+      const client = matrixClient(
+        base,
+        secret(config.accessToken, environment),
+        undefined,
+        () => receiveSignal
+      )
+
       const identity = identitySchema.parse(await client.whoami())
       client.credentials.userId = identity.user_id
       runtime = {
@@ -405,11 +433,15 @@ export function createMatrixChannel(
       })
     },
     async start(signal) {
+      if (stopping) {
+        await stopping
+      }
       if (controller || signal.aborted) {
-        return
+        return starting
       }
       const { client } = configured()
       controller = new AbortController()
+      receiveSignal = controller.signal
 
       const abort = (): void => {
         void stop()
@@ -419,7 +451,15 @@ export function createMatrixChannel(
       removeAbort = (): void => {
         signal.removeEventListener('abort', abort)
       }
-      await client.startClient()
+      const task = client.startClient()
+      starting = task
+      try {
+        await task
+      } finally {
+        if (starting === task) {
+          starting = undefined
+        }
+      }
     },
     stop,
     send

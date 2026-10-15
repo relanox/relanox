@@ -1,3 +1,5 @@
+import type { ServerResponse } from 'node:http'
+import { setImmediate as nextTurn } from 'node:timers/promises'
 import type { SendInput } from '@relanox/sdk'
 import { expect, it } from 'vitest'
 import { z } from 'zod'
@@ -579,6 +581,106 @@ it('returns from start and aborts an outstanding sync connection on stop', async
   await waitFor(() => closed)
   expect(closed).toBe(true)
 })
+
+// Protect Core stop during SDK bootstrap: matrix-js-sdk 43.0.0 startClient
+// Awaits /versions before creating SyncApi and background services. Clearing
+// ClientRunning before that await returns makes later stopClient calls no-ops.
+// Existing stop coverage reaches /sync first, so it misses this race. This uses
+// The real SDK, an HTTP bootstrap peer and SQLite, with no production test seam.
+it.each(['stop', 'abort'] as const)(
+  'quiesces a delayed Matrix SDK startup on %s and permits a clean restart',
+  async (mode) => {
+    let versions: ServerResponse | undefined
+    let versionsClosed = false
+    let initialVersions = true
+    let restarted = false
+    let initialSync = true
+    const requests: string[] = []
+
+    const peer = await httpPeer(
+      (request, response) => {
+        if (request.url?.includes('/sync')) {
+          if (restarted && initialSync) {
+            initialSync = false
+            json(response, {
+              next_batch: 'restarted',
+              rooms: {
+                join: {
+                  [room]: {
+                    timeline: { events: [event('$restarted', 'after stop')] }
+                  }
+                }
+              }
+            })
+          }
+          return
+        }
+        json(response, {})
+      },
+      undefined,
+      (response) => {
+        if (initialVersions) {
+          initialVersions = false
+          versions = response
+          response.once('close', () => {
+            versionsClosed = true
+          })
+        } else {
+          json(response, { versions: ['v1.11'], unstable_features: {} })
+        }
+      }
+    )
+
+    peer.server.on('request', (request) => {
+      requests.push(request.url ?? '/')
+    })
+    const plugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
+
+    const fixture = await harness(
+      plugin,
+      config(peer.base),
+      [{ chatId: room, threadId: thread }],
+      [user],
+      `${peer.base}/dispatch`
+    )
+
+    const lifetime = new AbortController()
+    const firstStart = plugin.start?.(lifetime.signal)
+    await waitFor(() => versions !== undefined)
+    const concurrentStart = plugin.start?.(lifetime.signal)
+    if (mode === 'abort') {
+      lifetime.abort()
+    }
+    await Promise.all([
+      plugin.stop?.(),
+      plugin.stop?.(),
+      firstStart,
+      concurrentStart
+    ])
+    await waitFor(() => versionsClosed)
+    const stoppedCount = requests.length
+    await nextTurn()
+    await nextTurn()
+    expect(requests).toHaveLength(stoppedCount)
+    expect(requests.some((path) => path.includes('/sync'))).toBe(false)
+    expect(await fixture.storage.listInbound({ limit: 10 })).toHaveLength(0)
+
+    restarted = true
+    const secondStart = plugin.start?.(new AbortController().signal)
+    await Promise.all([
+      secondStart,
+      plugin.start?.(new AbortController().signal)
+    ])
+    await waitFor(
+      async () =>
+        (await fixture.storage.listInbound({ limit: 10 })).length === 1
+    )
+    await Promise.all([plugin.stop?.(), plugin.stop?.()])
+    const saved = await fixture.storage.listInbound({ limit: 10 })
+    expect(saved[0]?.snapshot.source.eventId).toBe('$restarted')
+    expect(saved[0]?.snapshot.text).toBe('after stop')
+  }
+)
 
 // Matrix JS SDK d633e7c1954a6b92597fbc3f8a95f183789a8d40,
 // Src/client.ts:addThreadRelationIfNeeded: explicit replies are not thread fallbacks.
