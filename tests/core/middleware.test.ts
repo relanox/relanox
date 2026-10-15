@@ -385,10 +385,22 @@ it('isolates plugin inputs from routing and raw snapshots and scopes media acces
     expect((await fx.storage.getInbound(receipt.requestId))?.snapshot).toEqual(
       raw
     )
-    expect(fx.dispatched[1]).toMatchObject({
+    // Dispatch completion order is independent of request identity. Keep both
+    // Requests' content and media isolated even when preparation overlaps.
+    expect(fx.dispatched).toHaveLength(2)
+    expect(
+      fx.dispatched.find((message) => message.requestId === receipt.requestId)
+    ).toMatchObject({
       text: 'approved derived text',
       channel: raw.channel,
       attachments: raw.attachments
+    })
+    expect(
+      fx.dispatched.find((message) => message.requestId === foreign.requestId)
+    ).toMatchObject({
+      text: 'other',
+      channel: foreignSnapshot.channel,
+      attachments: foreignSnapshot.attachments
     })
   } finally {
     await fx.close()
