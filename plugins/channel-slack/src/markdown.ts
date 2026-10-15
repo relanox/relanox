@@ -91,7 +91,9 @@ export function splitSlackMarkdown(
           parse: 'none',
           unfurl_links: false,
           unfurl_media: false,
-          ...(target.threadId ? { thread_ts: target.threadId } : {})
+          ...((target.threadId ?? target.replyToId)
+            ? { thread_ts: target.threadId ?? target.replyToId }
+            : {})
         }),
         'utf8'
       )
