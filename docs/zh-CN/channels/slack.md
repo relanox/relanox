@@ -24,7 +24,7 @@
 
 HTTP 接收方式：将事件请求地址设为 `https://relay.example.com/channels/slack-main/events`，按需订阅 `message.channels`、`message.groups`、`message.im`、`message.mpim` 或 `app_mention`。Slack 验证地址前先启动 Relanox。也可启用 Socket Mode，填写 App Token 环境变量名，清空签名密钥，并为 App Token 授予 `connections:write`；此时 Relanox 自动建立连接。HTTP 接收与 Socket Mode 选择一种，仅填写相应凭据。
 
-Relanox 使用 Slack 官方 Node SDK 处理 API、上传和 Socket Mode，在 Core 接受事件后确认接收。连接恢复由 SDK 管理；请保持 Relanox 运行，中断后检查是否仍有未获回复的消息。
+Relanox 使用 Slack 官方 Node SDK 处理 API、上传和 Socket Mode，在 Core 接受事件后确认接收。接收失败时不确认该事件，同时继续接收后续消息，让 Slack 可以重新投递。连接恢复由 SDK 管理；请保持 Relanox 运行，中断后检查是否仍有未获回复的消息。
 
 ## 发送第一条消息
 

@@ -303,9 +303,8 @@ export function createSlackChannel(
                 await ack()
               }
             })()
-              .catch(async () => {
+              .catch(() => {
                 host.connection('degraded', 'socket_ingest_error')
-                await socket?.disconnect()
               })
               .finally(() => inbound.delete(work))
 
