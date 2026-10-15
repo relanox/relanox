@@ -2,12 +2,50 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { afterEach, expect, it } from 'vitest'
 import { downloadMedia } from '../../packages/channel-media/src/index.js'
+import { isPublicAddress } from '../../packages/transport/src/index.js'
 
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) {
     await cleanup()
   }
+})
+
+// IANA reserves 192.0.0.0/24 and 192.0.2.0/24, not the whole 192.0.0.0/16.
+// https://www.iana.org/assignments/iana-ipv4-special-registry/
+// Existing destination tests covered private ranges but no neighboring public
+// Addresses, allowing an overly broad mask to reject legitimate media hosts.
+it.each(['192.0.1.1', '192.0.3.255', '192.0.78.24', '8.8.8.8'])(
+  'accepts public media address %s outside the reserved IPv4 subnets',
+  (address) => {
+    expect(isPublicAddress(address)).toBe(true)
+  }
+)
+
+it.each([
+  '192.0.0.1',
+  '192.0.0.255',
+  '192.0.2.1',
+  '192.0.2.255',
+  '192.88.99.1',
+  '198.51.100.1',
+  '203.0.113.1',
+  '2001:db8::1',
+  '2001:20::1',
+  '2002:808:808::1',
+  '3fff::1',
+  '::ffff:8.8.8.8',
+  '64:ff9b::808:808',
+  '127.1',
+  '0x7f000001',
+  '2606:4700::1111%eth0',
+  'not-an-address'
+])('keeps special or noncanonical media address %s blocked', (address) => {
+  expect(isPublicAddress(address)).toBe(false)
+})
+
+it('accepts native global unicast IPv6 media destinations', () => {
+  expect(isPublicAddress('2606:4700:4700::1111')).toBe(true)
 })
 
 async function peer(

@@ -1,56 +1,28 @@
 import { isIP } from 'node:net'
+import ipaddr from 'ipaddr.js'
 
-function ipv4Number(address: string): number {
-  return address
-    .split('.')
-    .reduce((value, part) => value * 256 + Number(part), 0)
-}
-
-const excludedIpv4Ranges = [
-  ['0.0.0.0', 8],
-  ['10.0.0.0', 8],
-  ['100.64.0.0', 10],
-  ['127.0.0.0', 8],
-  ['169.254.0.0', 16],
-  ['172.16.0.0', 12],
-  ['192.0.0.0', 16],
-  ['192.88.99.0', 24],
-  ['192.168.0.0', 16],
-  ['198.18.0.0', 15],
-  ['198.51.100.0', 24],
-  ['203.0.113.0', 24],
-  ['224.0.0.0', 3]
-] as const
-
-const excludedIpv4Bounds = excludedIpv4Ranges.map(([address, prefix]) => {
-  const start = ipv4Number(address)
-  return { start, end: start + 2 ** (32 - prefix) }
-})
+const publicRanges = new Set(['unicast', 'as112', 'amt', 'as112v6'])
+const globalIpv6 = ipaddr.IPv6.parseCIDR('2000::/3')
+const protocolIpv6 = ipaddr.IPv6.parseCIDR('2001::/23')
+const reservedIpv6 = ipaddr.IPv6.parseCIDR('3fff::/16')
 
 /** Conservative global-unicast policy; mapped, transition and documentation ranges are excluded. */
 export function isPublicAddress(address: string): boolean {
-  if (isIP(address) === 4) {
-    const value = ipv4Number(address)
-    return !excludedIpv4Bounds.some(
-      ({ start, end }) => value >= start && value < end
-    )
+  // DNS returns canonical literals. Reject shorthand and interface-scoped input
+  // Before using the library's deliberately permissive address parser.
+  if (isIP(address) === 0 || address.includes('%')) {
+    return false
   }
-  if (isIP(address) === 6) {
-    const normalized = new URL(`http://[${address}]/`).hostname
-      .slice(1, -1)
-      .toLowerCase()
-
-    const [firstPart = '0', secondPart = '0'] = normalized.split(':')
-    const first = Number.parseInt(firstPart, 16)
-    const second = Number.parseInt(secondPart || '0', 16)
-    return (
-      first >= 0x20_00 &&
-      first <= 0x3f_ff &&
-      !normalized.startsWith('2001:db8:') &&
-      !(first === 0x20_01 && second < 0x02_00) &&
-      first !== 0x20_02 &&
-      first !== 0x3f_ff
-    )
+  const parsed = ipaddr.parse(address)
+  if (!publicRanges.has(parsed.range())) {
+    return false
   }
-  return false
+  if (parsed instanceof ipaddr.IPv4) {
+    return true
+  }
+  // Retain the relay's conservative IPv6 allocation policy in addition to the
+  // Library's maintained special-use ranges.
+  const protocolReserved = parsed.match(protocolIpv6)
+  const allocationReserved = parsed.match(reservedIpv6)
+  return parsed.match(globalIpv6) && !protocolReserved && !allocationReserved
 }

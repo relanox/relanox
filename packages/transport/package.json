@@ -15,7 +15,9 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "ipaddr.js": "2.5.0"
+  },
   "engines": {
     "node": ">=26 <27"
   }
