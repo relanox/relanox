@@ -51,7 +51,7 @@ A partially sent reply resumes from its unfinished part and retains receipts for
 
 ## Associate an answer with its incoming message
 
-For an incoming `requestId`, send `reply: { requestId, kind: "final" }` with the complete text and ordered media in one `relanox_send_message` call. Use `kind: "progress"` for interim updates. Replies must use the source channel and its current authorized endpoint; native reply context comes from that incoming message. Proactive sends omit `reply`.
+For an incoming `requestId`, send `reply: { requestId, kind: "final" }` with the complete text and ordered media in one `relanox_send_message` call. Use `kind: "progress"` for interim updates. Replies must use the source channel and its current authorized endpoint; native reply context comes from that incoming message. Supplying `reply.requestId` selects that incoming message for native quoting or replying where supported, even after newer messages arrive. Ordinary sends omit `reply`; they neither quote nor complete an incoming request.
 
 Inspect `relanox_status` with `requestId`, or the `reply` field from `relanox_read_messages`. `awaiting_final` means no final answer is queued. Once queued, `pending`, `sent`, `rejected` and `unknown` describe the final delivery. Only `sent` means all text and media parts were accepted by the platform; it does not prove the recipient read them. Reading, progress updates and accepting an event do not complete a request.
 
