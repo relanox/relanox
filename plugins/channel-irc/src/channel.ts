@@ -302,7 +302,7 @@ export function createIrcChannel(
         if (
           mapping !== 'ascii' &&
           mapping !== 'rfc1459' &&
-          mapping !== 'rfc1459-strict'
+          mapping !== 'strict-rfc1459'
         ) {
           throw new Error('unsupported_casemapping')
         }

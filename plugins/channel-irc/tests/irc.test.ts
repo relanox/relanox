@@ -528,6 +528,8 @@ it('reconnects and relies on durable msgid dedup while retaining configured acco
 
 // Native authority: ircdocs/modern-irc 8f4c3cc51f0036597f5c95e595fb6ec3177ba4c9,
 // _includes/modern-appendix.md CASEMAPPING: RFC1459 equates ^ and ~.
+// InspIRCd sends strict-rfc1459 in 005: https://raw.githubusercontent.com/inspircd/inspircd/insp3/docs/conf/codepages/strict-rfc1459.conf.example
+// https://docs.inspircd.org/4/modules/codepage/
 // The public agent endpoint replies after a real tagged DM is persisted.
 // Existing channel case mapping tests do not resolve folded DM targets.
 // This TCP/SQLite regression needs no production seam.
@@ -535,7 +537,7 @@ it.each([
   ['rfc1459', 'Alice^', 'dm:alice~', 'alice^'],
   ['rfc1459', '^Alice', 'dm:~alice', '^alice'],
   ['ascii', 'Alice^', 'dm:alice^', 'alice^'],
-  ['rfc1459-strict', 'Alice^', 'dm:alice^', 'alice^']
+  ['strict-rfc1459', 'Alice^', 'dm:alice^', 'alice^']
 ])(
   'replies with %s case mapping to %s through private binding %s',
   async (mapping, sender, chatId, recipient) => {
@@ -801,9 +803,10 @@ it('allows explicit nickname fallback with a diagnostic and keeps secure default
 
 // Native fixtures: ircdocs/modern-irc 8f4c3cc51f0036597f5c95e595fb6ec3177ba4c9,
 // _includes/c2s_structure.md (parameters/framing) and modern-appendix.md (CASEMAPPING).
+// InspIRCd strict token and folding: https://raw.githubusercontent.com/inspircd/inspircd/insp3/docs/conf/codepages/strict-rfc1459.conf.example
 it.each([
   ['ascii', '#room[', '#room{', 'nick:alice^', 1],
-  ['rfc1459-strict', '#room^', '#room~', 'nick:alice^', 1],
+  ['strict-rfc1459', '#room^', '#room~', 'nick:alice^', 1],
   ['rfc1459', '#room[', '#room{', 'nick:alice~', 2]
 ])(
   'honors advertised %s case mapping for channels and fallback identities',

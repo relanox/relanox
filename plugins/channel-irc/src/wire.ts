@@ -61,7 +61,7 @@ export function parseMessage(line: string): IrcMessage {
   }
 }
 
-export type CaseMapping = 'ascii' | 'rfc1459' | 'rfc1459-strict'
+export type CaseMapping = 'ascii' | 'rfc1459' | 'strict-rfc1459'
 
 export function foldNick(
   value: string,
