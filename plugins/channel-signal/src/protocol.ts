@@ -20,7 +20,7 @@ export function secret(
 
 export async function readJson(
   response: Response,
-  maximum = 2_097_152,
+  maximum = 2 * 1024 * 1024,
   overflowError: Error = new Error('response_too_large')
 ): Promise<unknown> {
   if (!response.body) {

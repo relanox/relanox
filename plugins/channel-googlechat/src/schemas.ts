@@ -4,7 +4,10 @@ import { platformIdSchema } from './config.js'
 export const serviceSchema = z.object({
   type: z.literal('service_account'),
   client_email: z.email(),
-  private_key: z.string().min(1).max(16_384)
+  private_key: z
+    .string()
+    .min(1)
+    .max(16 * 1024)
 })
 
 const spaceId = z.string().regex(/^spaces\/[A-Za-z0-9_-]+$/u)

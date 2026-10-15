@@ -31,7 +31,7 @@ Open the bot, press Start, then send “Hello”. In a group, address the bot wi
 
 ## Images and files
 
-Attach a photo, voice message, audio, video or document as usual; a caption can carry your question. Received cloud files must fit Telegram’s 20 MiB download limit and your relay limit. Replies can contain images, audio, video and files. Photos are limited to 10 MiB and other uploads to 50 MiB, with the relay limit also applying.
+Attach a photo, voice message, audio, video or document as usual; a caption can carry your question. Received cloud files must fit Telegram’s 20 MB download limit and your relay limit. Replies can contain images, audio, video and files. Photos are limited to 10 MB and other uploads to 50 MB, with the relay limit also applying.
 
 ## Troubleshooting
 

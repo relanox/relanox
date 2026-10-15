@@ -54,7 +54,10 @@ export function planMiddleware(
   for (const item of middleware) {
     try {
       const options = item.plan(middlewareMessage(request))
-      if (options !== undefined && JSON.stringify(options).length <= 65_536) {
+      if (
+        options !== undefined &&
+        JSON.stringify(options).length <= 64 * 1024
+      ) {
         plans.push({
           id: item.id,
           options: jsonSnapshot(z.json().parse(options))

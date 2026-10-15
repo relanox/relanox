@@ -1,6 +1,6 @@
 export async function readBounded(
   body: ReadableStream<Uint8Array> | null,
-  max = 1_048_576
+  max = 1024 * 1024
 ): Promise<Buffer> {
   if (!body) {
     return Buffer.alloc(0)
@@ -40,7 +40,7 @@ export async function readJson(response: Response): Promise<unknown> {
         break
       }
       size += value.byteLength
-      if (size > 2_097_152) {
+      if (size > 2 * 1024 * 1024) {
         throw new Error('response_too_large')
       }
       pieces.push(value)

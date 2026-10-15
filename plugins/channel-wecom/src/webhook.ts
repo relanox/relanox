@@ -288,8 +288,8 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     capabilities: {
       receive: true,
       transport: 'both',
-      maxTextLength: 20_480,
-      maxTextLengthPerMessage: 20_480,
+      maxTextLength: 20 * 1024,
+      maxTextLengthPerMessage: 20 * 1024,
       maxChunksPerMessage: 11,
       maxAttachmentsPerMessage: 10,
       lengthUnit: 'utf8',

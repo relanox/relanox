@@ -33,7 +33,7 @@ Send “Hello” to the application robot from an allowed staff member. In a gro
 
 ## Images and files
 
-Send pictures, audio, videos, files or rich-text messages. Replies can include JPEG/PNG/GIF/BMP images, MP4 video and files up to 20 MiB, and AMR audio up to 2 MiB, within the relay limit. File replies use XLSX, PDF, ZIP, RAR, DOC or DOCX formats.
+Send pictures, audio, videos, files or rich-text messages. Replies can include JPEG/PNG/GIF/BMP images, MP4 video and files up to 20 MB, and AMR audio up to 2 MB, within the relay limit. File replies use XLSX, PDF, ZIP, RAR, DOC or DOCX formats.
 
 ## Troubleshooting
 

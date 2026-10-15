@@ -68,7 +68,7 @@ dot 使用 OAuth，`mcp.auth` 默认且只接受 `oauth`。Grok 支持 `bearer` 
 
 dot 通过 MCP 订阅时提供回调 URL。Relanox 固定接受原生的 `https://connectors.api.openai.com` 来源，并在投递前检查 DNS 解析结果为公网地址。配置文件中无需也不能填写 `callback`。
 
-回调、MCP 和 Grok Routine 请求的超时固定为 10 秒；MCP 和 Grok Routine 请求体限制为 1 MiB。dot 订阅最长保留 24 小时，签名密钥轮换后保留旧密钥签名 60 秒。
+回调、MCP 和 Grok Routine 请求的超时固定为 10 秒；MCP 和 Grok Routine 请求体限制为 1 MB。dot 订阅最长保留 24 小时，签名密钥轮换后保留旧密钥签名 60 秒。
 
 Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默认有效期为一天。请让 dot 在连接检查成功后创建订阅。自动续订尚未通过真实账号验证。`dot_no_active_subscription` 表示 Relanox 没有有效订阅，即使 OAuth 已成功也可能出现。请检查插件连接和运行日志；来信已耗尽重试次数时，按[部署与备份](../operations.md#查找并恢复卡住的消息)恢复。
 

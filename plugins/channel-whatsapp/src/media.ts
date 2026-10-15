@@ -20,9 +20,9 @@ const formats: Record<
   MediaKind,
   { limit: number; mimeTypes: readonly string[] }
 > = {
-  image: { limit: 5_000_000, mimeTypes: ['image/jpeg', 'image/png'] },
+  image: { limit: 5 * 1000 * 1000, mimeTypes: ['image/jpeg', 'image/png'] },
   audio: {
-    limit: 16_000_000,
+    limit: 16 * 1000 * 1000,
     mimeTypes: [
       'audio/aac',
       'audio/amr',
@@ -31,9 +31,9 @@ const formats: Record<
       'audio/ogg'
     ]
   },
-  video: { limit: 16_000_000, mimeTypes: ['video/mp4', 'video/3gpp'] },
+  video: { limit: 16 * 1000 * 1000, mimeTypes: ['video/mp4', 'video/3gpp'] },
   file: {
-    limit: 100_000_000,
+    limit: 100 * 1000 * 1000,
     mimeTypes: [
       'text/plain',
       'application/pdf',
@@ -78,7 +78,7 @@ async function readMediaJson(response: Response): Promise<unknown> {
         break
       }
       size += part.value.byteLength
-      if (size > 65_536) {
+      if (size > 64 * 1024) {
         throw new Error('media_response_too_large')
       }
       chunks.push(part.value)
@@ -140,7 +140,7 @@ export async function receiveMedia(
   const mimeType = metadata.mime_type.split(';')[0]?.trim().toLowerCase() ?? ''
 
   const maximum = Math.min(
-    host.maxMediaBytes ?? 16_777_216,
+    host.maxMediaBytes ?? 16 * 1024 * 1024,
     formats[kind].limit
   )
 

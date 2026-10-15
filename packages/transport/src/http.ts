@@ -1,6 +1,6 @@
 export async function rawBody(incoming: Request): Promise<Uint8Array> {
   const bytes = new Uint8Array(await incoming.arrayBuffer())
-  if (bytes.length > 2_097_152) {
+  if (bytes.length > 2 * 1024 * 1024) {
     throw new Error('body_too_large')
   }
   return bytes

@@ -25,6 +25,6 @@ export const targetSchema = z.strictObject({
   botUserId: platformIdSchema
 })
 
-export const postedEventSchema = z.object({ post: z.string().max(1_048_576) })
+export const postedEventSchema = z.object({ post: z.string().max(1024 * 1024) })
 
 export const sendResponseSchema = z.object({ id: platformIdSchema })

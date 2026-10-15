@@ -26,7 +26,7 @@ export async function consumeEvents(
       return
     }
     size += value.length
-    if (size > 1_048_576) {
+    if (size > 1024 * 1024) {
       throw new Error('event_too_large')
     }
     const colon = value.indexOf(':')
@@ -53,7 +53,7 @@ export async function consumeEvents(
         return
       }
       buffer += decoder.decode(chunk.value, { stream: true })
-      if (buffer.length > 1_048_576) {
+      if (buffer.length > 1024 * 1024) {
         throw new Error('event_too_large')
       }
       for (;;) {

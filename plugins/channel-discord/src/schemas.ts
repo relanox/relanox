@@ -32,7 +32,7 @@ export const messageSchema = z.looseObject({
   id: platformIdSchema,
   channel_id: platformIdSchema,
   guild_id: platformIdSchema.optional(),
-  content: z.string().max(1_048_576),
+  content: z.string().max(1024 * 1024),
   attachments: z
     .array(
       z.looseObject({

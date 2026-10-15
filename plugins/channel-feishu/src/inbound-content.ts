@@ -133,7 +133,12 @@ export function parseContent(message: {
   if (message.message_type === 'text') {
     return {
       text: z
-        .looseObject({ text: z.string().min(1).max(1_048_576) })
+        .looseObject({
+          text: z
+            .string()
+            .min(1)
+            .max(1024 * 1024)
+        })
         .parse(value).text,
       resources: []
     }

@@ -366,12 +366,12 @@ export function createIrcChannel(
       buffer += data
       const lines = buffer.split('\r\n')
       buffer = lines.pop() ?? ''
-      if (Buffer.byteLength(buffer) > 16_384) {
+      if (Buffer.byteLength(buffer) > 16 * 1024) {
         current.destroy()
         return
       }
       for (const line of lines) {
-        if (Buffer.byteLength(line) > 16_384) {
+        if (Buffer.byteLength(line) > 16 * 1024) {
           current.destroy()
           return
         }

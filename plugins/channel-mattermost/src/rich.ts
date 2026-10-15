@@ -37,7 +37,7 @@ export function richError(
     (input.richMedia ?? []).some(
       (media) =>
         media.reference.kind !== 'image' ||
-        media.data.byteLength > (host.maxMediaBytes ?? 16_777_216)
+        media.data.byteLength > (host.maxMediaBytes ?? 16 * 1024 * 1024)
     )
   ) {
     return 'media_limit_exceeded'

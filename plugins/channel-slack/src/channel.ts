@@ -203,7 +203,7 @@ export function createSlackChannel(
     }
 
     const ws = new WebSocket(validateTransportUrl(result.url, false, true), {
-      maxPayload: 1_048_576,
+      maxPayload: 1024 * 1024,
       handshakeTimeout: REQUEST_TIMEOUT_MS
     })
 

@@ -71,7 +71,11 @@ export function createListeners(
   management: ReturnType<typeof nodeServer>
 } {
   const business = nodeServer(
-    { requestTimeout: 15_000, headersTimeout: 10_000, maxHeaderSize: 16_384 },
+    {
+      requestTimeout: 15_000,
+      headersTimeout: 10_000,
+      maxHeaderSize: 16 * 1024
+    },
     getRequestListener(async (request) => core.fetch(nativeRequest(request)), {
       overrideGlobalObjects: false,
       errorHandler: () => new Response(null, { status: 500 })

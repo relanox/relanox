@@ -29,7 +29,7 @@ export async function receiveAttachments(
   signal: AbortSignal
 ): Promise<MediaUpload[]> {
   const result: MediaUpload[] = []
-  const maximum = host.maxMediaBytes ?? 16_777_216
+  const maximum = host.maxMediaBytes ?? 16 * 1024 * 1024
   for (const attachment of attachments) {
     if (!attachment.id) {
       throw new Error('media_unavailable')
@@ -75,7 +75,7 @@ export async function receiveAttachments(
       .parse(
         await readJson(
           response,
-          encodedMaximum + 16_384,
+          encodedMaximum + 16 * 1024,
           new SignalMediaPolicyError('media_response_too_large')
         )
       )

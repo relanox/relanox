@@ -27,7 +27,7 @@ export function equal(a: string, b: string): boolean {
 
 async function readBounded(
   body: ReadableStream<Uint8Array> | null,
-  max = 1_048_576
+  max = 1024 * 1024
 ): Promise<Buffer> {
   if (!body) {
     return Buffer.alloc(0)
@@ -55,7 +55,7 @@ async function readBounded(
 
 export async function bytes(
   request: Request,
-  max = 1_048_576
+  max = 1024 * 1024
 ): Promise<Buffer> {
   return readBounded(request.body, max)
 }

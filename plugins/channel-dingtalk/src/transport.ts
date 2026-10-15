@@ -86,7 +86,7 @@ export async function httpJson(
       break
     }
     size += part.value.byteLength
-    if (size > 1_048_576) {
+    if (size > 1024 * 1024) {
       await reader.cancel()
       throw new Error('response_too_large')
     }
@@ -197,7 +197,7 @@ export class JsonSocketConnection {
 
     const socket = new WebSocket(address, {
       handshakeTimeout: 10_000,
-      maxPayload: 1_048_576
+      maxPayload: 1024 * 1024
     })
 
     this.socket = socket

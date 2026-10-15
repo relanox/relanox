@@ -119,7 +119,7 @@ export class JsonSocketConnection {
 
     const socket = new WebSocket(address, {
       handshakeTimeout: 10_000,
-      maxPayload: 1_048_576
+      maxPayload: 1024 * 1024
     })
 
     this.socket = socket
