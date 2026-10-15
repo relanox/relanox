@@ -4,14 +4,15 @@ import { body, harness, httpPeer, json, waitFor } from './harness.js'
 import { mediaRelay } from './media-harness.js'
 
 const kinds = [
-  ['image', 'image/png', 'picture.png', 201, 'sent'],
-  ['audio', 'audio/ogg', 'voice.ogg', 201, 'sent'],
-  ['video', 'video/mp4', 'clip.mp4', 201, 'sent'],
-  ['file', 'application/pdf', 'report.pdf', 201, 'sent'],
-  ['image', 'image/png', 'picture.png', 429, 'pending'],
-  ['image', 'image/png', 'picture.png', 403, 'rejected'],
-  ['image', 'image/png', 'picture.png', 503, 'pending'],
-  ['image', 'image/png', 'picture.png', 200, 'pending']
+  ['image', 'image/png', 'picture.png', 201, 'sent', ''],
+  ['audio', 'audio/ogg', 'voice.ogg', 201, 'sent', ''],
+  ['video', 'video/mp4', 'clip.mp4', 201, 'sent', ''],
+  ['file', 'application/pdf', 'report.pdf', 201, 'sent', ''],
+  ['image', 'image/png', 'picture.png', 429, 'pending', ''],
+  ['image', 'image/png', 'picture.png', 403, 'rejected', ''],
+  ['image', 'image/png', 'picture.png', 503, 'pending', ''],
+  ['image', 'image/png', 'picture.png', 200, 'pending', ''],
+  ['image', 'image/png', 'picture.png', 201, 'sent', '/proxy']
 ] as const
 
 // AudioInfo/VideoInfo duration is an optional integer, including zero:
@@ -107,9 +108,12 @@ it.each([
 // SDK fallback metadata. Old fixtures asserted only manual output; SDK 43.0.0
 // Content-repo.getHttpUriForMxc and Client.addThreadRelationIfNeeded supply this
 // Wire contract. Real HTTP/Core/SQLite exercise it without a production seam.
+// The mounted peer also protects configured homeserver prefixes: SDK MXC URLs
+// Otherwise lose /proxy even though its ordinary API URLs retain it. Root-only
+// Fixtures miss this regression; the peer mounts HTTP routes, adding no seam.
 it.each(kinds)(
-  'relays native Matrix %s (%s, %s) upload HTTP %s settles %s through SQLite and authenticated MCP',
-  async (kind, mimeType, fileName, uploadStatus, expected) => {
+  'relays native Matrix %s (%s, %s) upload HTTP %s settles %s at %s through SQLite and authenticated MCP',
+  async (kind, mimeType, fileName, uploadStatus, expected, basePath) => {
     let syncs = 0
     const downloads: { path: string; authorization: string | undefined }[] = []
 
@@ -121,80 +125,85 @@ it.each(kinds)(
 
     const sent: unknown[] = []
 
-    const peer = await httpPeer(async (request, response) => {
-      const url = new URL(request.url ?? '/', 'http://peer')
-      if (url.pathname.endsWith('/sync')) {
-        syncs++
-        json(response, {
-          next_batch: 'after-media',
-          rooms: {
-            join: {
-              '!room:example': {
-                timeline: {
-                  events:
-                    syncs === 1
-                      ? [
-                          {
-                            event_id: '$media',
-                            sender: '@alice:example',
-                            type: 'm.room.message',
-                            content: {
-                              msgtype: `m.${kind}`,
-                              body: 'Caption '.repeat(50),
-                              filename: fileName,
-                              url: 'mxc://remote.example/original',
-                              info: {
-                                mimetype: mimeType,
-                                ...(kind === 'audio' || kind === 'video'
-                                  ? { duration: 1500 }
-                                  : {})
-                              },
-                              'm.relates_to': {
-                                rel_type: 'm.thread',
-                                event_id: '$thread'
+    const peer = await httpPeer(
+      async (request, response) => {
+        const url = new URL(request.url ?? '/', 'http://peer')
+        if (url.pathname.endsWith('/sync')) {
+          syncs++
+          json(response, {
+            next_batch: 'after-media',
+            rooms: {
+              join: {
+                '!room:example': {
+                  timeline: {
+                    events:
+                      syncs === 1
+                        ? [
+                            {
+                              event_id: '$media',
+                              sender: '@alice:example',
+                              type: 'm.room.message',
+                              content: {
+                                msgtype: `m.${kind}`,
+                                body: 'Caption '.repeat(50),
+                                filename: fileName,
+                                url: 'mxc://remote.example/original',
+                                info: {
+                                  mimetype: mimeType,
+                                  ...(kind === 'audio' || kind === 'video'
+                                    ? { duration: 1500 }
+                                    : {})
+                                },
+                                'm.relates_to': {
+                                  rel_type: 'm.thread',
+                                  event_id: '$thread'
+                                }
                               }
                             }
-                          }
-                        ]
-                      : []
+                          ]
+                        : []
+                  }
                 }
               }
             }
+          })
+        } else if (url.pathname.includes('/media/download/')) {
+          downloads.push({
+            path: `${url.pathname}${url.search}`,
+            authorization: request.headers.authorization
+          })
+          response.writeHead(200, { 'Content-Type': mimeType })
+          response.end(new Uint8Array([1, 2, 3]))
+        } else if (url.pathname.endsWith('/upload')) {
+          const parts: Uint8Array[] = []
+          for await (const part of request) {
+            parts.push(part as Uint8Array)
           }
-        })
-      } else if (url.pathname.includes('/media/download/')) {
-        downloads.push({
-          path: `${url.pathname}${url.search}`,
-          authorization: request.headers.authorization
-        })
-        response.writeHead(200, { 'Content-Type': mimeType })
-        response.end(new Uint8Array([1, 2, 3]))
-      } else if (url.pathname.endsWith('/upload')) {
-        const parts: Uint8Array[] = []
-        for await (const part of request) {
-          parts.push(part as Uint8Array)
+          uploads.push({
+            bytes: new Uint8Array(Buffer.concat(parts)),
+            mimeType: request.headers['content-type'],
+            filename: url.searchParams.get('filename')
+          })
+          json(
+            response,
+            uploadStatus === 201
+              ? { content_uri: 'mxc://homeserver.example/generated' }
+              : {},
+            uploadStatus
+          )
+        } else if (url.pathname.includes('/state/')) {
+          // Missing room encryption state: Matrix Client-Server v1.15 state endpoint.
+          // https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
+          json(response, { errcode: 'M_NOT_FOUND' }, 404)
+        } else {
+          sent.push(await body(request))
+          json(response, { event_id: '$sent' })
         }
-        uploads.push({
-          bytes: new Uint8Array(Buffer.concat(parts)),
-          mimeType: request.headers['content-type'],
-          filename: url.searchParams.get('filename')
-        })
-        json(
-          response,
-          uploadStatus === 201
-            ? { content_uri: 'mxc://homeserver.example/generated' }
-            : {},
-          uploadStatus
-        )
-      } else if (url.pathname.includes('/state/')) {
-        // Missing room encryption state: Matrix Client-Server v1.15 state endpoint.
-        // https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
-        json(response, { errcode: 'M_NOT_FOUND' }, 404)
-      } else {
-        sent.push(await body(request))
-        json(response, { event_id: '$sent' })
-      }
-    })
+      },
+      undefined,
+      undefined,
+      basePath
+    )
 
     const plugin = createMatrixChannel({ MATRIX_TOKEN: 'matrix-secret' })
 
@@ -239,7 +248,7 @@ it.each(kinds)(
     expect(turn.inbound[0]?.data).toEqual(new Uint8Array([1, 2, 3]))
     expect(downloads).toEqual([
       {
-        path: '/_matrix/client/v1/media/download/remote.example/original?allow_redirect=true',
+        path: `${basePath}/_matrix/client/v1/media/download/remote.example/original?allow_redirect=true`,
         authorization: 'Bearer matrix-secret'
       }
     ])
