@@ -89,8 +89,7 @@
           "appId": "robot-app-id",
           "clientSecret": {
             "env": "QQ_CLIENT_SECRET"
-          },
-          "allowProactive": false
+          }
         }
       },
       {

@@ -121,8 +121,7 @@ export const channelData = [
       clientSecret: {
         env: 'QQ_CLIENT_SECRET'
       },
-      environment: 'production',
-      allowProactive: false
+      environment: 'production'
     },
     webhook: false,
     name: {
