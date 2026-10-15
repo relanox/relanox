@@ -73,7 +73,12 @@ it('sends ordered Components V2 with attachment bytes and preserves nonce and me
     data: { botId: '999', apiBaseUrl: 'https://discord.com/api/v10' }
   })
 
-  expect(await plugin.send(input)).toEqual({
+  expect(
+    await plugin.send({
+      ...input,
+      reply: { requestId: 'request-1', kind: 'final' }
+    })
+  ).toEqual({
     status: 'sent',
     receipt: { platformMessageId: '123' }
   })

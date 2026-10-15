@@ -55,7 +55,7 @@ export function createDiscordChannel(
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       if (
         address.platform !== 'discord' ||
         address.accountId !== account.id ||
@@ -64,6 +64,20 @@ export function createDiscordChannel(
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
+      const current = identity()
+      const prior = targetSchema.safeParse(learned?.data)
+
+      const replyToId =
+        learned?.channel === 'discord' &&
+        learned.accountId === account.id &&
+        learned.chatId === address.chatId &&
+        learned.threadId === address.threadId &&
+        prior.success &&
+        prior.data.botId === current.botId &&
+        prior.data.apiBaseUrl === current.apiBaseUrl
+          ? learned.replyToId
+          : undefined
+
       return {
         status: 'available',
         target: {
@@ -73,7 +87,8 @@ export function createDiscordChannel(
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
             : {}),
-          data: identity()
+          ...(replyToId ? { replyToId } : {}),
+          data: current
         }
       }
     },
