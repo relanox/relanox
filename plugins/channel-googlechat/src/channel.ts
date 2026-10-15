@@ -12,7 +12,7 @@ import type {
 } from '@relanox/sdk'
 import { validatePublicUrl } from '@relanox/sdk'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
-import { accessToken } from './client.js'
+import { accessToken, invalidateAccessToken } from './client.js'
 import { validateConfig } from './config.js'
 import type { GoogleChatConfig } from './config.js'
 import { mediaCards } from './media.js'
@@ -71,6 +71,19 @@ function messagePayload(
       : {}),
     ...(target.thread ? { thread: { name: target.thread } } : {})
   }
+}
+
+async function sendFailure(
+  config: GoogleChatConfig,
+  token: string,
+  response: Response
+): Promise<SendResult> {
+  if (response.status === 401) {
+    invalidateAccessToken(config, token)
+    await response.body?.cancel()
+    return { status: 'retryable', errorCode: 'oauth_token_rejected' }
+  }
+  return failure(response)
 }
 
 export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
@@ -155,7 +168,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       )
 
       if (!response.ok) {
-        return failure(response)
+        return await sendFailure(config, token, response)
       }
       return {
         status: 'sent',

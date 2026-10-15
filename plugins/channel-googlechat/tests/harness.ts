@@ -77,6 +77,7 @@ export async function peer(): Promise<{
     responseHeaders?: Record<string, string>
   ): void
   token(this: void, code: number, body: Json): void
+  holdToken(this: void): () => void
   keys(this: void, value: Json): void
   disconnect(this: void, path: string): void
   close(this: void): Promise<void>
@@ -94,7 +95,15 @@ export async function peer(): Promise<{
   let headers: Record<string, string> = {}
   let jwks: Json = {}
   let tokenStatus = 200
-  let tokenBody: Json = { access_token: 'oauth-token', token_type: 'Bearer' }
+  let tokenWait: Promise<void> | undefined
+
+  // Google service-account OAuth responses include their lifetime in seconds:
+  // https://developers.google.com/identity/protocols/oauth2/service-account#httprest_2
+  let tokenBody: Json = {
+    access_token: 'oauth-token',
+    token_type: 'Bearer',
+    expires_in: 3600
+  }
 
   async function receive(
     incoming: IncomingMessage,
@@ -120,6 +129,7 @@ export async function peer(): Promise<{
       return
     }
     if (path === '/token') {
+      await tokenWait
       response.writeHead(tokenStatus)
       response.end(JSON.stringify(tokenBody))
       return
@@ -198,6 +208,13 @@ export async function peer(): Promise<{
     token(code: number, body: Json): void {
       tokenStatus = code
       tokenBody = body
+    },
+    holdToken(): () => void {
+      let release: () => void = () => {}
+      tokenWait = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return release
     },
     keys(value: Json): void {
       jwks = value

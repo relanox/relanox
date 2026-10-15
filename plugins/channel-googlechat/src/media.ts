@@ -1,9 +1,13 @@
 import { markdownRuns, escapeHtml } from '@relanox/markdown'
 import { apiBase } from './constants.js'
-import { downloadMedia, mediaKind } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  mediaKind,
+  MediaDownloadError
+} from '@relanox/channel-media'
 import type { Json, ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
 import type { z } from 'zod'
-import { accessToken } from './client.js'
+import { accessToken, invalidateAccessToken } from './client.js'
 import type { GoogleChatConfig } from './config.js'
 import type { eventSchema } from './schemas.js'
 
@@ -41,7 +45,12 @@ export async function downloadAttachments(
           trustedOrigins: [new URL(apiBase).origin],
           headers: { authorization: `Bearer ${token}` }
         }
-      )
+      ).catch((error: unknown) => {
+        if (error instanceof MediaDownloadError && error.status === 401) {
+          invalidateAccessToken(config, token)
+        }
+        throw error
+      })
 
       const mimeType = attachment.contentType ?? downloaded.mimeType
       attachments.push({
