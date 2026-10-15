@@ -3,7 +3,7 @@ import {
   registerPeer,
   installPeerNetwork
 } from '../../channel-wecom/tests/network.js'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -161,6 +161,135 @@ async function gateway(): Promise<{
 }
 
 describe('discord native Gateway and REST', () => {
+  // Channel/thread lifecycle dispatches carry a native channel id:
+  // https://docs.discord.com/developers/events/gateway-events#channel-update
+  // https://docs.discord.com/developers/events/gateway-events#thread-update
+  // Protect repeated guild message latency without retaining changed routing metadata.
+  // Previous peers send only one guild message and cannot expose repeated GETs.
+  // Uses the existing public plugin, real SQLite state and wire peers; no new seam.
+  it.each([
+    {
+      event: 'CHANNEL_UPDATE',
+      type: 0,
+      expected: { chatId: '456', threadId: undefined }
+    },
+    {
+      event: 'THREAD_UPDATE',
+      type: 11,
+      expected: { chatId: '123', threadId: '456' }
+    }
+  ])(
+    'reuses channel metadata until the native $event dispatch',
+    async ({ event, type, expected }) => {
+      const remote = await gateway()
+
+      const api = await peer(() => ({
+        body: { id: '456', type, guild_id: '100', parent_id: '123' }
+      }))
+
+      cleanup.push(api.close)
+      const test = await setup(api.url, remote.url)
+      cleanup.unshift(async () => test.plugin.stop?.())
+      const connected = Promise.withResolvers<WebSocket>()
+      let activeSocket: WebSocket | undefined
+      let connections = 0
+      remote.wss.on('connection', (ws) => {
+        activeSocket = ws
+        connections += 1
+        connected.resolve(ws)
+        ws.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 30_000 } }))
+        ws.on('message', (raw) => {
+          const frame = readFrame(raw)
+          if (frame.op === 1) {
+            ws.send(JSON.stringify({ op: 11 }))
+          }
+          if (frame.op === 2) {
+            ws.send(
+              JSON.stringify({
+                op: 0,
+                s: 1,
+                t: 'READY',
+                d: {
+                  session_id: 'cache-session',
+                  resume_gateway_url: remote.url,
+                  user: { id: '999' }
+                }
+              })
+            )
+          }
+          if (frame.op === 6) {
+            ws.send(JSON.stringify({ op: 0, s: 7, t: 'RESUMED', d: {} }))
+          }
+        })
+      })
+      await test.plugin.start?.(new AbortController().signal)
+      await connected.promise
+
+      const message = (id: string, sequence: number): void => {
+        if (!activeSocket) {
+          throw new Error('Missing gateway connection')
+        }
+        activeSocket.send(
+          JSON.stringify({
+            op: 0,
+            s: sequence,
+            t: 'MESSAGE_CREATE',
+            d: {
+              id,
+              guild_id: '100',
+              channel_id: '456',
+              content: 'hello',
+              author: { id: '42' },
+              type: 0
+            }
+          })
+        )
+      }
+
+      message('700', 2)
+      message('701', 3)
+      await expect.poll(() => test.received.length).toBe(2)
+      expect(api.requests.map((request) => request.path)).toEqual([
+        '/channels/456'
+      ])
+      activeSocket?.send(
+        JSON.stringify({
+          op: 0,
+          s: 4,
+          t: event,
+          d: {
+            id: '456',
+            type,
+            guild_id: '100',
+            parent_id: '123'
+          }
+        })
+      )
+      message('702', 5)
+      await expect.poll(() => test.received.length).toBe(3)
+      expect(api.requests.map((request) => request.path)).toEqual([
+        '/channels/456',
+        '/channels/456'
+      ])
+      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_001)
+      message('703', 6)
+      await expect.poll(() => test.received.length).toBe(4)
+      expect(api.requests).toHaveLength(3)
+      await test.plugin.stop?.()
+      await test.plugin.start?.(new AbortController().signal)
+      await expect.poll(() => connections).toBe(2)
+      message('704', 8)
+      await expect.poll(() => test.received.length).toBe(5)
+      expect(api.requests).toHaveLength(4)
+      expect(
+        test.received.map((input) => ({
+          chatId: input.target.chatId,
+          threadId: input.target.threadId
+        }))
+      ).toEqual([expected, expected, expected, expected, expected])
+    }
+  )
+
   // Native close codes require a fresh session, including after process restart:
   // https://docs.discord.com/developers/topics/opcodes-and-status-codes#gateway-close-event-codes
   it.each([4007, 4009])(

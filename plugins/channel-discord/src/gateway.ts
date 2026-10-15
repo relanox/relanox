@@ -6,6 +6,7 @@ import {
   GATEWAY_INTENTS
 } from './config.js'
 import type { DiscordIdentity } from './identity.js'
+import { createMessageTargets } from './message-targets.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
   downloadMedia,
@@ -17,15 +18,13 @@ import { WebSocket } from 'ws'
 import type { z } from 'zod'
 import type { DiscordConfig } from './config.js'
 import {
-  channelInfoSchema,
   helloEventSchema,
   packetSchema,
   sessionSchema,
   readySchema,
   messageSchema
 } from './schemas.js'
-import { frameText, waitForStop } from './socket.js'
-import { credential, ingest, jsonResponse } from './transport.js'
+import { frameText, waitForStop, credential, ingest } from './transport.js'
 
 export type DiscordGateway = {
   start(signal: AbortSignal): Promise<void>
@@ -46,6 +45,7 @@ export function createDiscordGateway(
   let socket: WebSocket | undefined
   let session: Session | undefined
   let fatal = false
+  const targets = createMessageTargets(config, environment)
 
   const identity = (): { botId: string; apiBaseUrl: string } => ({
     botId: discovered.botId,
@@ -77,50 +77,12 @@ export function createDiscordGateway(
     }
   }
 
-  async function messageTarget(
-    message: z.infer<typeof messageSchema>,
-    signal: AbortSignal
-  ): Promise<{ chatId: string; threadId?: string }> {
-    if (!message.guild_id) {
-      return { chatId: message.channel_id }
-    }
-
-    const response = await fetch(
-      `${API_BASE_URL.replace(/\/$/u, '')}/channels/${encodeURIComponent(message.channel_id)}`,
-      {
-        headers: {
-          authorization: `Bot ${credential(config.botToken, environment)}`
-        },
-        signal: AbortSignal.any([
-          signal,
-          AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-        ]),
-        redirect: 'error'
-      }
-    )
-
-    if (!response.ok) {
-      throw new Error('channel_lookup_failed')
-    }
-    const channel = channelInfoSchema.parse(await jsonResponse(response))
-    if (channel.id !== message.channel_id) {
-      throw new Error('channel_lookup_mismatch')
-    }
-    if (![10, 11, 12].includes(channel.type)) {
-      return { chatId: message.channel_id }
-    }
-    if (!channel.parent_id) {
-      throw new Error('thread_parent_missing')
-    }
-    return { chatId: channel.parent_id, threadId: message.channel_id }
-  }
-
   async function ingestMessage(
     message: z.infer<typeof messageSchema>,
     signal: AbortSignal
   ): Promise<void> {
     try {
-      const target = await messageTarget(message, signal)
+      const target = await targets.resolve(message, signal)
       await ingest(host, {
         source: {
           channel: 'discord',
@@ -177,6 +139,7 @@ export function createDiscordGateway(
   }
 
   async function connect(signal: AbortSignal): Promise<void> {
+    targets.clear()
     const botToken = credential(config.botToken, environment)
 
     const url = new URL(
@@ -347,6 +310,15 @@ export function createDiscordGateway(
             host.connection('connected')
           } else if (packet.t === 'RESUMED') {
             host.connection('connected')
+          } else if (
+            [
+              'CHANNEL_UPDATE',
+              'CHANNEL_DELETE',
+              'THREAD_UPDATE',
+              'THREAD_DELETE'
+            ].includes(packet.t ?? '')
+          ) {
+            targets.invalidate(packet.d)
           } else if (packet.t === 'MESSAGE_CREATE') {
             const message = messageSchema.parse(packet.d)
 
