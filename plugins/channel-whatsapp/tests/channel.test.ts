@@ -128,6 +128,82 @@ async function setup(filename = ':memory:'): Promise<{
 }
 
 describe('native WhatsApp Cloud', () => {
+  // Meta's native context.message_id selects the message to quote:
+  // https://www.postman.com/meta/whatsapp-business-platform/request/gnzu6lh/send-reply-to-contact-message
+  it('quotes three selected requests out of order through Core and leaves ordinary sends unquoted', async () => {
+    const local = await setup()
+    for (const id of ['wamid.first', 'wamid.second', 'wamid.third']) {
+      expect(
+        (await local.core.fetch(incoming(webhook(undefined, 'phone', id))))
+          .status
+      ).toBe(200)
+    }
+    const requests = await local.storage.listInbound({ limit: 10 })
+    for (const id of ['wamid.second', 'wamid.first', 'wamid.third']) {
+      const original = requests.find(
+        (record) => record.snapshot.source.eventId === id
+      )
+
+      if (!original) {
+        throw new Error('Missing source request')
+      }
+      expect(
+        (
+          await local.principal().sendMessage({
+            channel: original.snapshot.channel.id,
+            text: `answer ${id}`,
+            reply: { requestId: original.snapshot.requestId, kind: 'final' }
+          })
+        ).status
+      ).toBe('queued')
+      await local.core.processDue()
+    }
+    const channel = requests[0]?.snapshot.channel.id
+    if (!channel) {
+      throw new Error('Missing source channel')
+    }
+    expect(
+      (await local.principal().sendMessage({ channel, text: 'ordinary' }))
+        .status
+    ).toBe('queued')
+    await local.core.processDue()
+    expect(
+      local.remote.traffic.map((request) => JSON.parse(request.body) as unknown)
+    ).toEqual([
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: 'customer',
+        context: { message_id: 'wamid.second' },
+        type: 'text',
+        text: { body: 'answer wamid.second', preview_url: false }
+      },
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: 'customer',
+        context: { message_id: 'wamid.first' },
+        type: 'text',
+        text: { body: 'answer wamid.first', preview_url: false }
+      },
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: 'customer',
+        context: { message_id: 'wamid.third' },
+        type: 'text',
+        text: { body: 'answer wamid.third', preview_url: false }
+      },
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: 'customer',
+        type: 'text',
+        text: { body: 'ordinary', preview_url: false }
+      }
+    ])
+  })
+
   // Meta's account_update ACCOUNT_DELETED example has no messages metadata:
   // https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/account_update
   // Fields share the configured endpoint when subscribed in the App Dashboard:
