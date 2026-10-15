@@ -10,7 +10,8 @@ import {
   peer,
   records,
   sendInput,
-  temporaryDatabase
+  temporaryDatabase,
+  startConnected
 } from './test-support.js'
 import {
   callbackConfig,
@@ -212,7 +213,7 @@ test.each(policyCases)(
       scenario.worker
     )
 
-    await host.start()
+    await startConnected(host)
 
     const callbacks =
       mode === 'webhook' ? await callbackPeer(host.runtime) : undefined
@@ -315,7 +316,7 @@ test.each(['websocket', 'webhook'] as const)(
       { maxMediaBytes: 1024 }
     )
 
-    await host.start()
+    await startConnected(host)
 
     const callbacks =
       mode === 'webhook' ? await callbackPeer(host.runtime) : undefined

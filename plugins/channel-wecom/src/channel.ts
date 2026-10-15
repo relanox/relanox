@@ -2,7 +2,6 @@ import { WEBSOCKET_URL, configSchema, websocketConfigSchema } from './config.js'
 import {
   receiveParts,
   uploadResource,
-  outgoingBody,
   uploadFailure,
   nativeFailure
 } from './media.js'
@@ -21,8 +20,6 @@ import type { WeComConfig, WebsocketConfig } from './config.js'
 import { createWebhookChannel } from './webhook.js'
 import { frameSchema, messageSchema, targetSchema } from './schemas.js'
 import { ingestText, secret } from './transport.js'
-
-type Frame = z.infer<typeof frameSchema>
 
 function configuredType(
   types: WebsocketConfig['recipientTypes'],
@@ -49,20 +46,6 @@ function learnedSocketTarget(
     return undefined
   }
   return { target: learned, data: prior.data }
-}
-
-function socketOutcome(response: Frame): SendResult {
-  if (response.errcode === 0) {
-    return { status: 'sent', receipt: {} }
-  }
-  if (response.errcode === -1 || response.errcode === 45_009) {
-    return {
-      status: 'retryable',
-      errorCode: `wecom_${response.errcode}`,
-      retryAfterMs: 1000
-    }
-  }
-  return { status: 'rejected', errorCode: `wecom_${response.errcode}` }
 }
 
 export function createWeComChannel(): ChannelPlugin<WeComConfig> {
@@ -107,7 +90,6 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
   let client: WSClient | undefined
   let controller = new AbortController()
   let releaseSignal: (() => void) | undefined
-  let finishStart: (() => void) | undefined
   let replaced = false
   let authenticated = false
 
@@ -255,7 +237,6 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
       const abort = (): void => {
         controller.abort()
         client?.disconnect()
-        finishStart?.()
         authenticated = false
         host.connection('disconnected')
       }
@@ -297,42 +278,24 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
       active.on('reconnecting', () => {
         host.connection('degraded', 'reconnecting')
       })
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => {
-          host.connection('degraded', 'authentication_timeout')
-          active.disconnect()
-          resolve()
-        }, 10_000)
-
-        const ready = (): void => {
-          clearTimeout(timer)
-          finishStart = undefined
-          resolve()
+      active.on('authenticated', () => {
+        if (controller.signal.aborted) {
+          return
         }
-
-        finishStart = ready
-        active.on('authenticated', () => {
-          if (controller.signal.aborted) {
-            return
-          }
-          authenticated = true
-          replaced = false
-          host.connection('connected')
-          ready()
-        })
-        active.on('error', () => {
-          host.connection('degraded', 'sdk_connection_error')
-          ready()
-        })
-        active.connect()
+        authenticated = true
+        replaced = false
+        host.connection('connected')
       })
+      active.on('error', () => {
+        host.connection('degraded', 'sdk_connection_error')
+      })
+      active.connect()
     },
     async stop() {
       releaseSignal?.()
       releaseSignal = undefined
       controller.abort()
       client?.disconnect()
-      finishStart?.()
       authenticated = false
       host.connection('disconnected')
     },
@@ -362,11 +325,6 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
         return { status: 'rejected', errorCode: 'reply_context_unavailable' }
       }
 
-      const content = input.chunk.text
-
-      if (Buffer.byteLength(content) > 20 * 1024) {
-        return { status: 'rejected', errorCode: 'text_too_long' }
-      }
       let transmitting = false
       try {
         if (input.chunk.media && !input.media) {
@@ -384,16 +342,8 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
         const id = input.reply ? target.data.callbackReqId : undefined
         transmitting = true
 
-        const response = id
-          ? await client.reply(
-              { headers: { req_id: id } },
-              replyBody(input, mediaId)
-            )
-          : await client.sendMessage(input.target.chatId, {
-              ...outgoingBody(input.media, mediaId, content)
-            })
-
-        return socketOutcome(response)
+        await sendContent(client, input, mediaId, id)
+        return { status: 'sent', receipt: {} }
       } catch (error) {
         return (
           nativeFailure(error) ??
@@ -406,18 +356,40 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
   }
 }
 
-function replyBody(input: SendInput, mediaId: string | undefined): object {
-  if (input.media) {
-    return outgoingBody(input.media, mediaId, input.chunk.text)
-  }
-  // A completed native reply uses the stream envelope without incremental updates.
-  // https://github.com/WecomTeam/aibot-node-sdk/blob/80615b987ef69c6028ad764924609247c0725955/src/client.ts#L178
-  return {
-    msgtype: 'stream',
-    stream: {
-      id: input.chunk.idempotencyKey,
-      finish: true,
-      content: input.chunk.text
-    }
+async function sendContent(
+  client: WSClient,
+  input: SendInput,
+  mediaId: string | undefined,
+  requestId: string | undefined
+): Promise<void> {
+  if (input.media && mediaId) {
+    const type =
+      input.media.reference.kind === 'audio'
+        ? 'voice'
+        : input.media.reference.kind
+
+    const video =
+      type === 'video' ? { description: input.chunk.text } : undefined
+
+    await (requestId
+      ? client.replyMedia(
+          { headers: { req_id: requestId } },
+          type,
+          mediaId,
+          video
+        )
+      : client.sendMediaMessage(input.target.chatId, type, mediaId, video))
+  } else if (requestId) {
+    await client.replyStream(
+      { headers: { req_id: requestId } },
+      input.chunk.idempotencyKey,
+      input.chunk.text,
+      true
+    )
+  } else {
+    await client.sendMessage(input.target.chatId, {
+      msgtype: 'markdown',
+      markdown: { content: input.chunk.text }
+    })
   }
 }

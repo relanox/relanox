@@ -1,5 +1,5 @@
 import { decryptFile } from '@wecom/aibot-node-sdk'
-import type { WSClient, SendMsgBody } from '@wecom/aibot-node-sdk'
+import type { WSClient } from '@wecom/aibot-node-sdk'
 import { downloadMedia, MediaDownloadError } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -141,24 +141,6 @@ async function downloadParts(
     }
   }
   return { text, attachments }
-}
-
-export function outgoingBody(
-  media: StoredMedia | undefined,
-  mediaId: string | undefined,
-  content: string
-): SendMsgBody {
-  if (!media || !mediaId) {
-    return { msgtype: 'markdown', markdown: { content } }
-  }
-  const type = media.reference.kind === 'audio' ? 'voice' : media.reference.kind
-  return {
-    msgtype: type,
-    [type]: {
-      media_id: mediaId,
-      ...(type === 'video' ? { description: content } : {})
-    }
-  }
 }
 
 export function nativeFailure(error: unknown): SendResult | undefined {
