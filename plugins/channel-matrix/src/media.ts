@@ -24,7 +24,7 @@ const mediaSchema = z
     info: z
       .object({
         mimetype: z.string().optional(),
-        duration: z.number().int().positive().optional()
+        duration: z.number().int().nonnegative().optional()
       })
       .optional()
   })
@@ -85,9 +85,8 @@ export async function receiveMedia(
       fileName: data.filename ?? data.body,
       mimeType: data.info?.mimetype ?? downloaded.mimeType,
       data: downloaded.data,
-      ...(data.info?.duration === undefined
-        ? {}
-        : { durationMs: data.info.duration })
+      // Native clients may report zero; Core stores positive durations only.
+      ...(!data.info?.duration ? {} : { durationMs: data.info.duration })
     }
   ]
 }
