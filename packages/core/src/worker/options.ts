@@ -1,13 +1,18 @@
 import { z } from 'zod'
 
 export const workerSchema = z.strictObject({
-  maxMediaBytes: z.number().int().min(1).max(209_715_200).default(104_857_600),
+  maxMediaBytes: z
+    .number()
+    .int()
+    .min(1)
+    .max(200 * 1024 * 1024)
+    .default(100 * 1024 * 1024),
   maxTotalMediaBytes: z
     .number()
     .int()
     .min(1)
-    .max(209_715_200)
-    .default(104_857_600),
+    .max(200 * 1024 * 1024)
+    .default(100 * 1024 * 1024),
   maxAttachments: z.number().int().min(1).max(10).default(10)
 })
 
@@ -21,9 +26,9 @@ export const workerDefaults = {
   maxAttempts: 8,
   retryBaseMs: 1000,
   retryMaxMs: 300_000,
-  maxTextBytes: 1_048_576,
-  maxContextBytes: 65_536,
-  maxHttpBodyBytes: 2_097_152
+  maxTextBytes: 1024 * 1024,
+  maxContextBytes: 64 * 1024,
+  maxHttpBodyBytes: 2 * 1024 * 1024
 }
 
 export type WorkerConfig = z.output<typeof workerSchema> & typeof workerDefaults

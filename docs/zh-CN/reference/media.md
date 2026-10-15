@@ -52,14 +52,14 @@ Grok Bot 可以调用 `relanox_create_upload`，把云电脑中的文件通过 P
 
 | 渠道               | 图片格式                  | 行内图片最大字节数   |
 | ------------------ | ------------------------- | -------------------- |
-| 飞书 / Lark        | PNG、JPEG、GIF、WebP、BMP | 10 MiB               |
-| 钉钉               | PNG、JPEG、GIF、BMP       | 20 MiB               |
-| Slack              | PNG、JPEG、GIF            | 25 MiB               |
+| 飞书 / Lark        | PNG、JPEG、GIF、WebP、BMP | 10 MB                |
+| 钉钉               | PNG、JPEG、GIF、BMP       | 20 MB                |
+| Slack              | PNG、JPEG、GIF            | 25 MB                |
 | Google Chat        | PNG、JPEG                 | 2,000,000 字节       |
 | Microsoft Teams    | PNG、JPEG、GIF            | 1,000,000 字节       |
 | LINE               | PNG、JPEG                 | 10,000,000 字节      |
-| QQ                 | PNG、JPEG                 | 20 MiB               |
-| Discord            | 未声明额外 MIME 限制      | 10 MiB               |
+| QQ                 | PNG、JPEG                 | 20 MB                |
+| Discord            | 未声明额外 MIME 限制      | 10 MB                |
 | Matrix、Mattermost | 未声明额外 MIME 限制      | 配置的单文件媒体限制 |
 
 配置的媒体限制可能进一步降低这些值，以状态返回的当前限制为准。钉钉和 QQ 还将包含图片引用的最终 Markdown 分别限制为 4,000 和 2,000 个 UTF-8 字节。原生布局的实际显示仍取决于平台和客户端。
@@ -92,7 +92,7 @@ Teams 私聊中的大图片和文件使用平台的文件接收确认流程。IR
 
 ## 调整附件大小
 
-默认每个附件和一条消息合计均不超过 100 MiB（104,857,600 字节），最多 10 个附件。可以在配置顶层添加 `mediaLimits` 调整：
+默认每个附件和一条消息合计均不超过 100 MB（104,857,600 字节），最多 10 个附件。可以在配置顶层添加 `mediaLimits` 调整：
 
 ```json
 {
@@ -104,7 +104,7 @@ Teams 私聊中的大图片和文件使用平台的文件接收确认流程。IR
 }
 ```
 
-前两项以字节计，分别表示单个附件大小和一条消息的附件总大小，上限均为 200 MiB。`maxAttachments` 最高为 10。修改后重启 Relanox。
+前两项以字节计，分别表示单个附件大小和一条消息的附件总大小，上限均为 200 MB。`maxAttachments` 最高为 10。修改后重启 Relanox。
 
 聊天平台也有自己的文件要求。发送前同时检查文件类型和大小。`relanox_status.mediaLimits` 将配置的单条消息限制显示为 `maxBytes`、`maxTotalBytes` 和 `maxAttachments`，各渠道还会报告支持的媒体及附件数量限制。封面字节计入单条消息总大小。遇到超限提示时，可以压缩文件、拆成几次发送，或调整 Relanox 的大小设置。
 

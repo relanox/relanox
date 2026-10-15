@@ -33,7 +33,7 @@
 
 ## 图片和文件
 
-可发送图片、音频、视频、文件或富文本消息。回复可包含 20 MiB 内的 JPEG/PNG/GIF/BMP 图片、MP4 视频和文件，以及 2 MiB 内的 AMR 音频，同时受 Relanox 限制。生成音频需带时长；视频还需图片预览和时长。文件回复使用 XLSX、PDF、ZIP、RAR、DOC 或 DOCX 格式。
+可发送图片、音频、视频、文件或富文本消息。回复可包含 20 MB 内的 JPEG/PNG/GIF/BMP 图片、MP4 视频和文件，以及 2 MB 内的 AMR 音频，同时受 Relanox 限制。生成音频需带时长；视频还需图片预览和时长。文件回复使用 XLSX、PDF、ZIP、RAR、DOC 或 DOCX 格式。
 
 ## 常见问题
 

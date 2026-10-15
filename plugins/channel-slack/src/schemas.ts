@@ -43,7 +43,10 @@ export const messageSchema = z.looseObject({
   root: z
     .looseObject({ thread_ts: z.string().regex(/^\d+\.\d+$/u) })
     .optional(),
-  text: z.string().max(1_048_576).optional(),
+  text: z
+    .string()
+    .max(1024 * 1024)
+    .optional(),
   files: z.array(fileSchema).max(10).default([])
 })
 

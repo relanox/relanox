@@ -28,14 +28,14 @@ export const appConfigSchema = z
           .number()
           .int()
           .min(1)
-          .max(209_715_200)
-          .default(104_857_600),
+          .max(200 * 1024 * 1024)
+          .default(100 * 1024 * 1024),
         maxTotalMediaBytes: z
           .number()
           .int()
           .min(1)
-          .max(209_715_200)
-          .default(104_857_600),
+          .max(200 * 1024 * 1024)
+          .default(100 * 1024 * 1024),
         maxAttachments: z.number().int().min(1).max(10).default(10)
       })
       .optional(),

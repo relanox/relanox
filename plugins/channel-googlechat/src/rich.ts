@@ -9,7 +9,7 @@ export const richCapabilities = {
   maxParts: 20,
   maxTextLength: 2000,
   imageMimeTypes: ['image/png', 'image/jpeg'],
-  maxImageBytes: 2_000_000
+  maxImageBytes: 2 * 1000 * 1000
 }
 
 export function richError(

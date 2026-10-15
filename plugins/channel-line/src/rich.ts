@@ -36,7 +36,7 @@ export function richError(
         media.reference.kind !== 'image' ||
         !['image/jpeg', 'image/png'].includes(media.reference.mimeType) ||
         media.data.byteLength >
-          Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, 10_000_000)
+          Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, 10 * 1000 * 1000)
     )
   ) {
     return 'image_format_or_size_unsupported'

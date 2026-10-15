@@ -143,7 +143,7 @@ export function createMattermostChannel(
 
     const current = new WebSocket(url, {
       handshakeTimeout: requestTimeoutMs,
-      maxPayload: 2_097_152,
+      maxPayload: 2 * 1024 * 1024,
       headers: { Authorization: `Bearer ${token}` },
       followRedirects: false
     })
@@ -360,7 +360,7 @@ export function createMattermostChannel(
               richText: {
                 maxParts: 20,
                 maxTextLength: 8000,
-                maxImageBytes: runtime.host.maxMediaBytes ?? 16_777_216
+                maxImageBytes: runtime.host.maxMediaBytes ?? 16 * 1024 * 1024
               }
             }
           : {}),

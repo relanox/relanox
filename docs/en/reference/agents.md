@@ -68,7 +68,7 @@ dot uses OAuth; `mcp.auth` defaults to `oauth` and rejects other values. Grok su
 
 dot provides its callback URL when it subscribes through MCP. Relanox accepts the native `https://connectors.api.openai.com` origin and checks that DNS resolves to public addresses before delivery. There is no `callback` configuration section.
 
-Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MiB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds.
+Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and Grok Routine bodies are limited to 1 MB. dot subscriptions expire after at most 24 hours, and signing-key rotation keeps the previous signature for 60 seconds.
 
 Relanox requires an active `relanox.message_available` subscription to notify dot. The default lifetime is one day. Ask dot to create the subscription after its connection check. Automatic renewal has not been verified with a live account. `dot_no_active_subscription` means Relanox has no active subscription, even if OAuth succeeded. Inspect the plugin connection and runtime logs; if the request exhausted retries, use [Operations](../operations.md#find-and-recover-a-stalled-message) to recover it.
 

@@ -191,7 +191,7 @@ export function createDiscordGateway(
     url.searchParams.set('encoding', 'json')
 
     const ws = new WebSocket(url, {
-      maxPayload: 1_048_576,
+      maxPayload: 1024 * 1024,
       handshakeTimeout: REQUEST_TIMEOUT_MS
     })
 

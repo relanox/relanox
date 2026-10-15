@@ -15,7 +15,10 @@ import { httpFailure, readJson } from './protocol.js'
 const mediaSchema = z
   .object({
     msgtype: z.enum(['m.image', 'm.audio', 'm.video', 'm.file']),
-    body: z.string().min(1).max(1_048_576),
+    body: z
+      .string()
+      .min(1)
+      .max(1024 * 1024),
     filename: z.string().min(1).max(255).optional(),
     url: z.string(),
     info: z
@@ -68,7 +71,7 @@ export async function receiveMedia(
   const downloaded = await downloadMedia(
     `${base}/_matrix/client/v1/media/download/${encodeURIComponent(uri.server)}/${encodeURIComponent(uri.id)}`,
     {
-      maxBytes: host.maxMediaBytes ?? 16_777_216,
+      maxBytes: host.maxMediaBytes ?? 16 * 1024 * 1024,
       signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
       headers,
       trustedOrigins: [new URL(base).origin],

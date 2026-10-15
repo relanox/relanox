@@ -229,7 +229,7 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
     capabilities: {
       receive: true,
       transport: 'connection',
-      maxTextLength: 20_480,
+      maxTextLength: 20 * 1024,
       lengthUnit: 'utf8',
       idempotentSend: false,
       media: {
@@ -362,7 +362,7 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
 
       const content = input.chunk.text
 
-      if (Buffer.byteLength(content) > 20_480) {
+      if (Buffer.byteLength(content) > 20 * 1024) {
         return { status: 'rejected', errorCode: 'text_too_long' }
       }
       let transmitting = false

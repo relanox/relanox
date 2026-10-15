@@ -102,7 +102,7 @@ function previewError(input: SendInput): string | undefined {
   if (
     !preview ||
     !['image/jpeg', 'image/png'].includes(preview.reference.mimeType) ||
-    preview.data.byteLength > 1_000_000
+    preview.data.byteLength > 1000 * 1000
   ) {
     return 'media_requires_jpeg_png_preview'
   }
@@ -133,11 +133,13 @@ export function mediaError(
     case 'image': {
       if (
         !['image/jpeg', 'image/png'].includes(media.reference.mimeType) ||
-        media.data.byteLength > 10_000_000
+        media.data.byteLength > 10 * 1000 * 1000
       ) {
         return 'image_format_or_size_unsupported'
       }
-      return media.data.byteLength > 1_000_000 ? previewError(input) : undefined
+      return media.data.byteLength > 1000 * 1000
+        ? previewError(input)
+        : undefined
     }
     case 'audio': {
       if (
@@ -145,7 +147,7 @@ export function mediaError(
           media.reference.mimeType
         ) ||
         !media.reference.durationMs ||
-        media.data.byteLength > 200_000_000
+        media.data.byteLength > 200 * 1000 * 1000
       ) {
         return 'audio_requires_mp3_m4a_duration'
       }
@@ -154,7 +156,7 @@ export function mediaError(
     case 'video': {
       if (
         media.reference.mimeType !== 'video/mp4' ||
-        media.data.byteLength > 200_000_000
+        media.data.byteLength > 200 * 1000 * 1000
       ) {
         return 'video_format_or_size_unsupported'
       }

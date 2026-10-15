@@ -96,7 +96,7 @@ export async function guard(
         break
       }
       size += chunk.value.byteLength
-      if (size > 1_048_576) {
+      if (size > 1024 * 1024) {
         void cancelReader(reader)
         return Response.json({ error: 'body_too_large' }, { status: 413 })
       }
@@ -366,7 +366,7 @@ export function registerTools(
         ),
         text: z
           .string()
-          .max(1_048_576)
+          .max(1024 * 1024)
           .default('')
           .describe(
             'Your reply as Markdown with ordered file references: ![description](relanox://media/UUID) embeds a channel-owned image; [filename](relanox://media/UUID) sends a file at that position. Use relanox://attachment/1 for the first item in attachments followed by files (1-based). Unreferenced attachments follow the text. Each file may appear once. Code examples stay literal. Check status.richText for native layout or ordered separate messages. May be empty when sending attachments.'

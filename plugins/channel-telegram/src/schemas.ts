@@ -25,8 +25,14 @@ const messageSchema = z.looseObject({
     id: z.number().int(),
     type: z.enum(['private', 'group', 'supergroup', 'channel'])
   }),
-  text: z.string().max(1_048_576).optional(),
-  caption: z.string().max(1_048_576).optional(),
+  text: z
+    .string()
+    .max(1024 * 1024)
+    .optional(),
+  caption: z
+    .string()
+    .max(1024 * 1024)
+    .optional(),
   photo: z.array(fileSchema).max(20).optional(),
   audio: fileSchema.optional(),
   voice: fileSchema.optional(),

@@ -169,7 +169,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
                 imageMimeTypes: ['image/jpeg', 'image/png'],
                 maxImageBytes: Math.min(
                   runtime.host.maxMediaBytes ?? 25 * 1024 * 1024,
-                  10_000_000
+                  10 * 1000 * 1000
                 )
               }
             }

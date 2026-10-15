@@ -34,7 +34,7 @@ Open a conversation with the bot, or add it to the bound group and mention it wi
 
 ## Images and files
 
-Send images, audio, videos, files or rich posts with your question. Grant resource download/upload permissions such as `im:resource` or the applicable upload scope. Replies can contain images up to 10 MiB and other uploads up to 30 MiB, within the relay limit.
+Send images, audio, videos, files or rich posts with your question. Grant resource download/upload permissions such as `im:resource` or the applicable upload scope. Replies can contain images up to 10 MB and other uploads up to 30 MB, within the relay limit.
 
 ## Troubleshooting
 

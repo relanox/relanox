@@ -40,7 +40,7 @@ export const messageSchema = z.looseObject({
     chat_id: platformIdSchema,
     chat_type: platformIdSchema,
     message_type: platformIdSchema,
-    content: z.string().max(1_048_576),
+    content: z.string().max(1024 * 1024),
     create_time: z.string(),
     mentions: z
       .array(
@@ -69,9 +69,15 @@ export const tenantTokenResponseSchema = z.looseObject({
 })
 
 export const encryptedEventSchema = z.object({
-  encrypt: z.string().min(1).max(1_048_576)
+  encrypt: z
+    .string()
+    .min(1)
+    .max(1024 * 1024)
 })
 
 export const textContentSchema = z.looseObject({
-  text: z.string().min(1).max(1_048_576)
+  text: z
+    .string()
+    .min(1)
+    .max(1024 * 1024)
 })

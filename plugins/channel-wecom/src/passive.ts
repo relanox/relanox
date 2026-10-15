@@ -205,7 +205,7 @@ export async function stagePassive(
     return failure
   }
   const content = state.content + input.chunk.text
-  if (Buffer.byteLength(content) > 20_480) {
+  if (Buffer.byteLength(content) > 20 * 1024) {
     return { status: 'rejected', errorCode: 'text_too_long' }
   }
   const count = input.chunkCount ?? 1

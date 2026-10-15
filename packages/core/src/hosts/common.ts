@@ -80,7 +80,11 @@ export function createCommonHostFactory(
         }
         routes.add(route)
         if (options) {
-          z.number().int().min(1).max(209_715_200).parse(options.maxBodyBytes)
+          z.number()
+            .int()
+            .min(1)
+            .max(200 * 1024 * 1024)
+            .parse(options.maxBodyBytes)
           httpRoutes.set(route, options)
         }
         app.all(route, async (context) => {

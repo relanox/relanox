@@ -396,7 +396,7 @@ export function createMatrixChannel(
         return {
           maxParts: 20,
           maxTextLength: 8000,
-          maxImageBytes: runtime?.host.maxMediaBytes ?? 16_777_216
+          maxImageBytes: runtime?.host.maxMediaBytes ?? 16 * 1024 * 1024
         }
       },
       media: {

@@ -15,7 +15,7 @@ export const richCapabilities = {
     'image/webp',
     'image/bmp'
   ],
-  maxImageBytes: 10_485_760
+  maxImageBytes: 10 * 1024 * 1024
 }
 
 export function richError(

@@ -597,7 +597,7 @@ Relanox 启动时会用机器人 Token 自动查询工作区和机器人用户 I
 }
 ```
 
-在公网 HTTPS 地址下注册 `/channels/{accountId}/webhook`。已验证的消息回调建立回复目标；填写聊天 ID 无法创建该目标。回调使用[企业微信被动回复协议](https://developer.work.weixin.qq.com/document/path/101031)：首次返回签名加密响应并提供 `stream.id`，随后通过已验证的 `msgtype: "stream"` 刷新回调取得一次完整最终回复。回复和图片持久化保存，进程重启后仍可继续刷新。`finish: true` 的响应包含 Markdown `content`，以及最多 10 个带 Base64 图片数据和原始字节 MD5 的 `msg_item`。文字上限为 20,480 个 UTF-8 字节；当前实现接受 10 MiB 内的 PNG/JPEG 图片，等待回复保留十分钟。最终刷新返回前，投递状态保持等待；重复刷新返回同一最终回复。此 HTTP 回复协议不支持发送音频、视频和文件。`recipientTypes` 和下方 WebSocket 发现命令不适用于回调账号。
+在公网 HTTPS 地址下注册 `/channels/{accountId}/webhook`。已验证的消息回调建立回复目标；填写聊天 ID 无法创建该目标。回调使用[企业微信被动回复协议](https://developer.work.weixin.qq.com/document/path/101031)：首次返回签名加密响应并提供 `stream.id`，随后通过已验证的 `msgtype: "stream"` 刷新回调取得一次完整最终回复。回复和图片持久化保存，进程重启后仍可继续刷新。`finish: true` 的响应包含 Markdown `content`，以及最多 10 个带 Base64 图片数据和原始字节 MD5 的 `msg_item`。文字上限为 20,480 个 UTF-8 字节；当前实现接受 10 MB 内的 PNG/JPEG 图片，等待回复保留十分钟。最终刷新返回前，投递状态保持等待；重复刷新返回同一最终回复。此 HTTP 回复协议不支持发送音频、视频和文件。`recipientTypes` 和下方 WebSocket 发现命令不适用于回调账号。
 
 ### 协议与命令细节
 

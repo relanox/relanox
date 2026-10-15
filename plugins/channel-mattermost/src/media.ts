@@ -49,12 +49,12 @@ async function collectFiles(
     if (info.id !== id) {
       throw new Error('invalid_media_metadata')
     }
-    if (info.size > (host.maxMediaBytes ?? 16_777_216)) {
+    if (info.size > (host.maxMediaBytes ?? 16 * 1024 * 1024)) {
       throw new MediaDownloadError('media_too_large')
     }
 
     const downloaded = await downloadMedia(url, {
-      maxBytes: host.maxMediaBytes ?? 16_777_216,
+      maxBytes: host.maxMediaBytes ?? 16 * 1024 * 1024,
       signal: bound,
       headers: { Authorization: authorization },
       trustedOrigins: [new URL(base).origin],

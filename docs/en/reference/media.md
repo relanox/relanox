@@ -52,14 +52,14 @@ The declared inline image limits are:
 
 | Channel            | Image formats                           | Maximum inline bytes            |
 | ------------------ | --------------------------------------- | ------------------------------- |
-| Feishu / Lark      | PNG, JPEG, GIF, WebP, BMP               | 10 MiB                          |
-| DingTalk           | PNG, JPEG, GIF, BMP                     | 20 MiB                          |
-| Slack              | PNG, JPEG, GIF                          | 25 MiB                          |
+| Feishu / Lark      | PNG, JPEG, GIF, WebP, BMP               | 10 MB                           |
+| DingTalk           | PNG, JPEG, GIF, BMP                     | 20 MB                           |
+| Slack              | PNG, JPEG, GIF                          | 25 MB                           |
 | Google Chat        | PNG, JPEG                               | 2,000,000 bytes                 |
 | Microsoft Teams    | PNG, JPEG, GIF                          | 1,000,000 bytes                 |
 | LINE               | PNG, JPEG                               | 10,000,000 bytes                |
-| QQ                 | PNG, JPEG                               | 20 MiB                          |
-| Discord            | No additional MIME restriction declared | 10 MiB                          |
+| QQ                 | PNG, JPEG                               | 20 MB                           |
+| Discord            | No additional MIME restriction declared | 10 MB                           |
 | Matrix, Mattermost | No additional MIME restriction declared | Configured per-file media limit |
 
 Configured media limits may lower these values. Use status for the active limit. DingTalk and QQ also limit the serialized Markdown, including image references, to 4,000 and 2,000 UTF-8 bytes respectively. Native layout support still depends on the platform and client.
@@ -92,7 +92,7 @@ Large images and files in Teams personal chats use the platform's file consent f
 
 ## Adjust attachment sizes
 
-The defaults allow 100 MiB (104,857,600 bytes) per attachment and in one message, with up to 10 attachments. Add `mediaLimits` at the top level of your configuration to adjust these values:
+The defaults allow 100 MB (104,857,600 bytes) per attachment and in one message, with up to 10 attachments. Add `mediaLimits` at the top level of your configuration to adjust these values:
 
 ```json
 {
@@ -104,7 +104,7 @@ The defaults allow 100 MiB (104,857,600 bytes) per attachment and in one message
 }
 ```
 
-The first two values are measured in bytes: the size of one attachment and the combined size for one message. Both can be set up to 200 MiB. `maxAttachments` can be set up to 10. Restart Relanox after editing the settings.
+The first two values are measured in bytes: the size of one attachment and the combined size for one message. Both can be set up to 200 MB. `maxAttachments` can be set up to 10. Restart Relanox after editing the settings.
 
 Chat platforms have their own file requirements too. Check the type and size before sending. `relanox_status.mediaLimits` reports the configured per-message limits as `maxBytes`, `maxTotalBytes` and `maxAttachments`; each channel also reports its supported media and attachment limit. Cover-image bytes count toward the message's total size. For a size error, try compressing the file, sending smaller batches or adjusting Relanox's settings.
 

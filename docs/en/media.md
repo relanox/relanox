@@ -8,7 +8,7 @@ Start with a small picture and ask, “Please describe this image.” Once the A
 
 Send a small image in the chat you selected in the [connection configurator](connect.md), and ask the Agent to describe it. You do not need a separate attachment prompt or connection. For audio, video and other files, check your [channel guide](channels/index.md) for supported formats and any duration or cover-image requirements.
 
-Small UTF-8 text, Markdown, CSV, TSV and JSON files up to 64 KiB can be read directly through the connection. Larger files and other formats require the Agent to download them; its network or file support may limit what it can read.
+Small UTF-8 text, Markdown, CSV, TSV and JSON files up to 64 KB can be read directly through the connection. Larger files and other formats require the Agent to download them; its network or file support may limit what it can read.
 
 ## Let your agent understand voice messages
 
@@ -38,7 +38,7 @@ The result depends on the channel. Some channels display text and pictures toget
 
 ## Choose a suitable file size
 
-The default limits allow 100 MiB per attachment and 100 MiB in one message, with no more than 10 attachments. Your chat platform or its SDK may have lower limits. Start with small files; if a file is too large, compress it or send smaller batches.
+The default limits allow 100 MB per attachment and 100 MB in one message, with no more than 10 attachments. Your chat platform or its SDK may have lower limits. Start with small files; if a file is too large, compress it or send smaller batches.
 
 To change the size limits or download-link lifetime, use [Media configuration and protocol](reference/media.md). That chapter also documents manual JSON settings and the tools used by the Agent.
 
