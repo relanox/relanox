@@ -44,7 +44,7 @@ node apps/cli/dist/main.js validate --config relanox.json
 
 使用 WebSocket 模式时，启动 Relanox 后会自动连接机器人。保持进程运行。
 
-WebSocket 接入由[企业微信官方 Node SDK](https://github.com/WecomTeam/aibot-node-sdk)处理鉴权、心跳、重连、原生回复和媒体上传。SDK 的内存接收、回复队列与 Core 存储相互独立。回调到达 SDK 时，Core 可能尚未保存；存储或下载失败后，平台不保证重新投递。请检查连接状态，并重新发送未被接收的消息。HTTP 模式仍在 Core 保存回调后才确认接收，临时失败可由平台重投恢复。
+WebSocket 接入由[企业微信官方 Node SDK](https://github.com/WecomTeam/aibot-node-sdk)处理鉴权、心跳、重连、原生回复和媒体上传。SDK 将收到的回调直接交给 Relanox，并在内存中排列待发送回复；它不提供持久化接收恢复。回调到达 SDK 时，Core 可能尚未保存；存储或下载失败后，平台不保证重新投递。请检查连接状态，并重新发送未被接收的消息。HTTP 模式使用 SDK 的回调加解密能力，并在 Core 保存回调后才确认接收，临时失败可由平台重投恢复。
 
 需要在 Relanox 收到该会话消息前通过 WebSocket 向已绑定会话发送时，在下载配置的账号 `config` 中加入 `recipientTypes`，将会话的「聊天 ID」映射为 `single` 或 `group`。省略时，Relanox 从已验证的消息事件取得类型。使用准确的成员 userid 或群聊 ID，「话题 / 线程 ID」留空。参见[手写配置示例](../reference/channels.md#wecom)。
 

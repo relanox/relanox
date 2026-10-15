@@ -81,6 +81,12 @@ test('HTTP replies finish the selected original callback after three requests ar
   }
 })
 
+// The SDK owns callback crypto; signature/freshness checks still protect Core.
+// The old test also enforced a local empty-suffix restriction, which the SDK's
+// Optional receiveId intentionally does not impose. This uses independent wire
+// Encryption and real SQLite, with no production testing interface.
+// Published @wecom/aibot-node-sdk 1.0.7 dist/index.esm.js: WecomCrypto.decrypt
+// Only checks the receiveId suffix when a nonempty receiveId was configured.
 test('callback verifies URL challenges and rejects forged or stale encrypted requests before ingestion', async () => {
   const host = await assemble(createWeComChannel(), callbackConfig, [
     { chatId: 'user', senderId: 'user' }
@@ -94,11 +100,7 @@ test('callback verifies URL challenges and rejects forged or stale encrypted req
 
   expect(echo.status).toBe(200)
   expect(await echo.text()).toBe('challenge')
-  for (const options of [
-    { token: 'forged' },
-    { timestamp: '1' },
-    { receiver: 'unexpected-receiver' }
-  ]) {
+  for (const options of [{ token: 'forged' }, { timestamp: '1' }]) {
     const response = await host.runtime.fetch(
       callbackRequest(callbackMessage(), options)
     )
@@ -106,6 +108,31 @@ test('callback verifies URL challenges and rejects forged or stale encrypted req
     expect(response.status).toBeGreaterThanOrEqual(400)
   }
   expect(await records(host.storage)).toEqual([])
+  expect(
+    (
+      await host.runtime.fetch(
+        callbackRequest(
+          { ...callbackMessage(), aibotid: 'other' },
+          { receiver: 'sdk-optional-receiver' }
+        )
+      )
+    ).status
+  ).toBe(503)
+  expect(await records(host.storage)).toEqual([])
+  expect(
+    (
+      await host.runtime.fetch(
+        callbackRequest(callbackMessage(), {
+          receiver: 'sdk-optional-receiver'
+        })
+      )
+    ).status
+  ).toBe(200)
+  expect(
+    (await records(host.storage)).map(
+      (record) => record.snapshot.source.eventId
+    )
+  ).toEqual(['callback-1'])
 })
 
 test('callback persists a deduplicated message and private reply destination across plugin restart', async () => {

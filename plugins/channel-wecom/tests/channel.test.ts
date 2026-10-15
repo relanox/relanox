@@ -3,7 +3,13 @@ import { expect, test, vi } from 'vitest'
 import { wireText } from '../../channel-wecom/src/transport.js'
 import { z } from 'zod'
 import { createWeComChannel } from '../src/index.js'
-import { assemble, peer, records, sendInput } from './test-support.js'
+import {
+  assemble,
+  peer,
+  records,
+  sendInput,
+  startConnected
+} from './test-support.js'
 
 installPeerNetwork()
 
@@ -32,7 +38,7 @@ test('WeCom uses the selected callback request for out-of-order native replies a
     [{ chatId: 'user', senderId: 'user' }]
   )
 
-  await host.start()
+  await startConnected(host)
   for (const number of [1, 2, 3]) {
     remote.sockets[0]?.send(
       JSON.stringify({
@@ -185,7 +191,7 @@ test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
     ]
   )
 
-  await host.start()
+  await startConnected(host)
   expect(remote.frames[0]).toMatchObject({
     cmd: 'aibot_subscribe',
     body: { bot_id: 'robot', secret: 'private-value' }
@@ -392,7 +398,7 @@ test('WeCom stops recovery after the platform replaces this bot connection', asy
     [{ chatId: 'user', senderId: 'user' }]
   )
 
-  await host.start()
+  await startConnected(host)
   const socket = remote.sockets[0]
   if (!socket) {
     throw new Error('Peer not connected')
@@ -517,7 +523,7 @@ test('WeCom websocket sends to explicitly configured single/group conversations 
     ]
   )
 
-  await host.start()
+  await startConnected(host)
   for (const chatId of ['user', 'group']) {
     const resolved = await plugin.resolveChannel?.({
       id: 'channel',

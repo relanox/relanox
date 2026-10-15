@@ -9,7 +9,8 @@ import {
   peer,
   records,
   temporaryDatabase,
-  sendInput
+  sendInput,
+  startConnected
 } from './test-support.js'
 import {
   callbackConfig,
@@ -74,7 +75,7 @@ async function sdkMediaInput(
     [{ chatId: 'user', senderId: 'user' }]
   )
 
-  await host.start()
+  await startConnected(host)
 
   const input = sendInput('wecom', 'user', {
     chattype: 'single',
@@ -201,7 +202,7 @@ test.each(['websocket', 'webhook'] as const)(
       filename
     )
 
-    await host.start()
+    await startConnected(host)
 
     const body = {
       ...callbackMessage('native-file'),
@@ -345,7 +346,7 @@ test.each([false, true])(
       [{ chatId: 'user', senderId: 'user' }]
     )
 
-    await host.start()
+    await startConnected(host)
     if (explicit) {
       remote.sockets[0]?.send(
         JSON.stringify({
@@ -504,7 +505,7 @@ test.each([
       [{ chatId: 'user', senderId: 'user' }]
     )
 
-    await host.start()
+    await startConnected(host)
     const principal = host.principal()
     const channel = (await principal.status()).channels[0]?.channel.id
     if (!channel) {
@@ -603,7 +604,7 @@ test('WeCom decrypts pure-media input into SQLite and uploads original bytes aft
     filename
   )
 
-  await local.start()
+  await startConnected(local)
   remote.sockets[0]?.send(
     JSON.stringify({
       cmd: 'aibot_msg_callback',
@@ -637,7 +638,7 @@ test('WeCom decrypts pure-media input into SQLite and uploads original bytes aft
     filename
   )
 
-  await restarted.start()
+  await startConnected(restarted)
   const scoped = restarted.principal()
   const task = (await restarted.storage.listInbound({ limit: 10 }))[0]?.snapshot
   if (!task?.attachments?.[0]) {
