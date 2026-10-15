@@ -42,7 +42,12 @@ export async function ingest(
   }
 }
 
-export function failure(response: Response): SendResult {
+type FailureResult = Extract<
+  SendResult,
+  { status: 'retryable' | 'rejected' | 'unknown' }
+>
+
+export function failure(response: Response): FailureResult {
   if (response.status === 429) {
     const seconds = Number(response.headers.get('retry-after'))
 
@@ -62,6 +67,49 @@ export function failure(response: Response): SendResult {
   return { status, errorCode: `provider_http_${response.status}` }
 }
 
-export function unavailable(): SendResult {
+export function unavailable(): FailureResult {
   return { status: 'unknown', errorCode: 'transport_or_response_unknown' }
+}
+
+const sdkErrorSchema = z.object({
+  response: z
+    .object({
+      status: z.number().int(),
+      headers: z
+        .object({ 'retry-after': z.coerce.string().optional() })
+        .optional()
+    })
+    .optional(),
+  errorCode: z.string().optional()
+})
+
+export function platformFailure(error: unknown, oauth = false): FailureResult {
+  const parsed = sdkErrorSchema.safeParse(error)
+  const response = parsed.success ? parsed.data.response : undefined
+  if (response?.status === 401 && !oauth) {
+    return { status: 'retryable', errorCode: 'oauth_token_rejected' }
+  }
+  if (response) {
+    return failure(
+      new Response(null, {
+        status: response.status,
+        headers: response.headers?.['retry-after']
+          ? { 'retry-after': response.headers['retry-after'] }
+          : {}
+      })
+    )
+  }
+  if (oauth) {
+    const permanent =
+      parsed.success &&
+      ['invalid_client', 'invalid_grant', 'unauthorized_client'].includes(
+        parsed.data.errorCode ?? ''
+      )
+
+    return {
+      status: permanent ? 'rejected' : 'retryable',
+      errorCode: 'oauth_unavailable'
+    }
+  }
+  return unavailable()
 }
