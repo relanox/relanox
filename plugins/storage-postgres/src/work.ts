@@ -1,5 +1,5 @@
 import type { Storage, DueWork } from '@relanox/sdk'
-import { needsPreparation } from '@relanox/sdk'
+import { isFiltered, needsPreparation } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
 import { boundedLimit } from './database.js'
 import { randomUUID } from 'node:crypto'
@@ -47,6 +47,7 @@ export function createWorkOperations(
           if (
             record.version !== input.expectedVersion ||
             record.redactedAt !== undefined ||
+            isFiltered(record) ||
             record.reply?.finalDeliveryId !== undefined ||
             !['accepted', 'unknown', 'rejected'].includes(
               record.dispatch.status

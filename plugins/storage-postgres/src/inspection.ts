@@ -20,13 +20,19 @@ import {
 import { alias } from 'drizzle-orm/pg-core'
 import { conversations, inbound, outbound, media } from './schema.js'
 
-const prepared = or(
-  isNull(sql`${inbound.record}#>'{snapshot,middleware}'`),
-  eq(
-    sql<number>`jsonb_array_length(${inbound.record}#>'{snapshot,middleware}')`,
-    0
+const prepared = and(
+  or(
+    isNull(sql`${inbound.record}#>>'{dispatch,errorCode}'`),
+    ne(sql`${inbound.record}#>>'{dispatch,errorCode}'`, 'middleware_filtered')
   ),
-  isNotNull(sql`${inbound.record}->'preparation'`)
+  or(
+    isNull(sql`${inbound.record}#>'{snapshot,middleware}'`),
+    eq(
+      sql<number>`jsonb_array_length(${inbound.record}#>'{snapshot,middleware}')`,
+      0
+    ),
+    isNotNull(sql`${inbound.record}->'preparation'`)
+  )
 )
 
 export function createInspectionOperations(

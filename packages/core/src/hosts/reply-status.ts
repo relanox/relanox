@@ -6,6 +6,7 @@ import type {
 } from '@relanox/sdk'
 import type { AgentHostOptions } from './agent.js'
 import { canonicalJson } from '../json.js'
+import { isFiltered } from '@relanox/sdk'
 
 /** Bind an explicit reply to its original native context, even after newer input arrives. */
 export async function replyConversation(
@@ -16,6 +17,7 @@ export async function replyConversation(
   const record = await options.storage.getInbound(requestId)
   if (
     !record ||
+    isFiltered(record) ||
     record.snapshot.channel.id !== conversation.address.id ||
     canonicalJson(record.snapshot.endpoint) !==
       canonicalJson(conversation.endpoint)
@@ -29,6 +31,9 @@ export async function replyStatus(
   storage: Storage,
   record: InboundRecord
 ): Promise<ReplyStatus> {
+  if (isFiltered(record)) {
+    return { status: 'rejected', errorCode: 'middleware_filtered' }
+  }
   const deliveryId = record.reply?.finalDeliveryId
   if (deliveryId) {
     const delivery = await storage.getOutbound(deliveryId)

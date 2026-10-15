@@ -27,13 +27,19 @@ import {
 import { inbound, outbound, media, conversations } from './schema.js'
 import { jsonValue } from './expressions.js'
 
-const prepared = or(
-  isNull(jsonValue(inbound.record, '$.snapshot.middleware')),
-  eq(
-    sql<number>`json_array_length(${inbound.record}, '$.snapshot.middleware')`,
-    0
+const prepared = and(
+  or(
+    isNull(jsonValue(inbound.record, '$.dispatch.errorCode')),
+    ne(jsonValue(inbound.record, '$.dispatch.errorCode'), 'middleware_filtered')
   ),
-  isNotNull(jsonValue(inbound.record, '$.preparation'))
+  or(
+    isNull(jsonValue(inbound.record, '$.snapshot.middleware')),
+    eq(
+      sql<number>`json_array_length(${inbound.record}, '$.snapshot.middleware')`,
+      0
+    ),
+    isNotNull(jsonValue(inbound.record, '$.preparation'))
+  )
 )
 
 export function createInspectionOperations(

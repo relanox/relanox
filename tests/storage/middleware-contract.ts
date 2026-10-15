@@ -51,6 +51,113 @@ export function middlewareContract(
     })
     afterEach(async () => storage.close())
 
+    it('settles a filtered prefix atomically and excludes it before limiting agent reads', async () => {
+      const filtered = {
+        ...snapshot('filtered', 110),
+        middleware: [
+          { id: 'filter', options: null },
+          { id: 'later', options: null }
+        ]
+      }
+
+      await storage.acceptInbound(filtered)
+      await storage.acceptInbound({ ...snapshot('ready', 90), middleware: [] })
+      await storage.acceptInbound({ ...snapshot('newer', 120), middleware: [] })
+
+      const work = required(
+        (await storage.takeDue({ ...scan, now: 110, limit: 10 })).find(
+          (item) =>
+            item.kind !== 'send' &&
+            item.record.snapshot.requestId === 'filtered'
+        )
+      )
+
+      const settlement = {
+        kind: 'prepare' as const,
+        id: 'filtered',
+        lease: work.lease,
+        now: 111,
+        outcome: {
+          status: 'prepared' as const,
+          preparation: [
+            { id: 'filter', status: 'completed' as const, output: null }
+          ]
+        }
+      }
+
+      // A filtered prefix may end early, but cannot include steps after null.
+      expect(
+        await storage.settleAttempt({
+          ...settlement,
+          outcome: {
+            status: 'prepared',
+            preparation: [
+              ...settlement.outcome.preparation,
+              {
+                id: 'later',
+                status: 'completed',
+                output: { text: 'invalid continuation' }
+              }
+            ]
+          }
+        })
+      ).toEqual({ status: 'conflict' })
+      expect(await storage.settleAttempt(settlement)).toMatchObject({
+        status: 'updated'
+      })
+      const record = required(await storage.getInbound('filtered'))
+      expect(record.dispatch).toMatchObject({
+        status: 'rejected',
+        errorCode: 'middleware_filtered'
+      })
+      expect(record.snapshot).toEqual(filtered)
+      expect(
+        (
+          await storage.listInbound({ readyOnly: true, recent: true, limit: 2 })
+        ).map((row) => row.snapshot.requestId)
+      ).toEqual(['newer', 'ready'])
+      expect(
+        (await storage.listPendingInbound({ ...pending, limit: 2 })).map(
+          (row) => row.snapshot.requestId
+        )
+      ).toEqual(['ready', 'newer'])
+      expect(
+        (await storage.listInbound({ limit: 10 })).map(
+          (row) => row.snapshot.requestId
+        )
+      ).toContain('filtered')
+      expect(
+        await storage.requeue({
+          kind: 'request',
+          id: 'filtered',
+          expectedVersion: record.version,
+          now: 112,
+          acknowledgeUnknown: true
+        })
+      ).toEqual({ status: 'conflict' })
+      const message = completion()
+      const reply = { requestId: 'filtered', kind: 'final' as const }
+      expect(
+        await storage.enqueueMessage({
+          ...message,
+          message: { ...message.message, reply },
+          outbound: { ...message.outbound, reply }
+        })
+      ).toEqual({ status: 'not_found' })
+      expect(
+        (await storage.takeDue({ ...scan, now: 1000, limit: 10 })).flatMap(
+          (item) =>
+            item.kind === 'send' ? [] : [item.record.snapshot.requestId]
+        )
+      ).not.toContain('filtered')
+      await storage.cleanup({ before: 2000, limit: 10 })
+      expect(await storage.getInbound('filtered')).toMatchObject({
+        preparation: [],
+        redactedAt: 2000,
+        dispatch: { status: 'rejected', errorCode: 'middleware_filtered' }
+      })
+    })
+
     it('filters unfinished preparation before limiting reads and prevents early replies', async () => {
       expect(await storage.listPendingInbound(pending)).toEqual([])
       const message = completion()

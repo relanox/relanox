@@ -16,7 +16,7 @@ export function preparedRequest(
   let text = record.snapshot.text
   const extensions: Record<string, Json> = {}
   for (const result of record.preparation ?? []) {
-    if (result.status === 'completed') {
+    if (result.status === 'completed' && result.output !== null) {
       text = result.output.text
       if (result.output.data !== undefined) {
         extensions[result.id] = result.output.data
