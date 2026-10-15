@@ -1,7 +1,7 @@
 import { App } from '@microsoft/teams.apps'
 import type { HttpRouteHandler } from '@microsoft/teams.apps'
-import { Client, PUBLIC } from '@microsoft/teams.api'
-import type { Activity, InvokeResponse } from '@microsoft/teams.api'
+import { PUBLIC } from '@microsoft/teams.api'
+import type { Activity, Client, InvokeResponse } from '@microsoft/teams.api'
 import type { RequestContext } from '@microsoft/teams.common'
 import { TeamsLogger } from './logger.js'
 import type { ChannelHost } from '@relanox/sdk'
@@ -114,11 +114,11 @@ export class TeamsClient {
 
   async api(base: string, signal: AbortSignal): Promise<Client> {
     const app = await this.app()
-    const client = app.client.clone()
-    client.use({
+    const client = app.api.clone({ serviceUrl: base })
+    client.http.use({
       request: ({ config }): RequestContext['config'] => ({ ...config, signal })
     })
-    return new Client(base, client, { tokenProvider: app.tokenProvider })
+    return client
   }
 }
 
