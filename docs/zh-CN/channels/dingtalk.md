@@ -37,7 +37,7 @@ channel 使用官方 [`dingtalk-stream` SDK](https://github.com/open-dingtalk/di
 
 当前应用机器人发送接口没有已验证的原生引用参数。Agent 可以提供 `reply.requestId`，将回复关联到选定请求并追踪完成状态，但钉钉会将其作为普通会话消息发送，不显示引用气泡。省略 `reply` 也普通发送。[官方 SDK 请求模型](https://github.com/alibabacloud-go/dingtalk/blob/1986c966942afc67b8ccae59d29d57989a45fe76/robot_1_0/client.go)定义了群聊和单聊接口支持的参数；Relanox 不会把消息 ID 填入未经文档确认的字段。
 
-可发送图片、音频、视频、文件或富文本消息。回复可包含 JPEG/PNG/GIF/BMP 图片、MP4 视频、AMR 音频和支持的文件。Core 媒体预算为 100 MiB；钉钉执行自身当前上传限制，其拒绝结果交回 Core，channel 不再重复预判字节上限。生成的 SDK 未覆盖旧版 `/media/upload` multipart 接口，因此仅此上传保留窄 HTTP 调用。入站下载继续执行 URL、重定向和字节上限保护。生成音频需带时长；视频还需图片预览和时长。文件回复使用 XLSX、PDF、ZIP、RAR、DOC 或 DOCX 格式。
+可发送图片、音频、视频、文件或富文本消息。常见格式包括 JPEG/PNG/GIF/BMP 图片、MP4 视频、AMR 音频和办公文档。Core 媒体预算为 100 MiB；每次上传的大小和格式由钉钉校验，低于该预算的文件也可能被平台拒绝。普通媒体和富文本图片上传的拒绝结果均交回 Core。生成的 SDK 未覆盖旧版 `/media/upload` multipart 接口，因此仅此上传保留窄 HTTP 调用。入站下载继续执行 URL、重定向和字节上限保护。生成音频需带时长；视频还需图片预览和时长。
 
 ## 常见问题
 

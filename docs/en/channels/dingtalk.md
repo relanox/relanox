@@ -37,7 +37,7 @@ The current application-robot send endpoints do not provide a verified native qu
 
 ## Images and files
 
-Send pictures, audio, videos, files or rich-text messages. Replies can include JPEG/PNG/GIF/BMP images, MP4 video, AMR audio and supported files. The Core media budget is 100 MiB; DingTalk enforces its own current upload limits and refusals are returned to Core. The channel does not duplicate those byte limits. The generated SDK does not cover the legacy `/media/upload` multipart endpoint, so only that upload remains a narrow HTTP call. Inbound downloads retain URL, redirect and byte-limit protection. File replies use XLSX, PDF, ZIP, RAR, DOC or DOCX formats.
+Send pictures, audio, videos, files or rich-text messages. Common formats include JPEG/PNG/GIF/BMP images, MP4 video, AMR audio and office documents. The Core media budget is 100 MiB; DingTalk validates each upload's size and format, so it can refuse a file below that budget. Refusals are returned to Core for ordinary and rich-text uploads. The generated SDK does not cover the legacy `/media/upload` multipart endpoint, so only that upload remains a narrow HTTP call. Inbound downloads retain URL, redirect and byte-limit protection. Generated audio needs a duration; video also needs an image preview and duration.
 
 ## Troubleshooting
 

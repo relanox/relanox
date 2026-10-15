@@ -253,7 +253,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       ) {
         return { status: 'rejected', errorCode: 'invalid_target' }
       }
-      const invalid = richError(input, host)
+      const invalid = richError(input)
       if (invalid) {
         return { status: 'rejected', errorCode: invalid }
       }
