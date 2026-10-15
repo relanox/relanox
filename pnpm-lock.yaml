@@ -699,6 +699,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      eventsource-parser:
+        specifier: 3.1.1
+        version: 3.1.1
       zod:
         specifier: 4.6.5
         version: 4.6.5
