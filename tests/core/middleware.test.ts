@@ -20,6 +20,115 @@ function prefix(id: string, value: string): MessageMiddleware {
   }
 }
 
+it.each(['dot', 'grok'] as const)(
+  'keeps filtered messages out of %s notifications, reads and recovery after restart',
+  async (agent) => {
+    const later = vi.fn(prefix('later', 'must not run:').process)
+
+    const filter = vi.fn<MessageMiddleware['process']>(
+      async (): Promise<MiddlewareOutput> => null
+    )
+
+    const fx = await middlewareFixture(
+      [
+        prefix('first', 'prepared:'),
+        { id: 'filter', plan: (): null => null, process: filter },
+        { ...prefix('later', ''), process: later }
+      ],
+      agent
+    )
+
+    try {
+      const receipt = await fx.channel.ingest({
+        ...incoming,
+        text: 'original',
+        attachments: [picture]
+      })
+
+      await fx.runtime.processDue()
+      expect(filter).toHaveBeenCalledOnce()
+      expect(filter.mock.calls[0]?.[0].message.text).toBe('prepared:original')
+      expect(later).not.toHaveBeenCalled()
+      expect(fx.dispatched).toEqual([])
+
+      const runtime = await fx.restart([])
+      await runtime.processDue()
+      const record = required(await fx.storage.getInbound(receipt.requestId))
+      expect(record.snapshot.text).toBe('original')
+      expect(record.preparation).toHaveLength(2)
+      expect(record.dispatch).toMatchObject({
+        status: 'rejected',
+        errorCode: 'middleware_filtered'
+      })
+      const principal = fx.principal()
+      expect(
+        (await principal.status({ requestId: receipt.requestId })).request
+          ?.reply
+      ).toEqual({
+        status: 'rejected',
+        errorCode: 'middleware_filtered'
+      })
+      expect(
+        await principal.readMessages({ requestId: receipt.requestId })
+      ).toEqual([])
+      expect(await principal.readMessages()).toEqual([])
+      expect(await principal.readMessages({ pending: true })).toEqual([])
+      expect(
+        await principal.sendMessage({
+          channel: record.snapshot.channel.id,
+          text: 'must not reply',
+          reply: { requestId: receipt.requestId, kind: 'final' }
+        })
+      ).toEqual({ status: 'not_found' })
+      expect(
+        await fx.storage.requeue({
+          kind: 'request',
+          id: receipt.requestId,
+          expectedVersion: record.version,
+          now: Date.now(),
+          acknowledgeUnknown: true
+        })
+      ).toEqual({ status: 'conflict' })
+      await runtime.processDue()
+      expect(fx.dispatched).toEqual([])
+    } finally {
+      await fx.close()
+    }
+  }
+)
+
+it('forwards attachments when middleware clears the text instead of returning null', async () => {
+  const fx = await middlewareFixture([
+    {
+      id: 'clear',
+      plan: (): null => null,
+      process: async (): Promise<MiddlewareOutput> => ({ text: '' })
+    }
+  ])
+
+  try {
+    const receipt = await fx.channel.ingest({
+      ...incoming,
+      attachments: [picture]
+    })
+
+    await fx.runtime.processDue()
+    const record = required(await fx.storage.getInbound(receipt.requestId))
+    expect(fx.dispatched).toHaveLength(1)
+    expect(fx.dispatched[0]?.text).toBe('')
+    expect(fx.dispatched[0]?.attachments).toEqual(record.snapshot.attachments)
+    expect(record.snapshot.attachments).toHaveLength(1)
+    expect(
+      (await fx.principal().readMessages({ requestId: receipt.requestId }))[0]
+    ).toMatchObject({
+      text: '',
+      reply: { status: 'awaiting_final' }
+    })
+  } finally {
+    await fx.close()
+  }
+})
+
 it('runs text middleware in captured order and reuses outputs after configuration changes', async () => {
   const first = prefix('first', 'A:')
   const second = prefix('second', 'B:')

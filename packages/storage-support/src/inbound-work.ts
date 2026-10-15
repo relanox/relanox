@@ -40,8 +40,16 @@ export function settleInbound(
     const stepIds = (record.snapshot.middleware ?? []).map((step) => step.id)
 
     const results = input.outcome.preparation
+
+    const filteredAt = results.findIndex(
+      (result) => result.status === 'completed' && result.output === null
+    )
+
+    const filtered = filteredAt !== -1
     if (
-      stepIds.length !== results.length ||
+      (filtered
+        ? filteredAt !== results.length - 1
+        : stepIds.length !== results.length) ||
       results.some((result, index) => result.id !== stepIds[index])
     ) {
       return undefined
@@ -51,9 +59,10 @@ export function settleInbound(
       preparation: results,
       version: record.version + 1,
       dispatch: {
-        status: 'due',
+        status: filtered ? 'rejected' : 'due',
         attempts: record.dispatch.attempts,
-        dueAt: input.now
+        dueAt: input.now,
+        ...(filtered ? { errorCode: 'middleware_filtered' } : {})
       }
     }
   }

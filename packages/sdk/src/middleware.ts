@@ -14,8 +14,11 @@ export type MiddlewareMessage = Omit<AgentMessage, 'reply'>
 /** Captured in configured order at acceptance. Options must contain no credentials. */
 export type MiddlewarePlan = { readonly id: string; readonly options: Json }
 
-/** Middleware can transform text and add its own namespaced data, never routing or original media. */
-export type MiddlewareOutput = { readonly text: string; readonly data?: Json }
+/** Null filters the whole message; an object transforms text/data, never routing or original media. */
+export type MiddlewareOutput = {
+  readonly text: string
+  readonly data?: Json
+} | null
 
 export type MiddlewareResult = { readonly id: string } & (
   | { readonly status: 'completed'; readonly output: MiddlewareOutput }
@@ -49,6 +52,11 @@ export type MiddlewarePlugin<C = Json> = {
   validateConfig(config: unknown): C
   setup(config: C): Promise<MessageMiddleware>
 } & PluginMetadata
+
+/** Durable terminal decision, retained even after preparation outputs are redacted. */
+export function isFiltered(record: InboundRecord): boolean {
+  return record.dispatch.errorCode === 'middleware_filtered'
+}
 
 export function needsPreparation(record: InboundRecord): boolean {
   return (

@@ -57,6 +57,9 @@ async function runMiddleware(
     }
   }
   try {
+    if (output === null) {
+      return { id: plan.id, status: 'completed', output: null }
+    }
     const valid = outputSchema.parse(output)
     boundedText(valid.text, worker.maxTextBytes, true)
     if (JSON.stringify(valid.data ?? null).length > worker.maxTextBytes) {
@@ -122,6 +125,9 @@ export async function prepareRequest(
 
       results.push(result)
       observe.count('relanox_middleware_total', { outcome: result.status })
+      if (result.status === 'completed' && result.output === null) {
+        break
+      }
       if (result.status === 'failed') {
         observe.log('warn', 'middleware.failed', {
           plugin: 'core',

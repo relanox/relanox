@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { needsPreparation } from '@relanox/sdk'
+import { isFiltered, needsPreparation } from '@relanox/sdk'
 import type { AgentMessage, InboundRecord, ScopedAgentHost } from '@relanox/sdk'
 import type { AgentHostOptions } from './agent.js'
 import { authorizedConversation } from './conversations.js'
@@ -59,6 +59,7 @@ export async function readMessages(
     .filter(
       (record) =>
         record.redactedAt === undefined &&
+        !isFiltered(record) &&
         !needsPreparation(record) &&
         authorizedConversation(
           {

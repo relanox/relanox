@@ -8,7 +8,7 @@ import {
   validConversationInbound
 } from '@relanox/storage-support'
 import { readMedia, insertIncomingMedia } from './media.js'
-import { needsPreparation } from '@relanox/sdk'
+import { isFiltered, needsPreparation } from '@relanox/sdk'
 import type {
   Storage,
   InboundRecord,
@@ -295,6 +295,7 @@ async function resolveReply(
       !message.reply ||
       (source !== undefined &&
         !needsPreparation(source) &&
+        !isFiltered(source) &&
         validConversationInbound(source.snapshot, conversation)),
     finalId:
       message.reply?.kind === 'final'

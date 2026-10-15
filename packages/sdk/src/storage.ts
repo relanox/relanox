@@ -163,7 +163,7 @@ export type Storage = ConversationStorage & {
     filter: StatusFilter & {
       /** Latest accepted first; incompatible with afterId. */
       readonly recent?: boolean
-      /** Exclude unfinished middleware preparation before ordering and limiting agent history. */
+      /** Exclude unfinished preparation and filtered messages before ordering and limiting agent history. */
       readonly readyOnly?: boolean
     }
   ): Promise<readonly InboundRecord[]>
