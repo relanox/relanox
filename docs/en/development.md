@@ -18,6 +18,8 @@ Build before type checking or linting: workspace packages use compiled declarati
 
 Native plugins are workspace development dependencies of the CLI, so `pnpm install --frozen-lockfile` and `pnpm build` retain the standard source workflow. The CLI package can be packed independently; production distributions must install or assemble the native packages they need. Packaging support does not mean a package version is already available on npm.
 
+After building, `pnpm exec node scripts/assemble-plugins.mts <destination> "channel-wecom channel-matrix"` assembles the production CLI and the selected native packages. Docker uses the same script. Each isolated `pnpm deploy` permits unused workspace patches because its production graph may omit WeCom; required patches still have to apply. Ordinary workspace installation keeps the stricter unused-patch check.
+
 To work on a plugin outside the normal workspace resolution, build it and set `plugins.load.paths` to its package directory in the test configuration. Relative override paths resolve beside that configuration file. Override packages need a `relanox` manifest and compiled `dist/plugin.js` exporting `createPlugin`; see [Package a native plugin](reference/sdk.md#package-a-native-plugin). Duplicate identities or broken overrides fail instead of using an installed copy. Rebuild and restart after edits.
 
 ## Make a focused change

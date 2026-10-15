@@ -11,6 +11,7 @@ const manager = process.env.npm_execpath ?? 'pnpm'
 const script = /\.(?:c?js|mjs)$/u.test(manager)
 const executable = script ? process.execPath : manager
 const names = selection.split(/\s+/u).filter(Boolean)
+
 for (const name of names) {
   if (
     !/^(?:channel|agent|storage|observability|speech)-[a-z][a-z0-9-]*$/u.test(
@@ -19,7 +20,12 @@ for (const name of names) {
   ) {
     throw new Error('invalid_native_plugin_package')
   }
+}
 
+// Each deploy installs only one production graph. Most graphs do not contain
+// WeCom, so the workspace's WeCom patch is intentionally unused in those calls.
+// This command-local option still fails if a required patch cannot be applied.
+for (const name of ['cli', ...names]) {
   const result = spawnSync(
     executable,
     [
@@ -30,7 +36,10 @@ for (const name of names) {
       'deploy',
       '--legacy',
       '--prod',
-      resolve(destination, 'node_modules/@relanox', name)
+      '--config.allowUnusedPatches=true',
+      name === 'cli'
+        ? resolve(destination)
+        : resolve(destination, 'node_modules/@relanox', name)
     ],
     { stdio: 'inherit' }
   )
