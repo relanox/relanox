@@ -16,3 +16,4 @@ docs/.vitepress/cache/
 docs/.vitepress/redirects/
 deploy/relanox.json
 .relanox/
+/docs/local/
