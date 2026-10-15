@@ -381,6 +381,34 @@ describe('grok configured Routine and scoped MCP', () => {
     expect(await response.json()).toEqual({ error: 'request_timeout' })
   })
 
+  it('releases the body deadline before running a tool and retains caller cancellation', async () => {
+    // A completed body must not impose its 10s deadline on a 120s media download.
+    // Existing guard coverage only exercises requests aborted before body reading.
+    const bodyDeadline = new AbortController()
+    const caller = new AbortController()
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(bodyDeadline.signal)
+
+    const checked = await guard(
+      new Request('https://relanox.test/agents/grok/mcp/endpoint0', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer secret-0' },
+        body: '{}',
+        signal: caller.signal
+      }),
+      mcp(),
+      'https://relanox.test'
+    )
+
+    if (!(checked instanceof Request)) {
+      throw new Error('valid_body_rejected')
+    }
+    expect(await checked.text()).toBe('{}')
+    bodyDeadline.abort()
+    expect(checked.signal.aborted).toBe(false)
+    caller.abort()
+    expect(checked.signal.aborted).toBe(true)
+  })
+
   it.each([false, true])(
     'transmits exact text and sends repeated replies through the SDK %s modern client',
     async (modern) => {
