@@ -23,6 +23,9 @@ function authClient(config: GoogleChatConfig): JWT {
     scopes: ['https://www.googleapis.com/auth/chat.bot'],
     transporterOptions: {
       retry: false,
+      // Gtoken supplies its own retryConfig, which gaxios treats as enabling
+      // Retries even when retry is false. Core owns retry scheduling.
+      retryConfig: { retry: 0 },
       timeout: 10_000,
       // Keep the SDK's token cache/refresh while preserving the relay's
       // Bounded transport and refusal to follow credential-bearing redirects.
