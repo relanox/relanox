@@ -894,6 +894,32 @@ export function storageContract(
       ])
     })
 
+    // Protect literal Unicode prefixes before SQL ordering/limits. ASCII wildcard coverage
+    // Cannot catch passing UTF-16 lengths to a database that counts Unicode code points.
+    // This exercises the public state API against each real database without a new seam.
+    it('lists Unicode state prefixes literally before applying the result limit', async () => {
+      const ns = { pluginId: 'channel', ownerId: 'account' }
+      for (const key of [
+        String.raw`🚀%_\a`,
+        String.raw`🚀%_\b`,
+        '🚀other',
+        'other'
+      ]) {
+        await s.compareAndSetState(ns, {
+          key,
+          expectedVersion: null,
+          value: key
+        })
+      }
+      expect(await s.listState(ns, { prefix: '🚀%_\\', limit: 1 })).toEqual([
+        { key: '🚀%_\\a', value: '🚀%_\\a', version: 1 }
+      ])
+      expect(await s.listState(ns, { prefix: '🚀%_\\', limit: 10 })).toEqual([
+        { key: '🚀%_\\a', value: '🚀%_\\a', version: 1 },
+        { key: '🚀%_\\b', value: '🚀%_\\b', version: 1 }
+      ])
+    })
+
     it('starts a fresh delivery retry budget on explicit recovery', async () => {
       await s.acceptInbound(snapshot())
       await dispatch()

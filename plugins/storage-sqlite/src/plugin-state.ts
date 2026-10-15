@@ -4,7 +4,7 @@ import type { DatabaseContext } from './database.js'
 import { encodeDurableRecord } from '@relanox/storage-support'
 import { and, eq, lte, ne } from 'drizzle-orm'
 import { pluginState } from './schema.js'
-import { keyPrefix } from './expressions.js'
+import { keyStartsWith } from './expressions.js'
 
 export function createStateOperations(
   context: Pick<DatabaseContext, 'db' | 'transaction'>
@@ -41,10 +41,7 @@ export function createStateOperations(
             ne(pluginState.record, 'null'),
             input.prefix === undefined
               ? undefined
-              : eq(
-                  keyPrefix(pluginState.key, input.prefix.length),
-                  input.prefix
-                ),
+              : keyStartsWith(pluginState.key, input.prefix),
             input.expiresBefore === undefined
               ? undefined
               : lte(pluginState.expiresAt, input.expiresBefore)
