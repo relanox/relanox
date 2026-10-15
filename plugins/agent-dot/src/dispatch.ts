@@ -3,7 +3,7 @@ import type { AgentHost, AgentPlugin, DispatchResult } from '@relanox/sdk'
 import { CallbackError, callbackUrl, postCallback } from './callback.js'
 import type { DotConfig } from './config.js'
 import { name, subscriptionSchema } from './protocol.js'
-import { signedHeaders } from './subscriptions.js'
+import { endpointFingerprint, signedHeaders } from './subscriptions.js'
 import type { SubscriptionStore } from './subscriptions.js'
 
 export function createDispatch(
@@ -12,7 +12,15 @@ export function createDispatch(
   subscriptionStore: SubscriptionStore
 ): AgentPlugin<DotConfig>['dispatch'] {
   return async ({ request, signal }): Promise<DispatchResult> => {
-    if (!configured.has(request.endpoint.id)) {
+    const current = configured.get(request.endpoint.id)
+    if (request.endpoint.agent !== 'dot' || !current) {
+      return { status: 'rejected', errorCode: 'dot_endpoint_revoked' }
+    }
+    const ownerConfig = endpointFingerprint(request.endpoint)
+    if (
+      ownerConfig !==
+      endpointFingerprint({ ...request.endpoint, config: current })
+    ) {
       return { status: 'rejected', errorCode: 'dot_endpoint_revoked' }
     }
     const now = Date.now()
@@ -25,6 +33,7 @@ export function createDispatch(
         ({ sub }) =>
           sub.owner === request.endpoint.id &&
           sub.endpointId === request.endpoint.id &&
+          sub.ownerConfig === ownerConfig &&
           sub.expiresAt > now
       )
 

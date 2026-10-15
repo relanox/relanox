@@ -68,7 +68,7 @@ export function createEventsHandler(
       )
 
       registerTools(server, scopedHost, true, async () =>
-        connectionStatus(endpoint.id, subscriptions)
+        connectionStatus(endpoint, subscriptions)
       )
       media.register(server)
       registerReadMessages(server, scopedHost)

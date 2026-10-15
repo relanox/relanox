@@ -8,6 +8,7 @@ import type {
 } from 'node:dns'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import type { Json } from '@relanox/sdk'
 import { callbackUrl, isPublicAddress } from '../src/callback.js'
 import { createDotAgentPlugin } from '../src/index.js'
 import {
@@ -933,6 +934,7 @@ describe('dot MCP Events and tools', () => {
     )
     expect(receiver.traffic).toHaveLength(1)
     const received = await fx.ingest()
+    process.env.AGENT_TEST_TOKEN_0 = 'rotated-env-value-with-adequate-length'
     await fx.reopen(createDotAgentPlugin())
     await fx.core.processDue()
     expect(receiver.traffic).toHaveLength(2)
@@ -1015,6 +1017,133 @@ describe('dot MCP Events and tools', () => {
       })
     ).toEqual({ status: 'retryable', errorCode: 'dot_no_active_subscription' })
     expect(receiver.traffic).toHaveLength(before + 1)
+  })
+
+  it('does not deliver an old queued event through a new owner at the same endpoint ID', async () => {
+    const { fx, receiver, url } = await setup()
+    const oldClient = await fx.client()
+    await oldClient.request(subscribe(url, signingKey, 60_000), subResult)
+    const oldMessage = await fx.ingest(0, 'old owner', 'old-owner-event')
+
+    fx.endpoints[0] = {
+      id: 'endpoint0',
+      agent: 'dot',
+      config: { mcp: dotMcp('AGENT_TEST_TOKEN_1') }
+    }
+    await fx.reopen(createDotAgentPlugin())
+
+    const newAccess = await authorizeWithSdk(
+      fx.core,
+      0,
+      process.env.AGENT_TEST_TOKEN_1
+    )
+
+    const newClient = await fx.client(newAccess.access_token, 0)
+    const before = receiver.traffic.length
+
+    await fx.core.processDue()
+    expect(receiver.traffic).toHaveLength(before)
+    expect(
+      (await fx.storage.getInbound(oldMessage.requestId))?.dispatch
+    ).toMatchObject({ status: 'rejected', errorCode: 'dot_endpoint_revoked' })
+
+    const newMessage = await fx.ingest(0, 'new owner', 'new-owner-event')
+    await fx.core.processDue()
+    expect(receiver.traffic).toHaveLength(before)
+    expect(
+      (await fx.storage.getInbound(newMessage.requestId))?.dispatch
+    ).toMatchObject({
+      status: 'due',
+      errorCode: 'dot_no_active_subscription'
+    })
+
+    await newClient.request(subscribe(url, newKey, 60_000), subResult)
+    expect(receiver.traffic).toHaveLength(before + 1)
+
+    const newSnapshot = (await fx.storage.getInbound(newMessage.requestId))
+      ?.snapshot
+
+    if (!newSnapshot) {
+      throw new Error('missing_new_owner_request')
+    }
+    expect(
+      await fx.agent.dispatch({
+        request: newSnapshot,
+        signal: new AbortController().signal
+      })
+    ).toEqual({ status: 'accepted' })
+    const delivered = receiver.traffic.at(-1)
+    expect(parseWire(delivered?.body ?? '')).toMatchObject({
+      data: { requestId: newMessage.requestId, text: 'new owner' }
+    })
+    verify(delivered, newKey)
+    expect(
+      String(delivered?.headers['webhook-signature']).split(' ')
+    ).toHaveLength(1)
+  })
+
+  it('keeps legacy unbound subscriptions inactive until an authenticated refresh', async () => {
+    const { fx, receiver, url } = await setup()
+    const client = await fx.client()
+    await client.request(subscribe(url, signingKey, 60_000), subResult)
+    const scope = { pluginId: 'agent-dot', ownerId: 'dot' }
+
+    const [entry] = await fx.storage.listState(scope, {
+      prefix: 'subscriptions/',
+      limit: 10
+    })
+
+    if (!entry) {
+      throw new Error('missing_subscription')
+    }
+
+    const legacy = JSON.parse(JSON.stringify(entry.value)) as Record<
+      string,
+      unknown
+    >
+
+    delete legacy.ownerConfig
+    expect(
+      await fx.storage.compareAndSetState(scope, {
+        key: entry.key,
+        expectedVersion: entry.version,
+        value: legacy as Json,
+        ...(entry.expiresAt === undefined ? {} : { expiresAt: entry.expiresAt })
+      })
+    ).toMatchObject({ status: 'updated' })
+
+    await fx.reopen(createDotAgentPlugin())
+    const message = await fx.ingest(0, 'legacy subscriber', 'legacy-event')
+    const snapshot = (await fx.storage.getInbound(message.requestId))?.snapshot
+    if (!snapshot) {
+      throw new Error('missing_legacy_request')
+    }
+    expect(
+      await fx.agent.dispatch({
+        request: snapshot,
+        signal: new AbortController().signal
+      })
+    ).toEqual({ status: 'retryable', errorCode: 'dot_no_active_subscription' })
+    expect(receiver.traffic).toHaveLength(1)
+
+    const refreshed = await fx.client()
+    expect(
+      (await refreshed.callTool({ name: 'relanox_status', arguments: {} }))
+        .structuredContent
+    ).toMatchObject({ connection: { activeSubscriptions: 0 } })
+    await refreshed.request(subscribe(url, newKey, 60_000), subResult)
+    expect(receiver.traffic).toHaveLength(2)
+    expect(
+      await fx.agent.dispatch({
+        request: snapshot,
+        signal: new AbortController().signal
+      })
+    ).toEqual({ status: 'accepted' })
+    const delivered = receiver.traffic.at(-1)
+    verify(delivered, newKey)
+    expect(
+      String(delivered?.headers['webhook-signature']).split(' ')
+    ).toHaveLength(1)
   })
 
   it('delivers complete media metadata and advertises the same payload fields, rejecting oversized messages explicitly', async () => {

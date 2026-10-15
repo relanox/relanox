@@ -72,6 +72,8 @@ Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and 
 
 Relanox requires an active `relanox.message_available` subscription to notify dot. The default lifetime is one day. Ask dot to create the subscription after its connection check. Automatic renewal has not been verified with a live account. `dot_no_active_subscription` means Relanox has no active subscription, even if OAuth succeeded. Inspect the plugin connection and runtime logs; if the request exhausted retries, use [Operations](../operations.md#find-and-recover-a-stalled-message) to recover it.
 
+Subscriptions belong to the endpoint configuration under which they were created. A queued message from an earlier configuration cannot be sent to a subscription created after that configuration changes, even if the endpoint ID is reused. Subscriptions saved before this ownership check are inactive until dot refreshes or recreates them; changing an endpoint configuration likewise requires a new subscription. Restarting with the same configuration, including a new credential value under the same environment variable reference, preserves current subscriptions.
+
 ## Live validation scope
 
 The earlier notification checks below preceded the channel-addressed MCP contract. A later rich-media check verified the current `channel` parameters and `relanox_status` with both live Agent accounts. All checks used an isolated Relanox instance and a local Telegram HTTP protocol peer; they do not establish live Telegram account or client-rendering compatibility.
