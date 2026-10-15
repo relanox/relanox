@@ -68,11 +68,17 @@ export async function receiveMedia(
     throw new Error('invalid_media_uri')
   }
 
-  const downloaded = await downloadMedia(url, {
+  // SDK media conversion roots /_matrix at the origin, while its other APIs
+  // Retain a configured homeserver path. Keep that deployment prefix here too.
+  const homeserver = new URL(client.getHomeserverUrl())
+  const downloadUrl = new URL(url)
+  downloadUrl.pathname = `${homeserver.pathname.replace(/\/$/u, '')}${downloadUrl.pathname}`
+
+  const downloaded = await downloadMedia(downloadUrl.href, {
     maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
     signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
     headers,
-    trustedOrigins: [new URL(client.getHomeserverUrl()).origin],
+    trustedOrigins: [homeserver.origin],
     allowInsecureLocalhost: config.allowInsecureLocalhost
   })
 

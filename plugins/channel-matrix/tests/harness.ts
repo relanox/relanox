@@ -79,7 +79,8 @@ export async function httpPeer(
     request: IncomingMessage,
     response: ServerResponse
   ) => Promise<void> | void,
-  versionsHandler?: (response: ServerResponse) => Promise<void> | void
+  versionsHandler?: (response: ServerResponse) => Promise<void> | void,
+  basePath = ''
 ): Promise<{
   server: ReturnType<typeof createServer>
   base: string
@@ -87,7 +88,12 @@ export async function httpPeer(
   const errors: unknown[] = []
 
   const server = createServer((request, response) => {
-    const path = new URL(request.url ?? '/', 'http://peer').pathname
+    const requestPath = new URL(request.url ?? '/', 'http://peer').pathname
+    if (!requestPath.startsWith(`${basePath}/`)) {
+      json(response, {}, 404)
+      return
+    }
+    const path = requestPath.slice(basePath.length)
     // Bootstrap responses required by the real matrix-js-sdk 43.0.0 client:
     // Src/sync.ts:prepareSync/prepareFilter and src/client.ts:startClient.
     // Protect the SDK's stable thread negotiation; advertising v1.11 alone omits
@@ -138,9 +144,7 @@ export async function httpPeer(
     }
     if (
       identityHandler &&
-      ['/api/v4/users/me', '/_matrix/client/v3/account/whoami'].includes(
-        request.url ?? ''
-      )
+      ['/api/v4/users/me', '/_matrix/client/v3/account/whoami'].includes(path)
     ) {
       Promise.resolve(identityHandler(request, response)).catch(
         (error: unknown) => {
@@ -150,11 +154,11 @@ export async function httpPeer(
       )
       return
     }
-    if (request.url === '/_matrix/client/v3/account/whoami') {
+    if (path === '/_matrix/client/v3/account/whoami') {
       json(response, { user_id: '@bot:local.test' })
       return
     }
-    if (request.url === '/api/v4/users/me') {
+    if (path === '/api/v4/users/me') {
       json(response, { id: 'self-bot' })
       return
     }
@@ -191,7 +195,7 @@ export async function httpPeer(
       )
     }
   })
-  return { server, base: `http://127.0.0.1:${address.port}` }
+  return { server, base: `http://127.0.0.1:${address.port}${basePath}` }
 }
 
 export function observations(): {
