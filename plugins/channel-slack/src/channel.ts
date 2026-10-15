@@ -402,7 +402,7 @@ export function createSlackChannel(
       ) {
         return { status: 'rejected', errorCode: 'invalid_target' }
       }
-      const errorCode = richError(input, host)
+      const errorCode = richError(input)
       if (errorCode) {
         return { status: 'rejected', errorCode }
       }

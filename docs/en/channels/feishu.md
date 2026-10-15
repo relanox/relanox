@@ -38,9 +38,9 @@ When the Agent supplies `reply.requestId`, the reply references that exact incom
 
 ## Images and files
 
-Send images, audio, videos, files or rich posts with your question. Grant resource download/upload permissions such as `im:resource` or the applicable upload scope. Replies can contain images up to 10 MB and other uploads up to 30 MB, within the relay limit.
+Send images, audio, videos, files or rich posts with your question. Grant resource download/upload permissions such as `im:resource` or the applicable upload scope.
 
-Uploads use the SDK and the platform enforces its current size and format limits. Relanox retains its configured media budget (100 MiB by default) and bounds incoming downloads while reading them. A rejected native reply stays rejected if its source message disappears; it is not resent as an unrelated conversation message. Uncertain send results remain uncertain instead of automatically repeating a possibly accepted message.
+Uploads use the SDK and the platform enforces its current size and format limits, including images inside rich posts. Relanox retains its configured media budget (100 MiB by default), preserves ordered text/image layouts and bounds incoming downloads while reading them. A rejected native reply stays rejected if its source message disappears; it is not resent as an unrelated conversation message. Uncertain send results remain uncertain instead of automatically repeating a possibly accepted message.
 
 ## Troubleshooting
 

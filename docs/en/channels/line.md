@@ -30,7 +30,7 @@ When the Agent supplies `reply.requestId`, text replies quote that incoming mess
 
 ## Images and files
 
-Send images, audio, videos or files with your question. Image, audio and video replies need the public address; follow [Media](../media.md) to expose it over HTTPS. Use JPEG/PNG images up to 10 MB. Images larger than 1 MB (1,000,000 bytes) and every MP4 video require a JPEG/PNG preview up to 1 MB. Generated audio uses MP3/M4A with a duration. Audio/video can be up to 200 MB, within your relay limit.
+Send images, audio, videos or files with your question. Image, audio and video replies need the public address; follow [Media](../media.md) to expose it over HTTPS. Relanox publishes the stored media and sends its URL through the SDK. LINE enforces its current size and format limits for ordinary media and Flex images; Relanox keeps its configured budget (100 MiB by default). Audio needs a duration and video needs a preview. Images use a supplied preview when present, otherwise their original URL; supply a preview when LINE requires one for the content. Incoming downloads remain bounded and reject unsafe destinations before storage.
 
 ## Troubleshooting
 

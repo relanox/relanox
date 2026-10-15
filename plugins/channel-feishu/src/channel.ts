@@ -144,14 +144,6 @@ export function createFeishuChannel(
       value = JSON.parse(raw.toString('utf8'))
       const encrypted = encryptedEventSchema.safeParse(value)
       if (encrypted.success) {
-        if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encrypted.data.encrypt)) {
-          throw new Error('invalid_encryption')
-        }
-        const payload = Buffer.from(encrypted.data.encrypt, 'base64')
-        if (payload.length < 32 || payload.length % 16) {
-          throw new Error('invalid_encryption')
-        }
-
         value = JSON.parse(
           new AESCipher(encryptKey).decrypt(encrypted.data.encrypt)
         )
@@ -240,18 +232,7 @@ export function createFeishuChannel(
       return new Response(null, { status: 200 })
     }
     try {
-      // The SDK replaces keys in order: longer native placeholders must come first.
-      const normalizedEvent = {
-        ...messageEvent.data,
-        message: {
-          ...message,
-          mentions: message.mentions?.toSorted(
-            (a, b) => b.key.length - a.key.length
-          )
-        }
-      }
-
-      const content = await normalize(normalizedEvent as RawMessageEvent, {
+      const content = await normalize(messageEvent.data as RawMessageEvent, {
         botIdentity: { openId: botOpenId, name: 'bot' },
         stripBotMentions: true
       })

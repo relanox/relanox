@@ -14,14 +14,6 @@ export function richError(
   if (!host.publicUrl || !host.media) {
     return 'public_media_unavailable'
   }
-  if (
-    parts.length > 20 ||
-    parts
-      .filter((part) => part.type === 'text')
-      .reduce((length, part) => length + part.text.length, 0) > 2000
-  ) {
-    return 'rich_message_limit_exceeded'
-  }
   const images = parts.filter((part) => part.type === 'image')
   if (
     images.length !== (input.richMedia?.length ?? 0) ||
@@ -30,17 +22,6 @@ export function richError(
     )
   ) {
     return 'missing_media'
-  }
-  if (
-    (input.richMedia ?? []).some(
-      (media) =>
-        media.reference.kind !== 'image' ||
-        !['image/jpeg', 'image/png'].includes(media.reference.mimeType) ||
-        media.data.byteLength >
-          Math.min(host.maxMediaBytes ?? 100 * 1024 * 1024, 10 * 1000 * 1000)
-    )
-  ) {
-    return 'image_format_or_size_unsupported'
   }
   return undefined
 }
