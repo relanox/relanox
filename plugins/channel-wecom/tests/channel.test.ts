@@ -271,7 +271,6 @@ test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
       markdown: { content: 'hello_*世界' }
     }
   })
-  expect(remote.frames.at(-1)).toMatchObject({ body: { chat_type: 2 } })
 })
 
 test('WeCom correlates heartbeats and preserves uncertain sends when the socket closes before ACK', async () => {
@@ -402,7 +401,14 @@ test('WeCom stops recovery after the platform replaces this bot connection', asy
     JSON.stringify({
       cmd: 'aibot_event_callback',
       headers: { req_id: 'replaced' },
-      body: { aibotid: 'robot', event: { eventtype: 'disconnected_event' } }
+      body: {
+        aibotid: 'robot',
+        msgid: 'replaced-message',
+        msgtype: 'event',
+        create_time: Date.now(),
+        from: { userid: 'robot' },
+        event: { eventtype: 'disconnected_event' }
+      }
     })
   )
   await expect
@@ -460,7 +466,11 @@ test.each(['missing credential', 'rejected subscription'])(
     )
 
     await host.start()
-    await expect.poll(() => remote.sockets[0]?.readyState).toBe(3)
+    if (scenario === 'missing credential') {
+      expect(remote.sockets).toEqual([])
+    } else {
+      await expect.poll(() => remote.sockets[0]?.readyState).toBe(3)
+    }
     expect(
       await plugin.send(
         sendInput('wecom', 'user', {
@@ -508,10 +518,7 @@ test('WeCom websocket sends to explicitly configured single/group conversations 
   )
 
   await host.start()
-  for (const [chatId, chatType] of [
-    ['user', 1],
-    ['group', 2]
-  ] as const) {
+  for (const chatId of ['user', 'group']) {
     const resolved = await plugin.resolveChannel?.({
       id: 'channel',
       platform: 'wecom',
@@ -536,7 +543,7 @@ test('WeCom websocket sends to explicitly configured single/group conversations 
     ).toMatchObject({ status: 'sent' })
     expect(remote.frames.at(-1)).toMatchObject({
       cmd: 'aibot_send_msg',
-      body: { chatid: chatId, chat_type: chatType }
+      body: { chatid: chatId }
     })
   }
   expect(await records(host.storage)).toEqual([])

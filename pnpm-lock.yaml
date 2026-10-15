@@ -165,6 +165,9 @@ settings:
 overrides:
   tencentcloud-sdk-nodejs-common@4.1.220>uuid: 11.1.1
 
+patchedDependencies:
+  '@wecom/aibot-node-sdk@1.0.7': 31fd481b37fa607dc482f597c3647178bc6bff515f5f4c1acb3810bccbfe6e12
+
 importers:
 
   .:
@@ -800,6 +803,9 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@wecom/aibot-node-sdk':
+        specifier: 1.0.7
+        version: 1.0.7(patch_hash=31fd481b37fa607dc482f597c3647178bc6bff515f5f4c1acb3810bccbfe6e12)(debug@4.4.3)
       file-type:
         specifier: 22.1.1
         version: 22.1.1
@@ -2700,6 +2706,9 @@ packages:
 
   '@vueuse/shared@12.8.2':
     resolution: {integrity: sha512-dznP38YzxZoNloI0qpEfpkms8knDtaoQ6Y/sfS0L7Yki4zh40LFHEhur0odJC6xTHG5dxWVPiUWBXn+wCG2s5w==}
+
+  '@wecom/aibot-node-sdk@1.0.7':
+    resolution: {integrity: sha512-51w+sTqunry6GD3HFvmuh0gArMSJDFE418vyvR1wMJHj1N6DaFuGD3HuaY2fazZs3mb9FWeQFX3+vU5t0Qhwmw==}
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -5722,6 +5731,17 @@ snapshots:
       vue: 3.5.43(typescript@7.0.2)
     transitivePeerDependencies:
       - typescript
+
+  '@wecom/aibot-node-sdk@1.0.7(patch_hash=31fd481b37fa607dc482f597c3647178bc6bff515f5f4c1acb3810bccbfe6e12)(debug@4.4.3)':
+    dependencies:
+      axios: 1.20.0(debug@4.4.3)
+      eventemitter3: 5.0.4
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - debug
+      - supports-color
+      - utf-8-validate
 
   accepts@2.0.0:
     dependencies:

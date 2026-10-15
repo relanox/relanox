@@ -330,19 +330,16 @@ test.each(['websocket', 'webhook'] as const)(
       expect((await postCallback(callbacks.http, message)).status).toBe(503)
     } else {
       socketCallback(remote, message)
-      await expect.poll(() => remote.sockets[0]?.readyState).toBe(3)
+      await expect.poll(() => remote.requests.length).toBe(1)
+      expect(remote.sockets[0]?.readyState).toBe(1)
     }
     expect(await records(host.storage)).toEqual([])
     unavailable = false
     if (callbacks) {
       expect((await postCallback(callbacks.http, message)).status).toBe(200)
     } else {
-      await expect.poll(() => remote.sockets.length, { timeout: 4000 }).toBe(2)
-      await expect
-        .poll(
-          async () => (await host.runtime.status()).connections['channels/bot']
-        )
-        .toBe('connected')
+      // SDK listeners do not force a reconnect on application/download errors.
+      // A platform redelivery on this authenticated socket can still recover.
       socketCallback(remote, message)
     }
     await expect

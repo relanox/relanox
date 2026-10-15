@@ -44,6 +44,8 @@ node apps/cli/dist/main.js validate --config relanox.json
 
 In WebSocket mode, start Relanox to connect automatically to the robot. Keep the process running.
 
+WebSocket access uses the [official WeCom Node SDK](https://github.com/WecomTeam/aibot-node-sdk) for authentication, heartbeat, reconnection, native replies and media uploads. Its in-memory receive and reply queues are independent of Core storage. A callback can reach the SDK before Core saves it; after a storage or download failure, platform redelivery is not guaranteed. Check the connection status and resend messages that were not accepted. HTTP mode continues to acknowledge only after Core saves the callback, so temporary failures remain replayable through the platform.
+
 For WebSocket sends before Relanox receives a message in a bound conversation, add `recipientTypes` to the downloaded account's `config`: map the conversation's **Chat ID** to `single` or `group`. Otherwise, Relanox learns the type from authenticated message events. Use the exact member userid or group chat ID and keep **Thread ID** empty. See the [manual example](../reference/channels.md#wecom).
 
 For HTTP callback mode, start Relanox behind your public HTTPS address, then enter the generated callback URL in the robot settings: `https://your-host/channels/wecom-main/webhook`. Replace `wecom-main` with your account ID. Use the same Token and EncodingAESKey as the service environment, and save the platform settings after URL verification succeeds.
@@ -65,6 +67,8 @@ WebSocket mode accepts images, videos, files or mixed text/image messages. Voice
 HTTP callback mode accepts text, images, videos, files, mixed text/image messages and voice transcription. Send one final Markdown reply per incoming message, with up to 10 PNG/JPEG images of 10 MB each, subject to the relay limit. Keep the total reply text within 20,480 UTF-8 bytes. The complete reply appears when it is ready. Keep Relanox online and its callback address reachable while waiting. Audio, video and file replies are unavailable in this mode.
 
 Both modes preserve Markdown formatting where WeCom supports it.
+
+Relanox keeps its configured media budget (100 MiB by default) and bounds incoming encrypted downloads while reading them. SDK uploads retain native 512 KiB chunks, numbering and concurrency; the platform enforces its current media size and format limits. An in-flight SDK upload can finish after delivery cancellation, but Relanox checks cancellation before sending the resulting message. Stopping the account disconnects the SDK and clears its pending reply queue. A message sent without a receipt remains uncertain rather than being automatically resent.
 
 ## Troubleshooting
 
