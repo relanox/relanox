@@ -31,6 +31,8 @@ Start Relanox after saving the account configuration. It opens the Stream connec
 
 Send “Hello” to the application robot from an allowed staff member. In a group, mention the robot; the group event must indicate that the bot was addressed.
 
+The current application-robot send endpoints do not provide a verified native quote parameter. The Agent can supply `reply.requestId` to associate a reply with the selected request and track completion, but DingTalk sends it as an ordinary conversation message without a quote bubble. Omitting `reply` also sends an ordinary message. The [official SDK request models](https://github.com/alibabacloud-go/dingtalk/blob/1986c966942afc67b8ccae59d29d57989a45fe76/robot_1_0/client.go) define the supported group and single-user send parameters; Relanox does not substitute a message ID into an undocumented field.
+
 ## Images and files
 
 Send pictures, audio, videos, files or rich-text messages. Replies can include JPEG/PNG/GIF/BMP images, MP4 video and files up to 20 MB, and AMR audio up to 2 MB, within the relay limit. File replies use XLSX, PDF, ZIP, RAR, DOC or DOCX formats.
