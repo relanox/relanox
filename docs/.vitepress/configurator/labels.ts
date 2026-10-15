@@ -25,7 +25,8 @@ export const fieldLabels: Record<string, [string, string]> = {
   clientSecret: ['Client secret environment variable', '客户端密钥环境变量'],
   robotCode: ['Robot code', '机器人代码'],
   environment: ['QQ environment', 'QQ 环境'],
-  tenantId: ['Tenant ID', '租户 ID'],
+  tenantId: ['Allowed Teams tenant ID', '允许接入的 Teams 租户 ID'],
+  tokenUrl: ['Bot application OAuth token URL', '机器人应用 OAuth Token 地址'],
   trustedServiceOrigins: [
     'Trusted service origins (comma separated)',
     '可信服务源（逗号分隔）'
@@ -85,8 +86,8 @@ export const channelSetup: Record<string, [string, string]> = {
     '创建 QQ 机器人应用并授权 WebSocket 连接，使用平台用户/成员 open ID 和会话 open ID。'
   ],
   msteams: [
-    'Register the bot application and Teams tenant, then set the messaging endpoint. Allow the service addresses listed in the Teams guide and copy the user and conversation IDs.',
-    '注册机器人应用和 Teams 租户，设置消息端点，按 Teams 指南填写允许的服务地址，以及用户和会话 ID。'
+    'Register the bot application, enter its OAuth token URL and allowed Teams tenant separately, then set the messaging endpoint. Copy the trusted service origins and user and conversation IDs from the Teams guide.',
+    '注册机器人应用，分别填写应用 OAuth Token 地址与允许接入的 Teams 租户，再设置消息端点。按 Teams 指南填写可信服务源、用户和会话 ID。'
   ],
   whatsapp: [
     'Configure a Meta WhatsApp Business app and subscribe to messages. Set the callback and verification token; use the sender phone number as the direct chat ID.',

@@ -32,6 +32,7 @@ const userFields = new Set([
   'clientId',
   'robotCode',
   'tenantId',
+  'tokenUrl',
   'phoneNumberId',
   'businessAccountId',
   'homeserver',

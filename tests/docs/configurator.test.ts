@@ -78,6 +78,42 @@ describe('connection configurator production contracts', () => {
     }
   })
 
+  it('exports the single-tenant Teams token authority independently of the allowed activity tenant', async () => {
+    const state = completedState()
+
+    const teams = required(
+      state.channels.find((channel) => channel.channel === 'msteams')
+    )
+
+    for (const channel of state.channels) {
+      channel.enabled = channel === teams
+    }
+    teams.fields.tenantId = 'allowed-activity-tenant'
+    teams.fields.tokenUrl =
+      'https://login.microsoftonline.com/application-tenant/oauth2/v2.0/token'
+
+    expect(validateDraft(state)).toEqual([])
+    const config = await validateApp(buildConfig(state))
+    expect(config.relay.accounts[0]?.config).toMatchObject({
+      tenantId: 'allowed-activity-tenant',
+      tokenUrl:
+        'https://login.microsoftonline.com/application-tenant/oauth2/v2.0/token'
+    })
+
+    teams.fields.tokenUrl = ''
+    expect(validateDraft(state)).toContainEqual({
+      code: 'fieldRequired',
+      target: 'msteams-main.tokenUrl'
+    })
+    teams.fields.tokenUrl =
+      'http://login.microsoftonline.com/application-tenant/oauth2/v2.0/token'
+    expect(validateDraft(state)).toContainEqual({
+      code: 'url',
+      target: 'msteams-main.tokenUrl'
+    })
+    await expect(validateApp(buildConfig(state))).rejects.toThrow()
+  })
+
   it('exports only selected WeCom mode credentials and validates both exports through production', async () => {
     const state = completedState()
 

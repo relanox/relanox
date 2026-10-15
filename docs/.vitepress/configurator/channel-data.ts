@@ -137,6 +137,8 @@ export const channelData = [
       appId: 'microsoft_application_id',
       botId: '28:bot_activity_recipient_id',
       tenantId: 'allowed_teams_tenant_id',
+      tokenUrl:
+        'https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/oauth2/v2.0/token',
       appSecret: {
         env: 'TEAMS_APP_SECRET'
       },
