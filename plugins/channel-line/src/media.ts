@@ -1,4 +1,4 @@
-import { lineMarkdown } from './markdown.js'
+import { quotedText } from './markdown.js'
 import { richError, richMessage } from './rich.js'
 import { contentApiBase } from './constants.js'
 import {
@@ -173,13 +173,14 @@ export { splitLineMarkdown } from './markdown.js'
 
 export async function messages(
   input: SendInput,
-  host: ChannelHost
+  host: ChannelHost,
+  quoteToken?: string
 ): Promise<Json[]> {
   if (input.chunk.richText) {
     return [await richMessage(input, host)]
   }
   if (!input.chunk.media) {
-    return [lineMarkdown(input.chunk.text)]
+    return [quotedText(input.chunk.text, input.reply ? quoteToken : undefined)]
   }
   if (!input.media || !host.media) {
     throw new Error('public_media_unavailable')
@@ -203,6 +204,9 @@ export async function messages(
       : originalContentUrl
   }
   return input.chunk.text
-    ? [lineMarkdown(input.chunk.text), message]
+    ? [
+        quotedText(input.chunk.text, input.reply ? quoteToken : undefined),
+        message
+      ]
     : [message]
 }

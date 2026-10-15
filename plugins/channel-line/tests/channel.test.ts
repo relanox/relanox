@@ -89,6 +89,193 @@ async function setup(filename?: string): Promise<{
 }
 
 describe('native LINE', () => {
+  it.each(['labeled', 'long'] as const)(
+    'preserves %s link destinations in bounded native quote text',
+    async (kind) => {
+      // Native quoted text uses the LINE text message contract, including its
+      // 5,000 UTF-16-unit limit; Flex URI actions cannot accompany quoteToken.
+      // https://developers.line.biz/en/reference/messaging-api/#text-message
+      vi.stubEnv('LINE_SECRET', 'secret')
+      vi.stubEnv('LINE_TOKEN', 'token')
+      const remote = await peer()
+      cleanup.push(remote.close)
+      remote.respond(200, { sentMessages: [{ id: 'sent' }] })
+
+      const local = await harness(
+        createLineChannel(),
+        config(),
+        'group',
+        'user'
+      )
+
+      cleanup.push(local.close)
+
+      const body = JSON.stringify({
+        destination: 'bot',
+        events: [
+          {
+            type: 'message',
+            webhookEventId: 'link-event',
+            source: { type: 'group', groupId: 'group', userId: 'user' },
+            message: {
+              id: 'link-message',
+              type: 'text',
+              text: 'share the links',
+              quoteToken: 'link-quote'
+            }
+          }
+        ]
+      })
+
+      expect((await local.core.fetch(incoming(body))).status).toBe(200)
+
+      const request = (await local.storage.listInbound({ limit: 10 }))[0]
+        ?.snapshot
+
+      if (!request) {
+        throw new Error('missing_request')
+      }
+      const longUrl = `https://example.com/${'x'.repeat(850)}`
+
+      const markdown =
+        kind === 'labeled'
+          ? '[**download** file](https://example.com/file.zip) and [https://example.com/file.zip](https://example.com/file.zip)'
+          : [1, 2, 3, 4, 5, 6]
+              .map((number) => `[file ${number}](${longUrl})`)
+              .join(' ')
+
+      const expected =
+        kind === 'labeled'
+          ? 'download file (https://example.com/file.zip) and https://example.com/file.zip'
+          : [1, 2, 3, 4, 5, 6]
+              .map((number) => `file ${number} (${longUrl})`)
+              .join(' ')
+
+      expect(
+        await local.principal().sendMessage({
+          channel: request.channel.id,
+          text: markdown,
+          reply: { requestId: request.requestId, kind: 'final' }
+        })
+      ).toMatchObject({ status: 'queued' })
+      await local.core.processDue()
+
+      const texts = remote.traffic.flatMap((item) =>
+        z
+          .object({
+            to: z.literal('group'),
+            messages: z.array(
+              z.object({
+                type: z.literal('text'),
+                text: z.string().max(5000),
+                quoteToken: z.literal('link-quote')
+              })
+            )
+          })
+          .parse(JSON.parse(item.body))
+          .messages.map((message) => message.text)
+      )
+
+      expect(texts.join('').replaceAll(/\s/gu, '')).toBe(
+        expected.replaceAll(/\s/gu, '')
+      )
+      if (kind === 'long') {
+        expect(texts.length).toBeGreaterThan(1)
+      }
+    }
+  )
+
+  it('quotes the selected native token for out-of-order requests and omits it for ordinary sends', async () => {
+    // Quote token is distinct from message ID and scoped to the original chat:
+    // https://developers.line.biz/en/docs/messaging-api/get-quote-tokens/
+    // Only text/textV2/sticker accept it:
+    // https://developers.line.biz/en/docs/messaging-api/sending-messages/#send-quote-messages
+    vi.stubEnv('LINE_SECRET', 'secret')
+    vi.stubEnv('LINE_TOKEN', 'token')
+    const remote = await peer()
+    cleanup.push(remote.close)
+    remote.respond(200, { sentMessages: [{ id: 'sent' }] })
+    const local = await harness(createLineChannel(), config(), 'group', 'user')
+    cleanup.push(local.close)
+    for (const number of [4, 1, 2, 3]) {
+      const body = JSON.stringify({
+        destination: 'bot',
+        events: [
+          {
+            type: 'message',
+            webhookEventId: `event-${number}`,
+            source: { type: 'group', groupId: 'group', userId: 'user' },
+            message: {
+              id: `message-${number}`,
+              type: 'text',
+              text: `question ${number}`,
+              ...(number === 4 ? {} : { quoteToken: `native-token-${number}` })
+            }
+          }
+        ]
+      })
+
+      expect((await local.core.fetch(incoming(body))).status).toBe(200)
+    }
+    const requests = await local.storage.listInbound({ limit: 10 })
+    const principal = local.principal()
+    const channel = requests[0]?.snapshot.channel.id
+    if (!channel) {
+      throw new Error('missing_channel')
+    }
+    for (const number of [2, 1, 3, 4]) {
+      const selected = requests.find(
+        (item) => item.snapshot.target.replyToId === `message-${number}`
+      )
+
+      if (!selected) {
+        throw new Error('missing_request')
+      }
+      expect(
+        await principal.sendMessage({
+          channel,
+          text: `answer ${number}`,
+          idempotencyKey: `reply-${number}`,
+          reply: { requestId: selected.snapshot.requestId, kind: 'final' }
+        })
+      ).toMatchObject({ status: 'queued' })
+      await local.core.processDue()
+    }
+    expect(
+      await principal.sendMessage({
+        channel,
+        text: 'ordinary',
+        idempotencyKey: 'ordinary'
+      })
+    ).toMatchObject({ status: 'queued' })
+    await local.core.processDue()
+    expect(
+      remote.traffic.slice(0, 3).map((item) => JSON.parse(item.body) as unknown)
+    ).toEqual([
+      {
+        to: 'group',
+        messages: [
+          { type: 'text', text: 'answer 2', quoteToken: 'native-token-2' }
+        ]
+      },
+      {
+        to: 'group',
+        messages: [
+          { type: 'text', text: 'answer 1', quoteToken: 'native-token-1' }
+        ]
+      },
+      {
+        to: 'group',
+        messages: [
+          { type: 'text', text: 'answer 3', quoteToken: 'native-token-3' }
+        ]
+      }
+    ])
+    expect(remote.traffic).toHaveLength(5)
+    expect(remote.traffic[3]?.body).not.toContain('quoteToken')
+    expect(remote.traffic[4]?.body).not.toContain('quoteToken')
+  })
+
   it('checks signed native sender authorization before media HTTP and preserves SQLite failures', async () => {
     const local = await setup()
 

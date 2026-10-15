@@ -7,6 +7,12 @@ import { ingest } from './io.js'
 import { receiveMedia } from './media.js'
 import type { eventSchema } from './schemas.js'
 
+function quoteMetadata(quoteToken: string | undefined): {
+  quoteToken?: string
+} {
+  return quoteToken ? { quoteToken } : {}
+}
+
 async function eventMedia(
   message: NonNullable<z.infer<typeof eventSchema>['message']>,
   host: ChannelHost,
@@ -100,6 +106,7 @@ export async function receiveEvent(
         destination,
         sourceType: source.type,
         botId: botUserId,
+        ...quoteMetadata(message.quoteToken),
         apiBaseUrl: new URL(apiBase).toString().replace(/\/$/u, '')
       }
     }
