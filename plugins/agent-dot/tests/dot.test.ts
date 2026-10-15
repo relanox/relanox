@@ -143,6 +143,81 @@ const callbackBody = z.looseObject({
   challenge: z.string().optional()
 })
 
+it.each(['attachments', 'files'] as const)(
+  'rejects an unauthorized channel before downloading remote %s',
+  async (field) => {
+    // Both input paths must authorize through the real host and SQLite before
+    // External traffic. Existing tests only reject unsafe download destinations.
+    const { fx, receiver } = await setup(
+      () => ({ status: 200, body: 'private-channel file' }),
+      true
+    )
+
+    const other = await fx.ingest(1)
+    const client = await fx.client()
+    const url = 'https://files.example.com/download'
+
+    const media =
+      field === 'attachments'
+        ? [{ url, kind: 'file' }]
+        : [{ download_url: url, file_id: 'file-1' }]
+
+    const result = await client.callTool({
+      name: 'relanox_send_message',
+      arguments: { channel: other.channel, [field]: media }
+    })
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: { status: 'not_found' }
+    })
+    expect(receiver.traffic).toHaveLength(0)
+    expect(await fx.storage.listOutbound({ limit: 10 })).toEqual([])
+  }
+)
+
+it.each(['attachments', 'files'] as const)(
+  'preserves the response filename when downloading authorized %s',
+  async (field) => {
+    // RFC 6266 4.3: response filename metadata describes the downloaded file.
+    // https://www.rfc-editor.org/rfc/rfc6266#section-4.3
+    // These public MCP paths previously discarded the downloader's parsed name.
+    const { fx, receiver } = await setup(() => ({
+      status: 200,
+      body: 'remote file',
+      headers: {
+        'Content-Type': 'text/plain',
+        'Content-Disposition': "attachment; filename*=UTF-8''report.txt"
+      }
+    }))
+
+    const own = await fx.ingest()
+    const client = await fx.client()
+    const url = 'https://files.example.com/opaque-download-id'
+
+    const media =
+      field === 'attachments'
+        ? [{ url, kind: 'file' }]
+        : [{ download_url: url, file_id: 'file-1' }]
+
+    const result = await client.callTool({
+      name: 'relanox_send_message',
+      arguments: { channel: own.channel, [field]: media }
+    })
+
+    const queued = z
+      .object({ status: z.literal('queued'), deliveryId: z.string() })
+      .parse(result.structuredContent)
+
+    const delivery = await fx.storage.getOutbound(queued.deliveryId)
+
+    expect(receiver.traffic).toHaveLength(1)
+    expect(delivery?.chunks).toMatchObject([
+      { media: { fileName: 'report.txt', size: 11 } }
+    ])
+  }
+)
+
 function subscribe(
   url: string,
   secret = signingKey,

@@ -107,7 +107,9 @@ export async function guard(
       method: request.method,
       headers: request.headers,
       body,
-      signal
+      // The read deadline ends with the body; tools retain their own operation
+      // Deadlines (including media downloads) and the original caller signal.
+      signal: request.signal
     })
   } finally {
     signal.removeEventListener('abort', abort)
@@ -198,6 +200,7 @@ async function resolveAttachment(
     mimeType: mimeType ?? downloaded.mimeType,
     fileName:
       fileName ??
+      downloaded.fileName ??
       (lastSegment ? decodeURIComponent(lastSegment) : 'attachment'),
     data: downloaded.data
   }
@@ -246,6 +249,7 @@ async function resolveFile(
     mimeType,
     fileName:
       file.file_name ??
+      downloaded.fileName ??
       (lastSegment ? decodeURIComponent(lastSegment) : 'attachment'),
     data: downloaded.data
   }
@@ -418,6 +422,17 @@ export function registerTools(
               { type: 'text', text: 'Too many attachments for this endpoint.' }
             ]
           }
+        }
+
+        const downloads =
+          dotFileInputs.length > 0 ||
+          attachments?.some((attachment) => 'url' in attachment) === true
+
+        if (
+          downloads &&
+          !(await host.media?.authorize({ channelId: channel }))
+        ) {
+          return envelope({ status: 'not_found' }, true)
         }
 
         const resolved = await resolveSendMedia(
