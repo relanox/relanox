@@ -2,9 +2,6 @@ import { WecomCrypto } from '@wecom/aibot-node-sdk'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 
 export function callbackCrypto(token: string, key: string): WecomCrypto {
-  if (!/^[A-Za-z0-9+/]{43}=?$/u.test(key)) {
-    throw new Error('invalid_callback_key')
-  }
   return new WecomCrypto(token, key)
 }
 
