@@ -34,7 +34,7 @@ import {
 } from './schemas.js'
 import type { eventSchema } from './schemas.js'
 
-function outboundRelation(target: SendInput['target']):
+function outboundRelation(input: SendInput):
   | {
       rel_type: string
       event_id: string
@@ -48,19 +48,21 @@ function outboundRelation(target: SendInput['target']):
       is_falling_back?: never
     }
   | null {
+  const { target } = input
+  const replyToId = input.reply ? target.replyToId : undefined
   if (target.threadId) {
-    if (!target.replyToId) {
+    if (!replyToId) {
       return { rel_type: 'm.thread', event_id: target.threadId }
     }
     return {
       rel_type: 'm.thread',
       event_id: target.threadId,
       is_falling_back: false,
-      'm.in_reply_to': { event_id: target.replyToId ?? target.threadId }
+      'm.in_reply_to': { event_id: replyToId }
     }
   }
-  if (target.replyToId) {
-    return { 'm.in_reply_to': { event_id: target.replyToId } }
+  if (replyToId) {
+    return { 'm.in_reply_to': { event_id: replyToId } }
   }
   return null
 }
@@ -342,7 +344,7 @@ export function createMatrixChannel(
       return encryptionFailure
     }
     try {
-      const relation = outboundRelation(input.target)
+      const relation = outboundRelation(input)
       const content = await messageContent(input, base, headers(), signal)
       if ('status' in content) {
         return content
@@ -405,7 +407,7 @@ export function createMatrixChannel(
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       const current = configured()
       if (
         address.platform !== 'matrix' ||
@@ -416,6 +418,19 @@ export function createMatrixChannel(
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
+      const prior = targetSchema.safeParse(learned?.data)
+
+      const replyToId =
+        learned?.channel === 'matrix' &&
+        learned.accountId === current.account.id &&
+        learned.chatId === address.chatId &&
+        learned.threadId === address.threadId &&
+        prior.success &&
+        prior.data.homeserver === current.base &&
+        prior.data.userId === current.userId
+          ? learned.replyToId
+          : undefined
+
       return {
         status: 'available',
         target: {
@@ -425,6 +440,7 @@ export function createMatrixChannel(
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
             : {}),
+          ...(replyToId ? { replyToId } : {}),
           data: { homeserver: current.base, userId: current.userId }
         }
       }
