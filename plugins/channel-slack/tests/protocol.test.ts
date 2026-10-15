@@ -701,7 +701,7 @@ describe('slack native protocol', () => {
     expect(connected).toBe(stopped)
   })
 
-  it('closes failed Socket Mode handoff without ACK', async () => {
+  it('leaves failed Socket Mode handoff unacknowledged', async () => {
     const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
     await new Promise<void>((resolve) => {
       wss.once('listening', resolve)
