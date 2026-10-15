@@ -20,7 +20,7 @@ Read the message event’s sender resource name (`users/<id>`) for **Allowed use
 
 In the configurator, set the public address to `https://relay.example.com`. In the Google Chat console, configure the app’s HTTP endpoint as `https://relay.example.com/channels/googlechat-main/webhook` and select **HTTP endpoint URL** as the authentication audience mode. If you rename the account, replace `googlechat-main` in the endpoint path too. Start Relanox before sending app interactions.
 
-Relanox uses Google's maintained official Chat REST SDK and authentication library, including its certificate cache and five-minute token clock tolerance. Core schedules message retries; the SDK does not replay failed message requests. The adapter checks the verified caller identity and downloads attachments with bounded reads.
+Relanox uses Google's official Chat REST SDK and authentication library for service-account token acquisition, caching and refresh, caller verification and attachment downloads. Verification uses the SDK's certificate cache and five-minute token clock tolerance. Core schedules message retries; SDK transport retries are disabled. A send already handed to the SDK can finish during cancellation, including while shared authentication is refreshing; Relanox records the resulting receipt. Incoming attachments keep their space ownership checks, reject redirects and enforce the Core media budget while reading the download stream, including when no size is declared.
 
 ## Send your first message
 
@@ -31,6 +31,8 @@ When the Agent specifies `reply.requestId`, Google Chat quotes that incoming mes
 ## Images and files
 
 Upload an attachment directly to Chat with your question. For generated media, configure the public address as described in [Media](../media.md). Image replies appear as cards; audio, videos and files appear as named download buttons. The public media address must be reachable by recipients and by Google for image display.
+
+Core enforces the media budget, which defaults to 100 MiB. Google determines supported image formats and platform limits; the adapter does not impose a separate upload-size or image-format gate. Native card layout limits still apply.
 
 ## Troubleshooting
 

@@ -261,7 +261,13 @@ describe('native Google Chat', () => {
     ).toHaveLength(3)
   })
 
-  it('cancels one OAuth waiter without canceling another send sharing the refresh', async () => {
+  // Protect the observed receipt when SDK work completes during cancellation.
+  // Returning retryable after that POST would allow a duplicate delivery. Other
+  // Sends do not cancel during shared authentication, so cannot catch this case.
+  // Real SDK + held HTTP token response; no production-only interface is needed.
+  // Google-auth-library 11.1.0 requestAsync waits for shared auth; gaxios 7.3.1
+  // Gaxios.#appendTimeoutToSignal replaces an already-aborted signal at dispatch.
+  it('records SDK receipts when cancellation arrives during shared OAuth refresh', async () => {
     const local = await setup()
     expect((await local.core.fetch(await local.incoming())).status).toBe(200)
     const record = (await local.storage.listInbound({ limit: 1 }))[0]
@@ -296,21 +302,21 @@ describe('native Google Chat', () => {
         )
         .toBeGreaterThan(0)
       controller.abort()
-      expect(await canceled).toMatchObject({
-        status: 'retryable',
-        errorCode: 'oauth_unavailable'
-      })
       expect(
         local.remote.traffic.filter((entry) => entry.path.startsWith('/v1/'))
       ).toHaveLength(0)
       release()
+      expect(await canceled).toMatchObject({
+        status: 'sent',
+        receipt: { platformMessageId: 'spaces/space/messages/sent' }
+      })
       expect(await surviving).toMatchObject({ status: 'sent' })
       expect(
         local.remote.traffic.filter((entry) => entry.path === '/token')
       ).toHaveLength(1)
       expect(
         local.remote.traffic.filter((entry) => entry.path.startsWith('/v1/'))
-      ).toHaveLength(1)
+      ).toHaveLength(2)
     } finally {
       release()
       await Promise.all([canceled, surviving])
@@ -589,8 +595,18 @@ describe('native Google Chat', () => {
     }
   )
 
+  // Protect persisted media budgets for both declared and actual stream bytes.
+  // Trusting Content-Length or eagerly buffering an SDK stream would miss the
+  // Chunked over-limit response; existing count/aggregate cases cannot detect it.
+  // Real HTTP responses and SQLite exercise the public contract without a seam.
   it.each([
     { limit: 'per-file bytes', worker: { maxMediaBytes: 3 }, count: 1 },
+    {
+      limit: 'undeclared per-file bytes',
+      worker: { maxMediaBytes: 3 },
+      count: 1,
+      headers: { 'transfer-encoding': 'chunked' }
+    },
     { limit: 'attachment count', worker: { maxAttachments: 1 }, count: 2 },
     {
       limit: 'aggregate bytes',
@@ -599,7 +615,7 @@ describe('native Google Chat', () => {
     }
   ])(
     'acknowledges an explicit $limit refusal without saving or dispatching it',
-    async ({ worker, count }) => {
+    async ({ worker, count, headers }) => {
       // Chat can retry a non-2xx callback and expects {} for asynchronous handling:
       // https://developers.google.com/workspace/chat/receive-respond-interactions#http-service-retries
       const local = await setup(':memory:', worker)
@@ -609,7 +625,7 @@ describe('native Google Chat', () => {
         local.remote.route(
           `/v1/media/spaces/space/messages/media/attachments/file${index || ''}?alt=media`,
           new Uint8Array([1, 2, 3, 4]),
-          { 'content-type': 'image/png' }
+          { 'content-type': 'image/png', ...headers }
         )
       }
 
@@ -628,6 +644,103 @@ describe('native Google Chat', () => {
       expect(await local.storage.listInbound({ limit: 10 })).toHaveLength(1)
     }
   )
+
+  // Protect download credentials and channel ownership on the SDK's real media
+  // Endpoint. Reserved URI expansion or following redirects would send a token
+  // Or read an attachment outside the bound space. Ordinary byte tests do not
+  // Exercise either boundary; the passive HTTP peer needs no production seam.
+  // @googleapis/chat 51.2.0 build/v1.js Resource$Media.download uses {+resourceName}.
+  it.each([
+    'spaces/other/messages/media/attachments/file',
+    'spaces/space/%2e%2e/other/messages/media/attachments/file',
+    'spaces/space/messages/media/attachments/file?alt=json',
+    'spaces/space/messages/media/attachments/file#fragment'
+  ])(
+    'refuses unsafe attachment resource %s before requesting credentials',
+    async (name) => {
+      const local = await setup()
+
+      const event = attachmentEvent().replace(
+        'spaces/space/messages/media/attachments/file',
+        name
+      )
+
+      expect(
+        (await local.core.fetch(await local.incoming(undefined, event))).status
+      ).toBe(500)
+      expect(
+        local.remote.traffic.filter(
+          (entry) =>
+            entry.path === '/token' || entry.path.startsWith('/v1/media/')
+        )
+      ).toHaveLength(0)
+      expect(await local.storage.listInbound({ limit: 10 })).toHaveLength(0)
+    }
+  )
+
+  it('refuses a media redirect without forwarding its bot token or persisting bytes', async () => {
+    const local = await setup()
+
+    const path =
+      '/v1/media/spaces/space/messages/media/attachments/file?alt=media'
+
+    local.remote.route(
+      path,
+      new Uint8Array(),
+      {
+        location: `${local.remote.base}/credential-leak`
+      },
+      302
+    )
+    expect(
+      (
+        await local.core.fetch(
+          await local.incoming(undefined, attachmentEvent())
+        )
+      ).status
+    ).toBe(500)
+    expect(
+      local.remote.traffic.filter((entry) => entry.path === path)
+    ).toHaveLength(1)
+    expect(
+      local.remote.traffic.filter((entry) => entry.path === '/credential-leak')
+    ).toHaveLength(0)
+    expect(await local.storage.listInbound({ limit: 10 })).toHaveLength(0)
+  })
+
+  // Reject a failed media response without collecting its unfinished body.
+  // Gaxios 7.3.1 _request buffers failed streams when validateStatus rejects;
+  // Finite 503 fixtures cannot expose that unbounded read. A held HTTP body and
+  // Real SQLite protect the public callback contract without a production seam.
+  it('refuses an unfinished SDK media error stream without buffering it', async () => {
+    const local = await setup()
+
+    const path =
+      '/v1/media/spaces/space/messages/media/attachments/file?alt=media'
+
+    const release = local.remote.holdBody(path)
+
+    let completed = false
+
+    const result = local.core
+      .fetch(await local.incoming(undefined, attachmentEvent()))
+      .then((response) => {
+        completed = true
+        return response
+      })
+
+    try {
+      await expect.poll(() => completed, { timeout: 3000 }).toBe(true)
+      expect((await result).status).toBe(500)
+      expect(await local.storage.listInbound({ limit: 10 })).toHaveLength(0)
+      expect(
+        local.remote.traffic.filter((entry) => entry.path === path)
+      ).toHaveLength(1)
+    } finally {
+      release()
+      await result
+    }
+  })
 
   it.each(['media HTTP 503', 'media connection reset', 'closed SQLite'])(
     'keeps %s ingress replayable through HTTP and a real SQLite reopen',
@@ -1256,121 +1369,141 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
   expect(new Uint8Array(await published.arrayBuffer())).toEqual(bytes)
 })
 
-it('publishes verified images and preserves text/image/text order in native rich messages', async () => {
-  const local = await setup()
-  expect((await local.core.fetch(await local.incoming())).status).toBe(200)
-  const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
-  if (!item) {
-    throw new Error('missing_inbound')
-  }
-  const principal = local.principal()
-
-  const reference = await principal.media?.upload({
-    channelId: item.channel.id,
-    mediaId: 'c0ffef01-ecf3-46f3-bb31-7ae8c2865f51',
-    upload: {
-      kind: 'image',
-      mimeType: 'image/png',
-      fileName: 'photo.png',
-      data: new Uint8Array([1, 2, 3, 4, 5])
+// Core already owns byte budgets and image identity. Protect ordered native
+// Cards for images outside the former local MIME/2 MB gates; those gates could
+// Reject before Google sees a valid URL. The existing small PNG case misses it.
+// The real SDK, HTTP peer and SQLite publication need no production test seam.
+it.each([
+  { mimeType: 'image/webp', fileName: 'photo.webp', size: 5 },
+  { mimeType: 'image/png', fileName: 'photo.png', size: 2_000_001 }
+])(
+  'publishes $mimeType ($size bytes) and preserves text/image/text order in native rich messages',
+  async ({ mimeType, fileName, size }) => {
+    const local = await setup()
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    const item = (await local.storage.listInbound({ limit: 10 }))[0]?.snapshot
+    if (!item) {
+      throw new Error('missing_inbound')
     }
-  })
+    const principal = local.principal()
 
-  if (!reference) {
-    throw new Error('missing_image')
-  }
+    const reference = await principal.media?.upload({
+      channelId: item.channel.id,
+      mediaId: 'c0ffef01-ecf3-46f3-bb31-7ae8c2865f51',
+      upload: {
+        kind: 'image',
+        mimeType,
+        fileName,
+        data: new Uint8Array(size).fill(7)
+      }
+    })
 
-  const media = await principal.media?.read({
-    channelId: item.channel.id,
-    mediaId: reference.id
-  })
+    if (!reference) {
+      throw new Error('missing_image')
+    }
 
-  if (!media) {
-    throw new Error('missing_image_bytes')
-  }
+    const media = await principal.media?.read({
+      channelId: item.channel.id,
+      mediaId: reference.id
+    })
 
-  const input: SendInput = {
-    deliveryId: 'rich',
-    channelId: item.channel.id,
-    target: item.target,
-    chunkIndex: 0,
-    signal: new AbortController().signal,
-    chunk: {
-      text: '',
-      state: null,
-      idempotencyKey: 'rich',
-      richText: [
-        { type: 'text', text: '**before** `code<value>`' },
-        { type: 'image', media: reference, label: 'photo' },
-        { type: 'text', text: 'after' }
-      ]
-    },
-    richMedia: [media]
-  }
+    if (!media) {
+      throw new Error('missing_image_bytes')
+    }
 
-  expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+    const input: SendInput = {
+      deliveryId: 'rich',
+      channelId: item.channel.id,
+      target: item.target,
+      chunkIndex: 0,
+      signal: new AbortController().signal,
+      chunk: {
+        text: '',
+        state: null,
+        idempotencyKey: 'rich',
+        richText: [
+          { type: 'text', text: '**before** `code<value>`' },
+          { type: 'image', media: reference, label: 'photo' },
+          { type: 'text', text: 'after' }
+        ]
+      },
+      richMedia: [media]
+    }
 
-  const sent = local.remote.traffic.filter((request) =>
-    request.path.includes('/v1/spaces/space/messages')
-  )
+    expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
 
-  expect(sent).toHaveLength(1)
-  expect(JSON.parse(sent[0]?.body ?? 'null') as unknown).toMatchObject({
-    cardsV2: [
-      {
-        card: {
-          sections: [
-            {
-              widgets: [
-                { textParagraph: { text: '<b>before</b> code&lt;value&gt;' } },
-                {
-                  image: {
-                    altText: 'photo'
-                  }
-                },
-                { textParagraph: { text: 'after' } }
-              ]
-            }
+    const sent = local.remote.traffic.filter((request) =>
+      request.path.includes('/v1/spaces/space/messages')
+    )
+
+    expect(sent).toHaveLength(1)
+    expect(JSON.parse(sent[0]?.body ?? 'null') as unknown).toMatchObject({
+      cardsV2: [
+        {
+          card: {
+            sections: [
+              {
+                widgets: [
+                  {
+                    textParagraph: { text: '<b>before</b> code&lt;value&gt;' }
+                  },
+                  {
+                    image: {
+                      altText: 'photo'
+                    }
+                  },
+                  { textParagraph: { text: 'after' } }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      thread: { name: 'spaces/space/threads/thread' }
+    })
+
+    const payload = z
+      .object({
+        cardsV2: z.array(
+          z.object({
+            card: z.object({
+              sections: z.array(z.object({ widgets: z.array(z.unknown()) }))
+            })
+          })
+        )
+      })
+      .parse(JSON.parse(sent[0]?.body ?? 'null'))
+
+    const image = z
+      .object({ image: z.object({ imageUrl: z.string() }) })
+      .parse(payload.cardsV2[0]?.card.sections[0]?.widgets[1])
+
+    expect(image.image.imageUrl).toMatch(/^https:\/\/relay\.example\/media\//u)
+    const published = await local.core.fetch(new Request(image.image.imageUrl))
+    expect(published.headers.get('content-type')).toBe(mimeType)
+    expect(new Uint8Array(await published.arrayBuffer())).toEqual(
+      new Uint8Array(size).fill(7)
+    )
+    const count = local.remote.traffic.length
+    expect(await local.plugin.send({ ...input, richMedia: [] })).toMatchObject({
+      status: 'rejected',
+      errorCode: 'invalid_rich_media'
+    })
+    expect(
+      await local.plugin.send({
+        ...input,
+        chunk: {
+          ...input.chunk,
+          richText: [
+            { type: 'text', text: 'a'.repeat(2001) },
+            { type: 'image', media: reference, label: 'photo' }
           ]
         }
-      }
-    ],
-    thread: { name: 'spaces/space/threads/thread' }
-  })
-
-  const payload = z
-    .object({
-      cardsV2: z.array(
-        z.object({
-          card: z.object({
-            sections: z.array(z.object({ widgets: z.array(z.unknown()) }))
-          })
-        })
-      )
+      })
+    ).toMatchObject({
+      status: 'rejected',
+      errorCode: 'rich_text_limit_exceeded'
     })
-    .parse(JSON.parse(sent[0]?.body ?? 'null'))
-
-  const image = z
-    .object({ image: z.object({ imageUrl: z.string() }) })
-    .parse(payload.cardsV2[0]?.card.sections[0]?.widgets[1])
-
-  expect(image.image.imageUrl).toMatch(/^https:\/\/relay\.example\/media\//u)
-  const count = local.remote.traffic.length
-  expect(await local.plugin.send({ ...input, richMedia: [] })).toMatchObject({
-    status: 'rejected',
-    errorCode: 'invalid_rich_media'
-  })
-  expect(
-    await local.plugin.send({
-      ...input,
-      chunk: {
-        ...input.chunk,
-        richText: [
-          { type: 'text', text: 'a'.repeat(2001) },
-          { type: 'image', media: reference, label: 'photo' }
-        ]
-      }
-    })
-  ).toMatchObject({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
-  expect(local.remote.traffic).toHaveLength(count)
-})
+    expect(local.remote.traffic).toHaveLength(count)
+  }
+)

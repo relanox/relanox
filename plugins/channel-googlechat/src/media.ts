@@ -1,14 +1,10 @@
 import { markdownRuns, escapeHtml } from '@relanox/markdown'
-import { apiBase } from './constants.js'
-import {
-  downloadMedia,
-  mediaKind,
-  MediaDownloadError
-} from '@relanox/channel-media'
+import { mediaKind, MediaDownloadError } from '@relanox/channel-media'
+import { Readable } from 'node:stream'
 import type { ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
 import type { chat_v1 } from '@googleapis/chat'
 import type { z } from 'zod'
-import { accessToken, invalidateAccessToken } from './client.js'
+import { chatClient, rejectMediaToken } from './sdk.js'
 import type { GoogleChatConfig } from './config.js'
 import type { eventSchema } from './schemas.js'
 
@@ -23,39 +19,53 @@ export async function downloadAttachments(
   const attachments = []
   if (message.attachment?.length) {
     const signal = AbortSignal.timeout(120_000)
-    const token = await accessToken(config, signal)
-    if (typeof token !== 'string') {
-      throw new TypeError('media_oauth_unavailable')
-    }
     for (const attachment of message.attachment) {
       const name = attachment.attachmentDataRef?.resourceName
       if (
         !name ||
         !name.startsWith(`${space}/`) ||
         name.includes('..') ||
-        /[?#]/u.test(name)
+        /[\\%?#]/u.test(name)
       ) {
         throw new Error('unsupported_attachment_reference')
       }
 
-      const downloaded = await downloadMedia(
-        `${apiBase}/v1/media/${name}?alt=media`,
+      const response = await chatClient(config).media.download(
+        { resourceName: name, alt: 'media' },
         {
-          maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
+          responseType: 'stream',
           signal,
-          trustedOrigins: [new URL(apiBase).origin],
-          headers: { authorization: `Bearer ${token}` }
+          // Gaxios otherwise buffers failed stream responses without a bound.
+          // The SDK fixes the Google origin; redirects remain disabled above.
+          validateStatus: () => true
         }
-      ).catch((error: unknown) => {
-        if (error instanceof MediaDownloadError && error.status === 401) {
-          invalidateAccessToken(config, token)
-        }
-        throw error
-      })
+      )
 
-      const mimeType = attachment.contentType ?? downloaded.mimeType
+      const stream = Readable.from(response.data)
+      let data: Uint8Array
+      try {
+        rejectMediaToken(config, response.status)
+        if (!response.ok) {
+          throw new MediaDownloadError('media_download_failed', response.status)
+        }
+        data = await readMedia(
+          stream,
+          response.headers['content-length'] ?? '',
+          host.maxMediaBytes ?? 100 * 1024 * 1024
+        )
+      } finally {
+        stream.destroy()
+      }
+
+      const mimeType =
+        attachment.contentType ??
+        (response.headers['content-type'] ?? 'application/octet-stream')
+          .split(';')[0]
+          ?.trim() ??
+        'application/octet-stream'
+
       attachments.push({
-        data: downloaded.data,
+        data,
         mimeType,
         kind: mediaKind(mimeType),
         fileName: attachment.contentName ?? 'attachment.bin'
@@ -63,6 +73,28 @@ export async function downloadAttachments(
     }
   }
   return attachments
+}
+
+/** Bound actual SDK stream bytes even when the server omits Content-Length. */
+async function readMedia(
+  stream: Readable,
+  declared: string,
+  maximum: number
+): Promise<Uint8Array> {
+  if (Number(declared) > maximum) {
+    throw new MediaDownloadError('media_too_large')
+  }
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for await (const part of stream) {
+    const bytes = part as Uint8Array
+    size += bytes.byteLength
+    if (size > maximum) {
+      throw new MediaDownloadError('media_too_large')
+    }
+    chunks.push(bytes)
+  }
+  return Buffer.concat(chunks, size)
 }
 
 export async function mediaCards(
