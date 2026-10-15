@@ -239,7 +239,7 @@ export function buildConfig(state: ConfiguratorState): GeneratedConfig {
       ),
       storage: {
         plugin: 'sqlite',
-        config: { filename: 'data/relanox.sqlite' }
+        config: { filename: 'relanox.sqlite' }
       }
     }
   }

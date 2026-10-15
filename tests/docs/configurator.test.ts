@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { validateApp } from '../../apps/cli/src/runtime.js'
+import { openStorage } from '../../apps/cli/src/storage.js'
 import { CHANNELS } from '../../docs/.vitepress/configurator/channels.js'
 import {
   addAgent,
@@ -49,6 +53,31 @@ function completedState(): ReturnType<typeof createState> {
 }
 
 describe('connection configurator production contracts', () => {
+  it('starts generated SQLite storage in a fresh launch directory', async () => {
+    const launchDirectory = await mkdtemp(
+      join(tmpdir(), 'relanox-configurator-')
+    )
+
+    const previousDirectory = process.cwd()
+    try {
+      process.chdir(launchDirectory)
+      const config = await validateApp(buildConfig(completedState()))
+      const storage = await openStorage(config.relay.storage)
+      try {
+        await storage.initialize()
+        expect(await storage.health()).toEqual({ ok: true })
+        expect(
+          (await stat(join(launchDirectory, 'relanox.sqlite'))).isFile()
+        ).toBe(true)
+      } finally {
+        await storage.close()
+      }
+    } finally {
+      process.chdir(previousDirectory)
+      await rm(launchDirectory, { recursive: true, force: true })
+    }
+  })
+
   it('exports only selected WeCom mode credentials and validates both exports through production', async () => {
     const state = completedState()
 
