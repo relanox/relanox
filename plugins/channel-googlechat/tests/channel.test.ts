@@ -31,6 +31,7 @@ afterEach(async () => {
     await close()
   }
   vi.unstubAllEnvs()
+  vi.useRealTimers()
 })
 const issuer = 'https://accounts.google.com'
 const publicUrl = 'https://relay.example'
@@ -153,6 +154,258 @@ async function setup(
 }
 
 describe('native Google Chat', () => {
+  // Corrupt one documented OAuth response field; malformed expiry must not
+  // Turn into a token cached indefinitely by a permissive SDK response parser.
+  // https://developers.google.com/identity/protocols/oauth2/service-account#httprest_2
+  it.each([
+    {
+      field: 'access_token',
+      response: { access_token: 123, expires_in: 3600 }
+    },
+    {
+      field: 'expires_in',
+      response: { access_token: 'malformed-token', expires_in: 'invalid' }
+    }
+  ])(
+    'rejects malformed OAuth $field and recovers with a fresh token',
+    async ({ response }) => {
+      const local = await setup()
+      expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+      const record = (await local.storage.listInbound({ limit: 1 }))[0]
+      if (!record) {
+        throw new Error('missing_incoming_message')
+      }
+
+      const input: SendInput = {
+        deliveryId: 'oauth-malformed',
+        channelId: record.snapshot.channel.id,
+        chunkIndex: 0,
+        signal: new AbortController().signal,
+        target: record.snapshot.target,
+        chunk: {
+          text: 'answer',
+          idempotencyKey: 'oauth-malformed:0',
+          state: null
+        }
+      }
+
+      local.remote.token(200, response)
+      expect(await local.plugin.send(input)).toEqual({
+        status: 'retryable',
+        errorCode: 'oauth_unavailable'
+      })
+      expect(
+        local.remote.traffic.filter((entry) => entry.path.startsWith('/v1/'))
+      ).toHaveLength(0)
+      local.remote.token(200, {
+        access_token: 'valid-token',
+        token_type: 'Bearer',
+        expires_in: 3600
+      })
+      expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+      expect(local.remote.traffic.at(-1)?.headers.authorization).toBe(
+        'Bearer valid-token'
+      )
+      expect(
+        local.remote.traffic.filter((entry) => entry.path === '/token')
+      ).toHaveLength(2)
+    }
+  )
+
+  // An authentication rejection has not sent a message; retry with fresh credentials.
+  // https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto#L116-L121
+  it('refreshes a rejected OAuth token before retrying a send without replaying it internally', async () => {
+    const local = await setup()
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    const record = (await local.storage.listInbound({ limit: 1 }))[0]
+    if (!record) {
+      throw new Error('missing_incoming_message')
+    }
+
+    const input: SendInput = {
+      deliveryId: 'oauth-rejected',
+      channelId: record.snapshot.channel.id,
+      chunkIndex: 0,
+      signal: new AbortController().signal,
+      target: record.snapshot.target,
+      chunk: { text: 'answer', idempotencyKey: 'oauth-rejected:0', state: null }
+    }
+
+    expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+    local.remote.respond(401, {
+      error: { code: 401, status: 'UNAUTHENTICATED' }
+    })
+    expect(await local.plugin.send(input)).toEqual({
+      status: 'retryable',
+      errorCode: 'oauth_token_rejected'
+    })
+    expect(
+      local.remote.traffic.filter((entry) => entry.path.startsWith('/v1/'))
+    ).toHaveLength(2)
+    local.remote.token(200, {
+      access_token: 'replacement-token',
+      token_type: 'Bearer',
+      expires_in: 3600
+    })
+    local.remote.respond(200, { name: 'spaces/space/messages/recovered' })
+    expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+    expect(local.remote.traffic.at(-1)?.headers.authorization).toBe(
+      'Bearer replacement-token'
+    )
+    expect(
+      local.remote.traffic.filter((entry) => entry.path === '/token')
+    ).toHaveLength(2)
+    expect(
+      local.remote.traffic.filter((entry) => entry.path.startsWith('/v1/'))
+    ).toHaveLength(3)
+  })
+
+  it('cancels one OAuth waiter without canceling another send sharing the refresh', async () => {
+    const local = await setup()
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    const record = (await local.storage.listInbound({ limit: 1 }))[0]
+    if (!record) {
+      throw new Error('missing_incoming_message')
+    }
+    const release = local.remote.holdToken()
+    const controller = new AbortController()
+
+    const input: SendInput = {
+      deliveryId: 'oauth-waiters',
+      channelId: record.snapshot.channel.id,
+      chunkIndex: 0,
+      signal: controller.signal,
+      target: record.snapshot.target,
+      chunk: { text: 'answer', idempotencyKey: 'oauth-waiters:0', state: null }
+    }
+
+    const canceled = local.plugin.send(input)
+
+    const surviving = local.plugin.send({
+      ...input,
+      signal: new AbortController().signal
+    })
+
+    try {
+      await expect
+        .poll(
+          () =>
+            local.remote.traffic.filter((entry) => entry.path === '/token')
+              .length
+        )
+        .toBeGreaterThan(0)
+      controller.abort()
+      expect(await canceled).toMatchObject({
+        status: 'retryable',
+        errorCode: 'oauth_unavailable'
+      })
+      expect(
+        local.remote.traffic.filter((entry) => entry.path.startsWith('/v1/'))
+      ).toHaveLength(0)
+      release()
+      expect(await surviving).toMatchObject({ status: 'sent' })
+      expect(
+        local.remote.traffic.filter((entry) => entry.path === '/token')
+      ).toHaveLength(1)
+      expect(
+        local.remote.traffic.filter((entry) => entry.path.startsWith('/v1/'))
+      ).toHaveLength(1)
+    } finally {
+      release()
+      await Promise.all([canceled, surviving])
+    }
+  })
+
+  // Protects authentication across actual sends, including the documented expires_in.
+  // Existing single-send assertions cannot detect redundant token exchanges.
+  // https://developers.google.com/identity/protocols/oauth2/service-account#httprest_2
+  it('shares valid OAuth tokens across concurrent sends and refreshes after expiry or credential rotation', async () => {
+    const local = await setup()
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    const record = (await local.storage.listInbound({ limit: 1 }))[0]
+    if (!record) {
+      throw new Error('missing_incoming_message')
+    }
+
+    const input: SendInput = {
+      deliveryId: 'oauth-cache',
+      channelId: record.snapshot.channel.id,
+      chunkIndex: 0,
+      signal: new AbortController().signal,
+      target: record.snapshot.target,
+      chunk: { text: 'answer', idempotencyKey: 'oauth-cache:0', state: null }
+    }
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 4 }, async () => local.plugin.send(input))
+    )
+
+    expect(outcomes.map((result) => result.status)).toEqual([
+      'sent',
+      'sent',
+      'sent',
+      'sent'
+    ])
+    expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+    expect(
+      local.remote.traffic.filter((entry) => entry.path === '/token')
+    ).toHaveLength(1)
+
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.now() + 3_600_000)
+    local.remote.token(200, {
+      access_token: 'refreshed-token',
+      token_type: 'Bearer',
+      expires_in: 3600
+    })
+    expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+    expect(local.remote.traffic.at(-1)?.headers.authorization).toBe(
+      'Bearer refreshed-token'
+    )
+    expect(
+      local.remote.traffic.filter((entry) => entry.path === '/token')
+    ).toHaveLength(2)
+
+    const rotated = await generateKeyPair('RS256', { extractable: true })
+    vi.stubEnv(
+      'CHAT_SERVICE',
+      JSON.stringify({
+        type: 'service_account',
+        client_email: 'relay@example.iam.gserviceaccount.com',
+        private_key: await exportPKCS8(rotated.privateKey)
+      })
+    )
+    local.remote.token(200, {
+      access_token: 'rotated-token',
+      token_type: 'Bearer',
+      expires_in: 3600
+    })
+    expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
+    expect(local.remote.traffic.at(-1)?.headers.authorization).toBe(
+      'Bearer rotated-token'
+    )
+
+    const tokens = local.remote.traffic.filter(
+      (entry) => entry.path === '/token'
+    )
+
+    expect(tokens).toHaveLength(3)
+    const assertion = new URLSearchParams(tokens.at(-1)?.body).get('assertion')
+    if (!assertion) {
+      throw new Error('missing_oauth_assertion')
+    }
+
+    const verified = await jwtVerify(assertion, rotated.publicKey, {
+      algorithms: ['RS256'],
+      issuer: 'relay@example.iam.gserviceaccount.com',
+      audience: 'https://oauth2.googleapis.com/token'
+    })
+
+    expect(verified.payload.scope).toBe(
+      'https://www.googleapis.com/auth/chat.bot'
+    )
+  })
+
   // The native quote requires the message's real version timestamp, including
   // Fractional precision, and cannot reference a reply from another thread:
   // https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#QuotedMessageMetadata
@@ -785,6 +1038,53 @@ function attachmentEvent(sender = 'users/alice', count = 1): string {
     }
   })
 }
+
+// The media download uses the same OAuth credentials as message sends.
+// A 401 must discard a cached token so redelivery can authenticate again.
+// https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto#L116-L121
+it('refreshes rejected media credentials on webhook redelivery before persisting the attachment', async () => {
+  const local = await setup()
+
+  const path =
+    '/v1/media/spaces/space/messages/media/attachments/file?alt=media'
+
+  local.remote.route(
+    path,
+    { error: { code: 401, status: 'UNAUTHENTICATED' } },
+    {},
+    401
+  )
+  expect(
+    (await local.core.fetch(await local.incoming(undefined, attachmentEvent())))
+      .status
+  ).toBe(500)
+  expect(await local.storage.listInbound({ limit: 1 })).toHaveLength(0)
+  local.remote.token(200, {
+    access_token: 'fresh-media-token',
+    token_type: 'Bearer',
+    expires_in: 3600
+  })
+  local.remote.route(path, new Uint8Array([1, 2, 3]), {
+    'content-type': 'image/png'
+  })
+  expect(
+    (await local.core.fetch(await local.incoming(undefined, attachmentEvent())))
+      .status
+  ).toBe(200)
+  const incoming = await local.storage.listInbound({ limit: 1 })
+  expect(incoming[0]?.snapshot.attachments?.[0]).toMatchObject({
+    kind: 'image',
+    size: 3
+  })
+  expect(
+    local.remote.traffic.filter((entry) => entry.path === '/token')
+  ).toHaveLength(2)
+  expect(
+    local.remote.traffic
+      .filter((entry) => entry.path === path)
+      .map((entry) => entry.headers.authorization)
+  ).toEqual(['Bearer oauth-token', 'Bearer fresh-media-token'])
+})
 
 it('downloads pure Google Chat media with bot auth and returns a native image card to the frozen thread', async () => {
   const local = await setup()
