@@ -25,7 +25,11 @@ afterEach(async () => {
 
 // Native file_share/file fields: https://docs.slack.dev/reference/events/message/file_share
 // Private download bearer header: https://docs.slack.dev/reference/objects/file-object
-function envelope(user: string, eventId: string): unknown {
+function envelope(
+  user: string,
+  eventId: string,
+  ts = '1700000000.002'
+): unknown {
   return {
     type: 'event_callback',
     team_id: 'T1',
@@ -35,7 +39,7 @@ function envelope(user: string, eventId: string): unknown {
       type: 'message',
       user,
       channel: 'C7',
-      ts: '1700000000.002',
+      ts,
       text: 'file',
       files: [
         {
@@ -54,9 +58,10 @@ function envelope(user: string, eventId: string): unknown {
 async function deliver(
   origin: string,
   user: string,
-  eventId: string
+  eventId: string,
+  ts?: string
 ): Promise<Response> {
-  const body = JSON.stringify(envelope(user, eventId))
+  const body = JSON.stringify(envelope(user, eventId, ts))
   const timestamp = String(Math.floor(Date.now() / 1000))
   return fetch(`${origin}/channels/sl/events`, {
     method: 'POST',
@@ -104,9 +109,14 @@ it('skips denied sender file downloads before authenticated HTTP acceptance and 
     { kind: 'file', mimeType: 'text/plain', size: 5 }
   ])
   await runtime.storage.close()
-  expect((await deliver(runtime.origin, 'U42', 'EvReplay')).status).toBe(503)
+  expect(
+    (await deliver(runtime.origin, 'U42', 'EvReplay', '1700000000.003')).status
+  ).toBe(503)
   const restarted = await fixture(filename, cleanup)
-  expect((await deliver(restarted.origin, 'U42', 'EvReplay')).status).toBe(204)
+  expect(
+    (await deliver(restarted.origin, 'U42', 'EvReplay', '1700000000.003'))
+      .status
+  ).toBe(204)
   expect((await restarted.core.status()).requests).toHaveLength(2)
 })
 

@@ -57,6 +57,19 @@ function messageThreadId(
   )
 }
 
+function inboundMessageId(
+  event: z.infer<typeof messageSchema>,
+  teamId: string,
+  envelopeEventId: string
+): string {
+  if (event.subtype !== undefined || event.files.length > 0) {
+    return envelopeEventId
+  }
+  // Slack can dispatch one post through both message.* and app_mention.
+  // The envelope IDs identify different events; these fields identify the post.
+  return `slack-message:${JSON.stringify([teamId, event.channel, event.ts])}`
+}
+
 function sourceReplyId(
   address: ChannelAddress,
   learned: ReplyTarget | undefined,
@@ -188,7 +201,7 @@ export function createSlackChannel(
         source: {
           channel: 'slack',
           accountId: account.id,
-          eventId: envelope.event_id
+          eventId: inboundMessageId(event, teamId, envelope.event_id)
         },
         senderId: event.user,
         text: event.text ?? '',
