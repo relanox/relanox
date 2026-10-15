@@ -35,6 +35,7 @@ export const targetSchema = z
   .object({
     type: z.enum(['c2c', 'group']),
     msgId: z.string().min(1).optional(),
+    msgIdx: z.string().min(1).optional(),
     messageAt: z.number().int().nonnegative().optional(),
     scope: z.object({ appId: z.string().min(1), apiBase: z.url() }).strict()
   })

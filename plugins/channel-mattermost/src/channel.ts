@@ -3,6 +3,8 @@ import type {
   AccountConfig,
   ChannelHost,
   ChannelPlugin,
+  ChannelAddress,
+  ReplyTarget,
   SendInput,
   SendResult
 } from '@relanox/sdk'
@@ -41,6 +43,25 @@ function decodeFrame(bytes: RawData): z.infer<typeof frameSchema> {
     buffer = bytes
   }
   return frameSchema.parse(JSON.parse(buffer.toString('utf8')) as unknown)
+}
+
+function sourceReplyId(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  base: string,
+  botUserId: string
+): string | undefined {
+  const source = targetSchema.safeParse(learned?.data)
+  return learned?.channel === 'mattermost' &&
+    learned.accountId === address.accountId &&
+    learned.chatId === address.chatId &&
+    learned.threadId === address.threadId &&
+    source.success &&
+    source.data.serverUrl === base &&
+    source.data.botUserId === botUserId &&
+    platformIdSchema.safeParse(learned.replyToId).success
+    ? learned.replyToId
+    : undefined
 }
 
 export function createMattermostChannel(
@@ -313,6 +334,10 @@ export function createMattermostChannel(
         return upload
       }
 
+      const rootId =
+        input.target.threadId ??
+        (input.reply ? input.target.replyToId : undefined)
+
       const response = await fetch(`${base}/api/v4/posts`, {
         method: 'POST',
         redirect: 'error',
@@ -327,7 +352,7 @@ export function createMattermostChannel(
           ...(upload && 'fileId' in upload
             ? { file_ids: [upload.fileId] }
             : {}),
-          ...(input.target.threadId ? { root_id: input.target.threadId } : {})
+          ...(rootId ? { root_id: rootId } : {})
         })
       })
 
@@ -371,7 +396,7 @@ export function createMattermostChannel(
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       const current = configured()
       if (
         address.platform !== 'mattermost' ||
@@ -382,6 +407,14 @@ export function createMattermostChannel(
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
+
+      const replyToId = sourceReplyId(
+        address,
+        learned,
+        current.base,
+        current.botUserId
+      )
+
       return {
         status: 'available',
         target: {
@@ -391,6 +424,7 @@ export function createMattermostChannel(
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
             : {}),
+          ...(replyToId ? { replyToId } : {}),
           data: { serverUrl: current.base, botUserId: current.botUserId }
         }
       }

@@ -22,6 +22,8 @@ Start Relanox after adding the account. It connects to Discord automatically. Ke
 
 Send “Hello” from an allowed user in the bound channel or DM. For a thread binding, open that thread first. The reply appears in the same conversation.
 
+The Agent can quote a specific incoming message with `reply.requestId`, including when replying to several requests out of order. Sends without `reply` have no message quote; configured thread destinations stay in their thread.
+
 ## Images and files
 
 Attach images, audio, videos or files to your message, with or without text. The bot can send generated attachments back through Discord. Keep files within your Relanox media limit and the server’s Discord upload allowance.

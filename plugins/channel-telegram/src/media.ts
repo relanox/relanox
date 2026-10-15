@@ -203,7 +203,7 @@ export async function sendMedia(
   if (input.target.threadId) {
     body.set('message_thread_id', input.target.threadId)
   }
-  if (input.target.replyToId) {
+  if (input.reply && input.target.replyToId) {
     body.set(
       'reply_parameters',
       JSON.stringify({

@@ -24,6 +24,8 @@ In the configurator, set the public address to `https://relay.example.com`. In t
 
 Mention the installed app with “Hello” inside the configured space/thread. For a direct conversation, bind the actual space and thread fields from its message event first. Open the same thread to see its answer.
 
+When the Agent specifies `reply.requestId`, Google Chat quotes that incoming message within the bound conversation or thread, including media cards. The source event must include its native `lastUpdateTime` or `createTime`; an unavailable timestamp rejects the quoted delivery. Google also rejects a quote if the source message has since been edited. Sending without `reply` omits the quote.
+
 ## Images and files
 
 Upload an attachment directly to Chat with your question. For generated media, configure the public address as described in [Media](../media.md). Image replies appear as cards; audio, videos and files appear as named download buttons. The public media address must be reachable by recipients and by Google for image display.

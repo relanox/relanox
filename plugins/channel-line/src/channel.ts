@@ -94,7 +94,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       return { status: 'unknown', errorCode: 'retry_key_expired' }
     }
 
-    const outgoing = await messages(input, host).catch(
+    const outgoing = await messages(input, host, target.quoteToken).catch(
       (error: unknown): SendResult => {
         if (
           error instanceof Error &&
@@ -181,7 +181,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       if (
         !runtime ||
         address.platform !== 'line' ||
@@ -191,17 +191,36 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
+      const prior = targetSchema.safeParse(learned?.data)
+
+      const sameConversation =
+        learned?.channel === 'line' &&
+        learned.accountId === address.accountId &&
+        learned.chatId === address.chatId &&
+        learned.threadId === undefined &&
+        prior.success &&
+        prior.data.destination === address.chatId &&
+        prior.data.botId === runtime.botUserId &&
+        prior.data.apiBaseUrl ===
+          new URL(apiBase).toString().replace(/\/$/u, '')
+
       return {
         status: 'available',
         target: {
           channel: 'line',
           accountId: address.accountId,
           chatId: address.chatId,
+          ...(sameConversation && learned.replyToId
+            ? { replyToId: learned.replyToId }
+            : {}),
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
             : {}),
           data: {
             destination: address.chatId,
+            ...(sameConversation && prior.data.quoteToken
+              ? { quoteToken: prior.data.quoteToken }
+              : {}),
             botId: runtime.botUserId,
             apiBaseUrl: new URL(apiBase).toString().replace(/\/$/u, '')
           }

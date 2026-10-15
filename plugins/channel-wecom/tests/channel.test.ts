@@ -7,6 +7,151 @@ import { assemble, peer, records, sendInput } from './test-support.js'
 
 installPeerNetwork()
 
+test('WeCom uses the selected callback request for out-of-order native replies and independent sends otherwise', async () => {
+  // Official SDK reply/replyStream preserve frame.headers.req_id and use a
+  // Completed stream envelope for text. sendMessage creates an independent ID.
+  // https://github.com/WecomTeam/aibot-node-sdk/blob/80615b987ef69c6028ad764924609247c0725955/src/client.ts
+  vi.stubEnv('WECOM_REPLY_SECRET', 'secret')
+
+  const remote = await peer(
+    () => ({ status: 404 }),
+    (socket) => {
+      socket.on('message', (raw) => {
+        const frame = z
+          .object({ headers: z.object({ req_id: z.string() }) })
+          .parse(JSON.parse(wireText(raw)))
+
+        socket.send(JSON.stringify({ headers: frame.headers, errcode: 0 }))
+      })
+    }
+  )
+
+  const host = await assemble(
+    createWeComChannel(),
+    { botId: 'robot', secret: { env: 'WECOM_REPLY_SECRET' } },
+    [{ chatId: 'user', senderId: 'user' }]
+  )
+
+  await host.start()
+  for (const number of [1, 2, 3]) {
+    remote.sockets[0]?.send(
+      JSON.stringify({
+        cmd: 'aibot_msg_callback',
+        headers: { req_id: `native-callback-${number}` },
+        body: {
+          msgid: `message-${number}`,
+          aibotid: 'robot',
+          chattype: 'single',
+          from: { userid: 'user' },
+          msgtype: 'text',
+          text: { content: `question ${number}` }
+        }
+      })
+    )
+  }
+  await expect.poll(async () => (await records(host.storage)).length).toBe(3)
+  const accepted = await records(host.storage)
+  const principal = host.principal()
+  const channel = accepted[0]?.snapshot.channel.id
+  if (!channel) {
+    throw new Error('missing_channel')
+  }
+  for (const number of [2, 1, 3]) {
+    const selected = accepted.find(
+      (item) => item.snapshot.source.eventId === `message-${number}`
+    )
+
+    if (!selected) {
+      throw new Error('missing_request')
+    }
+    expect(
+      await principal.sendMessage({
+        channel,
+        text: `answer ${number}`,
+        idempotencyKey: `reply-${number}`,
+        reply: { requestId: selected.snapshot.requestId, kind: 'final' }
+      })
+    ).toMatchObject({ status: 'queued' })
+    await host.runtime.processDue()
+  }
+  expect(
+    await principal.sendMessage({
+      channel,
+      text: 'ordinary',
+      idempotencyKey: 'ordinary'
+    })
+  ).toMatchObject({ status: 'queued' })
+  await host.runtime.processDue()
+  expect(remote.frames.slice(1, 4)).toMatchObject([
+    {
+      cmd: 'aibot_respond_msg',
+      headers: { req_id: 'native-callback-2' },
+      body: { msgtype: 'stream', stream: { finish: true, content: 'answer 2' } }
+    },
+    {
+      cmd: 'aibot_respond_msg',
+      headers: { req_id: 'native-callback-1' },
+      body: { msgtype: 'stream', stream: { finish: true, content: 'answer 1' } }
+    },
+    {
+      cmd: 'aibot_respond_msg',
+      headers: { req_id: 'native-callback-3' },
+      body: { msgtype: 'stream', stream: { finish: true, content: 'answer 3' } }
+    }
+  ])
+  expect(remote.frames).toHaveLength(5)
+  expect(remote.frames[4]).toMatchObject({
+    cmd: 'aibot_send_msg',
+    body: {
+      chatid: 'user',
+      msgtype: 'markdown',
+      markdown: { content: 'ordinary' }
+    }
+  })
+})
+
+test('WeCom discards learned response context when recipient type changes', async () => {
+  vi.stubEnv('WECOM_REPLY_SECRET', 'secret')
+  const plugin = createWeComChannel()
+  await assemble(
+    plugin,
+    {
+      botId: 'robot',
+      secret: { env: 'WECOM_REPLY_SECRET' },
+      recipientTypes: { user: 'group' }
+    },
+    [{ chatId: 'user', senderId: 'user' }]
+  )
+
+  const resolved = await plugin.resolveChannel?.(
+    { id: 'channel', platform: 'wecom', accountId: 'bot', chatId: 'user' },
+    {
+      channel: 'wecom',
+      accountId: 'bot',
+      chatId: 'user',
+      replyToId: 'message',
+      data: {
+        chattype: 'single',
+        callbackReqId: 'original-request',
+        scope: { botId: 'robot', wsUrl: 'wss://openws.work.weixin.qq.com/' }
+      }
+    }
+  )
+
+  expect(resolved).toEqual({
+    status: 'available',
+    target: {
+      channel: 'wecom',
+      accountId: 'bot',
+      chatId: 'user',
+      data: {
+        chattype: 'group',
+        scope: { botId: 'robot', wsUrl: 'wss://openws.work.weixin.qq.com/' }
+      }
+    }
+  })
+})
+
 test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends independent escaped Markdown', async () => {
   vi.stubEnv('WECOM_SECRET', 'private-value')
 

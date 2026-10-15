@@ -198,6 +198,8 @@ export type SendResult =
   | { readonly status: 'rejected' | 'unknown'; readonly errorCode: string }
 
 export type SendInput = {
+  /** Present only for an explicit incoming reply; use native quoting where supported. */
+  readonly reply?: ReplyReference
   readonly deliveryId: string
   readonly channelId: string
   readonly target: ReplyTarget

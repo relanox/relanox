@@ -28,6 +28,8 @@ For HTTP reception, set the Events request URL to `https://relay.example.com/cha
 
 Send “Hello” or mention the app in the configured conversation, depending on your subscribed events. If you configured a thread binding, reply inside that thread and open it to see the answer.
 
+When the Agent specifies an incoming request in `reply.requestId`, Slack replies in that message's thread. Replies within an existing thread stay under its root message. Sending without `reply` posts an ordinary message in the bound conversation or thread.
+
 ## Images and files
 
 Share images, audio, videos or files with your question. Relanox sends generated files back into the same channel/thread. Ensure the installed bot token has both file scopes, then reinstall the app after changing scopes.

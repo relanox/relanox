@@ -183,126 +183,156 @@ test.each(['websocket', 'webhook'] as const)(
 // Native SDK: WecomTeam/aibot-node-sdk at
 // 80615b987ef69c6028ad764924609247c0725955, src/client.ts uploadMedia.
 // Its executable uploader uses zero-based indices despite the type comment.
-test('WeCom sends a file larger than two native upload chunks without changing its bytes', async () => {
-  vi.stubEnv('WECOM_MEDIA_SECRET', 'secret')
+test.each([false, true])(
+  'WeCom sends a large file without changing its bytes (explicit reply: %s)',
+  async (explicit) => {
+    vi.stubEnv('WECOM_MEDIA_SECRET', 'secret')
 
-  const remote = await peer(
-    () => ({ status: 404 }),
-    (socket) => {
-      socket.on('message', (raw) => {
-        const frame = z
-          .object({
-            cmd: z.string(),
-            headers: z.object({ req_id: z.string() })
-          })
-          .parse(JSON.parse(wireText(raw)))
+    const remote = await peer(
+      () => ({ status: 404 }),
+      (socket) => {
+        socket.on('message', (raw) => {
+          const frame = z
+            .object({
+              cmd: z.string(),
+              headers: z.object({ req_id: z.string() })
+            })
+            .parse(JSON.parse(wireText(raw)))
 
-        let body
-        if (frame.cmd === 'aibot_upload_media_init') {
-          body = { upload_id: 'large-upload' }
+          let body
+          if (frame.cmd === 'aibot_upload_media_init') {
+            body = { upload_id: 'large-upload' }
+          }
+          if (frame.cmd === 'aibot_upload_media_finish') {
+            body = { media_id: 'large-file' }
+          }
+          socket.send(
+            JSON.stringify({ headers: frame.headers, errcode: 0, body })
+          )
+        })
+      }
+    )
+
+    const host = await assemble(
+      createWeComChannel(),
+      {
+        botId: 'robot',
+        secret: { env: 'WECOM_MEDIA_SECRET' },
+        recipientTypes: { user: 'single' }
+      },
+      [{ chatId: 'user', senderId: 'user' }]
+    )
+
+    await host.start()
+    if (explicit) {
+      remote.sockets[0]?.send(
+        JSON.stringify({
+          cmd: 'aibot_msg_callback',
+          headers: { req_id: 'file-reply-request' },
+          body: {
+            msgid: 'file-question',
+            aibotid: 'robot',
+            chattype: 'single',
+            from: { userid: 'user' },
+            msgtype: 'text',
+            text: { content: 'send file' }
+          }
+        })
+      )
+      await expect
+        .poll(async () => (await records(host.storage)).length)
+        .toBe(1)
+    }
+    const selected = (await records(host.storage))[0]?.snapshot
+    const principal = host.principal()
+    const channel = (await principal.status()).channels[0]?.channel.id
+    if (!channel) {
+      throw new Error('missing_channel')
+    }
+
+    const bytes = Buffer.concat([
+      Buffer.alloc(524_288, 17),
+      Buffer.alloc(524_288, 42),
+      Buffer.from([7, 8, 9])
+    ])
+
+    await principal.sendMessage({
+      channel,
+      ...(selected
+        ? { reply: { requestId: selected.requestId, kind: 'final' as const } }
+        : {}),
+      text: '',
+      attachments: [
+        {
+          kind: 'file',
+          mimeType: 'application/octet-stream',
+          fileName: 'large.bin',
+          data: bytes
         }
-        if (frame.cmd === 'aibot_upload_media_finish') {
-          body = { media_id: 'large-file' }
-        }
-        socket.send(
-          JSON.stringify({ headers: frame.headers, errcode: 0, body })
-        )
+      ]
+    })
+    await host.runtime.processDue()
+
+    const frames = remote.frames.map((raw) =>
+      z.object({ cmd: z.string(), body: z.unknown() }).parse(raw)
+    )
+
+    expect(frames.map((frame) => frame.cmd)).toEqual([
+      'aibot_subscribe',
+      'aibot_upload_media_init',
+      'aibot_upload_media_chunk',
+      'aibot_upload_media_chunk',
+      'aibot_upload_media_chunk',
+      'aibot_upload_media_finish',
+      explicit ? 'aibot_respond_msg' : 'aibot_send_msg'
+    ])
+    expect(frames[1]?.body).toEqual({
+      type: 'file',
+      filename: 'large.bin',
+      total_size: 1_048_579,
+      total_chunks: 3
+    })
+
+    const chunks = frames.slice(2, 5).map((frame) =>
+      z
+        .object({
+          upload_id: z.string(),
+          chunk_index: z.number(),
+          base64_data: z.string()
+        })
+        .parse(frame.body)
+    )
+
+    expect(chunks.map((chunk) => chunk.chunk_index)).toEqual([0, 1, 2])
+    expect(chunks.map((chunk) => chunk.upload_id)).toEqual([
+      'large-upload',
+      'large-upload',
+      'large-upload'
+    ])
+    expect(
+      chunks.map((chunk) => Buffer.from(chunk.base64_data, 'base64').length)
+    ).toEqual([524_288, 524_288, 3])
+    expect(
+      Buffer.concat(
+        chunks.map((chunk) => Buffer.from(chunk.base64_data, 'base64'))
+      )
+    ).toEqual(bytes)
+    expect(frames[5]?.body).toEqual({ upload_id: 'large-upload' })
+    expect(frames[6]?.body).toEqual({
+      ...(explicit ? {} : { chatid: 'user', chat_type: 1 }),
+      msgtype: 'file',
+      file: { media_id: 'large-file' }
+    })
+    if (explicit) {
+      expect(remote.frames[6]).toMatchObject({
+        headers: { req_id: 'file-reply-request' }
       })
     }
-  )
-
-  const host = await assemble(
-    createWeComChannel(),
-    {
-      botId: 'robot',
-      secret: { env: 'WECOM_MEDIA_SECRET' },
-      recipientTypes: { user: 'single' }
-    },
-    [{ chatId: 'user', senderId: 'user' }]
-  )
-
-  await host.start()
-  const principal = host.principal()
-  const channel = (await principal.status()).channels[0]?.channel.id
-  if (!channel) {
-    throw new Error('missing_channel')
-  }
-
-  const bytes = Buffer.concat([
-    Buffer.alloc(524_288, 17),
-    Buffer.alloc(524_288, 42),
-    Buffer.from([7, 8, 9])
-  ])
-
-  await principal.sendMessage({
-    channel,
-    text: '',
-    attachments: [
-      {
-        kind: 'file',
-        mimeType: 'application/octet-stream',
-        fileName: 'large.bin',
-        data: bytes
-      }
-    ]
-  })
-  await host.runtime.processDue()
-
-  const frames = remote.frames.map((raw) =>
-    z.object({ cmd: z.string(), body: z.unknown() }).parse(raw)
-  )
-
-  expect(frames.map((frame) => frame.cmd)).toEqual([
-    'aibot_subscribe',
-    'aibot_upload_media_init',
-    'aibot_upload_media_chunk',
-    'aibot_upload_media_chunk',
-    'aibot_upload_media_chunk',
-    'aibot_upload_media_finish',
-    'aibot_send_msg'
-  ])
-  expect(frames[1]?.body).toEqual({
-    type: 'file',
-    filename: 'large.bin',
-    total_size: 1_048_579,
-    total_chunks: 3
-  })
-
-  const chunks = frames.slice(2, 5).map((frame) =>
-    z
-      .object({
-        upload_id: z.string(),
-        chunk_index: z.number(),
-        base64_data: z.string()
-      })
-      .parse(frame.body)
-  )
-
-  expect(chunks.map((chunk) => chunk.chunk_index)).toEqual([0, 1, 2])
-  expect(chunks.map((chunk) => chunk.upload_id)).toEqual([
-    'large-upload',
-    'large-upload',
-    'large-upload'
-  ])
-  expect(
-    chunks.map((chunk) => Buffer.from(chunk.base64_data, 'base64').length)
-  ).toEqual([524_288, 524_288, 3])
-  expect(
-    Buffer.concat(
-      chunks.map((chunk) => Buffer.from(chunk.base64_data, 'base64'))
+    expect((await host.storage.listOutbound({ limit: 10 }))[0]?.status).toBe(
+      'sent'
     )
-  ).toEqual(bytes)
-  expect(frames[5]?.body).toEqual({ upload_id: 'large-upload' })
-  expect(frames[6]?.body).toEqual({
-    chatid: 'user',
-    chat_type: 1,
-    msgtype: 'file',
-    file: { media_id: 'large-file' }
-  })
-  expect((await host.storage.listOutbound({ limit: 10 }))[0]?.status).toBe(
-    'sent'
-  )
-})
+  }
+)
 
 // Native negative ACK contract: aibot-node-sdk at
 // 80615b987ef69c6028ad764924609247c0725955, src/ws.ts handleReplyAck

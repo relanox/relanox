@@ -26,6 +26,10 @@ it('keeps a text and image final pending until every chunk succeeds and replays 
 
     expect(progress.status).toBe('queued')
     await fx.runtime.processDue()
+    expect(fx.sent[0]?.reply).toEqual({
+      requestId: receipt.requestId,
+      kind: 'progress'
+    })
     expect(await status()).toEqual({ status: 'awaiting_final' })
 
     const input = {
@@ -130,6 +134,7 @@ it('keeps a text and image final pending until every chunk succeeds and replays 
         part.media ? part.media.reference.kind : part.chunk.text
       )
     ).toEqual(['...', 'image'])
+    expect(fx.sent[1]?.reply).toEqual(input.reply)
     await fx.storage.cleanup({ before: Date.now() + 1000, limit: 20 })
     expect(await principal().sendMessage(input)).toEqual({
       ...final,

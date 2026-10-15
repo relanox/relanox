@@ -84,8 +84,35 @@ export function foldNick(
 }
 
 export function wireLine(text: string): string {
-  if (/[\r\n\0]/u.test(text) || Buffer.byteLength(text, 'utf8') + 2 > 512) {
+  let message = text
+  if (text.startsWith('@')) {
+    const separator = text.indexOf(' ')
+    // IRCv3 client tags have a separate 4094-byte data budget; the command
+    // And CRLF retain their original 512-byte limit.
+    if (
+      separator === -1 ||
+      Buffer.byteLength(text.slice(0, separator + 1), 'utf8') > 4096
+    ) {
+      throw new Error('invalid_outbound_tags')
+    }
+    message = text.slice(separator + 1)
+  }
+  if (/[\r\n\0]/u.test(text) || Buffer.byteLength(message, 'utf8') + 2 > 512) {
     throw new Error('invalid_outbound_line')
   }
   return `${text}\r\n`
+}
+
+export function escapeTag(value: string): string {
+  return value.replaceAll(
+    /[; \\\r\n]/gu,
+    (character) =>
+      ({
+        ';': String.raw`\:`,
+        ' ': String.raw`\s`,
+        '\\': String.raw`\\`,
+        '\r': String.raw`\r`,
+        '\n': String.raw`\n`
+      })[character] ?? character
+  )
 }

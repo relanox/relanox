@@ -38,6 +38,7 @@ export const messageSchema = z.object({
 export const targetSchema = z
   .object({
     chattype: z.enum(['single', 'group']),
+    callbackReqId: z.string().min(1).optional(),
     scope: z.object({ botId: z.string().min(1), wsUrl: z.url() }).strict()
   })
   .strict()

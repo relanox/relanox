@@ -24,6 +24,8 @@ Enable Webhooks and set the URL to `https://relay.example.com/channels/line-main
 
 Send “Hello” from an allowed user to the Official Account or into the bound group/room. The reply is sent by the Official Account to that conversation.
 
+When the Agent supplies `reply.requestId`, text replies quote that incoming message if LINE supplied its native quote token. Quoted text shows Markdown links as their label followed by the destination URL. Without `reply`, messages are sent normally. LINE permits quoting in text messages; image, audio, video and Flex replies do not display a quote. An incoming message ID cannot replace a missing quote token.
+
 ## Images and files
 
 Send images, audio, videos or files with your question. Image, audio and video replies need the public address; follow [Media](../media.md) to expose it over HTTPS. Use JPEG/PNG images up to 10 MB. Images larger than 1 MB (1,000,000 bytes) and every MP4 video require a JPEG/PNG preview up to 1 MB. Generated audio uses MP3/M4A with a duration. Audio/video can be up to 200 MB, within your relay limit.

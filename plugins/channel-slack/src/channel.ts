@@ -11,6 +11,8 @@ import type {
   AccountConfig,
   ChannelHost,
   ChannelPlugin,
+  ChannelAddress,
+  ReplyTarget,
   IngestInput
 } from '@relanox/sdk'
 import { WebSocket } from 'ws'
@@ -53,6 +55,27 @@ function messageThreadId(
     event.thread_ts ??
     (event.subtype === 'thread_broadcast' ? event.root?.thread_ts : undefined)
   )
+}
+
+function sourceReplyId(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  current: z.infer<typeof targetSchema>
+): string | undefined {
+  const source = targetSchema.safeParse(learned?.data)
+  return learned?.channel === 'slack' &&
+    learned.accountId === address.accountId &&
+    learned.chatId === address.chatId &&
+    learned.threadId === address.threadId &&
+    source.success &&
+    source.data.teamId === current.teamId &&
+    source.data.appId === current.appId &&
+    source.data.botId === current.botId &&
+    source.data.apiBaseUrl === current.apiBaseUrl &&
+    learned.replyToId !== undefined &&
+    /^\d+\.\d+$/u.test(learned.replyToId)
+    ? learned.replyToId
+    : undefined
 }
 
 export function createSlackChannel(
@@ -350,7 +373,7 @@ export function createSlackChannel(
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       if (
         address.platform !== 'slack' ||
         address.accountId !== account.id ||
@@ -360,6 +383,8 @@ export function createSlackChannel(
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
+      const replyToId = sourceReplyId(address, learned, identity())
+
       return {
         status: 'available',
         target: {
@@ -369,6 +394,7 @@ export function createSlackChannel(
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
             : {}),
+          ...(replyToId ? { replyToId } : {}),
           data: identity()
         }
       }
@@ -481,6 +507,10 @@ export function createSlackChannel(
         return { status: 'rejected', errorCode }
       }
       try {
+        const threadId =
+          input.target.threadId ??
+          (input.reply ? input.target.replyToId : undefined)
+
         if (input.chunk.media) {
           return await sendMedia(
             input,
@@ -515,9 +545,7 @@ export function createSlackChannel(
             parse: 'none',
             unfurl_links: false,
             unfurl_media: false,
-            ...(input.target.threadId
-              ? { thread_ts: input.target.threadId }
-              : {})
+            ...(threadId ? { thread_ts: threadId } : {})
           },
           input.signal,
           REQUEST_TIMEOUT_MS
