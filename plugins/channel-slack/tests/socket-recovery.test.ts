@@ -7,6 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { WebSocketServer } from 'ws'
 import { fixture } from './authorization-runtime.js'
 import { mediaPeer } from '../../channel-telegram/tests/media-peer.js'
+import { socketPeer } from './peer.js'
 
 installPeerNetwork()
 
@@ -56,10 +57,7 @@ function fileEvent(eventId: string, envelopeId: string): string {
 // SDK session. Existing ACK and transport reconnect cases never deliver again
 // After a handoff failure. This uses real SQLite and public protocol peers only.
 it('accepts subsequent Socket Mode events and redelivery after a failed file download', async () => {
-  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-  await new Promise<void>((resolve) => {
-    wss.once('listening', resolve)
-  })
+  const wss = await socketPeer((server) => new WebSocketServer({ server }))
   cleanup.push(async () => {
     for (const socket of wss.clients) {
       socket.terminate()

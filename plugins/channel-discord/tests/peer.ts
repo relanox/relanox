@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import {
   registerPeer,
   routePlatform
@@ -20,6 +21,7 @@ import type {
 
 export { createSqliteStorage } from '@relanox/storage-sqlite'
 export { sessionSchema } from '../src/schemas.js'
+export { socketPeer } from '../../../tests/listen.js'
 
 export function recorder(ingest?: (input: IngestInput) => Promise<void>): {
   host: ChannelHost
@@ -138,9 +140,7 @@ export async function peer(
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
 
   const url = registerPeer(
     `http://127.0.0.1:${(server.address() as AddressInfo).port}`

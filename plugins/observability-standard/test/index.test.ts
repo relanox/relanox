@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import { PassThrough, Writable } from 'node:stream'
@@ -481,9 +482,7 @@ async function collector(status = 200): Promise<{
   })
 
   servers.push(server)
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('missing server port')

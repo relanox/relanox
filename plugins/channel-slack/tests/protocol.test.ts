@@ -10,7 +10,7 @@ import type { AddressInfo } from 'node:net'
 import { WebSocketServer } from 'ws'
 import type { RawData } from 'ws'
 import { createSlackChannel } from '../src/index.js'
-import { peer, recorder, sendInput } from './peer.js'
+import { peer, recorder, sendInput, socketPeer } from './peer.js'
 import { mediaPeer } from '../../channel-telegram/tests/media-peer.js'
 
 installPeerNetwork()
@@ -634,10 +634,7 @@ describe('slack native protocol', () => {
   })
 
   it('opens Socket Mode with app token, ACKs only after ingest and reconnects on disconnect', async () => {
-    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-    await new Promise<void>((resolve) => {
-      wss.once('listening', resolve)
-    })
+    const wss = await socketPeer((server) => new WebSocketServer({ server }))
 
     const wsUrl = `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`
 
@@ -702,10 +699,7 @@ describe('slack native protocol', () => {
   })
 
   it('leaves failed Socket Mode handoff unacknowledged', async () => {
-    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-    await new Promise<void>((resolve) => {
-      wss.once('listening', resolve)
-    })
+    const wss = await socketPeer((server) => new WebSocketServer({ server }))
 
     const remote = await peer(() => ({
       body: {

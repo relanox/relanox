@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { DatabaseSync } from 'node:sqlite'
 import {
   registerPeer,
@@ -82,9 +83,7 @@ export async function peer(): Promise<{
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address() as AddressInfo
   const publicOrigin = registerPeer(`http://127.0.0.1:${address.port}`)
   routePlatform('https://graph.facebook.com', publicOrigin)

@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { createServer } from 'node:http'
 import type {
   IncomingHttpHeaders,
@@ -65,10 +66,7 @@ export async function mediaPeer(
     void receive(request, response).catch(() => response.destroy())
   })
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('missing_peer_address')

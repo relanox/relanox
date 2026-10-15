@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { createServer } from 'node:http'
 import type {
   IncomingHttpHeaders,
@@ -114,9 +115,7 @@ export async function peer(
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   return { url, requests, server, close: async () => close(server) }
 }
