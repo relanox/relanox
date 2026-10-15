@@ -1,4 +1,3 @@
-import { setTimeout as pause } from 'node:timers/promises'
 import type {
   ChannelHost,
   IngestInput,
@@ -6,8 +5,7 @@ import type {
   SecretRef
 } from '@relanox/sdk'
 import { z } from 'zod'
-import { readJson } from '@relanox/transport'
-import { httpDate } from './http-date.js'
+import { HTTPError, MatrixError } from 'matrix-js-sdk'
 
 export function secret(
   ref: SecretRef,
@@ -19,8 +17,6 @@ export function secret(
   }
   return value
 }
-
-export { readJson } from '@relanox/transport'
 
 export function diagnose(host: ChannelHost, errorCode: string): void {
   host.observe.log('warn', 'operation.failed', {
@@ -60,75 +56,40 @@ export async function ingest(
   }
 }
 
-function headerRetryAfter(value: string | null): number | undefined {
-  if (value === null) {
-    return undefined
-  }
-  if (/^\d+$/u.test(value)) {
-    const milliseconds = Number(value) * 1000
-    return Number.isSafeInteger(milliseconds) ? milliseconds : undefined
-  }
-  const now = Date.now()
-  const date = httpDate(value, now)
-  return date !== undefined ? Math.max(0, date - now) : undefined
-}
-
-async function rateLimitDelay(response: Response): Promise<number> {
-  const header = headerRetryAfter(response.headers.get('retry-after'))
-  if (header !== undefined) {
-    await response.body?.cancel()
-    return header
-  }
+function retryDelay(error: HTTPError): number {
   try {
-    const error = z
-      .object({
-        errcode: z.literal('M_LIMIT_EXCEEDED'),
-        retry_after_ms: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
-      })
-      .safeParse(await readJson(response))
-
-    return error.success ? error.data.retry_after_ms : 1000
+    const milliseconds = error.getRetryAfterMs()
+    return milliseconds !== null && Number.isSafeInteger(milliseconds)
+      ? Math.max(0, milliseconds)
+      : 1000
   } catch {
     // HTTP 429 proves refusal even if its optional retry metadata is unavailable.
     return 1000
   }
 }
 
-export async function httpFailure(response: Response): Promise<SendResult> {
-  if (response.status === 429) {
+export function sendFailure(error: unknown): SendResult {
+  if (error instanceof HTTPError && error.httpStatus === 429) {
     return {
       status: 'retryable',
       errorCode: 'rate_limited',
-      retryAfterMs: await rateLimitDelay(response)
+      retryAfterMs: retryDelay(error)
     }
   }
-  await response.body?.cancel()
-  if (response.status >= 400 && response.status < 500) {
+  if (
+    error instanceof HTTPError &&
+    (error.httpStatus === 413 ||
+      (error instanceof MatrixError && error.errcode === 'M_TOO_LARGE'))
+  ) {
+    return { status: 'rejected', errorCode: 'media_limit_exceeded' }
+  }
+  if (
+    error instanceof HTTPError &&
+    error.httpStatus !== undefined &&
+    error.httpStatus >= 400 &&
+    error.httpStatus < 500
+  ) {
     return { status: 'rejected', errorCode: 'platform_rejected' }
   }
-  return { status: 'unknown', errorCode: 'platform_response_unknown' }
-}
-
-export async function delay(
-  milliseconds: number,
-  signal: AbortSignal
-): Promise<void> {
-  await pause(milliseconds, undefined, { signal }).catch(() => {})
-}
-
-export async function stopTask(task: Promise<void> | undefined): Promise<void> {
-  if (!task) {
-    return
-  }
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  try {
-    await Promise.race([
-      task,
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, 5000)
-      })
-    ])
-  } finally {
-    clearTimeout(timeout)
-  }
+  return { status: 'unknown', errorCode: 'send_outcome_unknown' }
 }

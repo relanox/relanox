@@ -1,10 +1,9 @@
 import { escapeHtml, markdownText, renderHtml } from '@relanox/markdown'
-import type { ChannelHost, SendInput } from '@relanox/sdk'
+import type { SendInput } from '@relanox/sdk'
+import { MsgType } from 'matrix-js-sdk'
+import type { RoomMessageTextEventContent } from 'matrix-js-sdk/lib/@types/events.js'
 
-export function richError(
-  input: SendInput,
-  host: ChannelHost
-): string | undefined {
+export function richError(input: SendInput): string | undefined {
   const parts = input.chunk.richText
   if (!parts) {
     return undefined
@@ -31,11 +30,7 @@ export function richError(
     return 'missing_media'
   }
   if (
-    (input.richMedia ?? []).some(
-      (media) =>
-        media.reference.kind !== 'image' ||
-        media.data.byteLength > (host.maxMediaBytes ?? 16 * 1024 * 1024)
-    )
+    (input.richMedia ?? []).some((media) => media.reference.kind !== 'image')
   ) {
     return 'media_limit_exceeded'
   }
@@ -45,12 +40,7 @@ export function richError(
 export function richContent(
   input: SendInput,
   urls: readonly string[]
-): {
-  msgtype: string
-  body: string
-  format: 'org.matrix.custom.html'
-  formatted_body: string
-} {
+): RoomMessageTextEventContent {
   let imageIndex = 0
   const body: string[] = []
   const html: string[] = []
@@ -70,7 +60,7 @@ export function richContent(
     }
   }
   return {
-    msgtype: 'm.text',
+    msgtype: MsgType.Text,
     body: body.join('\n\n'),
     format: 'org.matrix.custom.html',
     formatted_body: html.join('')

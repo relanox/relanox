@@ -8,9 +8,12 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
+import type { MatrixClient } from 'matrix-js-sdk'
+import { MsgType } from 'matrix-js-sdk'
+import type { MessageContent } from './client.js'
 import { z } from 'zod'
 import type { MatrixConfig } from './config.js'
-import { httpFailure, readJson } from './protocol.js'
+import { sendFailure } from './protocol.js'
 
 const mediaSchema = z
   .object({
@@ -29,8 +32,6 @@ const mediaSchema = z
       .optional()
   })
   .refine((value) => value.filename !== undefined || value.body.length <= 255)
-
-const uploadResponse = z.object({ content_uri: z.string() })
 
 const kinds = {
   'm.image': 'image',
@@ -71,7 +72,7 @@ export async function receiveMedia(
   const downloaded = await downloadMedia(
     `${base}/_matrix/client/v1/media/download/${encodeURIComponent(uri.server)}/${encodeURIComponent(uri.id)}`,
     {
-      maxBytes: host.maxMediaBytes ?? 16 * 1024 * 1024,
+      maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
       signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
       headers,
       trustedOrigins: [new URL(base).origin],
@@ -101,71 +102,34 @@ export function mediaCaption(content: unknown): string {
 }
 
 async function upload(
-  base: string,
-  headers: Readonly<Record<string, string>>,
-  media: NonNullable<SendInput['media']>,
-  signal: AbortSignal
+  client: MatrixClient,
+  media: NonNullable<SendInput['media']>
 ): Promise<string | SendResult> {
   try {
-    const url = new URL(`${base}/_matrix/media/v3/upload`)
-    url.searchParams.set('filename', media.reference.fileName)
-
-    const response = await fetch(url, {
-      method: 'POST',
-      redirect: 'error',
-      signal,
-      headers: { ...headers, 'Content-Type': media.reference.mimeType },
-      body: mediaBlob(media)
+    const result = await client.uploadContent(mediaBlob(media), {
+      name: media.reference.fileName,
+      type: media.reference.mimeType
     })
 
-    if (!response.ok) {
-      const result = await httpFailure(response)
-      return result.status === 'unknown'
-        ? { status: 'retryable', errorCode: 'media_upload_failed' }
-        : result
-    }
-    const result = uploadResponse.parse(await readJson(response))
     contentUri(result.content_uri)
     return result.content_uri
-  } catch {
-    return { status: 'retryable', errorCode: 'media_upload_failed' }
+  } catch (error) {
+    const failure = sendFailure(error)
+    // Uploading a blob cannot deliver a room message. Retrying it is safe.
+    return failure.status === 'unknown'
+      ? { status: 'retryable', errorCode: 'media_upload_failed' }
+      : failure
   }
 }
 
 export async function messageContent(
   input: SendInput,
-  base: string,
-  headers: Readonly<Record<string, string>>,
-  signal: AbortSignal
-): Promise<
-  | SendResult
-  | {
-      msgtype: string
-      body: string
-      format: 'org.matrix.custom.html'
-      formatted_body: string
-      filename?: never
-      url?: never
-      info?: never
-    }
-  | {
-      msgtype: string
-      body: string
-      filename: string
-      url: string
-      info: {
-        thumbnail_url?: string
-        thumbnail_info?: { mimetype: string; size: number }
-        duration?: number
-        mimetype: string
-        size: number
-      }
-    }
-> {
+  client: MatrixClient
+): Promise<SendResult | MessageContent> {
   if (input.chunk.richText) {
     const urls: string[] = []
     for (const media of input.richMedia ?? []) {
-      const uploaded = await upload(base, headers, media, signal)
+      const uploaded = await upload(client, media)
       if (typeof uploaded !== 'string') {
         return uploaded
       }
@@ -180,27 +144,27 @@ export async function messageContent(
   }
   if (!input.media) {
     return {
-      msgtype: 'm.text',
+      msgtype: MsgType.Text,
       body: input.chunk.text,
       format: 'org.matrix.custom.html',
       formatted_body: renderHtml(input.chunk.text)
     }
   }
   const media = input.media
-  const url = await upload(base, headers, media, signal)
+  const url = await upload(client, media)
   if (typeof url !== 'string') {
     return url
   }
 
   const thumbnailUrl = input.preview
-    ? await upload(base, headers, input.preview, signal)
+    ? await upload(client, input.preview)
     : undefined
 
   if (thumbnailUrl !== undefined && typeof thumbnailUrl !== 'string') {
     return thumbnailUrl
   }
-  return {
-    msgtype: `m.${media.reference.kind}`,
+
+  const content = {
     body: media.reference.fileName,
     filename: media.reference.fileName,
     url,
@@ -221,4 +185,20 @@ export async function messageContent(
         : {})
     }
   }
+
+  switch (media.reference.kind) {
+    case 'image': {
+      return { ...content, msgtype: MsgType.Image }
+    }
+    case 'audio': {
+      return { ...content, msgtype: MsgType.Audio }
+    }
+    case 'video': {
+      return { ...content, msgtype: MsgType.Video }
+    }
+    case 'file': {
+      return { ...content, msgtype: MsgType.File }
+    }
+  }
+  throw new Error('unsupported_media')
 }

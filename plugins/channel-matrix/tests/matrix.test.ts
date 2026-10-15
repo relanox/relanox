@@ -78,7 +78,7 @@ function input(
   }
 }
 
-it('persists threaded sync before cursor, filters identities and sends the frozen delayed target', async () => {
+it('persists SDK thread events, filters identities and sends the frozen delayed target', async () => {
   const syncs: { since: string | null; authorization: string | undefined }[] =
     []
 
@@ -125,7 +125,7 @@ it('persists threaded sync before cursor, filters identities and sends the froze
       })
       return
     }
-    if (url.pathname.endsWith('/state/m.room.encryption')) {
+    if (url.pathname.includes('/state/m.room.encryption')) {
       json(
         response,
         encrypted
@@ -162,13 +162,7 @@ it('persists threaded sync before cursor, filters identities and sends the froze
 
   await plugin.start?.(new AbortController().signal)
   await waitFor(
-    async () =>
-      (
-        await fixture.storage.getState(
-          { pluginId: 'channel-matrix', ownerId: 'bot' },
-          'sync'
-        )
-      )?.value === 'batch-committed'
+    async () => (await fixture.storage.listInbound({ limit: 20 })).length === 1
   )
   await plugin.stop?.()
   const requests = await fixture.storage.listInbound({ limit: 20 })
@@ -305,38 +299,41 @@ it('bounds the combined Markdown and HTML text sent to Matrix after escaping exp
   }
 })
 
-it('replays from the last committed cursor after a real storage failure and restart', async () => {
-  const calls: (string | null)[] = []
-  let release: (() => void) | undefined
-  let failNext = false
-  const observation = observations()
+// The SDK owns receipt progress, while accepted Core work survives a restart.
+// Native events and PUT send transactions: Matrix Client-Server v1.16 /sync and
+// https://spec.matrix.org/v1.16/client-server-api/#put_matrixclientv3roomsroomidsendeventtypetxnid
+it('recovers an accepted question and queued reply from SQLite after the SDK client is replaced', async () => {
+  const sent: unknown[] = []
+  const dispatches: unknown[] = []
 
   const peer = await httpPeer(async (request, response) => {
-    const url = new URL(request.url ?? '/', 'http://peer')
-    if (!url.pathname.endsWith('/sync')) {
-      json(response, {})
-      return
-    }
-    const since = url.searchParams.get('since')
-    calls.push(since)
-    if (failNext) {
-      failNext = false
-      await new Promise<void>((resolve) => {
-        release = resolve
-      })
-    }
-    json(response, {
-      next_batch: since ? 'batch-after' : 'batch-before',
-      rooms: {
-        join: {
-          [room]: {
-            timeline: {
-              events: since ? [event('$after-restart', 'recovered')] : []
+    if (request.url?.includes('/sync')) {
+      json(response, {
+        next_batch: 'accepted',
+        rooms: {
+          join: {
+            [room]: {
+              timeline: { events: [event('$saved', 'saved question')] }
             }
           }
         }
+      })
+    } else if (request.url?.includes('/state/')) {
+      json(
+        response,
+        { errcode: 'M_NOT_FOUND', error: 'No encryption state' },
+        404
+      )
+    } else {
+      const value = await body(request)
+      if (request.url === '/dispatch') {
+        dispatches.push(value)
+        json(response, {})
+      } else {
+        sent.push(value)
+        json(response, { event_id: '$recovered-answer' })
       }
-    })
+    }
   })
 
   const firstPlugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
@@ -346,30 +343,25 @@ it('replays from the last committed cursor after a real storage failure and rest
     config(peer.base),
     [{ chatId: room, threadId: thread }],
     [user],
-    `${peer.base}/dispatch`,
-    { observe: observation.observe }
+    `${peer.base}/dispatch`
   )
 
   await firstPlugin.start?.(new AbortController().signal)
   await waitFor(
-    async () =>
-      (
-        await first.storage.getState(
-          { pluginId: 'channel-matrix', ownerId: 'bot' },
-          'sync'
-        )
-      )?.value === 'batch-before'
+    async () => (await first.storage.listInbound({ limit: 10 })).length === 1
   )
   await firstPlugin.stop?.()
-  failNext = true
-  await firstPlugin.start?.(new AbortController().signal)
-  await waitFor(() => release !== undefined)
+  const request = (await first.storage.listInbound({ limit: 10 }))[0]
+  if (!request) {
+    throw new Error('Missing accepted request')
+  }
+
+  const reply = await first.sendReply(
+    request.snapshot.requestId,
+    'saved answer'
+  )
+
   await first.storage.close()
-  release?.()
-  await waitFor(() =>
-    observation.logs.some((entry) => entry.fields?.errorCode === 'sync_failed')
-  )
-  await firstPlugin.stop?.()
   const nextPlugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
 
   const next = await harness(
@@ -381,91 +373,37 @@ it('replays from the last committed cursor after a real storage failure and rest
     { filename: first.filename }
   )
 
-  await nextPlugin.start?.(new AbortController().signal)
-  await waitFor(
-    async () => (await next.storage.listInbound({ limit: 10 })).length === 1
+  await next.runtime.processDue()
+  expect(dispatches).toEqual([
+    { channel: request.snapshot.channel.id, text: 'saved question' }
+  ])
+  expect(sent).toEqual([
+    expect.objectContaining({
+      body: 'saved answer',
+      'm.relates_to': { rel_type: 'm.thread', event_id: thread }
+    })
+  ])
+  expect((await next.storage.getOutbound(reply.deliveryId))?.status).toBe(
+    'sent'
   )
-  await nextPlugin.stop?.()
-  expect(calls.at(-1)).toBe('batch-before')
-  expect(
-    (await next.storage.listInbound({ limit: 10 }))[0]?.snapshot.text
-  ).toBe('recovered')
-  expect(
-    (
-      await next.storage.getState(
-        { pluginId: 'channel-matrix', ownerId: 'bot' },
-        'sync'
-      )
-    )?.value
-  ).toBe('batch-after')
 })
 
-it('refuses to advance a limited timeline from an existing checkpoint', async () => {
+// SDK sync can contain limited histories and rooms outside the configured bindings.
+// https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3sync
+it('accepts SDK timeline events only from bound conversations, including a limited timeline', async () => {
   const peer = await httpPeer((_request, response) => {
     json(response, {
-      next_batch: 'skipped',
-      rooms: {
-        join: {
-          [room]: {
-            timeline: { limited: true, events: [event('$limited', 'recent')] }
-          }
-        }
-      }
-    })
-  })
-
-  const plugin = createMatrixChannel({ MATRIX_TOKEN: 'token' })
-  const observation = observations()
-
-  const fixture = await harness(
-    plugin,
-    config(peer.base),
-    [{ chatId: room, threadId: thread }],
-    [user],
-    `${peer.base}/dispatch`,
-    { observe: observation.observe }
-  )
-
-  await fixture.storage.compareAndSetState(
-    { pluginId: 'channel-matrix', ownerId: 'bot' },
-    { key: 'sync', expectedVersion: null, value: 'older' }
-  )
-  await plugin.start?.(new AbortController().signal)
-  await waitFor(() =>
-    observation.logs.some(
-      (entry) => entry.fields?.errorCode === 'sync_history_gap'
-    )
-  )
-  await plugin.stop?.()
-  expect(
-    (
-      await fixture.storage.getState(
-        { pluginId: 'channel-matrix', ownerId: 'bot' },
-        'sync'
-      )
-    )?.value
-  ).toBe('older')
-  expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([])
-})
-
-// /sync includes every joined room, even rooms without a local binding.
-// Matrix JS SDK d633e7c1954a6b92597fbc3f8a95f183789a8d40 src/sync.ts:processSyncResponse.
-// https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3sync
-it('ignores history gaps in unbound joined rooms while persisting a configured room', async () => {
-  const syncs: (string | null)[] = []
-
-  const peer = await httpPeer((request, response) => {
-    const url = new URL(request.url ?? '/', 'http://peer')
-    syncs.push(url.searchParams.get('since'))
-    json(response, {
-      next_batch: 'after-bound-room',
+      next_batch: 'accepted',
       rooms: {
         join: {
           '!unbound:example.org': {
             timeline: { limited: true, events: [event('$unbound', 'unbound')] }
           },
           [room]: {
-            timeline: { events: [event('$bound', 'bound message')] }
+            timeline: {
+              limited: true,
+              events: [event('$bound', 'bound message')]
+            }
           }
         }
       }
@@ -482,14 +420,11 @@ it('ignores history gaps in unbound joined rooms while persisting a configured r
     `${peer.base}/dispatch`
   )
 
-  await fixture.storage.compareAndSetState(
-    { pluginId: 'channel-matrix', ownerId: 'bot' },
-    { key: 'sync', expectedVersion: null, value: 'older' }
-  )
   await plugin.start?.(new AbortController().signal)
-  await waitFor(() => syncs.length >= 2)
+  await waitFor(
+    async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1
+  )
   await plugin.stop?.()
-  expect(syncs.slice(0, 2)).toEqual(['older', 'after-bound-room'])
   const records = await fixture.storage.listInbound({ limit: 10 })
   expect(records).toHaveLength(1)
   expect(records[0]?.snapshot).toMatchObject({
@@ -501,17 +436,27 @@ it('ignores history gaps in unbound joined rooms while persisting a configured r
 
 it.each([
   [429, 'retryable'],
+  [413, 'rejected'],
   [403, 'rejected'],
-  [503, 'unknown']
+  [503, 'unknown'],
+  ['connection-loss', 'unknown']
 ] as const)(
-  'maps HTTP %i without guessing send effects',
+  'maps native send outcome %s without SDK message replay',
   async (status, outcome) => {
-    const peer = await httpPeer((request, response) => {
+    let sends = 0
+
+    const peer = await httpPeer(async (request, response) => {
       if (request.url?.includes('/state/')) {
         json(response, { errcode: 'M_NOT_FOUND' }, 404)
       } else {
-        response.setHeader('Retry-After', '7')
-        json(response, {}, status)
+        sends += 1
+        if (status === 'connection-loss') {
+          await body(request)
+          request.socket.destroy()
+        } else {
+          response.setHeader('Retry-After', '7')
+          json(response, {}, status)
+        }
       }
     })
 
@@ -534,6 +479,7 @@ it.each([
     )
 
     expect(result.status).toBe(outcome)
+    expect(sends).toBe(1)
     if (result.status === 'retryable') {
       expect(result.retryAfterMs).toBe(7000)
     }
@@ -685,7 +631,7 @@ it('preserves an explicit threaded reply on the native HTTP send boundary', asyn
 // Encrypted attachment wire fields are defined at
 // https://spec.matrix.org/v1.15/client-server-api/#sending-encrypted-attachments
 // Unsupported encryption must not prevent later plain messages from reaching SQLite.
-it('rejects an encrypted attachment and durably advances past it to subsequent text', async () => {
+it('rejects an encrypted attachment while accepting subsequent SDK text events', async () => {
   const observation = observations()
   let downloads = 0
 
@@ -748,13 +694,7 @@ it('rejects an encrypted attachment and durably advances past it to subsequent t
 
   await plugin.start?.(new AbortController().signal)
   await waitFor(
-    async () =>
-      (
-        await fixture.storage.getState(
-          { pluginId: 'channel-matrix', ownerId: 'bot' },
-          'sync'
-        )
-      )?.value === 'after-encrypted-attachment'
+    async () => (await fixture.storage.listInbound({ limit: 10 })).length === 1
   )
   await plugin.stop?.()
   const records = await fixture.storage.listInbound({ limit: 10 })
@@ -772,8 +712,6 @@ it('rejects an encrypted attachment and durably advances past it to subsequent t
 
 // State lookup 404 establishes absent state only with the native M_NOT_FOUND code:
 // https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
-// OpenClaw c3fcd1554c3405c942bc03ec85fcbac8a0bb12a3,
-// Extensions/matrix/src/matrix/sdk/client-core.ts:getMessageWireEventType verifies both.
 it.each([{}, { errcode: 'M_UNRECOGNIZED' }])(
   'does not send plaintext when encryption preflight has an ambiguous 404 (%j)',
   async (error) => {

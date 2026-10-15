@@ -24,7 +24,7 @@ it.each([
   ['audio', 'audio/ogg', 'voice.ogg'],
   ['video', 'video/mp4', 'clip.mp4']
 ])(
-  'retains native %s bytes with zero duration before committing sync',
+  'retains native %s bytes with zero duration through the SDK client',
   async (kind, mimeType, filename) => {
     const peer = await httpPeer((request, response) => {
       if (request.url?.includes('/media/download/')) {
@@ -75,12 +75,7 @@ it.each([
     await plugin.start?.(new AbortController().signal)
     await waitFor(
       async () =>
-        (
-          await fixture.storage.getState(
-            { pluginId: 'channel-matrix', ownerId: 'bot' },
-            'sync'
-          )
-        )?.value === 'after-zero-duration'
+        (await fixture.storage.listInbound({ limit: 10 })).length === 1
     )
     await plugin.stop?.()
     const messages = await fixture.storage.listInbound({ limit: 10 })
