@@ -10,6 +10,8 @@ import type {
   AccountConfig,
   ChannelHost,
   ChannelPlugin,
+  ChannelAddress,
+  ReplyTarget,
   SendInput,
   SendResult
 } from '@relanox/sdk'
@@ -37,6 +39,35 @@ import type { messageSchema } from './schemas.js'
 
 function windowKey(config: WhatsAppConfig, customer: string): string {
   return `window:${JSON.stringify([API_BASE, config.businessAccountId, config.phoneNumberId, customer])}`
+}
+
+function learnedReply(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  config: WhatsAppConfig
+): string | undefined {
+  const prior = targetSchema.safeParse(learned?.data)
+  if (
+    learned?.channel !== 'whatsapp' ||
+    learned.accountId !== address.accountId ||
+    learned.chatId !== address.chatId ||
+    learned.threadId !== undefined ||
+    !prior.success ||
+    prior.data.customer !== address.chatId ||
+    prior.data.phoneNumberId !== config.phoneNumberId ||
+    prior.data.businessAccountId !== config.businessAccountId ||
+    prior.data.apiBase !== API_BASE ||
+    !platformIdSchema.safeParse(learned.replyToId).success
+  ) {
+    return undefined
+  }
+  return learned.replyToId
+}
+
+function quoteContext(input: SendInput): { message_id: string } | undefined {
+  return input.reply && input.target.replyToId
+    ? { message_id: input.target.replyToId }
+    : undefined
 }
 
 async function updateWindow(
@@ -165,7 +196,9 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
     if (
       !runtime ||
       input.target.accountId !== runtime.account.id ||
-      input.target.channel !== 'whatsapp'
+      input.target.channel !== 'whatsapp' ||
+      (input.target.replyToId !== undefined &&
+        !platformIdSchema.safeParse(input.target.replyToId).success)
     ) {
       return { status: 'rejected', errorCode: 'invalid_target' }
     }
@@ -225,6 +258,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
             to: target.customer,
+            context: quoteContext(input),
             ...content
           })
         },
@@ -263,7 +297,7 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       if (
         !runtime ||
         address.platform !== 'whatsapp' ||
@@ -279,12 +313,14 @@ export function createWhatsAppChannel(): ChannelPlugin<WhatsAppConfig> {
       if (!window.success || Date.now() >= window.data) {
         return { status: 'unavailable', reason: 'customer_window_expired' }
       }
+      const replyToId = learnedReply(address, learned, config)
       return {
         status: 'available',
         target: {
           channel: 'whatsapp',
           accountId: address.accountId,
           chatId: address.chatId,
+          ...(replyToId ? { replyToId } : {}),
           data: {
             phoneNumberId: config.phoneNumberId,
             businessAccountId: config.businessAccountId,

@@ -31,6 +31,8 @@ From an allowed customer number, send “Hello” to the business number. The cu
 
 ## Images and files
 
+Supply `reply.requestId` to quote a particular incoming message, including when answering several requests out of order. Text and media replies keep that message's native ID. Ordinary sends without `reply` do not quote the latest message. The current 24-hour service window and account permissions still apply.
+
 Send images, audio, videos or documents, with captions where available. Replies can include JPEG/PNG images up to 5 MB, supported audio and MP4/3GPP videos up to 16 MB, and text/PDF/Office documents up to 100 MB; your relay limit also applies. Prepare mono Opus OGG audio and H.264/AAC video when using those formats.
 
 ## Troubleshooting
