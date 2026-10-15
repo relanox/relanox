@@ -157,7 +157,7 @@ it.each(limitCases)(
   'ACKs a fixed $limit rejection without persisting it and accepts the next file',
   async ({ worker, fileCount, lookup, downloads }) => {
     const remote = await platformPeer((traffic) => {
-      if (traffic.path.startsWith('/files.info?')) {
+      if (traffic.path.startsWith('/files.info')) {
         return { json: fileMetadata() }
       }
       return {
@@ -203,7 +203,7 @@ it.each(['download HTTP 503', 'invalid native metadata'])(
     let unhealthy = true
 
     const remote = await platformPeer((traffic) => {
-      if (traffic.path.startsWith('/files.info?')) {
+      if (traffic.path.startsWith('/files.info')) {
         return { json: fileMetadata(unhealthy ? 'FOTHER' : 'F123') }
       }
       return {
