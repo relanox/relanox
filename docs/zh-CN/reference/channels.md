@@ -8,24 +8,24 @@
 
 会话绑定指定账号、`chatId` 和可选的 `threadId`，渠道通过原生协议解析该目标。配置的 ID、账号权限和平台条件充分时，可以在尚无来信的情况下发送。依赖事件的目标必须具备真实平台元数据；填写 ID 不会创建消息、回复窗口或消息串锚点。
 
-| 渠道               | 原生目标和条件                                                                                                 |
-| ------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Telegram           | 聊天 ID，有话题时还需话题 ID；机器人必须能访问该聊天。                                                         |
-| Discord            | 频道 ID，有消息串时还需消息串频道 ID；机器人需要访问和发送权限。                                               |
-| Slack              | 会话 ID；普通消息省略 `threadId`，消息串使用真实根消息的时间戳。                                               |
-| 飞书 / Lark        | 聊天 ID；消息串还需要该目标已验证事件中的真实消息锚点。                                                        |
-| 企业微信 WebSocket | 成员 userid 或群聊 ID；可通过 `recipientTypes` 在来信前指定 `single` 或 `group`。                              |
-| 企业微信 HTTP      | 已验证的消息回调以及可用回复窗口；仅有聊天 ID 不足以发送。                                                     |
-| 钉钉               | 员工 ID 或开放会话 ID；可通过 `recipientTypes` 指定 `single` 或 `group`，仍需独立发送消息 API 权限。           |
-| QQ                 | 用户或群组 OpenID 及接收方类型。被动回复需真实来信且时间和额度仍有效；主动发送需 `allowProactive` 和平台权限。 |
-| Microsoft Teams    | 会话 ID 和已验证的会话元数据，包括可信服务地址；安装或会话事件可在来信前建立目标。                             |
-| WhatsApp           | 客户号码及 24 小时服务窗口内的真实来信；不支持窗口外的模板发送。                                               |
-| Google Chat        | 完整空间名和可选消息串名；应用必须能访问该空间。                                                               |
-| LINE               | 用户、群组或房间 ID，以及账号的推送消息权限和额度。                                                            |
-| Matrix             | 已加入的房间 ID，以及可选消息串根事件 ID；只支持未加密房间。                                                   |
-| Mattermost         | 频道 ID 和可选消息串根帖 ID；机器人必须能访问该频道。                                                          |
-| Signal             | `direct:` 接收方或 `group:` ID，使用配置的 signal-cli 账号。                                                   |
-| IRC                | 配置服务器上的频道或 `dm:<folded-nick>`；机器人必须已连接并加入配置的频道。                                    |
+| 渠道               | 原生目标和条件                                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------------------------- |
+| Telegram           | 聊天 ID，有话题时还需话题 ID；机器人必须能访问该聊天。                                               |
+| Discord            | 频道 ID，有消息串时还需消息串频道 ID；机器人需要访问和发送权限。                                     |
+| Slack              | 会话 ID；普通消息省略 `threadId`，消息串使用真实根消息的时间戳。                                     |
+| 飞书 / Lark        | 聊天 ID；消息串还需要该目标已验证事件中的真实消息锚点。                                              |
+| 企业微信 WebSocket | 成员 userid 或群聊 ID；可通过 `recipientTypes` 在来信前指定 `single` 或 `group`。                    |
+| 企业微信 HTTP      | 已验证的消息回调以及可用回复窗口；仅有聊天 ID 不足以发送。                                           |
+| 钉钉               | 员工 ID 或开放会话 ID；可通过 `recipientTypes` 指定 `single` 或 `group`，仍需独立发送消息 API 权限。 |
+| QQ                 | 用户或群组 OpenID 及接收方类型。有效来信回复窗口内使用被动回复，否则由 QQ 判定是否允许主动发送。     |
+| Microsoft Teams    | 会话 ID 和已验证的会话元数据，包括可信服务地址；安装或会话事件可在来信前建立目标。                   |
+| WhatsApp           | 客户号码及 24 小时服务窗口内的真实来信；不支持窗口外的模板发送。                                     |
+| Google Chat        | 完整空间名和可选消息串名；应用必须能访问该空间。                                                     |
+| LINE               | 用户、群组或房间 ID，以及账号的推送消息权限和额度。                                                  |
+| Matrix             | 已加入的房间 ID，以及可选消息串根事件 ID；只支持未加密房间。                                         |
+| Mattermost         | 频道 ID 和可选消息串根帖 ID；机器人必须能访问该频道。                                                |
+| Signal             | `direct:` 接收方或 `group:` ID，使用配置的 signal-cli 账号。                                         |
+| IRC                | 配置服务器上的频道或 `dm:<folded-nick>`；机器人必须已连接并加入配置的频道。                          |
 
 `recipientTypes` 是可选的账号 `config` 映射，以绑定中的准确 `chatId` 为键。企业微信 WebSocket、钉钉和 QQ 支持此配置；省略时可使用已验证消息中取得的接收方类型。该映射不会绕过平台权限、回复窗口或额度。企业微信、钉钉、QQ、WhatsApp、LINE、Signal 和 IRC 不支持 `threadId`。
 
@@ -417,7 +417,6 @@ Relanox 从已验证的 `message`、`conversationUpdate` 和 `installationUpdate
         "clientSecret": {
           "env": "QQ_CLIENT_SECRET"
         },
-        "allowProactive": false,
         "recipientTypes": {
           "user-openid": "c2c",
           "group-openid": "group"
@@ -437,7 +436,7 @@ Relanox 从已验证的 `message`、`conversationUpdate` 和 `installationUpdate
 
 QQ 默认使用正式环境。需要沙箱时，在账号配置中加入 `"environment": "sandbox"`。Relanox 会自动选择原生 API 和令牌地址。
 
-`recipientTypes` 标识私聊和群聊目标。`allowProactive: false` 时仍需真实来信：私聊回复窗口为 60 分钟、4 条额度，群聊为 5 分钟、5 条额度。文字和每个附件分别占用额度。没有来信时发送，需已知的接收方类型、`allowProactive: true`、平台权限和目标的接收许可。
+`recipientTypes` 标识私聊和群聊目标。私聊回复窗口为 60 分钟、4 条额度，群聊为 5 分钟、5 条额度。文字和每个附件分别占用额度。来信回复窗口有效时，Relanox 携带来信消息 ID；没有有效窗口时，不携带该 ID，使用主动消息。没有来信时发送需已知的接收方类型。平台权限、额度和接收方设置由 QQ 判定，Relanox 不再提供单独的主动发送开关。升级前请从旧配置中删除 `allowProactive`。
 
 腾讯官方 QQBot Node.js SDK 管理令牌刷新、HTTP 请求、WebSocket 心跳与恢复、上传方式和原生 `msg_seq`。Relanox 保留发送者授权、目标身份检查、回复窗口、媒体存储及 Core 投递/分块标识。回复额度由 QQ 判定，不再预留或持久化原生序号。QQ 发送仍不具备幂等保证：重试不确定结果可能产生重复消息。
 

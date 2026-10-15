@@ -138,7 +138,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
 
   function replyMode(
     target: z.infer<typeof targetSchema>
-  ): 'passive' | 'proactive' | SendResult {
+  ): 'passive' | 'proactive' {
     if (
       target.messageAt !== undefined &&
       Date.now() <
@@ -146,16 +146,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     ) {
       return 'passive'
     }
-    if (config.allowProactive) {
-      return 'proactive'
-    }
-    return {
-      status: 'rejected',
-      errorCode:
-        target.messageAt === undefined
-          ? 'passive_context_required'
-          : 'passive_window_expired'
-    }
+    return 'proactive'
   }
 
   async function transmit(
@@ -166,9 +157,6 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
     try {
       input.signal.throwIfAborted()
       let mode = replyMode(target)
-      if (typeof mode !== 'string') {
-        return mode
-      }
 
       const nativeTarget = {
         scope: target.type,
@@ -187,9 +175,6 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
       input.signal.throwIfAborted()
       // Uploads can outlive the passive reply window or the Core deadline.
       mode = replyMode(target)
-      if (typeof mode !== 'string') {
-        return mode
-      }
       if (mode === 'proactive') {
         delete nativeTarget.msgId
       }
@@ -268,17 +253,6 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
           : {})
       }
 
-      if (!config.allowProactive) {
-        if (data.messageAt === undefined) {
-          return { status: 'unavailable', reason: 'passive_context_required' }
-        }
-        if (
-          Date.now() >=
-          data.messageAt + (type === 'c2c' ? 3_600_000 : 300_000)
-        ) {
-          return { status: 'unavailable', reason: 'passive_window_expired' }
-        }
-      }
       return {
         status: 'available',
         target: {

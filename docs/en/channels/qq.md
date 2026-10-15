@@ -10,10 +10,9 @@ Create and enable a robot on the QQ bot platform. Save its app ID and client sec
 
 Open the [connection configurator](../connect.md), select **QQ robot**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
 
-| Configurator field       | What to enter                                          |
-| ------------------------ | ------------------------------------------------------ |
-| Application ID           | The application id obtained during account preparation |
-| Allow proactive messages | Initial value: `false`                                 |
+| Configurator field | What to enter                                          |
+| ------------------ | ------------------------------------------------------ |
+| Application ID     | The application id obtained during account preparation |
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#qq).
 
@@ -23,11 +22,11 @@ For private messages, both the allowed sender and binding **Chat ID** use `autho
 
 QQ uses production by default; select sandbox in the configurator for a test account.
 
-For proactive sends to a bound destination, add `recipientTypes` to the downloaded account's `config`: map its **Chat ID** to `c2c` for a private user or `group` for a group. This supplies the native address type; it does not grant permission to send proactively. Enable **Allow proactive messages** only with platform permission and the recipient's receiving preference. Otherwise, a real incoming message and its remaining reply window and quota are required. Leave **Thread ID** empty. See the [manual example](../reference/channels.md#qq).
+For proactive sends to a bound destination, add `recipientTypes` to the downloaded account's `config`: map its **Chat ID** to `c2c` for a private user or `group` for a group. This supplies the native address type; it does not grant permission to send proactively. Relanox uses passive replies while the incoming message's reply window is valid, and proactive messages otherwise. QQ decides whether platform permissions, quotas and the recipient's receiving preference permit the send. Leave **Thread ID** empty. See the [manual example](../reference/channels.md#qq).
 
 ## Enable the connection
 
-Relanox connects automatically over WebSocket when it starts. Keep it running with outbound access to QQ’s API and gateway. Keep **Allow proactive messages** disabled when replying to incoming messages.
+Relanox connects automatically over WebSocket when it starts. Keep it running with outbound access to QQ’s API and gateway.
 
 ## Send your first message
 
@@ -41,4 +40,6 @@ If an attachment download fails, the message still arrives with the image's remo
 
 ## Troubleshooting
 
-If the gateway refuses connection, check robot release status, app credentials and event permission. If a group message is missing, mention the bot and verify the group/member OpenIDs. If a delayed answer exceeds the reply window, send a new question. Enable **Allow proactive messages** only after obtaining the platform permission and the recipient’s receiving preference.
+If the gateway refuses connection, check robot release status, app credentials and event permission. If a group message is missing, mention the bot and verify the group/member OpenIDs. If QQ rejects a proactive message, check the robot's platform permissions and the recipient's receiving preference. Send a new question to open a passive reply window when proactive messages are unavailable.
+
+When upgrading from a configuration containing `allowProactive`, remove that field before starting the new version. There is no Relanox switch for proactive QQ messages.
