@@ -153,6 +153,139 @@ async function setup(
 }
 
 describe('native Google Chat', () => {
+  // The native quote requires the message's real version timestamp, including
+  // Fractional precision, and cannot reference a reply from another thread:
+  // https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages#QuotedMessageMetadata
+  it('quotes selected durable requests out of order with exact native timestamps and keeps ordinary sends unquoted', async () => {
+    const local = await setup()
+    for (const [id, timestamps] of [
+      ['first', { createTime: '2026-10-15T01:00:00.123456789Z' }],
+      [
+        'second',
+        {
+          createTime: '2026-10-15T01:00:01Z',
+          lastUpdateTime: '2026-10-15T01:02:01.123456Z'
+        }
+      ],
+      ['third', { createTime: '2026-10-15T01:00:02Z' }]
+    ] as const) {
+      expect(
+        (
+          await local.core.fetch(
+            await local.incoming(
+              undefined,
+              JSON.stringify({
+                type: 'MESSAGE',
+                space: { name: 'spaces/space' },
+                message: {
+                  name: `spaces/space/messages/${id}`,
+                  text: id,
+                  sender: { name: 'users/alice', type: 'HUMAN' },
+                  thread: { name: 'spaces/space/threads/thread' },
+                  ...timestamps
+                }
+              })
+            )
+          )
+        ).status
+      ).toBe(200)
+    }
+    const incoming = await local.storage.listInbound({ limit: 10 })
+    expect(incoming).toHaveLength(3)
+    for (const id of ['second', 'first', 'third']) {
+      const request = incoming.find(
+        (item) => item.snapshot.text === id
+      )?.snapshot
+
+      if (!request) {
+        throw new Error('missing_incoming_message')
+      }
+      expect(
+        await local.principal().sendMessage({
+          channel: request.channel.id,
+          text: `answer ${id}`,
+          reply: { requestId: request.requestId, kind: 'final' }
+        })
+      ).toMatchObject({ status: 'queued' })
+      await local.core.processDue()
+    }
+    const channel = incoming[0]?.snapshot.channel.id
+    if (!channel) {
+      throw new Error('missing_channel')
+    }
+    expect(
+      await local.principal().sendMessage({ channel, text: 'ordinary' })
+    ).toMatchObject({ status: 'queued' })
+    await local.core.processDue()
+
+    const sent = local.remote.traffic.filter((item) =>
+      item.path.startsWith('/v1/spaces/space/messages')
+    )
+
+    expect(sent.map((item) => JSON.parse(item.body) as unknown)).toEqual([
+      {
+        text: 'answer second',
+        markupSyntax: 'MARKUP_SYNTAX_MARKDOWN',
+        thread: { name: 'spaces/space/threads/thread' },
+        quotedMessageMetadata: {
+          name: 'spaces/space/messages/second',
+          lastUpdateTime: '2026-10-15T01:02:01.123456Z'
+        }
+      },
+      {
+        text: 'answer first',
+        markupSyntax: 'MARKUP_SYNTAX_MARKDOWN',
+        thread: { name: 'spaces/space/threads/thread' },
+        quotedMessageMetadata: {
+          name: 'spaces/space/messages/first',
+          lastUpdateTime: '2026-10-15T01:00:00.123456789Z'
+        }
+      },
+      {
+        text: 'answer third',
+        markupSyntax: 'MARKUP_SYNTAX_MARKDOWN',
+        thread: { name: 'spaces/space/threads/thread' },
+        quotedMessageMetadata: {
+          name: 'spaces/space/messages/third',
+          lastUpdateTime: '2026-10-15T01:00:02Z'
+        }
+      },
+      {
+        text: 'ordinary',
+        markupSyntax: 'MARKUP_SYNTAX_MARKDOWN',
+        thread: { name: 'spaces/space/threads/thread' }
+      }
+    ])
+  })
+
+  it('rejects explicit quotes without a native version timestamp before sending platform traffic', async () => {
+    const local = await setup()
+    expect((await local.core.fetch(await local.incoming())).status).toBe(200)
+    const request = (await local.storage.listInbound({ limit: 1 }))[0]?.snapshot
+    if (!request) {
+      throw new Error('missing_incoming_message')
+    }
+
+    const queued = await local.principal().sendMessage({
+      channel: request.channel.id,
+      text: 'answer',
+      reply: { requestId: request.requestId, kind: 'final' }
+    })
+
+    expect(queued.status).toBe('queued')
+    if (queued.status !== 'queued') {
+      throw new Error('missing_delivery')
+    }
+    await local.core.processDue()
+    expect(await local.storage.getOutbound(queued.deliveryId)).toMatchObject({
+      status: 'rejected',
+      errorCode: 'reply_context_unavailable'
+    })
+    expect(
+      local.remote.traffic.filter((item) => item.path.startsWith('/v1/spaces/'))
+    ).toHaveLength(0)
+  })
+
   it.each(['users/denied', 'users/alice'])(
     'authorizes %s before requesting OAuth or attachment bytes',
     async (sender) => {

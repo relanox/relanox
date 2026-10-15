@@ -4,6 +4,9 @@ import type {
   AccountConfig,
   ChannelHost,
   ChannelPlugin,
+  Json,
+  ChannelAddress,
+  ReplyTarget,
   SendInput,
   SendResult
 } from '@relanox/sdk'
@@ -28,6 +31,47 @@ import {
   targetSchema,
   receiptSchema
 } from './schemas.js'
+
+function sourceQuote(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  clientEmail: string
+): ReturnType<typeof targetSchema.parse>['quotedMessageMetadata'] {
+  const source = targetSchema.safeParse(learned?.data)
+  if (
+    learned?.channel !== 'googlechat' ||
+    learned.accountId !== address.accountId ||
+    learned.chatId !== address.chatId ||
+    learned.threadId !== address.threadId ||
+    !source.success ||
+    source.data.space !== address.chatId ||
+    source.data.thread !== address.threadId ||
+    source.data.scope.clientEmail !== clientEmail ||
+    source.data.scope.apiBase !== new URL(apiBase).href ||
+    source.data.quotedMessageMetadata?.name !== learned.replyToId ||
+    !learned.replyToId?.startsWith(`${address.chatId}/messages/`)
+  ) {
+    return undefined
+  }
+  return source.data.quotedMessageMetadata
+}
+
+function messagePayload(
+  input: SendInput,
+  target: ReturnType<typeof targetSchema.parse>,
+  cardsV2: Awaited<ReturnType<typeof mediaCards>>
+): Json {
+  return {
+    ...(input.chunk.text
+      ? { text: input.chunk.text, markupSyntax: 'MARKUP_SYNTAX_MARKDOWN' }
+      : {}),
+    ...(cardsV2 ? { cardsV2 } : {}),
+    ...(input.reply && target.quotedMessageMetadata
+      ? { quotedMessageMetadata: target.quotedMessageMetadata }
+      : {}),
+    ...(target.thread ? { thread: { name: target.thread } } : {})
+  }
+}
 
 export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
   let runtime:
@@ -68,6 +112,9 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     ) {
       return { status: 'rejected', errorCode: 'target_identity_changed' }
     }
+    if (input.reply && !target.quotedMessageMetadata) {
+      return { status: 'rejected', errorCode: 'reply_context_unavailable' }
+    }
     const errorCode = richError(input, runtime.host)
     if (errorCode) {
       return { status: 'rejected', errorCode }
@@ -102,16 +149,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
             authorization: `Bearer ${token}`,
             'content-type': 'application/json'
           },
-          body: JSON.stringify({
-            ...(input.chunk.text
-              ? {
-                  text: input.chunk.text,
-                  markupSyntax: 'MARKUP_SYNTAX_MARKDOWN'
-                }
-              : {}),
-            ...(cardsV2 ? { cardsV2 } : {}),
-            ...(target.thread ? { thread: { name: target.thread } } : {})
-          })
+          body: JSON.stringify(messagePayload(input, target, cardsV2))
         },
         input.signal
       )
@@ -149,7 +187,7 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       if (
         !runtime ||
         address.platform !== 'googlechat' ||
@@ -166,9 +204,12 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
         return { status: 'unavailable', reason: 'oauth_unavailable' }
       }
 
+      const quotedMessageMetadata = sourceQuote(address, learned, clientEmail)
+
       const destination = {
         space: address.chatId,
         ...(address.threadId !== undefined ? { thread: address.threadId } : {}),
+        ...(quotedMessageMetadata ? { quotedMessageMetadata } : {}),
         scope: { clientEmail, apiBase: new URL(apiBase).href }
       }
 
@@ -188,6 +229,9 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
           chatId: address.chatId,
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
+            : {}),
+          ...(quotedMessageMetadata
+            ? { replyToId: quotedMessageMetadata.name }
             : {}),
           data: destination
         }
