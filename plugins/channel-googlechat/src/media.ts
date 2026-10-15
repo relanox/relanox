@@ -35,6 +35,8 @@ export async function downloadAttachments(
         {
           responseType: 'stream',
           signal,
+          // Override the shared API timeout for the full attachment deadline.
+          timeout: 120_000,
           // Gaxios otherwise buffers failed stream responses without a bound.
           // The SDK fixes the Google origin; redirects remain disabled above.
           validateStatus: () => true

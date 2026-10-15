@@ -742,6 +742,55 @@ describe('native Google Chat', () => {
     }
   })
 
+  // Preserve the attachment's two-minute deadline when its body takes longer
+  // Than the shared API client's ten-second timeout. Inheriting that default
+  // Would fail valid downloads; finite byte/size/error fixtures finish too soon
+  // To catch it. The published SDK, real HTTP body and SQLite need no production
+  // Seam or fake timers. Media.download returns the native binary body:
+  // https://developers.google.com/workspace/chat/api/reference/rest/v1/media/download
+  it('persists an SDK media stream that completes after the message API timeout', async () => {
+    const local = await setup()
+
+    const path =
+      '/v1/media/spaces/space/messages/media/attachments/file?alt=media'
+
+    const bytes = new Uint8Array([1, 2, 3, 4])
+    const release = local.remote.holdBody(path, bytes, 200)
+
+    const response = local.core.fetch(
+      await local.incoming(undefined, attachmentEvent())
+    )
+
+    try {
+      await expect
+        .poll(() => local.remote.traffic.some((entry) => entry.path === path))
+        .toBe(true)
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 11_000)
+      })
+      release()
+      expect((await response).status).toBe(200)
+      const item = (await local.storage.listInbound({ limit: 1 }))[0]?.snapshot
+      if (!item?.attachments?.[0]) {
+        throw new Error('missing_slow_attachment')
+      }
+      expect(
+        (
+          await local.principal().media?.read({
+            channelId: item.channel.id,
+            mediaId: item.attachments[0].id
+          })
+        )?.data
+      ).toEqual(bytes)
+      expect(
+        local.remote.traffic.filter((entry) => entry.path === path)
+      ).toHaveLength(1)
+    } finally {
+      release()
+      await response
+    }
+  }, 20_000)
+
   it.each(['media HTTP 503', 'media connection reset', 'closed SQLite'])(
     'keeps %s ingress replayable through HTTP and a real SQLite reopen',
     async (failure) => {
