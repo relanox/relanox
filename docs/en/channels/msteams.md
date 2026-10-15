@@ -4,7 +4,7 @@ Talk to your agent through an installed Teams bot in personal chats, groups or c
 
 ## Prepare your account
 
-Register a Microsoft application and Azure Bot, enable its Teams channel, and install the Teams app for the intended users/teams. Record the application ID, bot activity ID and tenant ID; save the app secret as `TEAMS_APP_SECRET`. Ask your administrator for the exact trusted Bot Connector service origins for your region.
+Register a Microsoft application and Azure Bot, enable its Teams channel, and install the Teams app for the intended users/teams. Record the application ID, bot activity ID, bot application's tenant ID and allowed Teams activity tenant ID; save the app secret as `TEAMS_APP_SECRET`. Ask your administrator for the exact trusted Bot Connector service origins for your region. For a single-tenant bot, use `https://login.microsoftonline.com/<application-tenant-id>/oauth2/v2.0/token` as the OAuth token URL. This application tenant can differ from the allowed Teams activity tenant. Existing multi-tenant bots can use their registered token URL; [Microsoft documents both token authorities](https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0).
 
 ## Fill in the configurator
 
@@ -14,14 +14,15 @@ Open the [connection configurator](../connect.md), select **Microsoft Teams**, a
 | ----------------------------------------- | --------------------------------------------------------------------------------- |
 | Application ID                            | The application id obtained during account preparation                            |
 | Bot ID                                    | The bot id obtained during account preparation                                    |
-| Tenant ID                                 | The tenant id obtained during account preparation                                 |
+| Allowed Teams tenant ID                   | The Teams activity tenant ID allowed to use this account                          |
+| Bot application OAuth token URL           | The token URL for the bot application registration                                |
 | Trusted service origins (comma separated) | The trusted service origins (comma separated) obtained during account preparation |
 
 Download the configuration as `relanox.json` and set the secret variables in the environment that starts the service. Complete the platform connection steps below, then start or restart the service and follow **Send your first message** to verify the reply. Manual configuration and protocol parameters are in the [technical reference](../reference/channels.md#msteams).
 
 Ask the bot administrator to provide the user and conversation IDs listed below before filling in the configuration. They can verify these values against existing bot message records. Use the IDs assigned by the platform rather than display names.
 
-Read IDs from a Teams message activity: `from.id` is the allowed sender, `conversation.id` is the binding chat ID, and `recipient.id` is the configured bot ID. Use the activity’s tenant ID for `tenantId`. A binding for a reply chain uses `replyToId` as **Thread ID** when present.
+Read IDs from a Teams message activity: `from.id` is the allowed sender, `conversation.id` is the binding chat ID, and `recipient.id` is the configured bot ID. Use the activity’s tenant ID for **Allowed Teams tenant ID**, and the bot application's registration tenant for the OAuth token URL. A binding for a reply chain uses `replyToId` as **Thread ID** when present.
 
 ## Enable the connection
 

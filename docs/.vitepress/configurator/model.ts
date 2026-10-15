@@ -459,7 +459,9 @@ function fieldProblem(
   if (field.options && !field.options.includes(value)) {
     return 'fieldValue'
   }
-  if (['homeserver', 'serverUrl', 'serviceUrl'].includes(field.key)) {
+  if (
+    ['homeserver', 'serverUrl', 'serviceUrl', 'tokenUrl'].includes(field.key)
+  ) {
     return secureUrlProblem(value)
   }
   if (

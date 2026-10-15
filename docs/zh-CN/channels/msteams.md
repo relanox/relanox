@@ -4,24 +4,25 @@
 
 ## 准备账号
 
-注册 Microsoft 应用和 Azure Bot，启用 Teams 渠道，并向所需用户或团队安装 Teams 应用。记录应用 ID、机器人 Activity ID 和租户 ID，将应用密钥保存到 `TEAMS_APP_SECRET`。请管理员确认所在区域的 Bot Connector 服务可信来源。单租户机器人将 `tokenUrl` 设为 `https://login.microsoftonline.com/<应用租户ID>/oauth2/v2.0/token`。应用租户可以与 `tenantId` 中允许接入的 Teams 租户不同。此渠道使用公有云 Bot Framework 认证。
+注册 Microsoft 应用和 Azure Bot，启用 Teams 渠道，并向所需用户或团队安装 Teams 应用。记录应用 ID、机器人 Activity ID、机器人应用租户 ID 和允许接入的 Teams Activity 租户 ID，将应用密钥保存到 `TEAMS_APP_SECRET`。请管理员确认所在区域的 Bot Connector 服务可信来源。单租户机器人的 OAuth Token 地址使用 `https://login.microsoftonline.com/<应用租户ID>/oauth2/v2.0/token`。应用租户可以与允许接入的 Teams 租户不同。现有多租户机器人可填写其注册所用的 Token 地址；[Microsoft 文档列出了两种认证地址](https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0)。
 
 ## 在配置器中填写
 
 打开[连接配置器](../connect.md)，选择 **Microsoft Teams**，填写上一步取得的账号信息。凭据变量名保持默认，按照下载后生成的教程设置实际密钥。将下文取得的发送者 ID 填入「允许使用的用户 ID」，会话 ID 填入「聊天 ID」，有话题时填写「话题 / 线程 ID」，并选择「接收 Agent」。多个允许用户用英文逗号分隔。
 
-| 配置器字段             | 填写内容                           |
-| ---------------------- | ---------------------------------- |
-| 应用 ID                | 上一步取得的应用 ID                |
-| 机器人 ID              | 上一步取得的机器人 ID              |
-| 租户 ID                | 上一步取得的租户 ID                |
-| 可信服务源（逗号分隔） | 上一步取得的可信服务源（逗号分隔） |
+| 配置器字段                  | 填写内容                            |
+| --------------------------- | ----------------------------------- |
+| 应用 ID                     | 上一步取得的应用 ID                 |
+| 机器人 ID                   | 上一步取得的机器人 ID               |
+| 允许接入的 Teams 租户 ID    | Teams Activity 中允许接入的租户 ID  |
+| 机器人应用 OAuth Token 地址 | 机器人应用注册方式对应的 Token 地址 |
+| 可信服务源（逗号分隔）      | 上一步取得的可信服务源（逗号分隔）  |
 
 将下载的配置保存为 `relanox.json`，并按接入教程在服务器上设置密钥。完成下方的平台连接设置后启动或重启服务，并按「发送第一条消息」验证。手写配置与协议参数见[技术参考](../reference/channels.md#msteams)。
 
 请机器人管理员准备下面列出的用户和会话 ID，再填写配置。管理员可以从已有的机器人消息记录中核对这些值。使用平台分配的 ID，而非聊天中显示的名称。
 
-从 Teams 消息 Activity 取得 ID：`from.id` 为允许发送者，`conversation.id` 为绑定会话 ID，`recipient.id` 为配置的机器人 ID。`tenantId` 填 Activity 对应租户 ID。绑定回复链时，使用其中的 `replyToId` 作为 「话题 / 线程 ID」。
+从 Teams 消息 Activity 取得 ID：`from.id` 为允许发送者，`conversation.id` 为绑定会话 ID，`recipient.id` 为配置的机器人 ID。「允许接入的 Teams 租户 ID」填 Activity 对应租户 ID；OAuth Token 地址使用机器人应用注册所在的租户。绑定回复链时，使用其中的 `replyToId` 作为「话题 / 线程 ID」。
 
 ## 启用连接
 
