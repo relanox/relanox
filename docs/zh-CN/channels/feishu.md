@@ -28,7 +28,7 @@
 
 使用事件订阅 v2.0，将地址填为 `https://relay.example.com/channels/feishu-main/events`，订阅 `im.message.receive_v1`，并配置相同的 Verification Token 和 Encrypt Key。验证回调前启动 Relanox，然后发布应用变更，向使用者开放机器人。
 
-Relanox 使用[飞书/Lark 官方 Node SDK](https://github.com/larksuite/node-sdk)处理身份、凭据、消息归一化、上传和发送。HTTP 回调仍使用配置的 Relanox 地址。Core 保存来信后才确认接收；存储或下载失败时返回错误，供平台重投。SDK 归一化会生成 Markdown 标题、提及和媒体描述，无法表示为文字的消息可能使用 SDK 占位文本。进程或平台中断后的接收恢复仍依赖平台重新投递回调。
+Relanox 使用[飞书/Lark 官方 Node SDK](https://github.com/larksuite/node-sdk)处理身份、凭据、消息归一化、资源下载、上传和发送。HTTP 回调仍使用配置的 Relanox 地址。Core 保存来信后才确认接收；存储或下载失败时返回错误，供平台重投。SDK 归一化会生成 Markdown 标题、提及和媒体描述，无法表示为文字的消息可能使用 SDK 占位文本。进程或平台中断后的接收恢复仍依赖平台重新投递回调。
 
 ## 发送第一条消息
 

@@ -239,14 +239,6 @@ export function createFeishuChannel(
 
       const threadId = message.thread_id
 
-      const access: unknown =
-        content.resources.length > 0
-          ? await sdk.channel.rawClient.tokenManager.getTenantAccessToken()
-          : ''
-
-      if (typeof access !== 'string') {
-        return new Response(null, { status: 503 })
-      }
       await ingest(host, {
         source: {
           channel: 'feishu',
@@ -259,8 +251,7 @@ export function createFeishuChannel(
           message.message_id,
           content.resources,
           host,
-          base(),
-          access
+          sdk.channel
         ),
         target: {
           channel: 'feishu',

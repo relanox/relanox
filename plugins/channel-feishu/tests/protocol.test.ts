@@ -6,11 +6,13 @@ import {
 import { afterEach, describe, expect, it } from 'vitest'
 import type { HttpHandler, ChannelHost, IngestInput } from '@relanox/sdk'
 import { createCipheriv, createHash } from 'node:crypto'
+import { once } from 'node:events'
+import { setImmediate } from 'node:timers/promises'
 import { createFeishuChannel } from '../src/index.js'
 import { peer, recorder, sendInput, installSdkNetwork } from './peer.js'
 
 installPeerNetwork()
-installSdkNetwork()
+const sdkResponses = installSdkNetwork()
 
 const environment = {
   APPSECRET: 'app-secret',
@@ -801,6 +803,169 @@ it('preserves successful JSON resources that contain native error-code-looking d
   await expectJsonResource(storage)
 })
 
+it.each([
+  { status: 200, termination: 'stop' },
+  { status: 401, termination: 'stop' },
+  { status: 200, termination: 'deadline' },
+  { status: 401, termination: 'deadline' }
+])(
+  'cancels an unfinished HTTP $status resource body on $termination',
+  async ({ status, termination }) => {
+    // MessageResource.get uses responseType: stream in @larksuiteoapi/node-sdk 1.75.0.
+    // A native token error uses HTTP 401 and code 99991663:
+    // https://open.feishu.cn/document/faq/trouble-shooting/how-to-fix-99991663-error
+    const remote = await peer((captured) =>
+      captured.path.includes('tenant_access_token')
+        ? {
+            body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+          }
+        : { status, body: Buffer.from('{"code":99991663'), holdOpen: true }
+    )
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+    const headers = once(sdkResponses, 'response')
+
+    const response = test.handler(
+      request({
+        ...event,
+        event: {
+          ...event.event,
+          message: {
+            ...event.event.message,
+            message_type: 'file',
+            content: '{"file_key":"file_unfinished","file_name":"partial.json"}'
+          }
+        }
+      })
+    )
+
+    await headers
+    // Let the SDK process the received headers before stopping its body stream.
+    await setImmediate()
+    if (termination === 'stop') {
+      await test.plugin.stop?.()
+    }
+    expect((await response).status).toBe(503)
+    expect(test.received).toEqual([])
+    expect(remote.requests.map((captured) => captured.path)).toEqual([
+      '/open-apis/im/v1/messages/om_message/resources/file_unfinished?type=file'
+    ])
+  }
+)
+
+it.each([
+  { scenario: 'declared oversized', status: 200, acknowledgement: 200 },
+  { scenario: 'non-JSON error', status: 401, acknowledgement: 503 }
+])(
+  'closes the socket after rejecting an unfinished $scenario resource',
+  async ({ status, acknowledgement }) => {
+    // SDK messageResource.get returns a native binary stream; HTTP failures may be non-JSON.
+    const remote = await peer((captured) =>
+      captured.path.includes('tenant_access_token')
+        ? {
+            body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+          }
+        : {
+            status,
+            headers: {
+              'content-type': 'application/octet-stream',
+              ...(status === 200
+                ? { 'content-length': String(101 * 1024 * 1024) }
+                : {})
+            },
+            body: Buffer.from('partial'),
+            holdOpen: true
+          }
+    )
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+    const closed = Promise.withResolvers<void>()
+    remote.server.on('request', (incoming) => {
+      if (incoming.url?.includes('/resources/')) {
+        incoming.socket.once('close', () => {
+          closed.resolve()
+        })
+      }
+    })
+
+    const response = await test.handler(
+      request({
+        ...event,
+        event: {
+          ...event.event,
+          message: {
+            ...event.event.message,
+            message_type: 'file',
+            content: '{"file_key":"file_rejected","file_name":"partial.bin"}'
+          }
+        }
+      })
+    )
+
+    expect(response.status).toBe(acknowledgement)
+    await closed.promise
+    expect(test.received).toEqual([])
+  }
+)
+
+it('stores complete native resources above the ordinary JSON response limit', async () => {
+  // Resource stream contract: @larksuiteoapi/node-sdk 1.75.0,
+  // Lib/index.js messageResource.get; resources may be up to 100 MB.
+  const bytes = Buffer.alloc(2 * 1024 * 1024, 7)
+
+  const remote = await peer((captured) =>
+    captured.path.includes('tenant_access_token')
+      ? { body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 } }
+      : {
+          headers: { 'content-type': 'application/octet-stream' },
+          body: bytes
+        }
+  )
+
+  cleanup.push(remote.close)
+  const { core, storage } = await storedChannel(cleanup, environment, account)
+  expect(
+    (
+      await core.fetch(
+        request({
+          ...event,
+          event: {
+            ...event.event,
+            message: {
+              ...event.event.message,
+              message_type: 'file',
+              content: '{"file_key":"file_binary","file_name":"complete.bin"}'
+            }
+          }
+        })
+      )
+    ).status
+  ).toBe(200)
+  expect(remote.requests).toMatchObject([
+    {
+      path: '/open-apis/im/v1/messages/om_message/resources/file_binary?type=file',
+      headers: { authorization: 'Bearer tenant-token' }
+    }
+  ])
+  const records = await storage.listInbound({ limit: 10 })
+  expect(records).toHaveLength(1)
+  const reference = records[0]?.snapshot.attachments?.[0]
+  const channelId = records[0]?.snapshot.channel.id
+  if (!reference || !channelId) {
+    throw new Error('missing_binary_resource')
+  }
+  expect(reference).toMatchObject({
+    kind: 'file',
+    mimeType: 'application/octet-stream',
+    fileName: 'complete.bin',
+    size: bytes.byteLength
+  })
+  const media = await storage.media?.get(channelId, reference.id)
+  expect(media?.data).toEqual(new Uint8Array(bytes))
+})
+
 async function expectJsonResource(
   storage: Awaited<ReturnType<typeof storedChannel>>['storage']
 ): Promise<void> {
@@ -821,7 +986,8 @@ async function expectJsonResource(
 
 it.each([
   { status: 401, body: {} },
-  { status: 503, body: { code: 99_991_663 } }
+  { status: 503, body: { code: 99_991_663 } },
+  { status: 401, body: { code: 99_991_663, padding: 'x'.repeat(65 * 1024) } }
 ])(
   'retains the cached resource token for unknown HTTP $status failures',
   async ({ status, body }) => {
@@ -1544,11 +1710,28 @@ it('stops an SDK media send before the next request after cancellation', async (
 })
 
 it.each([
-  { scenario: 'oversized', status: 200, acknowledgement: 200 },
-  { scenario: 'unavailable', status: 503, acknowledgement: 503 }
+  { scenario: 'oversized', status: 200, acknowledgement: 200, declared: false },
+  {
+    scenario: 'declared oversized',
+    status: 200,
+    acknowledgement: 200,
+    declared: true
+  },
+  {
+    scenario: 'redirected',
+    status: 302,
+    acknowledgement: 503,
+    declared: false
+  },
+  {
+    scenario: 'unavailable',
+    status: 503,
+    acknowledgement: 503,
+    declared: false
+  }
 ])(
   'returns the native retry outcome for $scenario resources',
-  async ({ status, acknowledgement }) => {
+  async ({ status, acknowledgement, declared }) => {
     // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
     // Code-gen/projects/im.ts messageResource.get allows binary resources up to 100 MB.
     // Native retry ACK: https://open.feishu.cn/document/server-docs/event-subscription-guide/overview
@@ -1559,9 +1742,17 @@ it.each([
           }
         : {
             status,
-            headers: { 'content-type': 'application/octet-stream' },
+            headers: {
+              'content-type': 'application/octet-stream',
+              ...(declared
+                ? { 'content-length': String(26 * 1024 * 1024) }
+                : {}),
+              ...(status === 302
+                ? { location: 'https://open.feishu.cn/unexpected' }
+                : {})
+            },
             body:
-              status === 200
+              status === 200 && !declared
                 ? new Uint8Array(26 * 1024 * 1024)
                 : new Uint8Array()
           }

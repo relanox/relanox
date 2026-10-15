@@ -24,7 +24,9 @@ import type {
 } from '@relanox/sdk'
 
 /** Axios uses the options-only native request overload; retain real HTTP peers. */
-export function installSdkNetwork(): void {
+export function installSdkNetwork(): EventTarget {
+  const responses = new EventTarget()
+
   beforeEach(() => {
     const routed = https.request
     https.request = ((
@@ -47,16 +49,22 @@ export function installSdkNetwork(): void {
           ...request
         } = input
 
-        return routed(
+        const outgoing = routed(
           url,
           request,
           options as (response: IncomingMessage) => void
         )
+
+        outgoing.once('response', () =>
+          responses.dispatchEvent(new Event('response'))
+        )
+        return outgoing
       }
       return routed(input, options as RequestOptions, callback)
     }) as typeof https.request
     syncBuiltinESMExports()
   })
+  return responses
 }
 
 export function recorder(ingest?: (input: IngestInput) => Promise<void>): {
@@ -108,6 +116,7 @@ type PeerResponse = {
   headers?: Record<string, string>
   body: unknown
   disconnect?: boolean
+  holdOpen?: boolean
 }
 
 export async function peer(
@@ -177,11 +186,17 @@ export async function peer(
       'content-type': 'application/json',
       ...output.headers
     })
-    response.end(
+
+    const contentBytes =
       output.body instanceof Uint8Array
         ? output.body
         : JSON.stringify(output.body)
-    )
+
+    if (output.holdOpen) {
+      response.write(contentBytes)
+      return
+    }
+    response.end(contentBytes)
   }
 
   const server = createServer((request, response) => {
