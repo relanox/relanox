@@ -75,28 +75,30 @@ it('uses SDK cached Teams tokens and refreshes after expiry and secret rotation'
 
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(Date.now() + 3_600_000)
+  const refreshedToken = oauthToken('refreshed-token')
   local.remote.token(200, {
-    access_token: oauthToken('refreshed-token'),
+    access_token: refreshedToken,
     token_type: 'Bearer',
     expires_in: 3600
   })
   expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
   expect(local.remote.traffic.at(-1)?.headers.authorization).toBe(
-    `Bearer ${oauthToken('refreshed-token')}`
+    `Bearer ${refreshedToken}`
   )
   expect(
     local.remote.traffic.filter((entry) => entry.path === tokenPath)
   ).toHaveLength(2)
 
   vi.stubEnv('TEAMS_SECRET', 'rotated-secret')
+  const rotatedToken = oauthToken('rotated-token')
   local.remote.token(200, {
-    access_token: oauthToken('rotated-token'),
+    access_token: rotatedToken,
     token_type: 'Bearer',
     expires_in: 3600
   })
   expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
   expect(local.remote.traffic.at(-1)?.headers.authorization).toBe(
-    `Bearer ${oauthToken('rotated-token')}`
+    `Bearer ${rotatedToken}`
   )
 
   const tokens = local.remote.traffic.filter(
@@ -131,15 +133,16 @@ it('reacquires rejected Teams OAuth credentials on the next send without interna
   expect(
     local.remote.traffic.filter((entry) => entry.path.startsWith('/teams/v3'))
   ).toHaveLength(2)
+  const replacementToken = oauthToken('replacement-token')
   local.remote.token(200, {
-    access_token: oauthToken('replacement-token'),
+    access_token: replacementToken,
     token_type: 'Bearer',
     expires_in: 3600
   })
   local.remote.respond(200, { id: 'recovered' })
   expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
   expect(local.remote.traffic.at(-1)?.headers.authorization).toBe(
-    `Bearer ${oauthToken('replacement-token')}`
+    `Bearer ${replacementToken}`
   )
   expect(
     local.remote.traffic.filter((entry) => entry.path === tokenPath)
@@ -270,9 +273,10 @@ it('reposts a personal file consent card with fresh OAuth after a definitive 401
 
   const namespace = { pluginId: 'channel-msteams', ownerId: 'business' }
   const consentKey = 'consent:consent-401:0'
+  const expiredToken = oauthToken('expired-token')
 
   local.remote.token(200, {
-    access_token: oauthToken('expired-token'),
+    access_token: expiredToken,
     token_type: 'Bearer',
     expires_in: 3600
   })
@@ -283,8 +287,9 @@ it('reposts a personal file consent card with fresh OAuth after a definitive 401
   })
   expect(await local.storage.getState(namespace, consentKey)).toBeUndefined()
 
+  const replacementToken = oauthToken('replacement-token')
   local.remote.token(200, {
-    access_token: oauthToken('replacement-token'),
+    access_token: replacementToken,
     token_type: 'Bearer',
     expires_in: 3600
   })
@@ -308,8 +313,8 @@ it('reposts a personal file consent card with fresh OAuth after a definitive 401
 
   expect(posts).toHaveLength(2)
   expect(posts.map((entry) => entry.headers.authorization)).toEqual([
-    `Bearer ${oauthToken('expired-token')}`,
-    `Bearer ${oauthToken('replacement-token')}`
+    `Bearer ${expiredToken}`,
+    `Bearer ${replacementToken}`
   ])
   expect(posts.map((entry) => JSON.parse(entry.body) as unknown)).toMatchObject(
     [
@@ -350,14 +355,15 @@ it.each([
     expect(
       local.remote.traffic.filter((entry) => entry.path.startsWith('/teams/v3'))
     ).toHaveLength(0)
+    const validToken = oauthToken('valid-token')
     local.remote.token(200, {
-      access_token: oauthToken('valid-token'),
+      access_token: validToken,
       token_type: 'Bearer',
       expires_in: 3600
     })
     expect(await local.plugin.send(input)).toMatchObject({ status: 'sent' })
     expect(local.remote.traffic.at(-1)?.headers.authorization).toBe(
-      `Bearer ${oauthToken('valid-token')}`
+      `Bearer ${validToken}`
     )
     expect(
       local.remote.traffic.filter((entry) => entry.path === tokenPath)
@@ -388,8 +394,9 @@ it('refreshes a rejected Teams media token on redelivery before persisting bytes
     (await local.core.fetch(await local.incoming({}, incoming))).status
   ).toBe(500)
   expect(await local.storage.listInbound({ limit: 1 })).toHaveLength(0)
+  const freshMediaToken = oauthToken('fresh-media-token')
   local.remote.token(200, {
-    access_token: oauthToken('fresh-media-token'),
+    access_token: freshMediaToken,
     token_type: 'Bearer',
     expires_in: 3600
   })
@@ -407,8 +414,8 @@ it('refreshes a rejected Teams media token on redelivery before persisting bytes
       .filter((entry) => entry.path === '/protected-image')
       .map((entry) => entry.headers.authorization)
   ).toEqual([
-    `Bearer ${oauthToken('oauth-token')}`,
-    `Bearer ${oauthToken('fresh-media-token')}`
+    `Bearer ${local.remote.defaultToken}`,
+    `Bearer ${freshMediaToken}`
   ])
   expect(
     local.remote.traffic.filter((entry) => entry.path === tokenPath)
@@ -932,8 +939,9 @@ describe('native Microsoft Teams', () => {
       'https://login.microsoftonline.com/app-registration-tenant/oauth2/v2.0/token'
     )
 
+    const accessToken = oauthToken('single-tenant-token')
     local.remote.route('/app-registration-tenant/oauth2/v2.0/token', {
-      access_token: oauthToken('single-tenant-token'),
+      access_token: accessToken,
       token_type: 'Bearer',
       expires_in: 3600
     })
@@ -950,7 +958,7 @@ describe('native Microsoft Teams', () => {
       local.remote.traffic.find((request) =>
         request.path.includes('/activities')
       )?.headers.authorization
-    ).toBe(`Bearer ${oauthToken('single-tenant-token')}`)
+    ).toBe(`Bearer ${accessToken}`)
   })
 
   it.each(['?', '#'])(
@@ -971,7 +979,11 @@ describe('native Microsoft Teams', () => {
     }
   )
 
+  // Preserve exact issued credentials even when assertions cross a clock second.
+  // Rebuilding the expected JWT changes exp; ordinary fast sends may miss that
+  // Fixture race. Real SDK HTTP and SQLite need no production testing interface.
   it('authenticates endorsed JWT and frozen conversation reference through proactive OAuth send', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
     const local = await setup()
     expect((await local.core.fetch(await local.incoming({}, '{'))).status).toBe(
       400
@@ -984,6 +996,7 @@ describe('native Microsoft Teams', () => {
       '**answer** [link](https://example.com)'
     )
 
+    vi.setSystemTime(Date.now() + 1000)
     expect(completed.delivery?.status).toBe('sent')
     expect(local.dispatches).toEqual(['hello'])
     expect(completed.request.target).toEqual({
@@ -1021,7 +1034,7 @@ describe('native Microsoft Teams', () => {
 
     expect(sent?.path).toBe('/teams/v3/conversations/conversation-1/activities')
     expect(sent?.headers.authorization).toBe(
-      `Bearer ${oauthToken('oauth-token')}`
+      `Bearer ${local.remote.defaultToken}`
     )
     expect(JSON.parse(sent?.body ?? 'null') as unknown).toMatchObject({
       type: 'message',
@@ -1338,7 +1351,7 @@ it.each([
     expect(
       local.remote.traffic.find((request) => request.path === '/inline')
         ?.headers.authorization
-    ).toBe(`Bearer ${oauthToken('oauth-token')}`)
+    ).toBe(`Bearer ${local.remote.defaultToken}`)
   }
 )
 

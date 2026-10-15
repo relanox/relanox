@@ -108,6 +108,7 @@ export type Traffic = {
 
 export async function peer(): Promise<{
   base: string
+  defaultToken: string
   traffic: Traffic[]
   disconnectOnce(this: void, path: string): void
   route(
@@ -154,8 +155,10 @@ export async function peer(): Promise<{
 
   // Bot Connector OAuth documents the lifetime in seconds:
   // https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
+  const defaultToken = oauthToken('oauth-token')
+
   let tokenBody: Json = {
-    access_token: oauthToken('oauth-token'),
+    access_token: defaultToken,
     token_type: 'Bearer',
     expires_in: 3600
   }
@@ -263,6 +266,7 @@ export async function peer(): Promise<{
   }
   return {
     base,
+    defaultToken,
     traffic,
     disconnectOnce(path: string): void {
       disconnects.add(path)
