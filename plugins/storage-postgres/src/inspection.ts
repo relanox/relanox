@@ -84,7 +84,15 @@ export function createInspectionOperations(
             filter.dispatchStatus === undefined
               ? undefined
               : eq(inbound.status, filter.dispatchStatus),
-            filter.readyOnly ? prepared : undefined,
+            filter.readyOnly
+              ? and(prepared, isNull(sql`${inbound.record}->'redactedAt'`))
+              : undefined,
+            filter.channelIds
+              ? inArray(
+                  sql<string>`${inbound.record}#>>'{snapshot,channel,id}'`,
+                  [...filter.channelIds]
+                )
+              : undefined,
             filter.endpointId === undefined
               ? undefined
               : eq(inbound.endpoint, filter.endpointId),
