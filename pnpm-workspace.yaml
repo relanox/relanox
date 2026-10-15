@@ -21,6 +21,8 @@ minimumReleaseAgeExclude:
 
 # esbuild verifies its pinned optional platform binary during installation.
 allowBuilds:
+  # Only warns about dependent version ranges; no build output is needed.
+  protobufjs@7.6.6: false
   esbuild@0.28.2: true
   esbuild@0.21.5: true
   esbuild@0.18.20: true

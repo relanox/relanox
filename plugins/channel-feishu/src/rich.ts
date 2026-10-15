@@ -1,9 +1,4 @@
-import type {
-  ChannelHost,
-  SendInput,
-  StoredMedia,
-  RichTextPart
-} from '@relanox/sdk'
+import type { SendInput, StoredMedia, RichTextPart } from '@relanox/sdk'
 
 export const richCapabilities = {
   maxParts: 20,
@@ -18,10 +13,7 @@ export const richCapabilities = {
   maxImageBytes: 10 * 1024 * 1024
 }
 
-export function richError(
-  input: SendInput,
-  host: ChannelHost
-): string | undefined {
+export function richError(input: SendInput): string | undefined {
   const parts = input.chunk.richText
   if (!parts) {
     return undefined
@@ -50,7 +42,7 @@ export function richError(
   }
   for (const [index, part] of images.entries()) {
     const stored = input.richMedia?.[index]
-    if (invalidImage(stored, part, host)) {
+    if (invalidImage(stored, part)) {
       return 'invalid_rich_media'
     }
   }
@@ -59,8 +51,7 @@ export function richError(
 
 function invalidImage(
   stored: StoredMedia | undefined,
-  part: Extract<RichTextPart, { type: 'image' }>,
-  host: ChannelHost
+  part: Extract<RichTextPart, { type: 'image' }>
 ): boolean {
   return (
     !stored ||
@@ -74,11 +65,6 @@ function invalidImage(
     stored.data.byteLength === 0 ||
     stored.data.byteLength !== part.media.size ||
     !richCapabilities.imageMimeTypes.includes(part.media.mimeType) ||
-    stored.data.byteLength >
-      Math.min(
-        host.maxMediaBytes ?? 25 * 1024 * 1024,
-        richCapabilities.maxImageBytes
-      ) ||
     (part.label || part.media.fileName).length > 2000
   )
 }

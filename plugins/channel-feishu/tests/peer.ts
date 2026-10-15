@@ -10,6 +10,10 @@ import type {
   ServerResponse
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import https from 'node:https'
+import { syncBuiltinESMExports } from 'node:module'
+import { beforeEach } from 'vitest'
+import type { RequestOptions } from 'node:https'
 import { noopObservability } from '@relanox/sdk'
 import type {
   ChannelHost,
@@ -17,6 +21,42 @@ import type {
   IngestInput,
   SendInput
 } from '@relanox/sdk'
+
+/** Axios uses the options-only native request overload; retain real HTTP peers. */
+export function installSdkNetwork(): void {
+  beforeEach(() => {
+    const routed = https.request
+    https.request = ((
+      input: string | URL | RequestOptions,
+      options: RequestOptions | ((response: IncomingMessage) => void),
+      callback?: (response: IncomingMessage) => void
+    ) => {
+      if (typeof input === 'object' && !(input instanceof URL)) {
+        const url = new URL(
+          `https://${input.hostname ?? input.host}${input.port !== undefined && input.port !== '' ? `:${input.port}` : ''}${input.path ?? '/'}`
+        )
+
+        const {
+          protocol: _protocol,
+          hostname: _hostname,
+          host: _host,
+          path: _path,
+          port: _port,
+          agent: _agent,
+          ...request
+        } = input
+
+        return routed(
+          url,
+          request,
+          options as (response: IncomingMessage) => void
+        )
+      }
+      return routed(input, options as RequestOptions, callback)
+    }) as typeof https.request
+    syncBuiltinESMExports()
+  })
+}
 
 export function recorder(ingest?: (input: IngestInput) => Promise<void>): {
   host: ChannelHost
@@ -66,6 +106,7 @@ type PeerResponse = {
   status?: number
   headers?: Record<string, string>
   body: unknown
+  disconnect?: boolean
 }
 
 export async function peer(
@@ -127,6 +168,10 @@ export async function peer(
       }
     }
     const output: PeerResponse = identity ?? respond(input)
+    if (output.disconnect) {
+      response.destroy()
+      return
+    }
     response.writeHead(identity ? identityStatus : (output.status ?? 200), {
       'content-type': 'application/json',
       ...output.headers

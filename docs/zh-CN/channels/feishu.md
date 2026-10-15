@@ -28,6 +28,8 @@
 
 使用事件订阅 v2.0，将地址填为 `https://relay.example.com/channels/feishu-main/events`，订阅 `im.message.receive_v1`，并配置相同的 Verification Token 和 Encrypt Key。验证回调前启动 Relanox，然后发布应用变更，向使用者开放机器人。
 
+Relanox 使用[飞书/Lark 官方 Node SDK](https://github.com/larksuite/node-sdk)处理身份、凭据、消息归一化、上传和发送。HTTP 回调仍使用配置的 Relanox 地址。Core 保存来信后才确认接收；存储或下载失败时返回错误，供平台重投。SDK 归一化会生成 Markdown 标题、提及和媒体描述，无法表示为文字的消息可能使用 SDK 占位文本。进程或平台中断后的接收恢复仍依赖平台重新投递回调。
+
 ## 发送第一条消息
 
 打开与机器人的会话，或将它加入绑定群组并 @ 它发送“你好”。发送者需在应用可用范围和允许发送者列表内。
@@ -37,6 +39,8 @@ Agent 提供 `reply.requestId` 时，回复引用对应的原始来信，消息�
 ## 图片和文件
 
 提问时可发送图片、音频、视频、文件或富文本消息。授予资源下载和上传权限，如 `im:resource` 或适用的上传权限。回复图片上传上限为 10 MB，其他上传为 30 MB，同时受 Relanox 限制。
+
+上传交由 SDK，平台执行当前的大小和格式限制。Relanox 保留配置的媒体预算（默认 100 MiB），并在读取入站下载时限制大小。原生回复的来源消息消失时，拒绝结果不会降级为无关的会话消息。发送结果不确定时保留不确定状态，不会自动重发可能已经被接收的消息。
 
 ## 常见问题
 
