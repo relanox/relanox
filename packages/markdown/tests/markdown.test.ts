@@ -99,9 +99,33 @@ test('destination size measurement splits escaped HTML before the platform limit
   for (const chunk of chunks) {
     expect(Buffer.byteLength(renderHtml(chunk))).toBeLessThanOrEqual(48)
   }
-  expect(chunks.map((chunk) => chunk.slice(2, -2)).join('')).toBe(
-    '&&&&&&&&&&&&'
-  )
+  expect(
+    chunks
+      .flatMap((chunk) => markdownRuns(chunk))
+      .map((run) => run.text)
+      .join('')
+  ).toBe('&&&&&&&&&&&&')
+})
+
+test('HTML entity text keeps its literal meaning across long Markdown fragments', () => {
+  for (const [source, visible] of [
+    ['&amp;copy; '.repeat(600), '&copy; '.repeat(600)],
+    [String.raw`\&copy; `.repeat(600), '&copy; '.repeat(600)],
+    ['&copy; '.repeat(600), '© '.repeat(600)]
+  ] as const) {
+    const chunks = splitMarkdown(source, { maxLength: 100, unit: 'utf16' })
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.every((chunk) => chunk.length <= 100)).toBe(true)
+    expect(
+      chunks
+        .flatMap((chunk) => markdownRuns(chunk))
+        .map((run) => run.text)
+        .join('')
+    ).toBe(visible)
+    if (visible.includes('&copy;')) {
+      expect(chunks.map(renderHtml).join('')).not.toContain('©')
+    }
+  }
 })
 
 test('unsplittable links fail before enqueue instead of dropping their destination', () => {
