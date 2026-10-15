@@ -82,7 +82,7 @@ export async function sendMessage(
       .digest('hex')
       .slice(0, 24),
     enforce_nonce: true,
-    ...(input.target.replyToId
+    ...(input.reply && input.target.replyToId
       ? {
           message_reference: {
             message_id: input.target.replyToId,
