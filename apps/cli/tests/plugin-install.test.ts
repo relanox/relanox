@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, expect, test } from 'vitest'
 import { npmCli } from '../src/npm.js'
+import { createPluginLoader } from '../src/plugin-loader.js'
 import { cli, runCli } from './fixture.js'
 
 const execute = promisify(execFile)
@@ -33,6 +34,158 @@ async function fixture(): Promise<{ root: string; configPath: string }> {
   )
   return { root, configPath }
 }
+
+async function nativeArchive(
+  root: string,
+  packageName: string,
+  kind: string,
+  id: string,
+  nativePackage: string
+): Promise<string> {
+  const source = join(root, packageName)
+  await mkdir(source)
+
+  const entry = new URL(
+    `../../../plugins/${nativePackage}/dist/plugin.js`,
+    import.meta.url
+  ).href
+
+  await writeFile(
+    join(source, 'plugin.js'),
+    `export { createPlugin } from ${JSON.stringify(entry)}`
+  )
+  await writeFile(
+    join(source, 'package.json'),
+    JSON.stringify({
+      name: `@fixture/${packageName}`,
+      version: '1.0.0',
+      type: 'module',
+      files: ['plugin.js'],
+      relanox: { kind, id, sdkMajor: 1, entry: './plugin.js' }
+    })
+  )
+  await execute(
+    process.execPath,
+    [
+      await npmCli(),
+      'pack',
+      source,
+      '--ignore-scripts',
+      '--pack-destination',
+      root
+    ],
+    { windowsHide: true }
+  )
+  return `./fixture-${packageName}-1.0.0.tgz`
+}
+
+// Two actual CLI processes share npm's manifest, lockfile and Relanox registry.
+// Sequential archive tests cannot expose lost updates between these operations.
+// These archives re-export real native plugins; no persistence or npm mocks are used.
+test('concurrent CLI installs preserve both native packages and registry entries', async () => {
+  const { root, configPath } = await fixture()
+
+  const first = await nativeArchive(
+    root,
+    'concurrent-sqlite',
+    'storage',
+    'sqlite',
+    'storage-sqlite'
+  )
+
+  const second = await nativeArchive(
+    root,
+    'concurrent-observe',
+    'observability',
+    'standard',
+    'observability-standard'
+  )
+
+  const outcomes = await Promise.all([
+    cli(configPath, ['plugins', 'install', first]),
+    cli(configPath, ['plugins', 'install', second])
+  ])
+
+  expect(
+    outcomes.map((result) => ({ code: result.code, stderr: result.stderr }))
+  ).toEqual([
+    { code: 0, stderr: '' },
+    { code: 0, stderr: '' }
+  ])
+  const directory = join(root, 'installed')
+  expect(
+    JSON.parse(await readFile(join(directory, 'relanox-plugins.json'), 'utf8'))
+  ).toEqual({
+    'storage:sqlite': '@fixture/concurrent-sqlite',
+    'observability:standard': '@fixture/concurrent-observe'
+  })
+  expect(
+    JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
+  ).toMatchObject({
+    dependencies: {
+      '@fixture/concurrent-sqlite': 'file:fixture-concurrent-sqlite-1.0.0.tgz',
+      '@fixture/concurrent-observe': 'file:fixture-concurrent-observe-1.0.0.tgz'
+    }
+  })
+  expect(
+    JSON.parse(await readFile(join(directory, 'package-lock.json'), 'utf8'))
+  ).toMatchObject({
+    packages: {
+      'node_modules/@fixture/concurrent-sqlite': { version: '1.0.0' },
+      'node_modules/@fixture/concurrent-observe': { version: '1.0.0' }
+    }
+  })
+  const loader = await createPluginLoader({ directory })
+  expect((await loader.load('storage', 'sqlite')).kind).toBe('storage')
+  expect((await loader.load('observability', 'standard')).kind).toBe(
+    'observability'
+  )
+}, 30_000)
+
+// A failed npm operation must release the same cross-process installation lock.
+// Otherwise the live owner keeps refreshing its lock and blocks the next install.
+// Exercise the CLI's real install function twice in a bounded child process.
+test('a failed archive install releases the directory for the next installation', async () => {
+  const { root, configPath } = await fixture()
+
+  const archive = await nativeArchive(
+    root,
+    'after-failure',
+    'storage',
+    'sqlite',
+    'storage-sqlite'
+  )
+
+  const entry = new URL('../dist/plugin-install.js', import.meta.url).href
+
+  const program = `
+    import { installPlugin } from ${JSON.stringify(entry)};
+    let rejected = false;
+    try { await installPlugin(${JSON.stringify(configPath)}, './missing-plugin.tgz'); }
+    catch { rejected = true; }
+    const installed = await installPlugin(${JSON.stringify(configPath)}, ${JSON.stringify(archive)});
+    console.log(JSON.stringify({ rejected, installed }));
+  `
+
+  const installed = await execute(
+    process.execPath,
+    ['--input-type=module', '-e', program],
+    { windowsHide: true, timeout: 20_000 }
+  )
+
+  expect(installed.stderr).toBe('')
+  expect(JSON.parse(installed.stdout)).toMatchObject({
+    rejected: true,
+    installed: { name: '@fixture/after-failure', version: '1.0.0' }
+  })
+  expect(
+    JSON.parse(
+      await readFile(join(root, 'installed/relanox-plugins.json'), 'utf8')
+    )
+  ).toEqual({
+    'storage:sqlite': '@fixture/after-failure'
+  })
+}, 30_000)
 
 // Protect the actual CLI install -> registry -> load boundary. Existing tests
 // Only had workspace packages, so they could pass with a broken installer or
