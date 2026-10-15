@@ -191,10 +191,12 @@ function parseToken(token: MarkedToken, depth: number): RichMarkdownPart[] {
       return linkParts(token, depth)
     }
     case 'strong': {
-      return wrap(children(token.tokens, depth), '**', '**')
+      const marker = token.raw.startsWith('__') ? '__' : '**'
+      return wrap(children(token.tokens, depth), marker, marker)
     }
     case 'em': {
-      return wrap(children(token.tokens, depth), '*', '*')
+      const marker = token.raw.startsWith('_') ? '_' : '*'
+      return wrap(children(token.tokens, depth), marker, marker)
     }
     case 'del': {
       return wrap(children(token.tokens, depth), '~~', '~~')
