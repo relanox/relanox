@@ -45,6 +45,8 @@ function matchesTarget(
     target.conversationId === input.target.chatId &&
     target.tenantId === config.tenantId &&
     target.botId === config.botId &&
+    (input.reply === undefined ||
+      platformIdSchema.safeParse(input.target.replyToId).success) &&
     (input.target.threadId === undefined ||
       target.replyToId === input.target.threadId)
   )
@@ -67,6 +69,44 @@ function currentConversation(
     parsed.data.botId === config.botId &&
     parsed.data.conversationId === address.chatId
   )
+}
+
+function replyRoute(input: SendInput): string | undefined {
+  return (
+    input.target.threadId ?? (input.reply ? input.target.replyToId : undefined)
+  )
+}
+
+function sourceReplyFields(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  config: TeamsConfig
+): { replyToId?: string } {
+  if (!learned || !currentConversation(address, learned, config)) {
+    return {}
+  }
+  return learned.replyToId ? { replyToId: learned.replyToId } : {}
+}
+
+function quotedText(input: SendInput): {
+  text: string
+  entities?: { type: 'quotedReply'; quotedReply: { messageId: string } }[]
+} {
+  const messageId = input.reply ? input.target.replyToId : undefined
+  if (!messageId) {
+    return { text: input.chunk.text }
+  }
+
+  const escapedId = messageId
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+
+  return {
+    text: `<quoted messageId="${escapedId}"/> ${input.chunk.text}`,
+    entities: [{ type: 'quotedReply', quotedReply: { messageId } }]
+  }
 }
 
 function conversationKey(config: TeamsConfig, chatId: string): string {
@@ -182,9 +222,9 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       return prepared.outcome
     }
     try {
-      const suffix = target.replyToId
-        ? `/${encodeURIComponent(target.replyToId)}`
-        : ''
+      const route = replyRoute(input)
+
+      const suffix = route ? `/${encodeURIComponent(route)}` : ''
 
       const url = new URL(
         `${base.href.replace(/\/$/u, '')}/v3/conversations/${encodeURIComponent(target.conversationId)}/activities${suffix}`
@@ -201,7 +241,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
           body: JSON.stringify({
             type: 'message',
             textFormat: 'extendedmarkdown',
-            text: input.chunk.text,
+            ...quotedText(input),
             ...((rich ?? prepared.attachment) !== undefined
               ? { attachments: [rich ?? prepared.attachment] }
               : {}),
@@ -212,7 +252,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
               id: target.conversationId,
               tenantId: target.tenantId
             },
-            ...(target.replyToId ? { replyToId: target.replyToId } : {}),
+            ...(route ? { replyToId: route } : {}),
             channelData: { tenant: { id: target.tenantId } }
           })
         },
@@ -277,7 +317,8 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       const { host, config } = runtime
 
       let parsed = targetSchema.safeParse(learned?.data)
-      if (!currentConversation(address, learned, config)) {
+      const current = currentConversation(address, learned, config)
+      if (!current) {
         parsed = targetSchema.safeParse(
           (await host.state.get(conversationKey(config, address.chatId)))?.value
         )
@@ -319,6 +360,7 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
             : {}),
+          ...sourceReplyFields(address, learned, config),
           data: {
             ...destination,
             ...(address.threadId !== undefined
