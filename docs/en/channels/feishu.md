@@ -32,6 +32,8 @@ Configure event subscription v2.0 with `https://relay.example.com/channels/feish
 
 Open a conversation with the bot, or add it to the bound group and mention it with “Hello”. Use a user inside the app’s availability range and your sender allowlist.
 
+When the Agent supplies `reply.requestId`, the reply references that exact incoming message, including inside a thread. Without `reply`, it sends normally to the conversation; a thread send uses its established root message to stay inside the thread.
+
 ## Images and files
 
 Send images, audio, videos, files or rich posts with your question. Grant resource download/upload permissions such as `im:resource` or the applicable upload scope. Replies can contain images up to 10 MB and other uploads up to 30 MB, within the relay limit.

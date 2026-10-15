@@ -901,7 +901,7 @@ it('resolves authenticated Feishu threads through their real root message while 
   if (resolved?.status !== 'available') {
     throw new Error('missing_thread_anchor')
   }
-  expect(resolved.target.replyToId).toBeUndefined()
+  expect(resolved.target.replyToId).toBe('om_message')
   expect(await local.plugin.send(sendInput(resolved.target))).toMatchObject({
     status: 'sent'
   })
@@ -915,6 +915,92 @@ it('resolves authenticated Feishu threads through their real root message while 
       learned
     )
   ).toEqual({ status: 'unavailable', reason: 'address_unresolved' })
+})
+
+it('quotes three selected Feishu messages out of order while ordinary thread sends use the root', async () => {
+  // Native reply endpoint and reply_in_thread:
+  // https://open.feishu.cn/document/server-docs/im-v1/message/reply
+  const remote = await peer((input) => ({
+    body: input.path.includes('tenant_access_token')
+      ? { code: 0, tenant_access_token: 'token', expire: 7200 }
+      : { code: 0, data: { message_id: 'sent' } }
+  }))
+
+  cleanup.push(remote.close)
+
+  const { core, storage, agentHost } = await storedChannel(
+    cleanup,
+    environment,
+    account
+  )
+
+  for (const number of [1, 2, 3]) {
+    expect(
+      (
+        await core.fetch(
+          request({
+            ...event,
+            header: { ...event.header, event_id: `event-${number}` },
+            event: {
+              ...event.event,
+              message: {
+                ...event.event.message,
+                message_id: `om_message_${number}`,
+                root_id: 'om_root'
+              }
+            }
+          })
+        )
+      ).status
+    ).toBe(200)
+  }
+
+  const principal = agentHost.forPrincipal({
+    subject: 'first',
+    endpointIds: ['first']
+  })
+
+  const requests = await storage.listInbound({ limit: 10 })
+  const channel = requests[0]?.snapshot.channel.id
+  if (!channel) {
+    throw new Error('missing_channel')
+  }
+  for (const number of [2, 1, 3]) {
+    const selected = requests.find(
+      (item) => item.snapshot.target.replyToId === `om_message_${number}`
+    )
+
+    if (!selected) {
+      throw new Error('missing_request')
+    }
+    expect(
+      await principal.sendMessage({
+        channel,
+        text: `answer ${number}`,
+        idempotencyKey: `answer-${number}`,
+        reply: { requestId: selected.snapshot.requestId, kind: 'final' }
+      })
+    ).toMatchObject({ status: 'queued' })
+    await core.processDue()
+  }
+  expect(
+    await principal.sendMessage({
+      channel,
+      text: 'ordinary',
+      idempotencyKey: 'ordinary'
+    })
+  ).toMatchObject({ status: 'queued' })
+  await core.processDue()
+  expect(
+    remote.requests
+      .filter((item) => item.path.includes('/im/v1/messages'))
+      .map((item) => item.path)
+  ).toEqual([
+    '/open-apis/im/v1/messages/om_message_2/reply',
+    '/open-apis/im/v1/messages/om_message_1/reply',
+    '/open-apis/im/v1/messages/om_message_3/reply',
+    '/open-apis/im/v1/messages/om_root/reply'
+  ])
 })
 
 it.each(
