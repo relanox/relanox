@@ -1,9 +1,3 @@
-import {
-  requestTimeoutMs,
-  reconnectDelayMs,
-  syncTimeoutMs
-} from './constants.js'
-import { richError } from './rich.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -11,70 +5,82 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
-import { mediaCaption, messageContent, receiveMedia } from './media.js'
 import { MediaDownloadError } from '@relanox/channel-media'
 import { renderHtml, splitMarkdown, textLength } from '@relanox/markdown'
-import { z } from 'zod'
+import {
+  ClientEvent,
+  HTTPError,
+  MatrixError,
+  SyncState,
+  RelationType
+} from 'matrix-js-sdk'
+import type { MatrixClient, MatrixEvent } from 'matrix-js-sdk'
+import { matrixClient } from './client.js'
 import { validateConfig, platformIdSchema, validateBaseUrl } from './config.js'
 import type { MatrixConfig } from './config.js'
+import { mediaCaption, messageContent, receiveMedia } from './media.js'
+import { diagnose, ingest, secret, sendFailure } from './protocol.js'
+import { richError } from './rich.js'
 import {
-  delay,
-  diagnose,
-  httpFailure,
-  ingest,
-  readJson,
-  secret,
-  stopTask
-} from './protocol.js'
-import {
-  sendResponseSchema,
-  syncSchema,
+  eventSchema,
+  identitySchema,
   textSchema,
   targetSchema
 } from './schemas.js'
-import type { eventSchema } from './schemas.js'
+import type { InboundEvent } from './schemas.js'
 
 function outboundRelation(input: SendInput):
   | {
-      rel_type: string
+      rel_type: RelationType.Thread
       event_id: string
-      is_falling_back?: boolean
+      is_falling_back?: false
       'm.in_reply_to'?: { event_id: string }
     }
-  | {
-      'm.in_reply_to': { event_id: string }
-      rel_type?: never
-      event_id?: never
-      is_falling_back?: never
-    }
+  | { 'm.in_reply_to': { event_id: string } }
   | null {
   const { target } = input
   const replyToId = input.reply ? target.replyToId : undefined
   if (target.threadId) {
-    if (!replyToId) {
-      return { rel_type: 'm.thread', event_id: target.threadId }
-    }
     return {
-      rel_type: 'm.thread',
+      rel_type: RelationType.Thread,
       event_id: target.threadId,
-      is_falling_back: false,
-      'm.in_reply_to': { event_id: replyToId }
+      ...(replyToId
+        ? {
+            is_falling_back: false,
+            'm.in_reply_to': { event_id: replyToId }
+          }
+        : {})
     }
   }
-  if (replyToId) {
-    return { 'm.in_reply_to': { event_id: replyToId } }
-  }
-  return null
+  return replyToId ? { 'm.in_reply_to': { event_id: replyToId } } : null
 }
 
-function encryptedEvent(event: z.infer<typeof eventSchema>): boolean {
-  // Plaintext media events can also carry encrypted attachment descriptors.
+function encryptedEvent(event: InboundEvent): boolean {
   return (
     event.type === 'm.room.encrypted' ||
-    (event.type === 'm.room.message' &&
-      event.content.msgtype !== 'm.text' &&
-      'file' in event.content)
+    (event.type === 'm.room.message' && 'file' in event.content)
   )
+}
+
+function inboundThread(
+  host: ChannelHost,
+  content: InboundEvent['content']
+): { threadId?: string } | null {
+  const relation = textSchema.shape['m.relates_to'].parse(
+    content['m.relates_to']
+  )
+
+  if (relation?.rel_type && relation.rel_type !== 'm.thread') {
+    diagnose(host, 'relation_unsupported')
+    return null
+  }
+  if (relation?.rel_type !== 'm.thread') {
+    return {}
+  }
+  if (!relation.event_id) {
+    throw new Error('invalid_thread')
+  }
+  return { threadId: relation.event_id }
 }
 
 export function createMatrixChannel(
@@ -87,237 +93,146 @@ export function createMatrixChannel(
         config: MatrixConfig
         base: string
         userId: string
+        client: MatrixClient
       }
     | undefined
 
   let controller: AbortController | undefined
-  let task: Promise<void> | undefined
+  const pending = new Set<Promise<void>>()
+  let removeAbort: (() => void) | undefined
 
-  function configured(): {
-    host: ChannelHost
-    account: AccountConfig
-    config: MatrixConfig
-    base: string
-    userId: string
-  } {
+  function configured(): NonNullable<typeof runtime> {
     if (!runtime) {
       throw new Error('not_setup')
     }
     return runtime
   }
 
-  function headers(): { Authorization: string } {
-    return {
-      Authorization: `Bearer ${secret(configured().config.accessToken, environment)}`
-    }
-  }
-
   async function receive(
-    room: string,
-    event: z.infer<typeof eventSchema>,
+    event: MatrixEvent,
     signal: AbortSignal
   ): Promise<void> {
     const { host, account, config, base, userId } = configured()
-    if (event.sender === userId) {
+    const room = event.getRoomId()
+    if (!room || (host.boundChatIds && !host.boundChatIds.includes(room))) {
       return
     }
-    if (encryptedEvent(event)) {
+
+    const data = eventSchema.parse({
+      event_id: event.getId(),
+      sender: event.getSender(),
+      type: event.getType(),
+      origin_server_ts: event.getTs(),
+      content: event.getContent()
+    })
+
+    if (data.sender === userId) {
+      return
+    }
+    if (encryptedEvent(data)) {
       diagnose(host, 'encrypted_unsupported')
       return
     }
-    if (event.type !== 'm.room.message') {
+    if (data.type !== 'm.room.message') {
       return
     }
-    if (!account.allowedSenders.includes(event.sender)) {
+    if (!account.allowedSenders.includes(data.sender)) {
       diagnose(host, 'sender_not_allowed')
       return
     }
-    const parsed = textSchema.safeParse(event.content)
+    const parsed = textSchema.safeParse(data.content)
 
     const attachments = parsed.success
       ? []
-      : await receiveMedia(event.content, host, config, base, headers(), signal)
+      : await receiveMedia(
+          data.content,
+          host,
+          config,
+          base,
+          {
+            Authorization: `Bearer ${secret(config.accessToken, environment)}`
+          },
+          signal
+        )
 
     if (!parsed.success && attachments.length === 0) {
       diagnose(host, 'nontext_unsupported')
       return
     }
 
-    const relation = textSchema.shape['m.relates_to'].parse(
-      event.content['m.relates_to']
-    )
-
-    if (relation?.rel_type && relation.rel_type !== 'm.thread') {
-      diagnose(host, 'relation_unsupported')
+    const thread = inboundThread(host, data.content)
+    if (!thread) {
       return
-    }
-
-    const threadId =
-      relation?.rel_type === 'm.thread' ? relation.event_id : undefined
-
-    if (relation?.rel_type === 'm.thread' && !threadId) {
-      throw new Error('invalid_thread')
     }
     await ingest(host, {
       source: {
         channel: 'matrix',
         accountId: account.id,
-        eventId: event.event_id
+        eventId: data.event_id
       },
-      senderId: event.sender,
-      text: parsed.success ? parsed.data.body : mediaCaption(event.content),
+      senderId: data.sender,
+      text: parsed.success ? parsed.data.body : mediaCaption(data.content),
       ...(attachments.length > 0 ? { attachments } : {}),
-      receivedAt: event.origin_server_ts ?? Date.now(),
+      receivedAt: data.origin_server_ts ?? Date.now(),
       target: {
         channel: 'matrix',
         accountId: account.id,
         chatId: room,
-        replyToId: event.event_id,
-        ...(threadId ? { threadId } : {}),
+        replyToId: data.event_id,
+        ...thread,
         data: { homeserver: base, userId }
       },
       context: null
     })
   }
 
-  async function synchronize(signal: AbortSignal): Promise<void> {
-    const { host, base } = configured()
-    const checkpoint = await host.state.get('sync')
-
-    const since = checkpoint
-      ? platformIdSchema.parse(checkpoint.value)
-      : undefined
-
-    const url = new URL(`${base}/_matrix/client/v3/sync`)
-    url.searchParams.set('timeout', String(syncTimeoutMs))
-    if (since) {
-      url.searchParams.set('since', since)
+  function received(event: MatrixEvent): void {
+    const signal = controller?.signal
+    if (!signal || signal.aborted) {
+      return
     }
 
-    const response = await fetch(url, {
-      headers: headers(),
-      redirect: 'error',
-      signal: AbortSignal.any([
-        signal,
-        AbortSignal.timeout(requestTimeoutMs + syncTimeoutMs)
-      ])
+    // The SDK owns sync progress; callbacks do not hold its receipt cursor.
+    const task = receive(event, signal).catch((error: unknown) => {
+      if (!signal.aborted) {
+        diagnose(
+          configured().host,
+          error instanceof MediaDownloadError ? error.code : 'receive_failed'
+        )
+      }
     })
 
-    if (!response.ok) {
-      await response.body?.cancel()
-      throw new Error(
-        response.status === 401 ? 'authentication_failed' : 'sync_failed'
-      )
-    }
-    const data = syncSchema.parse(await readJson(response))
-    for (const [room, value] of Object.entries(data.rooms?.join ?? {})) {
-      if (
-        host.boundChatIds !== undefined &&
-        !host.boundChatIds.includes(room)
-      ) {
-        continue
-      }
-      if (since && value.timeline?.limited) {
-        throw new Error('sync_history_gap')
-      }
-      for (const event of value.timeline?.events ?? []) {
-        await receiveEvent(room, event, signal)
-      }
-    }
-
-    const saved = await host.state.compareAndSet({
-      key: 'sync',
-      expectedVersion: checkpoint?.version ?? null,
-      value: data.next_batch
-    })
-
-    if (saved.status !== 'updated') {
-      throw new Error('sync_checkpoint_conflict')
-    }
-    host.connection('connected')
-  }
-
-  async function receiveEvent(
-    room: string,
-    event: z.infer<typeof eventSchema>,
-    signal: AbortSignal
-  ): Promise<void> {
-    try {
-      await receive(room, event, signal)
-    } catch (error) {
-      if (
-        !(error instanceof MediaDownloadError) ||
-        error.code !== 'media_too_large'
-      ) {
-        throw error
-      }
-      // This local policy refusal is terminal; transport and storage errors replay.
-      diagnose(configured().host, error.code)
-    }
-  }
-
-  async function loop(signal: AbortSignal): Promise<void> {
-    const { host } = configured()
-    while (!signal.aborted) {
-      try {
-        await synchronize(signal)
-      } catch (error) {
-        if (!signal.aborted) {
-          const code =
-            error instanceof Error &&
-            [
-              'authentication_failed',
-              'sync_history_gap',
-              'sync_checkpoint_conflict'
-            ].includes(error.message)
-              ? error.message
-              : 'sync_failed'
-
-          host.connection('degraded', code)
-          diagnose(host, code)
-        }
-      }
-      await delay(reconnectDelayMs, signal)
-    }
-    host.connection('disconnected')
+    pending.add(task)
+    void task.finally(() => pending.delete(task))
   }
 
   async function checkEncryption(
-    room: string,
-    signal: AbortSignal
+    client: MatrixClient,
+    room: string
   ): Promise<SendResult | null> {
-    const { base } = configured()
     try {
-      const encryption = await fetch(
-        `${base}/_matrix/client/v3/rooms/${room}/state/m.room.encryption`,
-        { headers: headers(), redirect: 'error', signal }
-      )
-
-      if (encryption.status === 404) {
-        const missing = z
-          .object({ errcode: z.literal('M_NOT_FOUND') })
-          .safeParse(await readJson(encryption))
-
-        return missing.success
-          ? null
-          : { status: 'retryable', errorCode: 'encryption_check_failed' }
+      await client.getStateEvent(room, 'm.room.encryption', '')
+      return { status: 'rejected', errorCode: 'encrypted_unsupported' }
+    } catch (error) {
+      if (
+        error instanceof MatrixError &&
+        error.httpStatus === 404 &&
+        error.errcode === 'M_NOT_FOUND'
+      ) {
+        return null
       }
-      if (encryption.ok) {
-        await encryption.body?.cancel()
-        return { status: 'rejected', errorCode: 'encrypted_unsupported' }
+      if (error instanceof HTTPError && error.httpStatus === 404) {
+        return { status: 'retryable', errorCode: 'encryption_check_failed' }
       }
-      const failure = await httpFailure(encryption)
+      const failure = sendFailure(error)
       return failure.status === 'unknown'
         ? { status: 'retryable', errorCode: 'encryption_check_failed' }
         : failure
-    } catch {
-      // This read cannot send a message, so its transport failures are safe to retry.
-      return { status: 'retryable', errorCode: 'encryption_check_failed' }
     }
   }
 
   async function send(input: SendInput): Promise<SendResult> {
-    const { account, base, userId, host } = configured()
+    const { account, config, base, userId } = configured()
     const destination = targetSchema.safeParse(input.target.data)
     if (
       input.target.channel !== 'matrix' ||
@@ -328,50 +243,58 @@ export function createMatrixChannel(
     ) {
       return { status: 'rejected', errorCode: 'target_mismatch' }
     }
-    const errorCode = richError(input, host)
+    const errorCode = richError(input)
     if (errorCode) {
       return { status: 'rejected', errorCode }
     }
-    const room = encodeURIComponent(input.target.chatId)
-
-    const signal = AbortSignal.any([
-      input.signal,
-      AbortSignal.timeout(requestTimeoutMs)
-    ])
-
-    const encryptionFailure = await checkEncryption(room, signal)
-    if (encryptionFailure) {
-      return encryptionFailure
-    }
     try {
-      const relation = outboundRelation(input)
-      const content = await messageContent(input, base, headers(), signal)
+      const client = matrixClient(
+        base,
+        secret(config.accessToken, environment),
+        userId,
+        input.signal
+      )
+
+      const encryptionFailure = await checkEncryption(
+        client,
+        input.target.chatId
+      )
+
+      if (encryptionFailure) {
+        return encryptionFailure
+      }
+      const content = await messageContent(input, client)
       if ('status' in content) {
         return content
       }
+      const relation = outboundRelation(input)
 
-      const response = await fetch(
-        `${base}/_matrix/client/v3/rooms/${room}/send/m.room.message/${encodeURIComponent(input.chunk.idempotencyKey)}`,
+      const result = await client.sendMessage(
+        input.target.chatId,
         {
-          method: 'PUT',
-          headers: { ...headers(), 'Content-Type': 'application/json' },
-          redirect: 'error',
-          signal,
-          body: JSON.stringify({
-            ...content,
-            ...(relation ? { 'm.relates_to': relation } : {})
-          })
-        }
+          ...content,
+          ...(relation ? { 'm.relates_to': relation } : {})
+        },
+        input.chunk.idempotencyKey
       )
 
-      if (!response.ok) {
-        return await httpFailure(response)
+      return {
+        status: 'sent',
+        receipt: { platformMessageId: platformIdSchema.parse(result.event_id) }
       }
-      const result = sendResponseSchema.parse(await readJson(response))
-      return { status: 'sent', receipt: { platformMessageId: result.event_id } }
-    } catch {
-      return { status: 'unknown', errorCode: 'send_outcome_unknown' }
+    } catch (error) {
+      return sendFailure(error)
     }
+  }
+
+  async function stop(): Promise<void> {
+    removeAbort?.()
+    removeAbort = undefined
+    controller?.abort()
+    controller = undefined
+    runtime?.client.stopClient()
+    await Promise.all(pending)
+    runtime?.host.connection('disconnected')
   }
 
   return {
@@ -398,7 +321,7 @@ export function createMatrixChannel(
         return {
           maxParts: 20,
           maxTextLength: 8000,
-          maxImageBytes: runtime?.host.maxMediaBytes ?? 16 * 1024 * 1024
+          maxImageBytes: runtime?.host.maxMediaBytes ?? 100 * 1024 * 1024
         }
       },
       media: {
@@ -445,7 +368,6 @@ export function createMatrixChannel(
         }
       }
     },
-
     async setup(host, account, config) {
       if (runtime) {
         throw new Error('already_setup')
@@ -456,46 +378,50 @@ export function createMatrixChannel(
         config.allowInsecureLocalhost
       )
 
-      const response = await fetch(`${base}/_matrix/client/v3/account/whoami`, {
-        headers: {
-          Authorization: `Bearer ${secret(config.accessToken, environment)}`
-        },
-        redirect: 'error',
-        signal: AbortSignal.timeout(requestTimeoutMs)
-      })
-
-      if (!response.ok) {
-        await response.body?.cancel()
-        throw new Error('identity_discovery_failed')
-      }
-
-      const identity = z
-        .object({ user_id: platformIdSchema })
-        .parse(await readJson(response))
-
+      const client = matrixClient(base, secret(config.accessToken, environment))
+      const identity = identitySchema.parse(await client.whoami())
+      client.credentials.userId = identity.user_id
       runtime = {
         host,
         account,
         config,
         base,
-        userId: identity.user_id
+        userId: identity.user_id,
+        client
       }
-    },
-    async start(signal) {
-      if (task) {
-        return
-      }
-      configured()
-      controller = new AbortController()
-      task = loop(AbortSignal.any([signal, controller.signal])).finally(() => {
-        task = undefined
+      client.on(ClientEvent.Event, received)
+      client.on(ClientEvent.Sync, (state) => {
+        if (controller?.signal.aborted !== false) {
+          return
+        }
+        if (state === SyncState.Prepared || state === SyncState.Syncing) {
+          host.connection('connected')
+        } else if (
+          state === SyncState.Error ||
+          state === SyncState.Reconnecting
+        ) {
+          host.connection('degraded', 'sync_failed')
+        }
       })
     },
-    async stop() {
-      controller?.abort()
-      runtime?.host.connection('disconnected')
-      await stopTask(task)
+    async start(signal) {
+      if (controller || signal.aborted) {
+        return
+      }
+      const { client } = configured()
+      controller = new AbortController()
+
+      const abort = (): void => {
+        void stop()
+      }
+
+      signal.addEventListener('abort', abort, { once: true })
+      removeAbort = (): void => {
+        signal.removeEventListener('abort', abort)
+      }
+      await client.startClient()
     },
+    stop,
     send
   }
 }

@@ -15,21 +15,9 @@ export const eventSchema = z.object({
   content: z.record(z.string(), z.unknown())
 })
 
-const timelineSchema = z.object({
-  events: z.array(eventSchema),
-  limited: z.boolean().optional()
-})
+export type InboundEvent = z.infer<typeof eventSchema>
 
-export const syncSchema = z.object({
-  next_batch: platformIdSchema,
-  rooms: z
-    .object({
-      join: z
-        .record(z.string(), z.object({ timeline: timelineSchema.optional() }))
-        .optional()
-    })
-    .optional()
-})
+export const identitySchema = z.object({ user_id: platformIdSchema })
 
 export const textSchema = z.object({
   msgtype: z.literal('m.text'),
@@ -41,5 +29,3 @@ export const targetSchema = z.strictObject({
   homeserver: z.string(),
   userId: platformIdSchema
 })
-
-export const sendResponseSchema = z.object({ event_id: platformIdSchema })

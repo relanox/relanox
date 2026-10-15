@@ -86,6 +86,45 @@ export async function httpPeer(
   const errors: unknown[] = []
 
   const server = createServer((request, response) => {
+    const path = new URL(request.url ?? '/', 'http://peer').pathname
+    // Bootstrap responses required by the real matrix-js-sdk 43.0.0 client:
+    // Src/sync.ts:prepareSync/prepareFilter and src/client.ts:startClient.
+    // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientversions
+    // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3pushrules
+    // https://spec.matrix.org/v1.16/client-server-api/#post_matrixclientv3useruseridfilter
+    if (path === '/_matrix/client/versions') {
+      json(response, { versions: ['v1.11'], unstable_features: {} })
+      return
+    }
+    if (path.endsWith('/pushrules/')) {
+      json(response, {
+        global: {
+          override: [],
+          content: [],
+          room: [],
+          sender: [],
+          underride: []
+        }
+      })
+      return
+    }
+    if (path.endsWith('/filter')) {
+      json(response, { filter_id: 'relanox' })
+      return
+    }
+    if (path.endsWith('/capabilities') || path.includes('/profile/')) {
+      json(response, { capabilities: {} })
+      return
+    }
+    if (path.endsWith('/rtc/transports')) {
+      // Optional RTC discovery: SDK src/matrixrtc/RTCSessionManager.ts.
+      json(
+        response,
+        { errcode: 'M_UNRECOGNIZED', error: 'Unsupported endpoint' },
+        404
+      )
+      return
+    }
     if (
       identityHandler &&
       ['/api/v4/users/me', '/_matrix/client/v3/account/whoami'].includes(
@@ -109,7 +148,11 @@ export async function httpPeer(
       return
     }
     Promise.resolve(handler(request, response)).catch((error: unknown) => {
-      errors.push(error)
+      errors.push(
+        new Error(
+          `${request.method ?? ''} ${request.url ?? ''}: ${String(error)}`
+        )
+      )
       response.destroy()
     })
   })
@@ -133,7 +176,10 @@ export async function httpPeer(
       })
     })
     if (errors.length > 0) {
-      throw new AggregateError(errors, 'Peer failed')
+      throw new AggregateError(
+        errors,
+        `Peer failed: ${errors.map(String).join('; ')}`
+      )
     }
   })
   return { server, base: `http://127.0.0.1:${address.port}` }

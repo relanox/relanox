@@ -22,6 +22,8 @@ Use exact Matrix user IDs such as `@alice:example.com` for allowed senders. Copy
 
 Start Relanox to begin receiving messages from the homeserver automatically. Keep the account logged in on the configured device and keep Relanox running. Use an HTTPS homeserver address.
 
+The official [Matrix JavaScript SDK](https://github.com/matrix-org/matrix-js-sdk) manages synchronization and reconnects. Its in-memory sync cursor can advance before Relanox finishes saving an event or downloading its attachments. A failed download, interrupted process or restart can therefore leave messages unaccepted; resend questions that still need an answer. Messages and deliveries already accepted by Core remain in the configured database and resume after restart. Encrypted rooms and encrypted attachments are unsupported.
+
 ## Send your first message
 
 Send “Hello” from an allowed account in the bound unencrypted room. For a thread binding, reply inside that thread. The dedicated account sends the agent’s answer into the same room or thread.
@@ -30,8 +32,8 @@ The Agent can quote a specific incoming event with `reply.requestId`, even after
 
 ## Images and files
 
-Attach images, audio, videos or files to your room message. Generated attachments are uploaded to the homeserver and appear as native room messages. Keep them within both your homeserver upload limit and the Relanox media limit.
+Attach images, audio, videos or files to your room message. Generated attachments are uploaded through the SDK and appear as native room messages. Relanox defaults to 100 MiB for each attachment and for all attachments in one message; configured media limits also bound incoming downloads. Your homeserver decides its upload limit, so this budget does not guarantee that it accepts a 100 MiB file. Oversized uploads are rejected, rate limits defer delivery, and an uncertain message-send result is recorded as unknown rather than retried as a known refusal.
 
 ## Troubleshooting
 
-If no messages arrive, check that the account joined the room, the room is unencrypted and the token is valid. If a thread gets no answer, compare the root event ID. If Relanox reports a history gap after an outage, inspect the missing conversation and resend the questions you still want answered before recovering the connection.
+If no messages arrive, check that the account joined the room, the room is unencrypted and the token is valid. If a thread gets no answer, compare the root event ID. After an outage or failed attachment download, inspect the conversation and resend questions that have not reached the Agent.
