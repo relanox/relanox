@@ -34,6 +34,8 @@ Send “Hello” privately or mention the robot in the bound group. Ask for a sh
 
 ## Images and files
 
+Replies with `reply.requestId` quote that incoming message using the official SDK and QQ's native reference index, including when newer questions arrive first. Ordinary sends without `reply` do not quote the latest message. If QQ did not provide a reference index, the reply still uses the original passive context without a visible quote. This applies to text and supported attachments; platform reply windows and quotas still apply.
+
 Send native images, audio, videos and files. Generated replies use QQ attachments. Prepare PNG/JPEG images, MP4 video, SILK audio or ordinary files. Relanox defaults to 100 MB per attachment and per message; QQ uploads use the official SDK, with size acceptance determined by the SDK and platform. QQ’s limits are 20 MB for images/audio, 30 MB for videos and 200 MB for files. Reply text and each attachment consume separate reply slots.
 
 If an attachment download fails, the message still arrives with the image's remote URL, a file/video description, or QQ's voice recognition text when available. A voice without recognized text carries an unavailable-transcription hint. Other successful attachments remain accessible. An image URL can expire and does not guarantee readable image content.

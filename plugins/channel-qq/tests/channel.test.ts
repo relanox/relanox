@@ -1228,90 +1228,158 @@ test.each([false, true])(
   }
 )
 
-// Uses the same documented QQ Gateway/C2C protocol peer as the tests above:
+// Native message references use msg_idx, not the passive reply msg_id:
 // https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html
-// https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/send-receive/send.html
-test('QQ keeps an associated reply on the original passive message after newer input arrives', async () => {
-  vi.stubEnv('QQ_SECRET', 'secret')
-  let socketAddress = ''
+// https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_openid_messages.post.html
+// https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html
+test.each([false, true])(
+  'QQ quotes selected requests out of order through the SDK and leaves ordinary sends unquoted (group=%s)',
+  async (group) => {
+    vi.stubEnv('QQ_SECRET', 'secret')
+    let socketAddress = ''
 
-  const remote = await peer(
-    (request) => {
-      if (request.path === '/app/getAppAccessToken') {
-        return { body: { access_token: 'token', expires_in: 7200 } }
-      }
-      if (request.path === '/gateway') {
-        return { body: { url: socketAddress } }
-      }
-      return { body: { id: 'sent' } }
-    },
-    (socket) => {
-      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 30_000 } }))
-      socket.on('message', (bytes) => {
-        const message = z
-          .object({ op: z.number() })
-          .parse(JSON.parse(wireText(bytes)))
-
-        if (message.op === 2) {
-          socket.send(frame(1, 'READY', { session_id: 'session' }))
-          socket.send(
-            frame(
-              2,
-              'C2C_MESSAGE_CREATE',
-              createEvent('original', false, { content: 'original question' })
-            )
-          )
-          socket.send(frame(3, 'C2C_MESSAGE_CREATE', createEvent('newer')))
+    const remote = await peer(
+      (request) => {
+        if (request.path === '/app/getAppAccessToken') {
+          return { body: { access_token: 'token', expires_in: 7200 } }
         }
+        if (request.path === '/gateway') {
+          return { body: { url: socketAddress } }
+        }
+        return { body: { id: 'sent' } }
+      },
+      (socket) => {
+        socket.send(
+          JSON.stringify({ op: 10, d: { heartbeat_interval: 30_000 } })
+        )
+        socket.on('message', (bytes) => {
+          const message = z
+            .object({ op: z.number() })
+            .parse(JSON.parse(wireText(bytes)))
+
+          if (message.op === 2) {
+            socket.send(frame(1, 'READY', { session_id: 'session' }))
+            for (const [index, id] of [
+              'first',
+              'second',
+              'third',
+              'unindexed'
+            ].entries()) {
+              socket.send(
+                frame(
+                  index + 2,
+                  group ? 'GROUP_AT_MESSAGE_CREATE' : 'C2C_MESSAGE_CREATE',
+                  createEvent(id, group, {
+                    content: id,
+                    ...(id === 'unindexed'
+                      ? {}
+                      : { message_scene: { ext: [`msg_idx=REFIDX_${id}`] } })
+                  })
+                )
+              )
+            }
+          }
+        })
+      }
+    )
+
+    socketAddress = remote.ws
+
+    const host = await assemble(
+      createQqChannel(),
+      { appId: 'app', clientSecret: { env: 'QQ_SECRET' } },
+      [
+        {
+          chatId: group ? 'group' : 'user',
+          senderId: group ? 'member' : 'user'
+        }
+      ]
+    )
+
+    await host.start()
+    await expect.poll(async () => (await records(host.storage)).length).toBe(4)
+
+    const requests = await records(host.storage)
+    for (const id of ['second', 'first', 'third', 'unindexed']) {
+      const original = requests.find((record) => record.snapshot.text === id)
+      if (!original) {
+        throw new Error('Missing original input')
+      }
+
+      const input = {
+        channel: original.snapshot.channel.id,
+        text: `answer ${id}`,
+        reply: {
+          requestId: original.snapshot.requestId,
+          kind: 'final' as const
+        }
+      }
+
+      const final = await host.principal().sendMessage(input)
+      expect(final.status).toBe('queued')
+      await host.runtime.processDue()
+      expect(await host.principal().sendMessage(input)).toEqual({
+        ...final,
+        replay: true
       })
+      expect(
+        (
+          await host
+            .principal()
+            .status({ requestId: original.snapshot.requestId })
+        ).request?.reply.status
+      ).toBe('sent')
     }
-  )
-
-  socketAddress = remote.ws
-
-  const host = await assemble(
-    createQqChannel(),
-    { appId: 'app', clientSecret: { env: 'QQ_SECRET' } },
-    [{ chatId: 'user', senderId: 'user' }]
-  )
-
-  await host.start()
-  await expect.poll(async () => (await records(host.storage)).length).toBe(2)
-
-  const original = (await records(host.storage)).find(
-    (record) => record.snapshot.text === 'original question'
-  )
-
-  if (!original) {
-    throw new Error('Missing original input')
+    const channel = requests[0]?.snapshot.channel.id
+    if (!channel) {
+      throw new Error('Missing source channel')
+    }
+    expect(
+      (await host.principal().sendMessage({ channel, text: 'ordinary' })).status
+    ).toBe('queued')
+    await host.runtime.processDue()
+    expect(
+      remote.requests
+        .filter(
+          (request) =>
+            request.path ===
+            (group ? '/v2/groups/group/messages' : '/v2/users/user/messages')
+        )
+        .map((request) => request.body)
+    ).toEqual([
+      {
+        msg_id: 'second',
+        msg_seq: nativeSequence,
+        msg_type: 2,
+        markdown: { content: 'answer second' },
+        message_reference: { message_id: 'REFIDX_second' }
+      },
+      {
+        msg_id: 'first',
+        msg_seq: nativeSequence,
+        msg_type: 2,
+        markdown: { content: 'answer first' },
+        message_reference: { message_id: 'REFIDX_first' }
+      },
+      {
+        msg_id: 'third',
+        msg_seq: nativeSequence,
+        msg_type: 2,
+        markdown: { content: 'answer third' },
+        message_reference: { message_id: 'REFIDX_third' }
+      },
+      {
+        msg_id: 'unindexed',
+        msg_seq: nativeSequence,
+        msg_type: 2,
+        markdown: { content: 'answer unindexed' }
+      },
+      {
+        msg_id: 'unindexed',
+        msg_seq: nativeSequence,
+        msg_type: 2,
+        markdown: { content: 'ordinary' }
+      }
+    ])
   }
-
-  const input = {
-    channel: original.snapshot.channel.id,
-    text: 'answer',
-    reply: { requestId: original.snapshot.requestId, kind: 'final' as const }
-  }
-
-  const final = await host.principal().sendMessage(input)
-  expect(final.status).toBe('queued')
-  await host.runtime.processDue()
-  expect(
-    remote.requests
-      .filter((request) => request.path === '/v2/users/user/messages')
-      .map((request) => request.body)
-  ).toEqual([
-    expect.objectContaining({
-      msg_id: 'original',
-      msg_seq: nativeSequence,
-      markdown: { content: 'answer' }
-    })
-  ])
-  expect(await host.principal().sendMessage(input)).toEqual({
-    ...final,
-    replay: true
-  })
-  expect(
-    (await host.principal().status({ requestId: original.snapshot.requestId }))
-      .request?.reply.status
-  ).toBe('sent')
-})
+)
