@@ -25,7 +25,7 @@ export function textLength(
 }
 
 function escaped(text: string): string {
-  return text.replaceAll(/[\\`*_{}[\]()#+.!>~|=-]/gu, String.raw`\$&`)
+  return text.replaceAll(/[\\&`*_{}[\]()#+.!>~|=-]/gu, String.raw`\$&`)
 }
 
 function longestBacktickRun(text: string): number {
