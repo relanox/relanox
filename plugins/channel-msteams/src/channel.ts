@@ -9,7 +9,7 @@ import type {
   ReplyTarget
 } from '@relanox/sdk'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
-import { accessToken, serviceUrl } from './client.js'
+import { accessToken, invalidateAccessToken, serviceUrl } from './client.js'
 import {
   validateConfig,
   validateEndpointUrl,
@@ -150,9 +150,16 @@ async function learnConversation(
 
 async function sendFailure(
   host: ChannelHost,
+  config: TeamsConfig,
+  token: string,
   response: Response,
   consentKey: string | undefined
 ): Promise<SendResult> {
+  if (response.status === 401) {
+    invalidateAccessToken(config, token)
+    await response.body?.cancel()
+    return { status: 'retryable', errorCode: 'oauth_token_rejected' }
+  }
   if (consentKey && response.status === 429) {
     await consentThrottled(host, consentKey)
   }
@@ -260,7 +267,13 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       )
 
       if (!response.ok) {
-        return await sendFailure(runtime.host, response, prepared.consentKey)
+        return await sendFailure(
+          runtime.host,
+          config,
+          token,
+          response,
+          prepared.consentKey
+        )
       }
       if (prepared.consentKey) {
         await consentPosted(runtime.host, prepared.consentKey)

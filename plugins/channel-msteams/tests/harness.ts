@@ -34,16 +34,37 @@ const transport = {
 
 function interceptMedia(): void {
   https.request = ((
-    url: URL,
-    options: RequestOptions,
-    callback: (response: HttpResponse) => void
+    url: URL | RequestOptions,
+    options?: RequestOptions,
+    callback?: (response: HttpResponse) => void
   ) => {
-    const destination = transport.destinations.get(url.hostname)
+    const address =
+      url instanceof URL
+        ? url
+        : new URL(
+            url.path ?? '/',
+            `https://${String(url.hostname ?? url.host)}`
+          )
+
+    const destination = transport.destinations.get(address.hostname)
     if (!destination) {
-      return transport.request(url, options, callback)
+      return url instanceof URL
+        ? transport.request(url, options ?? {}, callback)
+        : transport.request(url, callback)
     }
-    const local = new URL(url.pathname + url.search, destination)
-    return httpRequest(local, { ...options, lookup: undefined }, callback)
+    const local = new URL(address.pathname + address.search, destination)
+
+    const {
+      agent: _agent,
+      hostname: _hostname,
+      host: _host,
+      path: _path,
+      port: _port,
+      protocol: _protocol,
+      ...forwarded
+    } = (url instanceof URL ? options : url) ?? {}
+
+    return httpRequest(local, { ...forwarded, lookup: undefined }, callback)
   }) as typeof https.request
   dns.lookup = (async (hostname: string, options: LookupAllOptions) => {
     if (transport.destinations.has(hostname)) {
@@ -77,7 +98,13 @@ export async function peer(): Promise<{
     body: Json,
     responseHeaders?: Record<string, string>
   ): void
-  token(this: void, code: number, body: Json): void
+  token(
+    this: void,
+    code: number,
+    body: Json,
+    responseHeaders?: Record<string, string>
+  ): void
+  holdToken(this: void): () => void
   keys(this: void, value: Json): void
   close(this: void): Promise<void>
 }> {
@@ -94,7 +121,17 @@ export async function peer(): Promise<{
   let headers: Record<string, string> = {}
   let jwks: Json = {}
   let tokenStatus = 200
-  let tokenBody: Json = { access_token: 'oauth-token', token_type: 'Bearer' }
+  let tokenHeaders: Record<string, string> = {}
+
+  // Bot Connector OAuth documents the lifetime in seconds:
+  // https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
+  let tokenBody: Json = {
+    access_token: 'oauth-token',
+    token_type: 'Bearer',
+    expires_in: 3600
+  }
+
+  let tokenWait: Promise<void> | undefined
 
   async function receive(
     incoming: IncomingMessage,
@@ -120,7 +157,8 @@ export async function peer(): Promise<{
       return
     }
     if (path === '/botframework.com/oauth2/v2.0/token') {
-      response.writeHead(tokenStatus)
+      await tokenWait
+      response.writeHead(tokenStatus, tokenHeaders)
       response.end(JSON.stringify(tokenBody))
       return
     }
@@ -196,9 +234,21 @@ export async function peer(): Promise<{
       output = body
       headers = responseHeaders
     },
-    token(code: number, body: Json): void {
+    token(
+      code: number,
+      body: Json,
+      responseHeaders: Record<string, string> = {}
+    ): void {
       tokenStatus = code
       tokenBody = body
+      tokenHeaders = responseHeaders
+    },
+    holdToken(): () => void {
+      let release = (): void => {}
+      tokenWait = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return release
     },
     keys(value: Json): void {
       jwks = value

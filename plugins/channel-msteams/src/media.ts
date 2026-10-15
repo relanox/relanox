@@ -1,4 +1,9 @@
-import { downloadMedia, mediaKind, mediaBlob } from '@relanox/channel-media'
+import {
+  downloadMedia,
+  mediaKind,
+  mediaBlob,
+  MediaDownloadError
+} from '@relanox/channel-media'
 import type {
   ChannelHost,
   Json,
@@ -8,7 +13,7 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { TeamsConfig } from './config.js'
-import { accessToken } from './client.js'
+import { accessToken, invalidateAccessToken } from './client.js'
 import type { activitySchema } from './schemas.js'
 import { request } from './io.js'
 
@@ -326,6 +331,15 @@ export async function downloadAttachments(
       ...(typeof token === 'string'
         ? { headers: { authorization: `Bearer ${token}` } }
         : {})
+    }).catch((error: unknown) => {
+      if (
+        typeof token === 'string' &&
+        error instanceof MediaDownloadError &&
+        error.status === 401
+      ) {
+        invalidateAccessToken(config, token)
+      }
+      throw error
     })
 
     const mimeType = file ? downloaded.mimeType : attachment.contentType
