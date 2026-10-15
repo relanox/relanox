@@ -49,20 +49,3 @@ export const messageSchema = z.looseObject({
     .optional(),
   files: z.array(fileSchema).max(10).default([])
 })
-
-export const socketOpenResponseSchema = z.looseObject({
-  ok: z.boolean(),
-  url: z.string().optional()
-})
-
-export const socketFrameSchema = z.looseObject({
-  type: z.string(),
-  envelope_id: platformIdSchema.optional(),
-  payload: z.unknown().optional()
-})
-
-export const sendResponseSchema = z.looseObject({
-  ok: z.boolean(),
-  ts: platformIdSchema.optional(),
-  error: z.string().optional()
-})

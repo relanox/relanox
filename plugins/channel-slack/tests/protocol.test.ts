@@ -639,9 +639,7 @@ describe('slack native protocol', () => {
       wss.once('listening', resolve)
     })
 
-    const wsUrl = registerPeer(
-      `http://127.0.0.1:${(wss.address() as AddressInfo).port}`
-    ).replace('https:', 'wss:')
+    const wsUrl = `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`
 
     const frames: unknown[] = []
     let connected = 0
@@ -687,14 +685,14 @@ describe('slack native protocol', () => {
     release?.()
     await expect
       .poll(() => frames)
-      .toContainEqual({ envelope_id: 'envelope-42' })
+      .toContainEqual({ envelope_id: 'envelope-42', payload: {} })
     expect(test.received).toHaveLength(1)
     for (const ws of wss.clients) {
       ws.send(
         JSON.stringify({ type: 'disconnect', reason: 'refresh_requested' })
       )
     }
-    await expect.poll(() => connected, { timeout: 3000 }).toBe(2)
+    await expect.poll(() => connected, { timeout: 10_000 }).toBe(2)
     await test.plugin.stop?.()
     const stopped = connected
     await new Promise((resolve) => {
@@ -712,9 +710,7 @@ describe('slack native protocol', () => {
     const remote = await peer(() => ({
       body: {
         ok: true,
-        url: registerPeer(
-          `http://127.0.0.1:${(wss.address() as AddressInfo).port}`
-        ).replace('https:', 'wss:')
+        url: `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`
       }
     }))
 
@@ -741,6 +737,7 @@ describe('slack native protocol', () => {
       await remote.close()
     })
     wss.on('connection', (ws) => {
+      ws.send(JSON.stringify({ type: 'hello' }))
       ws.send(
         JSON.stringify({
           type: 'events_api',
