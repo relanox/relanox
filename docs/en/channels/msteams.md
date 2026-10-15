@@ -6,6 +6,8 @@ Talk to your agent through an installed Teams bot in personal chats, groups or c
 
 Register a Microsoft application and Azure Bot, enable its Teams channel, and install the Teams app for the intended users/teams. Record the application ID, bot activity ID, bot application's tenant ID and allowed Teams activity tenant ID; save the app secret as `TEAMS_APP_SECRET`. Ask your administrator for the exact trusted Bot Connector service origins for your region. For a single-tenant bot, use `https://login.microsoftonline.com/<application-tenant-id>/oauth2/v2.0/token` as the OAuth token URL. This application tenant can differ from the allowed Teams activity tenant. Existing multi-tenant bots can use their registered token URL; [Microsoft documents both token authorities](https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0). This channel uses public-cloud Bot Framework authentication.
 
+The connection uses the official Microsoft Teams SDK with public-cloud Bot Connector authentication. `tokenUrl` must be a standard Entra v2 token endpoint, `https://login.microsoftonline.com/<application-tenant>/oauth2/v2.0/token`. Its tenant belongs to the application registration and may differ from the allowed incoming Teams `tenantId`. The default uses the legacy `botframework.com` authority. Custom token paths and query parameters are not supported.
+
 ## Fill in the configurator
 
 Open the [connection configurator](../connect.md), select **Microsoft Teams**, and enter the account details obtained above. Keep credential variable names at their defaults and set the actual secrets using the generated tutorial after downloading. Put the sender IDs described below in **Allowed user IDs**, the conversation ID in **Chat ID**, and the topic ID in **Thread ID** when applicable. Select the **Receiving Agent**. Separate multiple allowed users with commas.
@@ -28,6 +30,8 @@ Read IDs from a Teams message activity: `from.id` is the allowed sender, `conver
 
 Set the bot messaging endpoint to `https://relay.example.com/channels/msteams-main/activities`, then start Relanox. `trustedServiceOrigins` entries are exact HTTPS origins, such as `https://smba.trafficmanager.net`, without a path or trailing slash; use the values for your deployment.
 
+The SDK runs through Relanox's existing HTTP listener. Successful activity responses wait for Core ingestion or durable file-consent handling. The SDK owns OAuth token caching and throttling; Relanox keeps message delivery retries in Core and does not enable streaming or user/Graph authorization.
+
 Sending to a bound conversation also needs its Bot Connector service address and conversation metadata. Relanox records these from authenticated `message`, `conversationUpdate` or `installationUpdate` activities whose sender is allowed and whose bot and tenant match the account. An installation or conversation activity can therefore make the destination available before its first message. A chat ID alone is insufficient; the service address must pass `trustedServiceOrigins` checks.
 
 ## Send your first message
@@ -39,6 +43,8 @@ When the Agent specifies `reply.requestId`, the answer quotes that incoming mess
 ## Images and files
 
 Send inline images or personal-chat files with your question. For file replies in personal chats, set `supportsFiles:true` in the Teams app manifest and configure exact `trustedUploadOrigins` for your tenant’s OneDrive upload service. When the bot asks for file consent, accept to receive the file. Personal-chat images above 15,000 bytes also arrive as file cards. Group/channel image replies above that size use the public media address described in [Media](../media.md).
+
+Core's default per-file budget is 100 MiB; the platform can reject smaller files according to its own policies. Personal file uploads use sequential 10 MiB fragments, without bearer credentials on the pre-authorized upload URL. Consent and completed fragment positions survive a restart. No additional Graph permissions are requested. These protocol paths are covered by local HTTP and SQLite tests; that does not establish live-tenant compatibility. See [Teams file support](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/bots-filesv4) and [OneDrive upload sessions](https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession).
 
 ## Troubleshooting
 

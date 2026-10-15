@@ -1,4 +1,5 @@
-import { jwksUrl } from './constants.js'
+import { MessageActivityInput } from '@microsoft/teams.api'
+import type { Activity, Attachment } from '@microsoft/teams.api'
 import type {
   AccountConfig,
   ChannelHost,
@@ -8,13 +9,8 @@ import type {
   ChannelAddress,
   ReplyTarget
 } from '@relanox/sdk'
-import { createRemoteJWKSet, jwtVerify } from 'jose'
-import { accessToken, invalidateAccessToken, serviceUrl } from './client.js'
-import {
-  validateConfig,
-  validateEndpointUrl,
-  platformIdSchema
-} from './config.js'
+import { TeamsClient, serviceUrl } from './native.js'
+import { validateConfig, platformIdSchema } from './config.js'
 import type { TeamsConfig } from './config.js'
 import type { z } from 'zod'
 import {
@@ -27,13 +23,8 @@ import {
   richCapabilities
 } from './media.js'
 import { receive } from './inbound.js'
-import { failure, parseBody, rawBody, request, unavailable } from './io.js'
-import {
-  activitySchema,
-  targetSchema,
-  keysSchema,
-  receiptSchema
-} from './schemas.js'
+import { platformFailure } from './io.js'
+import { targetSchema } from './schemas.js'
 
 function matchesTarget(
   target: z.infer<typeof targetSchema>,
@@ -88,27 +79,6 @@ function sourceReplyFields(
   return learned.replyToId ? { replyToId: learned.replyToId } : {}
 }
 
-function quotedText(input: SendInput): {
-  text: string
-  entities?: { type: 'quotedReply'; quotedReply: { messageId: string } }[]
-} {
-  const messageId = input.reply ? input.target.replyToId : undefined
-  if (!messageId) {
-    return { text: input.chunk.text }
-  }
-
-  const escapedId = messageId
-    .replaceAll('&', '&amp;')
-    .replaceAll('"', '&quot;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-
-  return {
-    text: `<quoted messageId="${escapedId}"/> ${input.chunk.text}`,
-    entities: [{ type: 'quotedReply', quotedReply: { messageId } }]
-  }
-}
-
 function conversationKey(config: TeamsConfig, chatId: string): string {
   return `conversation:${JSON.stringify([config.appId, config.tenantId, config.botId, chatId])}`
 }
@@ -116,18 +86,18 @@ function conversationKey(config: TeamsConfig, chatId: string): string {
 async function learnConversation(
   host: ChannelHost,
   config: TeamsConfig,
-  activity: z.infer<typeof activitySchema>
+  activity: Activity
 ): Promise<void> {
   const key = conversationKey(config, activity.conversation.id)
 
   const data = {
     appId: config.appId,
-    serviceUrl: activity.serviceUrl,
+    serviceUrl: activity.serviceUrl ?? '',
     conversationId: activity.conversation.id,
     tenantId: config.tenantId,
     botId: config.botId,
     userId: activity.from.id,
-    ...(activity.conversation.conversationType
+    ...(activity.conversation.conversationType !== undefined
       ? { personal: activity.conversation.conversationType === 'personal' }
       : {})
   }
@@ -148,30 +118,43 @@ async function learnConversation(
   throw new Error('conversation_state_conflict')
 }
 
-async function sendFailure(
-  host: ChannelHost,
-  config: TeamsConfig,
-  token: string,
-  response: Response,
-  consentKey: string | undefined
-): Promise<SendResult> {
-  if (response.status === 401) {
-    invalidateAccessToken(config, token)
-    await response.body?.cancel()
-    if (consentKey) {
-      await consentPostRefused(host, consentKey)
-    }
-    return { status: 'retryable', errorCode: 'oauth_token_rejected' }
+function outboundMessage(
+  input: SendInput,
+  target: z.infer<typeof targetSchema>,
+  attachment: Attachment | undefined
+): MessageActivityInput {
+  const route = replyRoute(input)
+
+  const message = new MessageActivityInput(input.chunk.text, {
+    textFormat: 'extendedmarkdown',
+    channelId: 'msteams',
+    from: { id: target.botId },
+    recipient: { id: target.userId, role: 'user' },
+    conversation: { id: target.conversationId, tenantId: target.tenantId },
+    channelData: { tenant: { id: target.tenantId } }
+  })
+
+  if (input.reply && input.target.replyToId) {
+    message.withText('').addQuote(input.target.replyToId, input.chunk.text)
   }
-  if (consentKey && response.status === 429) {
-    await consentPostRefused(host, consentKey)
+  if (route) {
+    message.withReplyToId(route)
   }
-  return failure(response)
+  if (attachment) {
+    message.addAttachments(attachment)
+  }
+
+  return message
 }
 
 export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
   let runtime:
-    | { host: ChannelHost; account: AccountConfig; config: TeamsConfig }
+    | {
+        host: ChannelHost
+        account: AccountConfig
+        config: TeamsConfig
+        client: TeamsClient
+      }
     | undefined
 
   async function send(input: SendInput): Promise<SendResult> {
@@ -201,14 +184,10 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     if (errorCode) {
       return { status: 'rejected', errorCode }
     }
-    let token: string | SendResult
     try {
-      token = await accessToken(config, input.signal)
-    } catch {
-      return { status: 'retryable', errorCode: 'oauth_unavailable' }
-    }
-    if (typeof token !== 'string') {
-      return token
+      await runtime.client.accessToken()
+    } catch (error) {
+      return platformFailure(error, true)
     }
     let rich: Awaited<ReturnType<typeof richAttachment>>
     let prepared: Awaited<ReturnType<typeof prepareAttachment>>
@@ -234,50 +213,22 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
     try {
       const route = replyRoute(input)
 
-      const suffix = route ? `/${encodeURIComponent(route)}` : ''
+      const api = await runtime.client.api(base.href, input.signal)
 
-      const url = new URL(
-        `${base.href.replace(/\/$/u, '')}/v3/conversations/${encodeURIComponent(target.conversationId)}/activities${suffix}`
+      const message = outboundMessage(
+        input,
+        target,
+        rich ?? prepared.attachment
       )
 
-      const response = await request(
-        url,
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${token}`,
-            'content-type': 'application/json'
-          },
-          body: JSON.stringify({
-            type: 'message',
-            textFormat: 'extendedmarkdown',
-            ...quotedText(input),
-            ...((rich ?? prepared.attachment) !== undefined
-              ? { attachments: [rich ?? prepared.attachment] }
-              : {}),
-            channelId: 'msteams',
-            from: { id: target.botId },
-            recipient: { id: target.userId },
-            conversation: {
-              id: target.conversationId,
-              tenantId: target.tenantId
-            },
-            ...(route ? { replyToId: route } : {}),
-            channelData: { tenant: { id: target.tenantId } }
-          })
-        },
-        input.signal
-      )
+      const receipt = route
+        ? await api.conversations.replyToActivity(
+            target.conversationId,
+            route,
+            message
+          )
+        : await api.conversations.createActivity(target.conversationId, message)
 
-      if (!response.ok) {
-        return await sendFailure(
-          runtime.host,
-          config,
-          token,
-          response,
-          prepared.consentKey
-        )
-      }
       if (prepared.consentKey) {
         await consentPosted(runtime.host, prepared.consentKey)
         return {
@@ -288,11 +239,21 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       return {
         status: 'sent',
         receipt: {
-          platformMessageId: receiptSchema.parse(await response.json()).id
+          platformMessageId: platformIdSchema.parse(receipt.id)
         }
       }
-    } catch {
-      return unavailable()
+    } catch (error) {
+      const result = platformFailure(error)
+      if (result.errorCode === 'oauth_token_rejected') {
+        runtime.client.invalidate()
+      }
+      if (
+        prepared.consentKey &&
+        ['rate_limited', 'oauth_token_rejected'].includes(result.errorCode)
+      ) {
+        await consentPostRefused(runtime.host, prepared.consentKey)
+      }
+      return result
     }
   }
 
@@ -387,65 +348,20 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
       }
     },
     async setup(host, account, config) {
-      runtime = { host, account, config }
-
-      const keys = createRemoteJWKSet(validateEndpointUrl(jwksUrl), {
-        timeoutDuration: 5000,
-        cacheMaxAge: 3_600_000
-      })
-
-      host.mountHttp('/activities', async (incoming) => {
-        if (incoming.method !== 'POST') {
-          return new Response(null, { status: 405 })
-        }
-        const authorization = incoming.headers.get('authorization')
-        if (!authorization?.startsWith('Bearer ')) {
-          return new Response(null, { status: 401 })
-        }
-
-        const decoded = activitySchema.safeParse(
-          parseBody(await rawBody(incoming))
-        )
-
-        if (!decoded.success) {
-          return new Response(null, { status: 400 })
-        }
-        const activity = decoded.data
-        try {
-          const verified = await jwtVerify(authorization.slice(7), keys, {
-            algorithms: ['RS256'],
-            issuer: 'https://api.botframework.com',
-            audience: config.appId,
-            requiredClaims: ['exp', 'nbf']
-          })
-
-          const jwks = keysSchema.parse(keys.jwks())
-
-          const signingKey = jwks.keys.find(
-            (key) => key.kid === verified.protectedHeader.kid
-          )
-
-          if (!signingKey?.endorsements?.includes('msteams')) {
-            return new Response(null, { status: 403 })
-          }
-          if (
-            verified.payload.serviceurl !== activity.serviceUrl &&
-            verified.payload.serviceUrl !== activity.serviceUrl
-          ) {
-            return new Response(null, { status: 403 })
-          }
-          serviceUrl(activity.serviceUrl, config)
-        } catch {
-          return new Response(null, { status: 401 })
-        }
+      const client = new TeamsClient(host, config, async (activity) => {
         if (
           activity.channelId !== 'msteams' ||
-          activity.recipient.id !== config.botId ||
-          activity.channelData.tenant.id !== config.tenantId ||
-          (activity.conversation.tenantId &&
+          activity.recipient?.id !== config.botId ||
+          activity.channelData?.tenant?.id !== config.tenantId ||
+          (activity.conversation?.tenantId &&
             activity.conversation.tenantId !== config.tenantId)
         ) {
-          return new Response(null, { status: 403 })
+          return { status: 403 }
+        }
+        try {
+          serviceUrl(activity.serviceUrl ?? '', config)
+        } catch {
+          return { status: 403 }
         }
         if (
           account.allowedSenders.includes(activity.from.id) &&
@@ -455,9 +371,12 @@ export function createTeamsChannel(): ChannelPlugin<TeamsConfig> {
         ) {
           await learnConversation(host, config, activity)
         }
-        await receive(host, account, config, activity)
-        return Response.json({})
+        await receive(host, account, config, activity, client)
+        return { status: 200 }
       })
+
+      runtime = { host, account, config, client }
+      await client.app()
     },
     send
   }
