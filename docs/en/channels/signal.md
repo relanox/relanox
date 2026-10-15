@@ -27,6 +27,8 @@ Set **Signal bridge URL** to the daemon/proxy’s base URL and **Registered acco
 
 From an allowed Signal contact, send “Hello” to the dedicated account or a bound group it has joined. Leave both signal-cli and Relanox running so incoming questions can be received.
 
+The Agent can quote a specific incoming message with `reply.requestId`. Relanox preserves its original author, message timestamp and text for signal-cli, so later messages do not change the quote. Sends without `reply` omit the quote. Messages saved before quote metadata was available can still receive ordinary replies.
+
 ## Images and files
 
 Send images, audio, videos or files normally. Ensure signal-cli downloads incoming attachments so Relanox can retrieve them. Generated attachments are sent through the same dedicated Signal account. Respect Signal’s limits and the Relanox media limit.
