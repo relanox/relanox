@@ -8,6 +8,15 @@ import { ingest, secret } from './io.js'
 import { serviceSchema } from './schemas.js'
 import type { eventSchema } from './schemas.js'
 
+function quoteFields(
+  message: NonNullable<z.infer<typeof eventSchema>['message']>
+): { quotedMessageMetadata?: { name: string; lastUpdateTime: string } } {
+  const lastUpdateTime = message.lastUpdateTime ?? message.createTime
+  return lastUpdateTime
+    ? { quotedMessageMetadata: { name: message.name, lastUpdateTime } }
+    : {}
+}
+
 export async function receive(
   host: ChannelHost,
   account: AccountConfig,
@@ -72,6 +81,7 @@ export async function receive(
     data: {
       space: space.name,
       ...(message.thread ? { thread: message.thread.name } : {}),
+      ...quoteFields(message),
       scope: {
         clientEmail: serviceSchema.parse(
           JSON.parse(secret(config.serviceAccount)) as unknown
