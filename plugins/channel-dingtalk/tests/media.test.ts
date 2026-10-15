@@ -1,12 +1,9 @@
-import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
+import { peer } from './peer.js'
+import { installPeerNetwork } from './network.js'
 import { expect, test, vi } from 'vitest'
 import type { SendInput } from '@relanox/sdk'
 import { createDingTalkChannel } from '../src/index.js'
-import {
-  assemble,
-  peer,
-  records
-} from '../../channel-wecom/tests/test-support.js'
+import { assemble, records } from '../../channel-wecom/tests/test-support.js'
 
 installPeerNetwork()
 
@@ -259,4 +256,86 @@ test('DingTalk sends uploaded images between Markdown fragments and rejects mism
     errorCode: 'invalid_rich_media'
   })
   expect(remote.requests).toHaveLength(count)
+})
+
+// Protect delegation of byte limits and upstream refusals: the old 20 MiB
+// Precheck fails this test before any request reaches the platform. Existing
+// Small-image fixtures cannot detect that. No production test seam is needed.
+// Legacy multipart contract: open.dingtalk.com/document/orgapp/upload-media-files;
+// HTTP 413: RFC 9110 section 15.5.14.
+test('DingTalk submits media above the former channel limit and preserves the upload refusal', async () => {
+  vi.stubEnv('DING_UPLOAD_SECRET', 'secret')
+  const bytes = new Uint8Array(21 * 1024 * 1024)
+
+  const media = {
+    reference: {
+      id: 'document',
+      kind: 'file' as const,
+      mimeType: 'application/pdf',
+      fileName: 'document.pdf',
+      size: bytes.byteLength,
+      sha256: '0'.repeat(64)
+    },
+    data: bytes
+  }
+
+  const remote = await peer((request) =>
+    request.path === '/v1.0/oauth2/accessToken'
+      ? { body: { accessToken: 'upload-token', expireIn: 7200 } }
+      : { status: 413 }
+  )
+
+  const plugin = createDingTalkChannel()
+  await assemble(
+    plugin,
+    {
+      clientId: 'app',
+      robotCode: 'robot',
+      clientSecret: { env: 'DING_UPLOAD_SECRET' },
+      recipientTypes: { staff: 'single' }
+    },
+    [{ chatId: 'staff', senderId: 'sender' }]
+  )
+
+  const resolved = await plugin.resolveChannel?.({
+    platform: 'dingtalk',
+    accountId: 'bot',
+    chatId: 'staff',
+    id: 'channel'
+  })
+
+  if (resolved?.status !== 'available') {
+    throw new Error('missing_target')
+  }
+  expect(
+    await plugin.send({
+      deliveryId: 'file',
+      channelId: 'channel',
+      target: resolved.target,
+      chunkIndex: 0,
+      signal: new AbortController().signal,
+      chunk: {
+        text: '',
+        media: media.reference,
+        state: null,
+        idempotencyKey: 'file'
+      },
+      media
+    })
+  ).toEqual({ status: 'rejected', errorCode: 'http_413' })
+
+  const uploads = remote.requests.filter((request) =>
+    request.path.startsWith('/media/upload?')
+  )
+
+  expect(uploads).toHaveLength(1)
+  expect(uploads[0]?.path).toContain('type=file')
+  expect(
+    Buffer.isBuffer(uploads[0]?.body) ? uploads[0].body.byteLength : 0
+  ).toBeGreaterThan(bytes.byteLength)
+  expect(
+    remote.requests.filter(
+      (request) => request.path === '/v1.0/robot/oToMessages/batchSend'
+    )
+  ).toHaveLength(0)
 })

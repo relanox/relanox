@@ -25,7 +25,9 @@ To send to a bound destination before Relanox receives a message there, add `rec
 
 ## Enable the connection
 
-Start Relanox after saving the account configuration. It opens the Stream connection automatically using the application credentials. Keep outbound HTTPS and WebSocket access available.
+Start Relanox after saving the account configuration. It opens the Stream connection automatically using the application credentials. Keep outbound HTTPS and WebSocket access available. Restart Relanox after rotating the application secret so the Stream SDK receives the new credential.
+
+The channel uses the official [`dingtalk-stream` SDK](https://github.com/open-dingtalk/dingtalk-stream-sdk-nodejs) for connection setup, heartbeats, recovery, callback dispatch and ACK frames, and `@alicloud/dingtalk` for OAuth, message sending and download URLs. Stream is pinned to the official [2.1.7-beta.1 prerelease](https://github.com/open-dingtalk/dingtalk-stream-sdk-nodejs/releases/tag/v2.1.7-beta.1), which fixes cancellation cleanup and keeps delayed callback ACKs on their receiving socket. SDK recovery and queue behavior apply. Accepted callbacks are acknowledged after durable ingest; known policy or unsupported-input rejections receive the SDK's terminal success ACK. Storage or download failures remain unacknowledged for platform redelivery. Core still controls permissions, bindings and send retries. SDK message POST retries are disabled; rate limits use a one-second Core retry delay because the generated gateway does not expose `Retry-After`. An already dispatched OpenAPI call can complete during cancellation; media downloads and the legacy upload retain abort support.
 
 ## Send your first message
 
@@ -35,7 +37,7 @@ The current application-robot send endpoints do not provide a verified native qu
 
 ## Images and files
 
-Send pictures, audio, videos, files or rich-text messages. Replies can include JPEG/PNG/GIF/BMP images, MP4 video and files up to 20 MB, and AMR audio up to 2 MB, within the relay limit. File replies use XLSX, PDF, ZIP, RAR, DOC or DOCX formats.
+Send pictures, audio, videos, files or rich-text messages. Replies can include JPEG/PNG/GIF/BMP images, MP4 video, AMR audio and supported files. The Core media budget is 100 MiB; DingTalk enforces its own current upload limits and refusals are returned to Core. The channel does not duplicate those byte limits. The generated SDK does not cover the legacy `/media/upload` multipart endpoint, so only that upload remains a narrow HTTP call. Inbound downloads retain URL, redirect and byte-limit protection. File replies use XLSX, PDF, ZIP, RAR, DOC or DOCX formats.
 
 ## Troubleshooting
 

@@ -1,12 +1,6 @@
-import {
-  API_BASE,
-  UPLOAD_BASE,
-  configSchema,
-  validateTransportUrl,
-  MAX_RECONNECT_ATTEMPTS
-} from './config.js'
-import { receiveParts, mediaMessage, uploadFailure } from './media.js'
-import { richCapabilities } from './rich.js'
+import { API_BASE, UPLOAD_BASE, configSchema } from './config.js'
+import { receiveContent, mediaMessage, uploadFailure } from './media.js'
+import { richCapabilities, richError } from './rich.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -15,29 +9,13 @@ import type {
   SendResult
 } from '@relanox/sdk'
 import type { z } from 'zod'
-import type { WebSocket } from 'ws'
-import { MediaDownloadError } from '@relanox/channel-media'
+import type { DWClientDownStream } from 'dingtalk-stream'
+import { DingTalkApi } from './native.js'
+import { DingTalkStream } from './stream.js'
 import type { DingTalkConfig } from './config.js'
-import {
-  streamOpenResponseSchema,
-  streamSchema,
-  messageSchema,
-  tokenSchema,
-  targetSchema,
-  sendResponse
-} from './schemas.js'
+import { messageSchema, targetSchema } from './schemas.js'
 import type { scopeSchema } from './schemas.js'
-import {
-  JsonSocketConnection,
-  httpJson,
-  ingestText,
-  jsonPostRequest,
-  RemoteError,
-  secret,
-  sendFailure
-} from './transport.js'
-
-const topic = '/v1.0/im/bot/messages/get'
+import { ingestText, sendFailure } from './transport.js'
 
 function hasMedia(input: SendInput): boolean {
   return input.chunk.media !== undefined || input.chunk.richText !== undefined
@@ -67,125 +45,29 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
   let host: ChannelHost
   let account: AccountConfig
   let config: DingTalkConfig
-  let connection: JsonSocketConnection
+  let connection: DingTalkStream
+  let api: DingTalkApi
+  let signal = AbortSignal.abort()
 
-  let token:
-    { value: string; expiresAt: number; credential: string } | undefined
-
-  let tokenFlight: Promise<string> | undefined
-
-  const api = (path: string): string => `${API_BASE.replace(/\/$/u, '')}${path}`
-
-  async function getAccessToken(signal: AbortSignal): Promise<string> {
-    const credential = secret(config.clientSecret)
-    if (token?.credential === credential && token.expiresAt > Date.now()) {
-      return token.value
-    }
-    if (tokenFlight) {
-      return tokenFlight
-    }
-    tokenFlight = (async (): Promise<string> => {
-      const body = tokenSchema.parse(
-        await httpJson(
-          api('/v1.0/oauth2/accessToken'),
-          jsonPostRequest({ appKey: config.clientId, appSecret: credential }),
-          signal
-        )
-      )
-
-      token = {
-        value: body.accessToken,
-        credential,
-        expiresAt: Date.now() + Math.max(1, body.expireIn - 60) * 1000
-      }
-      return token.value
-    })()
-    try {
-      return await tokenFlight
-    } finally {
-      tokenFlight = undefined
-    }
-  }
-
-  async function receiveContent(
-    message: z.infer<typeof messageSchema>
-  ): Promise<Awaited<ReturnType<typeof receiveParts>> | undefined> {
-    try {
-      const credential =
-        message.msgtype === 'text'
-          ? undefined
-          : await getAccessToken(connection.signal)
-
-      return await receiveParts(
-        message,
-        config,
-        host,
-        credential,
-        connection.signal
-      )
-    } catch (error) {
-      if (
-        !(error instanceof MediaDownloadError) ||
-        error.code !== 'media_too_large'
-      ) {
-        throw error
-      }
-      host.observe.log('info', 'channel_input_discarded', {
-        errorCode: error.code
-      })
-      return undefined
-    }
-  }
-
-  async function receive(raw: unknown, socket: WebSocket): Promise<void> {
-    const frame = streamSchema.parse(raw)
-
-    const ack = (code: number, data: string): void => {
-      connection.send(
-        {
-          code,
-          headers: {
-            contentType: 'application/json',
-            messageId: frame.headers.messageId
-          },
-          message: code === 200 ? 'OK' : 'Unsupported',
-          data
-        },
-        socket
-      )
+  async function receive(frame: DWClientDownStream): Promise<void> {
+    const ack = (): void => {
+      connection.socketCallBackResponse(frame.headers.messageId, null)
     }
 
-    if (frame.type === 'SYSTEM') {
-      if (frame.headers.topic === 'ping') {
-        ack(200, frame.data)
-      }
-      if (frame.headers.topic === 'disconnect') {
-        ack(200, frame.data)
-        socket.close()
-      }
-      return
-    }
-    if (
-      frame.type !== 'CALLBACK' ||
-      frame.headers.topic !== topic ||
-      !frame.headers.messageId
-    ) {
-      return
-    }
     const message = messageSchema.parse(JSON.parse(frame.data))
     if (
       message.robotCode !== config.robotCode ||
       message.senderId === message.chatbotUserId ||
       (message.conversationType === '2' && message.isInAtList !== true)
     ) {
-      ack(200, '{"response":null}')
+      ack()
       return
     }
     if (!account.allowedSenders.includes(message.senderId)) {
       host.observe.log('info', 'channel_input_discarded', {
         errorCode: 'sender_not_allowed'
       })
-      ack(200, '{"response":null}')
+      ack()
       return
     }
     if (
@@ -197,22 +79,22 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       host.observe.log('info', 'channel_unsupported_input', {
         errorCode: 'unsupported_message_type'
       })
-      ack(404, '{"response":null}')
+      ack()
       return
     }
     const group = message.conversationType === '2'
     const chatId = group ? message.conversationId : message.senderStaffId
     if (!chatId) {
-      ack(404, '{"response":null}')
+      ack()
       host.observe.log('warn', 'channel_unsupported_sender', {
         errorCode: 'missing_staff_id'
       })
       return
     }
 
-    const content = await receiveContent(message)
+    const content = await receiveContent(message, host, api, signal)
     if (!content) {
-      ack(200, '{"response":null}')
+      ack()
       return
     }
     const { text, attachments } = content
@@ -245,7 +127,7 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       receivedAt: Date.now(),
       context: null
     })
-    ack(200, '{"response":null}')
+    ack()
   }
 
   return {
@@ -323,49 +205,35 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       host = nextHost
       account = nextAccount
       config = configSchema.parse(nextConfig)
-      connection = new JsonSocketConnection(
-        host,
-        async (signal) => {
-          const body = streamOpenResponseSchema.parse(
-            await httpJson(
-              api('/v1.0/gateway/connections/open'),
-              jsonPostRequest({
-                clientId: config.clientId,
-                clientSecret: secret(config.clientSecret),
-                ua: 'relanox-node/0.1.0',
-                subscriptions: [{ type: 'CALLBACK', topic }]
-              }),
-              signal
-            )
-          )
-
-          const url = new URL(validateTransportUrl(body.endpoint, true, false))
-
-          url.searchParams.set('ticket', body.ticket)
-          return url.toString()
-        },
-        async () => {
-          connection.ready()
-          let alive = true
-          connection.socket?.on('pong', () => {
-            alive = true
+      api = new DingTalkApi(config)
+      connection = new DingTalkStream(config, host, async (frame) => {
+        try {
+          await receive(frame)
+        } catch {
+          // No ACK: let Stream redeliver after transient download/storage failure.
+          host.observe.log('warn', 'channel_input_failed', {
+            errorCode: 'ingest_failed'
           })
-          connection.setHeartbeat(30_000, () => {
-            if (!alive) {
-              connection.socket?.terminate()
-            } else {
-              alive = false
-              connection.socket?.ping()
-            }
-          })
-        },
-        receive,
-        () => {},
-        MAX_RECONNECT_ATTEMPTS
-      )
+        }
+      })
     },
-    start: async (signal) => connection.start(signal),
-    stop: async () => connection.stop(),
+    async start(nextSignal) {
+      nextSignal.throwIfAborted()
+      signal = nextSignal
+      nextSignal.addEventListener(
+        'abort',
+        () => {
+          connection.disconnect()
+        },
+        { once: true }
+      )
+      await connection.connect()
+      host.connection(connection.connected ? 'connected' : 'degraded')
+    },
+    async stop() {
+      connection.disconnect()
+      host.connection('disconnected')
+    },
     async send(input: SendInput): Promise<SendResult> {
       const target = targetSchema.safeParse(input.target.data)
       if (
@@ -385,40 +253,26 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
       ) {
         return { status: 'rejected', errorCode: 'invalid_target' }
       }
+      const invalid = richError(input, host)
+      if (invalid) {
+        return { status: 'rejected', errorCode: invalid }
+      }
       let credential: string
       try {
-        credential = await getAccessToken(input.signal)
+        credential = await api.token(input.signal)
       } catch (error) {
-        if (error instanceof RemoteError && error.result.status !== 'unknown') {
-          return error.result
+        const failure = sendFailure(error)
+        if (failure.status !== 'unknown') {
+          return failure
         }
         return { status: 'retryable', errorCode: 'token_unavailable' }
       }
       let transmitting = false
       try {
-        const payload = await mediaMessage(input, config, credential, host)
+        const payload = await mediaMessage(input, credential)
         transmitting = true
 
-        const body = sendResponse.parse(
-          await httpJson(
-            api(
-              data.type === 'group'
-                ? '/v1.0/robot/groupMessages/send'
-                : '/v1.0/robot/oToMessages/batchSend'
-            ),
-            jsonPostRequest(
-              {
-                robotCode: config.robotCode,
-                ...(data.type === 'group'
-                  ? { openConversationId: data.openConversationId }
-                  : { userIds: [data.staffId] }),
-                ...payload
-              },
-              { 'x-acs-dingtalk-access-token': credential }
-            ),
-            input.signal
-          )
-        )
+        const body = await api.send(data, payload, credential, input.signal)
 
         if (body.invalidStaffIdList?.length) {
           return { status: 'rejected', errorCode: 'invalid_staff_id' }
@@ -430,22 +284,14 @@ export function createDingTalkChannel(): ChannelPlugin<DingTalkConfig> {
             retryAfterMs: 1000
           }
         }
+        if (!body.processQueryKey) {
+          return { status: 'unknown', errorCode: 'missing_message_receipt' }
+        }
         return {
           status: 'sent',
           receipt: { data: { processQueryKey: body.processQueryKey } }
         }
       } catch (error) {
-        if (
-          error instanceof RemoteError &&
-          error.result.errorCode === 'http_401'
-        ) {
-          token = undefined
-          return {
-            status: 'retryable',
-            errorCode: 'token_expired',
-            retryAfterMs: 1000
-          }
-        }
         return transmitting ? sendFailure(error) : uploadFailure(error)
       }
     }

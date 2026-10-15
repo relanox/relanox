@@ -1,16 +1,6 @@
 import { z } from 'zod'
 import { contentSchema } from './media.js'
 
-export const streamSchema = z.object({
-  type: z.enum(['SYSTEM', 'CALLBACK', 'EVENT']),
-  headers: z.object({
-    topic: z.string(),
-    messageId: z.string().optional(),
-    contentType: z.string().optional()
-  }),
-  data: z.string()
-})
-
 export const messageSchema = z.object({
   msgId: z.string().min(1),
   conversationType: z.enum(['1', '2']),
@@ -23,11 +13,6 @@ export const messageSchema = z.object({
   msgtype: z.string(),
   content: contentSchema.optional(),
   text: z.object({ content: z.string().min(1) }).optional()
-})
-
-export const tokenSchema = z.object({
-  accessToken: z.string().min(1),
-  expireIn: z.number().int().positive()
 })
 
 export const scopeSchema = z
@@ -55,14 +40,3 @@ export const targetSchema = z.discriminatedUnion('type', [
     })
     .strict()
 ])
-
-export const sendResponse = z.object({
-  processQueryKey: z.string().min(1),
-  invalidStaffIdList: z.array(z.string()).optional(),
-  flowControlledStaffIdList: z.array(z.string()).optional()
-})
-
-export const streamOpenResponseSchema = z.object({
-  endpoint: z.url(),
-  ticket: z.string().min(1)
-})
