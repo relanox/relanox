@@ -1373,6 +1373,9 @@ it('downloads pure Google Chat media with bot auth and returns a native image ca
 // Cards for images outside the former local MIME/2 MB gates; those gates could
 // Reject before Google sees a valid URL. The existing small PNG case misses it.
 // The real SDK, HTTP peer and SQLite publication need no production test seam.
+// Core's rich-message/media/media-publisher tests own chunk bounds, integrity
+// And publication scope. Here a long image label protects the serialized native
+// Card budget: dropping that guard would send a payload larger than 24KB.
 it.each([
   { mimeType: 'image/webp', fileName: 'photo.webp', size: 5 },
   { mimeType: 'image/png', fileName: 'photo.png', size: 2_000_001 }
@@ -1485,18 +1488,14 @@ it.each([
       new Uint8Array(size).fill(7)
     )
     const count = local.remote.traffic.length
-    expect(await local.plugin.send({ ...input, richMedia: [] })).toMatchObject({
-      status: 'rejected',
-      errorCode: 'invalid_rich_media'
-    })
     expect(
       await local.plugin.send({
         ...input,
         chunk: {
           ...input.chunk,
           richText: [
-            { type: 'text', text: 'a'.repeat(2001) },
-            { type: 'image', media: reference, label: 'photo' }
+            { type: 'text', text: 'before' },
+            { type: 'image', media: reference, label: 'a'.repeat(24_001) }
           ]
         }
       })

@@ -114,24 +114,14 @@ export async function mediaCards(
           }
         })
       } else {
-        const url = new URL(
-          await host.media.publish({
-            channelId: input.channelId,
-            mediaId: part.media.id
-          })
-        )
+        const url = await host.media.publish({
+          channelId: input.channelId,
+          mediaId: part.media.id
+        })
 
-        if (
-          url.protocol !== 'https:' ||
-          url.username ||
-          url.password ||
-          url.hash
-        ) {
-          throw new Error('invalid_publication_url')
-        }
         widgets.push({
           image: {
-            imageUrl: url.href,
+            imageUrl: url,
             altText: part.label || part.media.fileName
           }
         })

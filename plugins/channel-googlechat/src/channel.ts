@@ -1,4 +1,4 @@
-import { richError, richCapabilities } from './rich.js'
+import { richCapabilities } from './rich.js'
 import { apiBase } from './constants.js'
 import type {
   AccountConfig,
@@ -101,10 +101,6 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
     }
     if (input.reply && !target.quotedMessageMetadata) {
       return { status: 'rejected', errorCode: 'reply_context_unavailable' }
-    }
-    const errorCode = richError(input)
-    if (errorCode) {
-      return { status: 'rejected', errorCode }
     }
     let cardsV2: Awaited<ReturnType<typeof mediaCards>>
     try {
@@ -262,11 +258,9 @@ export function createGoogleChatChannel(): ChannelPlugin<GoogleChatConfig> {
 function preparationFailure(error: unknown): SendResult {
   if (
     error instanceof Error &&
-    [
-      'media_publication_unavailable',
-      'invalid_publication_url',
-      'rich_text_limit_exceeded'
-    ].includes(error.message)
+    ['media_publication_unavailable', 'rich_text_limit_exceeded'].includes(
+      error.message
+    )
   ) {
     return { status: 'rejected', errorCode: error.message }
   }
