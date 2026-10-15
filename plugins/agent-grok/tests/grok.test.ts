@@ -108,8 +108,8 @@ describe('grok configured Routine and scoped MCP', () => {
         }
       ],
       mediaLimits: {
-        maxBytes: 26_214_400,
-        maxTotalBytes: 52_428_800,
+        maxBytes: 104_857_600,
+        maxTotalBytes: 104_857_600,
         maxAttachments: 10
       }
     })

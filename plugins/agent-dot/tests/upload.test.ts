@@ -303,7 +303,7 @@ describe.each(['dot', 'grok'] as const)('%s signed file uploads', (agent) => {
     { mimeType: 'image/png; charset=utf-8' },
     { kind: 'audio', mimeType: 'image/png' },
     { size: 0 },
-    { size: 26 * 1024 * 1024 },
+    { size: 104_857_601 },
     { durationMs: -1 }
   ])('does not issue unusable upload instructions for %j', async (metadata) => {
     const fx = await setup(agent)

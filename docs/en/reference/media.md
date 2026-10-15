@@ -92,13 +92,13 @@ Large images and files in Teams personal chats use the platform's file consent f
 
 ## Adjust attachment sizes
 
-The defaults allow 25 MiB per attachment, 50 MiB in one message and up to 10 attachments. Add `mediaLimits` at the top level of your configuration to adjust these values:
+The defaults allow 100 MiB (104,857,600 bytes) per attachment and in one message, with up to 10 attachments. Add `mediaLimits` at the top level of your configuration to adjust these values:
 
 ```json
 {
   "mediaLimits": {
-    "maxMediaBytes": 26214400,
-    "maxTotalMediaBytes": 52428800,
+    "maxMediaBytes": 104857600,
+    "maxTotalMediaBytes": 104857600,
     "maxAttachments": 10
   }
 }

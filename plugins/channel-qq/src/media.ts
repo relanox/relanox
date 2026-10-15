@@ -72,7 +72,7 @@ export async function downloadAttachments(
       }
 
       const downloaded = await downloadMedia(url, {
-        maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
+        maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
         signal,
         trustedOrigins: [],
         allowInsecureLocalhost: false

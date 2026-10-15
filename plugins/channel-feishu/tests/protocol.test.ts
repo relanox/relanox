@@ -1337,7 +1337,16 @@ it.each([
     )
 
     cleanup.push(remote.close)
-    const { core, storage } = await storedChannel(cleanup, environment, account)
+
+    // Keep the configured-limit refusal contract independent of the default size.
+    const { core, storage } = await storedChannel(
+      cleanup,
+      environment,
+      account,
+      {
+        maxMediaBytes: 25 * 1024 * 1024
+      }
+    )
 
     const oversized = await core.fetch(
       request({

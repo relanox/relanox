@@ -1,18 +1,24 @@
 import { z } from 'zod'
 
 export const messageSchema = z.object({
-  id: z.string().min(1),
-  author: z.object({
-    user_openid: z.string().min(1).optional(),
-    member_openid: z.string().min(1).optional(),
-    bot: z.boolean().optional()
+  rawEventType: z.string().min(1),
+  messageId: z.string().min(1),
+  senderId: z.string().min(1),
+  senderIsBot: z.boolean().optional(),
+  replyTarget: z.object({
+    scope: z.enum(['c2c', 'group']),
+    targetId: z.string().min(1),
+    msgId: z.string().min(1)
   }),
   content: z.string().default(''),
   timestamp: z.iso.datetime({ offset: true }),
-  group_openid: z.string().min(1).optional(),
-  message_type: z.number().int().optional(),
-  msg_seq: z.number().int().optional(),
-  message_scene: z.object({ ext: z.array(z.string()).optional() }).optional(),
+  msgType: z.number().int().optional(),
+  msgIdx: z.string().min(1).optional(),
+  // The SDK does not map the native sequence or the C2C bot flag.
+  raw: z.object({
+    author: z.object({ bot: z.boolean().optional() }),
+    msg_seq: z.number().int().optional()
+  }),
   attachments: z
     .array(
       z.object({

@@ -493,6 +493,35 @@ function outbound(bytes: Buffer, group = false): SendInput {
   }
 }
 
+// SDK 1.0.5 api-client.ts raises ApiError for HTTP 413; media-chunked.ts forwards it.
+// Protect terminal upload rejection after delegating sizes, rather than retrying a known refusal.
+// Existing transient upload tests do not exercise 413; use the real SDK/HTTP boundary, no new seam.
+test('QQ preserves an SDK upload size rejection without retrying or sending', async () => {
+  vi.stubEnv('QQ_MEDIA_SECRET', 'secret')
+
+  const remote = await peer((request) =>
+    request.path === '/app/getAppAccessToken'
+      ? { body: { access_token: 'token', expires_in: 7200 } }
+      : { status: 413, body: {} }
+  )
+
+  const plugin = createQqChannel()
+  await assemble(
+    plugin,
+    { appId: 'app', clientSecret: { env: 'QQ_MEDIA_SECRET' } },
+    [{ chatId: 'user', senderId: 'user' }]
+  )
+  expect(await plugin.send(outbound(Buffer.alloc(5 * 1024 * 1024)))).toEqual({
+    status: 'rejected',
+    errorCode: 'http_413'
+  })
+  expect(
+    remote.requests
+      .filter((request) => request.path !== '/app/getAppAccessToken')
+      .map((request) => request.path)
+  ).toEqual(['/v2/users/user/upload_prepare'])
+})
+
 test('QQ uploads beyond direct JSON size limits and hashes exactly the first 10002432 bytes', async () => {
   const bytes = Buffer.alloc(10_002_433, 7)
   const { remote, plugin, base, blockSize } = await fixture(false, bytes)

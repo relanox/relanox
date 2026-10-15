@@ -48,6 +48,137 @@ const createEvent = (
 const frame = (s: number, t: string, d: unknown): string =>
   JSON.stringify({ op: 0, s, t, d })
 
+// SDK 1.0.5 event-dispatcher.ts normalizes msg_idx; concurrency-guard.ts queues by reply target.
+// Protect same-chat ordering beyond the SDK default capacity, independent-chat progress and
+// Indexed deduplication through real SDK traffic/SQLite. Existing fast-message tests miss the queue.
+test('QQ queues slow indexed parts without blocking other chats or dropping bursts', async () => {
+  vi.stubEnv('QQ_SECRET', 'secret')
+  const release = Promise.withResolvers<void>()
+  let address = ''
+
+  const remote = await peer(
+    async (request) => {
+      if (request.path === '/app/getAppAccessToken') {
+        return { body: { access_token: 'token', expires_in: 7200 } }
+      }
+      if (request.path.startsWith('/attachment/')) {
+        if (request.path === '/attachment/0') {
+          await release.promise
+        }
+        return {
+          body: Buffer.from('native-file'),
+          headers: { 'content-type': 'application/octet-stream' }
+        }
+      }
+      return { body: { url: address } }
+    },
+    (socket) => {
+      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }))
+      socket.on('message', (data) => {
+        const received = z
+          .object({ op: z.number() })
+          .parse(JSON.parse(wireText(data)))
+
+        if (received.op === 2) {
+          socket.send(frame(1, 'READY', { session_id: 'session' }))
+        }
+        if (received.op === 1) {
+          socket.send(JSON.stringify({ op: 11 }))
+        }
+      })
+    }
+  )
+
+  address = remote.ws
+
+  const host = await assemble(
+    createQqChannel(),
+    { appId: 'app', clientSecret: { env: 'QQ_SECRET' } },
+    [
+      { chatId: 'user', senderId: 'user' },
+      { chatId: 'group', senderId: 'member' }
+    ]
+  )
+
+  await host.start()
+  await expect.poll(() => remote.sockets.length).toBe(1)
+  const socket = remote.sockets[0]
+  if (!socket) {
+    throw new Error('Peer not connected')
+  }
+  try {
+    for (let index = 0; index < 6; index++) {
+      socket.send(
+        frame(
+          index + 2,
+          'C2C_MESSAGE_CREATE',
+          createEvent('parts', false, {
+            message_scene: { ext: [`msg_idx=part-${index}`] },
+            attachments: [
+              {
+                url: `${remote.http}/attachment/${index}`,
+                filename: 'part.bin',
+                content_type: 'application/octet-stream'
+              }
+            ]
+          })
+        )
+      )
+    }
+    socket.send(
+      frame(
+        8,
+        'C2C_MESSAGE_CREATE',
+        createEvent('parts', false, {
+          message_scene: { ext: ['msg_idx=  ', 'msg_idx= part-1 '] }
+        })
+      )
+    )
+    socket.send(
+      frame(9, 'GROUP_AT_MESSAGE_CREATE', createEvent('independent', true))
+    )
+    socket.send(frame(10, 'C2C_MESSAGE_CREATE', createEvent('after-parts')))
+    await expect
+      .poll(async () =>
+        (await records(host.storage)).map(
+          (record) => record.snapshot.target.replyToId
+        )
+      )
+      .toEqual(['independent'])
+    await expect
+      .poll(() =>
+        remote.requests
+          .filter((request) => request.path.startsWith('/attachment/'))
+          .map((request) => request.path)
+      )
+      .toEqual(['/attachment/0'])
+    release.resolve()
+    await expect
+      .poll(async () =>
+        (await records(host.storage)).some(
+          (record) => record.snapshot.target.replyToId === 'after-parts'
+        )
+      )
+      .toBe(true)
+    expect(await records(host.storage)).toHaveLength(8)
+    expect(
+      remote.requests
+        .filter((request) => request.path.startsWith('/attachment/'))
+        .map((request) => request.path)
+    ).toEqual([
+      '/attachment/0',
+      '/attachment/1',
+      '/attachment/2',
+      '/attachment/3',
+      '/attachment/4',
+      '/attachment/5'
+    ])
+  } finally {
+    release.resolve()
+    host.controller.abort()
+  }
+})
+
 test('QQ authenticates latest token protocol, receives C2C/group text and resumes received cursor before RESUMED', async () => {
   vi.stubEnv('QQ_SECRET', 'secret')
   let address = ''

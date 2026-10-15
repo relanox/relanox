@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { sendMessage, dispatched, fixture, ingest } from './fixture.js'
 import type { Cleanup } from './fixture.js'
 import type { Traffic } from './peer.js'
+import { validateApp } from '../../apps/cli/src/runtime.js'
 
 const cleanups: Cleanup[] = []
 const stringValue: unknown = expect.any(String)
@@ -20,6 +21,71 @@ function firstTraffic(traffic: readonly Traffic[]): Traffic {
   }
   return first
 }
+
+// Protect default upload admission through CLI parsing, MCP status and real storage.
+// Small-file tests cannot catch either default reverting to 25/50 MiB; no new seam is needed.
+test.each([undefined, {}])(
+  'admits 100 MiB uploads with mediaLimits=%j',
+  async (mediaLimits) => {
+    const fx = await fixture(cleanups)
+
+    const runtime = await fx.start(
+      await validateApp({ ...fx.config, mediaLimits })
+    )
+
+    const client = await fx.client(runtime, 'alpha')
+
+    const status = await client.callTool({
+      name: 'relanox_status',
+      arguments: {}
+    })
+
+    const parsed = z
+      .object({
+        channels: z.array(z.object({ channel: z.object({ id: z.string() }) })),
+        mediaLimits: z.object({
+          maxBytes: z.number(),
+          maxTotalBytes: z.number(),
+          maxAttachments: z.number()
+        })
+      })
+      .parse(status.structuredContent)
+
+    expect(parsed.mediaLimits).toEqual({
+      maxBytes: 104_857_600,
+      maxTotalBytes: 104_857_600,
+      maxAttachments: 10
+    })
+    const channel = parsed.channels[0]?.channel.id
+    if (!channel) {
+      throw new Error('Expected authorized channel')
+    }
+
+    const input = {
+      channel,
+      kind: 'file',
+      mimeType: 'application/octet-stream',
+      fileName: 'large.bin'
+    }
+
+    const accepted = await client.callTool({
+      name: 'relanox_create_upload',
+      arguments: { ...input, size: 104_857_600 }
+    })
+
+    expect(accepted.isError).not.toBe(true)
+    expect(accepted.structuredContent).toMatchObject({
+      uploadUrl: stringValue
+    })
+
+    const rejected = await client.callTool({
+      name: 'relanox_create_upload',
+      arguments: { ...input, size: 104_857_601 }
+    })
+
+    expect(rejected.isError).toBe(true)
+  }
+)
 
 // Protect the network MCP/upload-to-channel contract: unit planner and native renderer tests
 // Cannot catch a tool transport dropping Markdown references or appending their media twice.

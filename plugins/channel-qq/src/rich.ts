@@ -10,7 +10,7 @@ export const richCapabilities = {
   maxParts: 20,
   maxTextLength: 1000,
   imageMimeTypes: ['image/png', 'image/jpeg'],
-  maxImageBytes: 20_971_520
+  maxImageBytes: 20 * 1024 * 1024
 }
 
 export function richError(
@@ -83,7 +83,7 @@ function invalidImage(
     !richCapabilities.imageMimeTypes.includes(part.media.mimeType) ||
     stored.data.byteLength >
       Math.min(
-        host.maxMediaBytes ?? 25 * 1024 * 1024,
+        host.maxMediaBytes ?? 100 * 1024 * 1024,
         richCapabilities.maxImageBytes
       ) ||
     (part.label || part.media.fileName).length > 2000
