@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
+import lockfile from 'proper-lockfile'
 import { resolvePluginConfig } from './plugin-config.js'
 import {
   PluginError,
@@ -41,6 +42,25 @@ export async function installPlugin(
   }
   const source = archive ? resolve(dirname(resolve(configPath)), spec) : spec
   await mkdir(directory, { recursive: true })
+
+  // Npm's manifest/lockfile and the native registry are one installation state.
+  // The lock also coordinates separate CLI processes and recovers stale owners.
+  const release = await lockfile.lock(directory, {
+    retries: { retries: 240, factor: 1, minTimeout: 1000, maxTimeout: 1000 }
+  })
+
+  try {
+    return await installPackage(directory, source, archive)
+  } finally {
+    await release()
+  }
+}
+
+async function installPackage(
+  directory: string,
+  source: string,
+  archive: boolean
+): Promise<{ name: string; version: string; directory: string }> {
   try {
     await readFile(resolve(directory, 'package.json'))
   } catch {
