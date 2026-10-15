@@ -17,7 +17,9 @@ import type {
   ChannelHost,
   ChannelPlugin,
   SendInput,
-  SendResult
+  SendResult,
+  ChannelAddress,
+  ReplyTarget
 } from '@relanox/sdk'
 import { randomUUID } from 'node:crypto'
 import type { z } from 'zod'
@@ -38,6 +40,40 @@ function configuredType(
   chatId: string
 ): 'single' | 'group' | undefined {
   return types && Object.hasOwn(types, chatId) ? types[chatId] : undefined
+}
+
+function learnedSocketTarget(
+  address: ChannelAddress,
+  learned: ReplyTarget | undefined,
+  botId: string
+): { target: ReplyTarget; data: z.infer<typeof targetSchema> } | undefined {
+  const prior = targetSchema.safeParse(learned?.data)
+  if (
+    learned?.channel !== 'wecom' ||
+    learned.accountId !== address.accountId ||
+    learned.chatId !== address.chatId ||
+    learned.threadId !== undefined ||
+    !prior.success ||
+    prior.data.scope.botId !== botId ||
+    prior.data.scope.wsUrl !== new URL(WEBSOCKET_URL).href
+  ) {
+    return undefined
+  }
+  return { target: learned, data: prior.data }
+}
+
+function socketOutcome(response: Frame): SendResult {
+  if (response.errcode === 0) {
+    return { status: 'sent', receipt: {} }
+  }
+  if (response.errcode === -1 || response.errcode === 45_009) {
+    return {
+      status: 'retryable',
+      errorCode: `wecom_${response.errcode}`,
+      retryAfterMs: 1000
+    }
+  }
+  return { status: 'rejected', errorCode: `wecom_${response.errcode}` }
 }
 
 export function createWeComChannel(): ChannelPlugin<WeComConfig> {
@@ -90,9 +126,9 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
   async function request(
     cmd: string,
     body: unknown,
-    signal: AbortSignal
+    signal: AbortSignal,
+    id: string = randomUUID()
   ): Promise<Frame> {
-    const id = randomUUID()
     signal.throwIfAborted()
     return new Promise((resolve, reject) => {
       const fail = (): void => {
@@ -211,6 +247,7 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
         replyToId: message.msgid,
         data: {
           chattype: message.chattype,
+          callbackReqId: frame.headers.req_id,
           scope: { botId: config.botId, wsUrl: new URL(WEBSOCKET_URL).href }
         }
       },
@@ -247,33 +284,30 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
-      const prior = targetSchema.safeParse(learned?.data)
-
-      const known =
-        learned?.channel === 'wecom' &&
-        learned.accountId === account.id &&
-        learned.chatId === address.chatId &&
-        learned.threadId === undefined &&
-        prior.success &&
-        prior.data.scope.botId === config.botId &&
-        prior.data.scope.wsUrl === new URL(WEBSOCKET_URL).href
-          ? prior.data.chattype
-          : undefined
+      const known = learnedSocketTarget(address, learned, config.botId)
 
       const chattype =
-        configuredType(config.recipientTypes, address.chatId) ?? known
+        configuredType(config.recipientTypes, address.chatId) ??
+        known?.data.chattype
 
       if (!chattype) {
         return { status: 'unavailable', reason: 'address_unresolved' }
       }
+      const selected = known?.data.chattype === chattype ? known : undefined
       return {
         status: 'available',
         target: {
           channel: 'wecom',
           accountId: account.id,
           chatId: address.chatId,
+          ...(selected?.target.replyToId
+            ? { replyToId: selected.target.replyToId }
+            : {}),
           data: {
             chattype,
+            ...(selected?.data.callbackReqId
+              ? { callbackReqId: selected.data.callbackReqId }
+              : {}),
             scope: { botId: config.botId, wsUrl: new URL(WEBSOCKET_URL).href }
           }
         }
@@ -359,6 +393,9 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
           retryAfterMs: 1000
         }
       }
+      if (input.reply && !target.data.callbackReqId) {
+        return { status: 'rejected', errorCode: 'reply_context_unavailable' }
+      }
 
       const content = input.chunk.text
 
@@ -375,34 +412,64 @@ function createWebsocketChannel(): ChannelPlugin<WebsocketConfig> {
           ? await uploadResource(input.media, request, input.signal)
           : undefined
 
-        transmitting = true
-
-        const response = await request(
-          'aibot_send_msg',
-          {
-            chatid: input.target.chatId,
-            chat_type: target.data.chattype === 'single' ? 1 : 2,
-            ...outgoingBody(input.media, mediaId, content)
-          },
-          input.signal
-        )
-
-        if (response.errcode === 0) {
-          return { status: 'sent', receipt: {} }
-        }
-        if (response.errcode === -1 || response.errcode === 45_009) {
+        const outgoing = socketMessage(input, target.data, mediaId)
+        if (outgoing.id && pending.has(outgoing.id)) {
           return {
             status: 'retryable',
-            errorCode: `wecom_${response.errcode}`,
+            errorCode: 'reply_in_flight',
             retryAfterMs: 1000
           }
         }
-        return { status: 'rejected', errorCode: `wecom_${response.errcode}` }
+        transmitting = true
+
+        const response = await request(
+          outgoing.cmd,
+          outgoing.body,
+          input.signal,
+          outgoing.id
+        )
+
+        return socketOutcome(response)
       } catch (error) {
         return transmitting
           ? { status: 'unknown', errorCode: 'transport_uncertain' }
           : uploadFailure(error)
       }
+    }
+  }
+}
+
+function socketMessage(
+  input: SendInput,
+  target: z.infer<typeof targetSchema>,
+  mediaId: string | undefined
+): { cmd: string; body: object; id: string | undefined } {
+  const id = input.reply ? target.callbackReqId : undefined
+  return id
+    ? { cmd: 'aibot_respond_msg', body: replyBody(input, mediaId), id }
+    : {
+        cmd: 'aibot_send_msg',
+        body: {
+          chatid: input.target.chatId,
+          chat_type: target.chattype === 'single' ? 1 : 2,
+          ...outgoingBody(input.media, mediaId, input.chunk.text)
+        },
+        id
+      }
+}
+
+function replyBody(input: SendInput, mediaId: string | undefined): object {
+  if (input.media) {
+    return outgoingBody(input.media, mediaId, input.chunk.text)
+  }
+  // A completed native reply uses the stream envelope without incremental updates.
+  // https://github.com/WecomTeam/aibot-node-sdk/blob/80615b987ef69c6028ad764924609247c0725955/src/client.ts#L178
+  return {
+    msgtype: 'stream',
+    stream: {
+      id: input.chunk.idempotencyKey,
+      finish: true,
+      content: input.chunk.text
     }
   }
 }

@@ -56,6 +56,8 @@ Both modes require a public HTTPS address for dot or Grok MCP access.
 
 Send “Hello” directly to the robot. In a bound group, mention the robot with your question. Check that your enterprise member userid is allowed.
 
+When the Agent supplies `reply.requestId`, WebSocket mode uses the selected message's original callback request ID for a native response; without `reply`, it sends an independent message. Text responses use one completed native stream envelope, without incremental streaming. This native response context does not guarantee a client quote bubble. HTTP mode completes the selected callback within its reply window and permits one final reply; it has no independent send endpoint, even when `reply` is omitted.
+
 ## Images and files
 
 WebSocket mode accepts images, videos, files or mixed text/image messages. Voice input supplies its recognized text to the agent. Media downloads expire after five minutes, so keep Relanox online when sending them. Replies can include PNG/JPEG/GIF images and MP4 video up to 10 MB, AMR audio up to 2 MB, and files up to 20 MB, subject to the relay limit.

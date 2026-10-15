@@ -326,6 +326,7 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
           channel: 'wecom',
           accountId: account.id,
           chatId: address.chatId,
+          ...(learned?.replyToId ? { replyToId: learned.replyToId } : {}),
           data: prior
         }
       }
