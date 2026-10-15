@@ -4,7 +4,13 @@ import { createCipheriv } from 'node:crypto'
 import { z } from 'zod'
 import { createWeComChannel } from '../src/index.js'
 import { wireText } from '../src/transport.js'
-import { assemble, peer, records, temporaryDatabase } from './test-support.js'
+import {
+  assemble,
+  peer,
+  records,
+  temporaryDatabase,
+  sendInput
+} from './test-support.js'
 import {
   callbackConfig,
   callbackKey,
@@ -13,6 +19,121 @@ import {
 } from './callback-peer.js'
 
 installPeerNetwork()
+
+async function sdkUploadPeer(
+  chunkCode: number,
+  delayMs = 0
+): ReturnType<typeof peer> {
+  return peer(
+    () => ({ status: 404 }),
+    (socket) => {
+      socket.on('message', (raw) => {
+        const frame = z
+          .object({
+            cmd: z.string(),
+            headers: z.object({ req_id: z.string() })
+          })
+          .parse(JSON.parse(wireText(raw)))
+
+        let body: { upload_id: string } | { media_id: string } | undefined
+        if (frame.cmd === 'aibot_upload_media_init') {
+          body = { upload_id: 'sdk-upload' }
+        } else if (frame.cmd === 'aibot_upload_media_finish') {
+          body = { media_id: 'sdk-media' }
+        }
+
+        const reply = {
+          headers: frame.headers,
+          errcode: frame.cmd === 'aibot_upload_media_chunk' ? chunkCode : 0,
+          body
+        }
+
+        if (frame.cmd === 'aibot_upload_media_chunk' && delayMs > 0) {
+          setTimeout(() => {
+            if (socket.readyState === 1) {
+              socket.send(JSON.stringify(reply))
+            }
+          }, delayMs)
+        } else {
+          socket.send(JSON.stringify(reply))
+        }
+      })
+    }
+  )
+}
+
+async function sdkMediaInput(
+  plugin: ReturnType<typeof createWeComChannel>,
+  bytes: Buffer
+): Promise<Parameters<typeof plugin.send>[0]> {
+  vi.stubEnv('WECOM_MEDIA_SECRET', 'secret')
+
+  const host = await assemble(
+    plugin,
+    { botId: 'robot', secret: { env: 'WECOM_MEDIA_SECRET' } },
+    [{ chatId: 'user', senderId: 'user' }]
+  )
+
+  await host.start()
+
+  const input = sendInput('wecom', 'user', {
+    chattype: 'single',
+    scope: { botId: 'robot', wsUrl: 'wss://openws.work.weixin.qq.com/' }
+  })
+
+  const reference = {
+    id: 'sdk-media',
+    kind: 'file' as const,
+    mimeType: 'application/octet-stream',
+    fileName: 'payload.bin',
+    size: bytes.byteLength,
+    sha256: '1'.repeat(64)
+  }
+
+  return {
+    ...input,
+    chunk: { ...input.chunk, text: '', media: reference },
+    media: { reference, data: bytes }
+  }
+}
+
+test('WeCom preserves a permanent SDK upload chunk rejection through its error causes', async () => {
+  // SDK 1.0.7 uploadMedia wraps chunk failures twice for multipart uploads.
+  // Native nonzero ACK: https://github.com/WecomTeam/aibot-node-sdk/blob/main/src/ws.ts
+  const remote = await sdkUploadPeer(40_001)
+  const plugin = createWeComChannel()
+  const input = await sdkMediaInput(plugin, Buffer.alloc(1_048_579, 3))
+  expect(await plugin.send(input)).toEqual({
+    status: 'rejected',
+    errorCode: 'wecom_40001'
+  })
+  expect(
+    remote.frames.some(
+      (frame) =>
+        z.object({ cmd: z.literal('aibot_send_msg') }).safeParse(frame).success
+    )
+  ).toBe(false)
+})
+
+test(
+  'WeCom accepts a delayed upload ACK without resending an accepted chunk',
+  { timeout: 12_000 },
+  async () => {
+    // Verified upstream SDK 1.0.7 regression: https://github.com/WecomTeam/aibot-node-sdk/issues/27
+    const remote = await sdkUploadPeer(0, 6000)
+    const plugin = createWeComChannel()
+    const input = await sdkMediaInput(plugin, Buffer.from('upload payload'))
+    expect(await plugin.send(input)).toEqual({ status: 'sent', receipt: {} })
+    expect(
+      remote.frames.filter(
+        (frame) =>
+          z
+            .object({ cmd: z.literal('aibot_upload_media_chunk') })
+            .safeParse(frame).success
+      )
+    ).toHaveLength(1)
+  }
+)
 
 // Native response metadata: WecomTeam/aibot-node-sdk at
 // 80615b987ef69c6028ad764924609247c0725955, src/api.ts downloadFileRaw;
@@ -160,7 +281,8 @@ test.each(['websocket', 'webhook'] as const)(
           body: failed
         })
       )
-      await expect.poll(() => remote.sockets[0]?.readyState).toBe(3)
+      await expect.poll(() => remote.requests.length).toBe(2)
+      expect(remote.sockets[0]?.readyState).toBe(1)
     }
     expect(remote.requests).toHaveLength(2)
     host.controller.abort()
@@ -290,7 +412,8 @@ test.each([false, true])(
       type: 'file',
       filename: 'large.bin',
       total_size: 1_048_579,
-      total_chunks: 3
+      total_chunks: 3,
+      md5: 'b65d6657ec0e2824971ea8540b9566df'
     })
 
     const chunks = frames.slice(2, 5).map((frame) =>
@@ -319,7 +442,7 @@ test.each([false, true])(
     ).toEqual(bytes)
     expect(frames[5]?.body).toEqual({ upload_id: 'large-upload' })
     expect(frames[6]?.body).toEqual({
-      ...(explicit ? {} : { chatid: 'user', chat_type: 1 }),
+      ...(explicit ? {} : { chatid: 'user' }),
       msgtype: 'file',
       file: { media_id: 'large-file' }
     })
@@ -410,7 +533,7 @@ test.each([
     expect(commands).not.toContain('aibot_send_msg')
     expect((await host.storage.listOutbound({ limit: 10 }))[0]).toMatchObject({
       status: 'pending',
-      errorCode: 'media_upload_unavailable'
+      errorCode: 'wecom_-1'
     })
   }
 )
@@ -544,7 +667,6 @@ test('WeCom decrypts pure-media input into SQLite and uploads original bytes aft
       cmd: 'aibot_send_msg',
       body: {
         chatid: 'user',
-        chat_type: 1,
         msgtype: 'image',
         image: { media_id: 'media-1' }
       }
@@ -555,7 +677,6 @@ test('WeCom decrypts pure-media input into SQLite and uploads original bytes aft
       cmd: 'aibot_send_msg',
       body: {
         chatid: 'user',
-        chat_type: 1,
         msgtype: 'markdown',
         markdown: { content: 'caption' }
       }

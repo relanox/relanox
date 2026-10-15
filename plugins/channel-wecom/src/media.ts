@@ -1,4 +1,5 @@
-import { createDecipheriv } from 'node:crypto'
+import { decryptFile } from '@wecom/aibot-node-sdk'
+import type { WSClient, SendMsgBody } from '@wecom/aibot-node-sdk'
 import { downloadMedia, MediaDownloadError } from '@relanox/channel-media'
 import type {
   ChannelHost,
@@ -37,7 +38,7 @@ export async function receiveResource(
   signal: AbortSignal,
   fallbackKey?: string
 ): Promise<MediaUpload> {
-  const maximum = host.maxMediaBytes ?? 25 * 1024 * 1024
+  const maximum = host.maxMediaBytes ?? 100 * 1024 * 1024
 
   const downloaded = await downloadMedia(resource.url, {
     maxBytes: maximum + 32,
@@ -46,27 +47,11 @@ export async function receiveResource(
     allowInsecureLocalhost: false
   })
 
-  const key = Buffer.from(resource.aeskey ?? fallbackKey ?? '', 'base64')
-  if (key.byteLength !== 32) {
-    throw new Error('invalid_media_key')
-  }
-  const decipher = createDecipheriv('aes-256-cbc', key, key.subarray(0, 16))
-  decipher.setAutoPadding(false)
+  const data = decryptFile(
+    Buffer.from(downloaded.data),
+    resource.aeskey ?? fallbackKey ?? ''
+  )
 
-  const padded = Buffer.concat([
-    decipher.update(downloaded.data),
-    decipher.final()
-  ])
-
-  const padding = padded.at(-1) ?? 0
-  if (
-    padding < 1 ||
-    padding > 32 ||
-    !padded.subarray(-padding).every((byte) => byte === padding)
-  ) {
-    throw new Error('invalid_media_padding')
-  }
-  const data = padded.subarray(0, -padding)
   if (data.byteLength > maximum) {
     throw new MediaDownloadError('media_too_large')
   }
@@ -81,86 +66,29 @@ export async function receiveResource(
   }
 }
 
-type UploadRequest = (
-  cmd: string,
-  body: unknown,
-  signal: AbortSignal
-) => Promise<{ errcode?: number | undefined; body?: unknown }>
-
 export async function uploadResource(
   media: StoredMedia,
-  request: UploadRequest,
-  signal: AbortSignal
+  client: WSClient
 ): Promise<string> {
-  const { kind, mimeType, fileName } = media.reference
-  const maximum = { audio: 2, file: 20, image: 10, video: 10 }[kind]
+  try {
+    const result = await client.uploadMedia(Buffer.from(media.data), {
+      type: media.reference.kind === 'audio' ? 'voice' : media.reference.kind,
+      filename: media.reference.fileName
+    })
 
-  const formats: Record<string, readonly string[]> = {
-    image: ['image/png', 'image/jpeg', 'image/gif'],
-    audio: ['audio/amr'],
-    video: ['video/mp4']
-  }
-
-  if (
-    media.data.byteLength < 5 ||
-    media.data.byteLength > maximum * 1024 * 1024 ||
-    Buffer.byteLength(fileName) > 256
-  ) {
-    throw new Error('unsupported_media_size')
-  }
-  if (kind !== 'file' && !formats[kind]?.includes(mimeType)) {
-    throw new Error('unsupported_media_format')
-  }
-  const chunkSize = 512 * 1024
-  const type = kind === 'audio' ? 'voice' : kind
-
-  const init = await request(
-    'aibot_upload_media_init',
-    {
-      type,
-      filename: fileName,
-      total_size: media.data.byteLength,
-      total_chunks: Math.ceil(media.data.byteLength / chunkSize)
-    },
-    signal
-  )
-
-  if (init.errcode !== 0) {
-    throw new Error('media_upload_failed')
-  }
-
-  const uploadId = z
-    .object({ upload_id: z.string().min(1) })
-    .parse(init.body).upload_id
-
-  for (let offset = 0; offset < media.data.byteLength; offset += chunkSize) {
-    const response = await request(
-      'aibot_upload_media_chunk',
-      {
-        upload_id: uploadId,
-        chunk_index: offset / chunkSize,
-        base64_data: Buffer.from(
-          media.data.subarray(offset, offset + chunkSize)
-        ).toString('base64')
-      },
-      signal
-    )
-
-    if (response.errcode !== 0) {
-      throw new Error('media_upload_failed')
+    return result.media_id
+  } catch (error) {
+    // SDK 1.0.7 rejects more than 100 native 512 KiB chunks without a typed code.
+    // Classify that SDK refusal after the call, rather than duplicating upload policy.
+    if (Math.ceil(media.data.byteLength / (512 * 1024)) > 100) {
+      throw new UploadProtocolError()
     }
+    throw error
   }
+}
 
-  const finish = await request(
-    'aibot_upload_media_finish',
-    { upload_id: uploadId },
-    signal
-  )
-
-  if (finish.errcode !== 0) {
-    throw new Error('media_upload_failed')
-  }
-  return z.object({ media_id: z.string().min(1) }).parse(finish.body).media_id
+class UploadProtocolError extends Error {
+  override readonly name = 'UploadProtocolError'
 }
 
 export async function receiveParts(
@@ -219,13 +147,7 @@ export function outgoingBody(
   media: StoredMedia | undefined,
   mediaId: string | undefined,
   content: string
-):
-  | { msgtype: string; markdown: { content: string } }
-  | {
-      [x: string]: string | { description?: string; media_id: string }
-      msgtype: string
-      markdown?: never
-    } {
+): SendMsgBody {
   if (!media || !mediaId) {
     return { msgtype: 'markdown', markdown: { content } }
   }
@@ -239,19 +161,27 @@ export function outgoingBody(
   }
 }
 
-export function uploadFailure(error: unknown): SendResult {
-  const invalid = new Set([
-    'unsupported_media_size',
-    'unsupported_media_format',
-    'missing_media'
-  ])
+export function nativeFailure(error: unknown): SendResult | undefined {
+  const parsed = z.object({ errcode: z.number().int() }).safeParse(error)
+  if (parsed.success) {
+    const code = parsed.data.errcode
+    return code === -1 || code === 45_009
+      ? { status: 'retryable', errorCode: `wecom_${code}`, retryAfterMs: 1000 }
+      : { status: 'rejected', errorCode: `wecom_${code}` }
+  }
+  const cause = error instanceof Error ? error.cause : undefined
+  return cause === undefined ? undefined : nativeFailure(cause)
+}
 
-  if (error instanceof Error && invalid.has(error.message)) {
-    return { status: 'rejected', errorCode: error.message }
+export function uploadFailure(error: unknown): SendResult {
+  if (error instanceof UploadProtocolError) {
+    return { status: 'rejected', errorCode: 'media_protocol_limit' }
   }
-  return {
-    status: 'retryable',
-    errorCode: 'media_upload_unavailable',
-    retryAfterMs: 1000
-  }
+  return (
+    nativeFailure(error) ?? {
+      status: 'retryable',
+      errorCode: 'media_upload_unavailable',
+      retryAfterMs: 1000
+    }
+  )
 }
