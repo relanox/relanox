@@ -29,6 +29,8 @@ Grok needs both the Routine settings and the MCP connection. Protect the Routine
 
 Ask dot to check its Relanox connection. It can list the available chats and check whether it is subscribed to incoming messages. If you change the authorization password, restart Relanox and reconnect dot. If dot stops receiving new messages, check the plugin connection and Relanox message status.
 
+After upgrading from a version that saved dot subscriptions without endpoint ownership, ask dot to refresh or recreate its `relanox.message_available` subscription. Until then, Relanox reports no active subscription and retries pending notifications. Changing an endpoint's configuration also requires a new subscription; rotating the password value under the same environment variable name does not.
+
 ## Check the connection
 
 You do not need to copy a separate reply prompt into the Bot or Routine.

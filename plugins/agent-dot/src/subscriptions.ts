@@ -5,6 +5,7 @@ import { Webhook } from 'standardwebhooks'
 import { z } from 'zod'
 import { CallbackError, callbackUrl, postCallback } from './callback.js'
 import { equalSecret } from '@relanox/agent-mcp'
+import { configSchema } from './config.js'
 import { name, subscriptionSchema } from './protocol.js'
 import type {
   Subscription,
@@ -20,6 +21,18 @@ const canonical = (value: unknown): string =>
         )
       : v
   )
+
+/** Stable endpoint ownership; resolving an environment variable does not change it. */
+export function endpointFingerprint(endpoint: EndpointConfig): string {
+  return createHash('sha256')
+    .update(
+      canonical({
+        agent: endpoint.agent,
+        config: configSchema.parse(endpoint.config)
+      })
+    )
+    .digest('hex')
+}
 
 function identity(owner: string, url: string, eventArgs: unknown): string {
   return `sub_${createHash('sha256')
@@ -172,7 +185,13 @@ export function createSubscriptions(
     const id = identity(owner, url, input.arguments)
     const key = `subscriptions/${owner}/${id}`
     const existing = await state.get(key)
-    const old = existing ? subscriptionSchema.parse(existing.value) : undefined
+
+    const previous = existing
+      ? subscriptionSchema.parse(existing.value)
+      : undefined
+
+    const ownerConfig = endpointFingerprint(endpoint)
+    const old = previous?.ownerConfig === ownerConfig ? previous : undefined
     const now = Date.now()
 
     const expiresAt = now + Math.min(input.ttlMs ?? 86_400_000, 86_400_000)
@@ -184,6 +203,7 @@ export function createSubscriptions(
       id,
       owner,
       endpointId: endpoint.id,
+      ownerConfig,
       name,
       arguments: input.arguments,
       url,
@@ -233,6 +253,13 @@ export function createSubscriptions(
     const url = new URL(input.delivery.url).href
     const key = `subscriptions/${endpoint.id}/${identity(endpoint.id, url, input.arguments)}`
     const entry = await state.get(key)
+    if (
+      entry &&
+      subscriptionSchema.parse(entry.value).ownerConfig !==
+        endpointFingerprint(endpoint)
+    ) {
+      return {}
+    }
     if (
       entry &&
       (await state.delete(key, entry.version)).status !== 'updated'

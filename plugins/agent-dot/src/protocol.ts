@@ -45,6 +45,8 @@ export const subscriptionSchema = z.strictObject({
   id: z.string(),
   owner: z.string(),
   endpointId: z.string(),
+  // Optional only to read pre-ownership subscriptions; they are inactive until refreshed.
+  ownerConfig: z.string().optional(),
   name: z.literal(name),
   arguments: args,
   url: z.url(),
