@@ -412,3 +412,138 @@ it.each(cases)(
     await assertNativeOutput(channel, remote.traffic, kind, outputBytes)
   }
 )
+
+it('forwards a received WAV document as a Telegram document with its bytes intact', async () => {
+  // Telegram sendAudio accepts MP3/M4A; a WAV needs sendDocument.
+  // https://core.telegram.org/bots/api#sendaudio
+  const wav = Uint8Array.from(
+    Buffer.from(
+      '524946462500000057415645666d74201000000001000100401f0000401f000001000800646174610100000080',
+      'hex'
+    )
+  )
+
+  // GetFile returns a file_path; successful send methods return a Message.
+  // https://core.telegram.org/bots/api#getfile
+  // https://core.telegram.org/bots/api#sendaudio
+  const remote = await mediaPeer((traffic) => {
+    if (traffic.method === 'GET') {
+      return { data: wav, mimeType: 'audio/wav' }
+    }
+    if (traffic.path.endsWith('/getFile')) {
+      return {
+        json: {
+          ok: true,
+          result: { file_path: 'documents/incoming.wav', file_size: wav.length }
+        }
+      }
+    }
+    return { json: { ok: true, result: { message_id: 900 } } }
+  })
+
+  cleanups.push(remote.close)
+
+  const fixture = await mediaRuntime(
+    cleanups,
+    'telegram',
+    channelConfig('telegram', remote.origin),
+    '456',
+    '8'
+  )
+
+  const runtime = await fixture.start()
+  expect(
+    (
+      await httpIngress(
+        runtime,
+        'telegram',
+        'file',
+        remote.origin,
+        wav.length,
+        'audio/wav'
+      )
+    ).status
+  ).toBe(204)
+  await expect
+    .poll(() => fixture.routine.traffic.length, { timeout: 5000 })
+    .toBe(1)
+  const request = await dispatchedMedia(fixture.routine)
+  expect(request.attachments).toMatchObject([
+    { kind: 'audio', mimeType: 'audio/wav' }
+  ])
+  const inbound = request.attachments[0]
+  if (!inbound) {
+    throw new Error('missing_input_asset')
+  }
+  expect(
+    await readMedia(
+      await fixture.client(runtime),
+      request.source.channel.id,
+      inbound.id
+    )
+  ).toEqual(wav)
+  expect(
+    await fixture.principal().sendMessage({
+      channel: request.source.channel.id,
+      idempotencyKey: 'forward-wav',
+      text: '',
+      attachments: [
+        {
+          kind: 'audio',
+          mimeType: 'audio/wav',
+          fileName: 'forward.wav',
+          data: wav
+        }
+      ]
+    })
+  ).toMatchObject({ status: 'queued' })
+  await expect
+    .poll(async () => (await runtime.core.status()).deliveries[0]?.status, {
+      timeout: 5000
+    })
+    .toBe('sent')
+
+  const outbound = remote.traffic.find((item) =>
+    item.path.endsWith('/sendDocument')
+  )
+
+  expect(outbound?.path).toBe('/bot123:abc_DEF/sendDocument')
+  if (!outbound) {
+    throw new Error('missing_document_upload')
+  }
+  const form = await multipart(outbound)
+  const file = form.get('document')
+  expect(file).toBeInstanceOf(File)
+  expect(
+    file instanceof File ? new Uint8Array(await file.arrayBuffer()) : undefined
+  ).toEqual(wav)
+  expect(form.has('audio')).toBe(false)
+
+  for (const [mimeType, fileName, method, field] of [
+    ['audio/mpeg', 'forward.mp3', 'sendAudio', 'audio'],
+    ['audio/mp4', 'forward.m4a', 'sendAudio', 'audio'],
+    ['audio/ogg', 'forward.ogg', 'sendVoice', 'voice'],
+    ['audio/opus', 'forward.opus', 'sendVoice', 'voice']
+  ] as const) {
+    const priorTraffic = remote.traffic.length
+    expect(
+      await fixture.principal().sendMessage({
+        channel: request.source.channel.id,
+        idempotencyKey: `forward-${fileName}`,
+        text: '',
+        attachments: [{ kind: 'audio', mimeType, fileName, data: wav }]
+      })
+    ).toMatchObject({ status: 'queued' })
+    await expect
+      .poll(() => remote.traffic.length, { timeout: 5000 })
+      .toBe(priorTraffic + 1)
+    const upload = remote.traffic.at(-1)
+    expect(upload?.path).toBe(`/bot123:abc_DEF/${method}`)
+    if (!upload) {
+      throw new Error('missing_audio_upload')
+    }
+    const uploaded = (await multipart(upload)).get(field)
+    expect(uploaded).toBeInstanceOf(File)
+    expect(uploaded instanceof File ? uploaded.name : '').toBe(fileName)
+  }
+})

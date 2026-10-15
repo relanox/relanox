@@ -66,6 +66,28 @@ function codepointLength(text: string): number {
   return text.match(/[\s\S]/gu)?.length ?? 0
 }
 
+function audioField(mimeType: string): 'voice' | 'audio' | 'document' {
+  const normalized = mimeType.toLowerCase()
+  if (['audio/ogg', 'audio/opus'].includes(normalized)) {
+    return 'voice'
+  }
+  // SendAudio accepts MP3/M4A; other audio formats remain downloadable documents.
+  // https://core.telegram.org/bots/api#sendaudio
+  if (
+    [
+      'audio/mpeg',
+      'audio/mp3',
+      'audio/x-mp3',
+      'audio/mp4',
+      'audio/m4a',
+      'audio/x-m4a'
+    ].includes(normalized)
+  ) {
+    return 'audio'
+  }
+  return 'document'
+}
+
 export async function receiveMedia(
   message: Message,
   host: ChannelHost,
@@ -170,11 +192,8 @@ export async function sendMedia(
     file: 'document'
   }[kind]
 
-  if (
-    kind === 'audio' &&
-    ['audio/ogg', 'audio/opus'].includes(media.reference.mimeType)
-  ) {
-    field = 'voice'
+  if (kind === 'audio') {
+    field = audioField(media.reference.mimeType)
   }
   if (kind === 'image' && media.reference.mimeType === 'image/gif') {
     field = 'animation'
