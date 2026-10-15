@@ -236,76 +236,117 @@ it.each([true, false])(
   }
 )
 
-it('renders Markdown using IRC controls and budgets styled UTF-8 text with the actual target', async () => {
-  const tcp = await tcpPeer(register)
+// The source prefix and CRLF are part of the server-relayed 512-byte message:
+// https://modern.ircdocs.horse/#message-format
+// https://modern.ircdocs.horse/#hostlen-parameter
+// https://modern.ircdocs.horse/#userlen-parameter
+// https://www.rfc-editor.org/rfc/rfc1035#section-2.3.4 (unknown hostname fallback)
+// Preserve styled text at recipients; sizing only the client write permits
+// Truncation after a server adds nick!user@host. The previous assertion omitted
+// That native prefix. Existing public plugin/TCP peers require no new seam.
+it.each([
+  {
+    name: 'unknown hostname',
+    support: '',
+    host: [63, 63, 63, 61].map((length) => 'h'.repeat(length)).join('.'),
+    username: '~relay'
+  },
+  {
+    name: 'advertised HOSTLEN=63 USERLEN=18',
+    support: 'HOSTLEN=63 USERLEN=18',
+    host: 'h'.repeat(63),
+    username: 'u'.repeat(18)
+  },
+  {
+    name: 'advertised HOSTLEN=64 USERLEN=6',
+    support: 'HOSTLEN=64 USERLEN=6',
+    host: `${'h'.repeat(31)}.${'h'.repeat(32)}`,
+    username: '~relay'
+  }
+])(
+  'renders Markdown and preserves relayed UTF-8 with $name',
+  async ({ support, host, username }) => {
+    const tcp = await tcpPeer((line, socket) => {
+      register(line, socket)
+      if (line === 'CAP END') {
+        if (support) {
+          socket.write(`:server 005 relay ${support} :are supported\r\n`)
+        }
+        socket.write('PING :limits-ready\r\n')
+      }
+    })
 
-  const http = await httpPeer((_request, response) => {
-    json(response, {})
-  })
+    const http = await httpPeer((_request, response) => {
+      json(response, {})
+    })
 
-  const plugin = createIrcChannel({ IRC_SASL: 'password' })
-  await harness(
-    plugin,
-    config(tcp.port),
-    [{ chatId: '#room' }],
-    ['account:alice'],
-    `${http.base}/dispatch`
-  )
-  await plugin.start?.(new AbortController().signal)
-  await waitFor(() => tcp.lines.includes('JOIN #room'))
-  expect(
-    (
-      await plugin.send(
-        sendInput(
-          tcp.port,
-          '#room',
-          '😀 **bold** _ital_ ~~gone~~ `x*y` [site](https://example.com)'
-        )
-      )
-    ).status
-  ).toBe('sent')
-  await waitFor(() => tcp.lines.some((line) => line.startsWith('PRIVMSG ')))
-  expect(tcp.lines.find((line) => line.startsWith('PRIVMSG '))).toBe(
-    'PRIVMSG #room :😀 \u0002bold\u000F \u001Dital\u000F \u001Egone\u000F \u0011x*y\u000F site (https://example.com/)'
-  )
-  const recipient = `#${'x'.repeat(89)}`
-  const input = sendInput(tcp.port, recipient)
-
-  const parts =
-    plugin.splitText?.(`**${'界😀'.repeat(100)}**`, input.target) ?? []
-
-  expect(parts.length).toBeGreaterThan(1)
-  for (const [index, text] of parts.entries()) {
+    const plugin = createIrcChannel({ IRC_SASL: 'password' })
+    await harness(
+      plugin,
+      config(tcp.port),
+      [{ chatId: '#room' }],
+      ['account:alice'],
+      `${http.base}/dispatch`
+    )
+    await plugin.start?.(new AbortController().signal)
+    await waitFor(() => tcp.lines.includes('JOIN #room'))
+    await waitFor(() => tcp.lines.includes('PONG :limits-ready'))
     expect(
       (
-        await plugin.send({
-          ...input,
-          chunkIndex: index,
-          chunk: { ...input.chunk, text }
-        })
+        await plugin.send(
+          sendInput(
+            tcp.port,
+            '#room',
+            '😀 **bold** _ital_ ~~gone~~ `x*y` [site](https://example.com)'
+          )
+        )
       ).status
     ).toBe('sent')
-  }
-  await waitFor(
-    () =>
-      tcp.lines.filter((line) => line.startsWith(`PRIVMSG ${recipient} :`))
-        .length === parts.length
-  )
+    await waitFor(() => tcp.lines.some((line) => line.startsWith('PRIVMSG ')))
+    expect(tcp.lines.find((line) => line.startsWith('PRIVMSG '))).toBe(
+      'PRIVMSG #room :😀 \u0002bold\u000F \u001Dital\u000F \u001Egone\u000F \u0011x*y\u000F site (https://example.com/)'
+    )
+    const recipient = `#${'x'.repeat(89)}`
+    const input = sendInput(tcp.port, recipient)
 
-  const sent = tcp.lines.filter((line) =>
-    line.startsWith(`PRIVMSG ${recipient} :`)
-  )
+    const parts =
+      plugin.splitText?.(`**${'界😀'.repeat(100)}**`, input.target) ?? []
 
-  const texts: string[] = []
-  for (const line of sent) {
-    expect(Buffer.byteLength(`${line}\r\n`, 'utf8')).toBeLessThanOrEqual(512)
-    const text = line.slice(`PRIVMSG ${recipient} :`.length)
-    expect(text.startsWith('\u0002') && text.endsWith('\u000F')).toBe(true)
-    texts.push(text.replaceAll('\u0002', '').replaceAll('\u000F', ''))
+    expect(parts.length).toBeGreaterThan(1)
+    for (const [index, text] of parts.entries()) {
+      expect(
+        (
+          await plugin.send({
+            ...input,
+            chunkIndex: index,
+            chunk: { ...input.chunk, text }
+          })
+        ).status
+      ).toBe('sent')
+    }
+    await waitFor(
+      () =>
+        tcp.lines.filter((line) => line.startsWith(`PRIVMSG ${recipient} :`))
+          .length === parts.length
+    )
+
+    const sent = tcp.lines.filter((line) =>
+      line.startsWith(`PRIVMSG ${recipient} :`)
+    )
+
+    const texts: string[] = []
+    for (const line of sent) {
+      expect(
+        Buffer.byteLength(`:relay!${username}@${host} ${line}\r\n`, 'utf8')
+      ).toBeLessThanOrEqual(512)
+      const text = line.slice(`PRIVMSG ${recipient} :`.length)
+      expect(text.startsWith('\u0002') && text.endsWith('\u000F')).toBe(true)
+      texts.push(text.replaceAll('\u0002', '').replaceAll('\u000F', ''))
+    }
+    expect(texts.join('')).toBe('界😀'.repeat(100))
+    await plugin.stop?.()
   }
-  expect(texts.join('')).toBe('界😀'.repeat(100))
-  await plugin.stop?.()
-})
+)
 
 it('negotiates SASL and tags, ingests channel/private text and independently writes delayed replies', async () => {
   const tcp = await tcpPeer((line, socket) => {
@@ -607,7 +648,9 @@ it.each(['Alice', 'Alice@host'])(
   }
 )
 
-it('enforces UTF-8 wire size, renders CRLF as message text and rejects NUL before writing', async () => {
+// The native prefix also constrains a caller supplying an unsplit chunk; the
+// Previous 502-byte client-write expectation allowed truncation at recipients.
+it('enforces UTF-8 relayed line size, renders CRLF as message text and rejects NUL before writing', async () => {
   const tcp = await tcpPeer(register)
 
   const http = await httpPeer((_request, response) => {
@@ -632,11 +675,11 @@ it('enforces UTF-8 wire size, renders CRLF as message text and rejects NUL befor
   )
   const largeTarget = `#${'x'.repeat(89)}`
   expect(
-    (await plugin.send(sendInput(tcp.port, largeTarget, '😀'.repeat(100))))
+    (await plugin.send(sendInput(tcp.port, largeTarget, '😀'.repeat(35))))
       .status
   ).toBe('sent')
   expect(
-    await plugin.send(sendInput(tcp.port, largeTarget, '😀'.repeat(103)))
+    await plugin.send(sendInput(tcp.port, largeTarget, '😀'.repeat(36)))
   ).toEqual({
     status: 'rejected',
     errorCode: 'invalid_irc_text'
@@ -656,7 +699,14 @@ it('enforces UTF-8 wire size, renders CRLF as message text and rejects NUL befor
   await waitFor(() => tcp.lines.includes('PRIVMSG #room :answer JOIN #evil'))
   const outgoing = tcp.lines.filter((line) => line.startsWith('PRIVMSG '))
   expect(outgoing).toHaveLength(2)
-  expect(Buffer.byteLength(`${outgoing[0]}\r\n`)).toBe(502)
+
+  const hostname = [63, 63, 63, 61]
+    .map((length) => 'h'.repeat(length))
+    .join('.')
+
+  expect(
+    Buffer.byteLength(`:relay!~relay@${hostname} ${outgoing[0]}\r\n`)
+  ).toBe(510)
   expect(tcp.lines).not.toContain('JOIN #evil')
   await plugin.stop?.()
   expect((await plugin.send(sendInput(tcp.port))).status).toBe('retryable')

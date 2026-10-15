@@ -32,10 +32,16 @@ export function ircMarkdown(markdown: string): string {
 
 export function splitIrcMarkdown(
   markdown: string,
-  target: ReplyTarget
+  target: ReplyTarget,
+  relayPrefixBytes: number
 ): readonly string[] {
   const { recipient } = targetSchema.parse(target.data)
-  const maxLength = 510 - Buffer.byteLength(`PRIVMSG ${recipient} :`, 'utf8')
+
+  const maxLength = Math.min(
+    400,
+    510 - relayPrefixBytes - Buffer.byteLength(`PRIVMSG ${recipient} :`, 'utf8')
+  )
+
   return splitMarkdown(markdown, {
     maxLength,
     unit: 'utf8',

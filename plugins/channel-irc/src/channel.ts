@@ -71,6 +71,10 @@ export function createIrcChannel(
   let nick = ''
   let channels: string[] = []
   let caseMapping: CaseMapping = 'rfc1459'
+  // Unknown cloaks reserve a full 253-byte DNS hostname (RFC 1035 2.3.4);
+  // 005 HOSTLEN provides the network's actual bound when advertised.
+  let hostLength = 253
+  let userLength = 0
 
   function fold(value: string): string {
     return foldNick(value, caseMapping)
@@ -85,6 +89,17 @@ export function createIrcChannel(
       throw new Error('not_setup')
     }
     return runtime
+  }
+
+  function relayPrefixBytes(): number {
+    const { config } = configured()
+    // USER sends the configured nick; servers may prepend '~' or advertise a
+    // Larger ident username. The current NICK can change independently.
+    return (
+      Buffer.byteLength(`:${nick || config.nick}!@ `, 'utf8') +
+      Math.max(userLength, Buffer.byteLength(config.nick, 'utf8') + 1) +
+      hostLength
+    )
   }
 
   function write(current: Socket, value: string): void {
@@ -255,8 +270,31 @@ export function createIrcChannel(
     }
   }
 
+  function updateLengthSupport(parameter: string): void {
+    if (parameter === '-HOSTLEN') {
+      hostLength = 253
+    } else if (parameter === '-USERLEN') {
+      userLength = 0
+    }
+
+    const fields = /^(?<name>HOSTLEN|USERLEN)=(?<length>\d+)$/u.exec(
+      parameter
+    )?.groups
+
+    const length = Number(fields?.length)
+    if (!Number.isSafeInteger(length) || length <= 0) {
+      return
+    }
+    if (fields?.name === 'HOSTLEN') {
+      hostLength = length
+    } else {
+      userLength = length
+    }
+  }
+
   function updateSupport(message: IrcMessage): void {
     for (const parameter of message.params.slice(1, -1)) {
+      updateLengthSupport(parameter)
       if (parameter === '-CASEMAPPING') {
         caseMapping = 'rfc1459'
       } else if (parameter.startsWith('CASEMAPPING=')) {
@@ -338,6 +376,8 @@ export function createIrcChannel(
     messageTags = false
     nick = config.nick
     caseMapping = 'rfc1459'
+    hostLength = 253
+    userLength = 0
 
     const current: Socket = config.tls
       ? connectTls({
@@ -474,7 +514,11 @@ export function createIrcChannel(
         input.reply && messageTags ? input.target.replyToId : undefined
 
       const prefix = quote ? `@+reply=${escapeTag(quote)} ` : ''
-      line = wireLine(`${prefix}PRIVMSG ${target.data.recipient} :${text}`)
+      const message = `PRIVMSG ${target.data.recipient} :${text}`
+      if (Buffer.byteLength(message, 'utf8') + 2 + relayPrefixBytes() > 512) {
+        throw new Error('relayed_line_too_large')
+      }
+      line = wireLine(`${prefix}${message}`)
     } catch {
       return { status: 'rejected', errorCode: 'invalid_irc_text' }
     }
@@ -566,7 +610,9 @@ export function createIrcChannel(
         }
       }
     },
-    splitText: splitIrcMarkdown,
+    splitText(markdown, target) {
+      return splitIrcMarkdown(markdown, target, relayPrefixBytes())
+    },
     async setup(host, account, config) {
       if (runtime) {
         throw new Error('already_setup')
