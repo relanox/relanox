@@ -29,6 +29,8 @@ Fill in the server hostname, TLS port and nickname. Relanox signs in and automat
 
 Sign in to your own IRC account and send “Hello” in the bound channel or privately to the relay nickname. Answers appear as ordinary text lines; long answers are split into several lines.
 
+The Agent can quote a specific incoming message with `reply.requestId`. Native replies use IRCv3 `+reply` when the server acknowledges `message-tags` and the incoming message has a server `msgid`. Other networks receive ordinary text; whether a quote is displayed also depends on the receiving IRC client. Sends without `reply` never add the reply tag.
+
 ## Images and files
 
 Use IRC for text questions. To ask about an image or file, choose a channel with attachments, such as Telegram, Discord or Matrix, from the [channel guides](../configuration.md).
