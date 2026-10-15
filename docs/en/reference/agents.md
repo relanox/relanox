@@ -102,6 +102,7 @@ dot receives this payload in the `data` of a `relanox.message_available` event. 
 
 ```json
 {
+  "requestId": "9cf6c61a-fd77-4675-b34d-a9ff1273bb3e",
   "source": {
     "channel": {
       "id": "8c4821338e7157a230a588b73400cd602c8d5239b2086ece4be0f4d77ff3a035",
@@ -128,6 +129,8 @@ dot receives this payload in the `data` of a `relanox.message_available` event. 
 ```
 
 `threadId` is omitted for a destination without a thread. `attachments` is optional; its entries can also contain `durationMs` and `previewMediaId`. `context` contains channel-specific JSON.
+
+For each Grok Routine invocation, use its own `requestId` in `relanox_send_message` as `reply: { "requestId": "...", "kind": "final" }` when sending the complete answer. Another message can arrive in the same conversation before the first answer; keep the IDs with their respective messages so the native reply target and final-delivery state remain correct.
 
 The runtime generates `source.channel.id` as an opaque ID for an authorized binding. Copy it unchanged into a tool's `channel` parameter; it is not a platform name such as `slack`, an account ID or a platform chat ID. It stays stable for the same destination and Agent endpoint configuration, including across restarts. Changing the destination, endpoint ownership or endpoint configuration changes the ID. Obtain current IDs from incoming data or `relanox_status`; do not construct them yourself.
 

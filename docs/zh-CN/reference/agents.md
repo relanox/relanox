@@ -102,6 +102,7 @@ dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段
 
 ```json
 {
+  "requestId": "9cf6c61a-fd77-4675-b34d-a9ff1273bb3e",
   "source": {
     "channel": {
       "id": "8c4821338e7157a230a588b73400cd602c8d5239b2086ece4be0f4d77ff3a035",
@@ -128,6 +129,8 @@ dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段
 ```
 
 没有消息串的目标省略 `threadId`。`attachments` 可选，其中的条目还可包含 `durationMs` 和 `previewMediaId`。`context` 是渠道提供的 JSON 上下文。
+
+每次 Grok Routine 触发时，发送完整答案应在 `relanox_send_message` 中使用该次消息的 `requestId`，并设置 `reply: { "requestId": "...", "kind": "final" }`。同一聊天可能在前一条消息回答前又收到新消息；保持各自的请求 ID，才能正确使用原生回复目标并记录最终投递状态。
 
 运行时为已授权绑定生成不透明的 `source.channel.id`。将它原样复制到工具的 `channel` 参数；它不是 `slack` 等平台名称、账号 ID 或平台聊天 ID。同一目标和 Agent 端点配置下，ID 保持稳定，重启也不会改变。改变目标、端点归属或端点配置会改变 ID。从来信或 `relanox_status` 取得当前 ID，不要自行构造。
 

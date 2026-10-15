@@ -45,7 +45,11 @@ export const dispatchRoutine: AgentPlugin<GrokConfig>['dispatch'] = async ({
   if (url.username || url.password || url.hash || url.protocol !== 'https:') {
     return { status: 'rejected', errorCode: 'grok_routine_url_invalid' }
   }
-  const content = JSON.stringify(projectAgentRequest(request))
+
+  const content = JSON.stringify({
+    requestId: request.requestId,
+    ...projectAgentRequest(request)
+  })
 
   const body = JSON.stringify({
     content,

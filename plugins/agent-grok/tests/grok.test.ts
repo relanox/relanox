@@ -301,6 +301,73 @@ describe('grok configured Routine and scoped MCP', () => {
     expect(payload.attachments[0]).not.toHaveProperty('data')
   })
 
+  it('keeps Routine requests distinct when two messages reach the same conversation', async () => {
+    const { fx, receiver } = await setup()
+    const first = await fx.ingest(0, 'question A', 'routine-a')
+    const second = await fx.ingest(0, 'question B', 'routine-b')
+    await fx.core.processDue()
+
+    const contents = receiver.traffic.map((record) => {
+      const outer = z
+        .object({ content: z.string() })
+        .parse(parseWire(record.body))
+
+      const inner = z
+        .object({
+          requestId: z.string(),
+          text: z.string(),
+          source: z.object({
+            channel: z.object({ id: z.string() }),
+            senderId: z.string()
+          })
+        })
+        .parse(parseWire(outer.content))
+
+      return {
+        requestId: inner.requestId,
+        text: inner.text,
+        channel: inner.source.channel.id,
+        senderId: inner.source.senderId
+      }
+    })
+
+    expect(contents).toEqual([
+      {
+        requestId: first.requestId,
+        text: 'question A',
+        channel: first.channel,
+        senderId: 'alice'
+      },
+      {
+        requestId: second.requestId,
+        text: 'question B',
+        channel: second.channel,
+        senderId: 'alice'
+      }
+    ])
+    expect(first.channel).toBe(second.channel)
+
+    const client = await fx.client('secret-0')
+    expect(
+      await client.callTool({
+        name: 'relanox_send_message',
+        arguments: {
+          channel: first.channel,
+          text: 'answer A',
+          reply: { requestId: first.requestId, kind: 'final' }
+        }
+      })
+    ).toMatchObject({ structuredContent: { status: 'queued' } })
+    expect(
+      (
+        await client.callTool({
+          name: 'relanox_status',
+          arguments: { requestId: second.requestId }
+        })
+      ).structuredContent
+    ).toMatchObject({ request: { reply: { status: 'awaiting_final' } } })
+  })
+
   it('includes prepared speech text and the original audio in the hosted Routine', async () => {
     const { fx, receiver } = await setup()
 
@@ -423,6 +490,7 @@ describe('grok configured Routine and scoped MCP', () => {
       const posted = parseWire(trigger?.body ?? '')
       expect(posted).toEqual({
         content: JSON.stringify({
+          requestId: receipt.requestId,
           text: '中文\nsecond line',
           context: { thread: 'protocol-context' },
           source: {
