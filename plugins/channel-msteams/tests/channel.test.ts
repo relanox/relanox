@@ -212,9 +212,6 @@ it.each([429, 503])(
   }
 )
 
-// Token and expiry validation protects the external protocol boundary, independently
-// Of the library's permissive parser; ordinary successful fixtures cannot detect this.
-// https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
 it('reposts a personal file consent card with fresh OAuth after a definitive 401', async () => {
   // Bot Connector rejects an expired bearer credential with HTTP 401:
   // https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
@@ -341,6 +338,9 @@ it('reposts a personal file consent card with fresh OAuth after a definitive 401
   ).toHaveLength(2)
 })
 
+// Token and expiry validation protects the external protocol boundary, independently
+// Of the library's permissive parser; ordinary successful fixtures cannot detect this.
+// https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
 it.each([
   { access_token: 123, expires_in: 3600 },
   { access_token: 'bad-expiry', expires_in: 'invalid' },
