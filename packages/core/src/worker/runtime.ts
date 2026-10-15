@@ -30,6 +30,7 @@ export function createWorker(
   const storage = options.storage
   let busy = false
   let workerError = false
+  let preferredKind: 'inbound' | 'send' = 'inbound'
   const owner = crypto.randomUUID()
 
   async function refreshStats(): Promise<void> {
@@ -231,13 +232,15 @@ export function createWorker(
               sendLeaseMs: worker.sendLeaseMs,
               limit: 1,
               leaseOwner: owner,
-              safeRetryAccountIds
+              safeRetryAccountIds,
+              preferredKind
             })
           )[0]
 
           if (!work) {
             break
           }
+          preferredKind = work.kind === 'send' ? 'inbound' : 'send'
           const attempt = await settlementFor(work)
           const { outcome } = attempt
           const settlement = await storage.settleAttempt(attempt)

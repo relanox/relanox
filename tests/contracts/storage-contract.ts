@@ -138,6 +138,48 @@ export function storageContract(
         safeRetryAccountIds
       })
 
+    it('lets an outbound delivery be selected while inbound work remains due', async () => {
+      for (let index = 0; index < 40; index++) {
+        await s.acceptInbound(snapshot(`incoming-${index}`, 100 + index))
+      }
+      expect(await s.enqueueMessage(completion())).toMatchObject({
+        status: 'queued'
+      })
+
+      const first = required(
+        (
+          await s.takeDue({
+            now: 200,
+            leaseMs: 10,
+            limit: 1,
+            leaseOwner: 'fairness',
+            safeRetryAccountIds: [],
+            preferredKind: 'inbound'
+          })
+        )[0]
+      )
+
+      expect(first.kind).toBe('dispatch')
+
+      const next = required(
+        (
+          await s.takeDue({
+            now: 200,
+            leaseMs: 10,
+            limit: 1,
+            leaseOwner: 'fairness',
+            safeRetryAccountIds: [],
+            preferredKind: 'send'
+          })
+        )[0]
+      )
+
+      expect(next.kind).toBe('send')
+      expect(next.kind === 'send' ? next.record.deliveryId : '').toBe(
+        'd-channel-message'
+      )
+    })
+
     const dispatch = async (id = 'r1'): Promise<void> => {
       const w = required(
         (await due(100)).find(

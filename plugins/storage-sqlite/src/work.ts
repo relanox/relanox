@@ -163,30 +163,9 @@ export function createWorkOperations(
           .limit(limit)
           .all()
 
-        for (const row of requests) {
-          const record = decodeDurableRecord<InboundRecord>(row.record)
-
-          const lease = {
-            token: `${input.leaseOwner}:${randomUUID()}`,
-            version: record.version + 1,
-            expiresAt: input.now + input.leaseMs
-          }
-
-          const next = {
-            ...record,
-            version: lease.version,
-            dispatch: { ...record.dispatch, lease }
-          }
-
-          saveInbound(next)
-          work.push({
-            kind: needsPreparation(next) ? 'prepare' : 'dispatch',
-            record: next,
-            lease
-          })
-        }
         const earlier = alias(outbound, 'earlier')
-        for (const record of db
+
+        const deliveries = db
           .select({ record: outbound.record })
           .from(outbound)
           .where(
@@ -213,18 +192,65 @@ export function createWorkOperations(
             )
           )
           .orderBy(rowId(outbound))
-          .limit(limit - work.length)
+          .limit(limit)
           .all()
-          .map((row) => decodeDurableRecord<OutboundRecord>(row.record))) {
-          const lease = {
-            token: `${input.leaseOwner}:${randomUUID()}`,
-            version: record.version + 1,
-            expiresAt: input.now + (input.sendLeaseMs ?? input.leaseMs)
-          }
 
-          const next = { ...record, version: lease.version, lease }
-          saveOutbound(next)
-          work.push({ kind: 'send', record: next, lease })
+        let requestIndex = 0
+        let deliveryIndex = 0
+        let preferredKind = input.preferredKind ?? 'inbound'
+
+        while (work.length < limit) {
+          const selectInbound =
+            (preferredKind === 'inbound' ||
+              deliveryIndex >= deliveries.length) &&
+            requestIndex < requests.length
+
+          if (selectInbound) {
+            const row = requests[requestIndex++]
+            if (!row) {
+              break
+            }
+            const record = decodeDurableRecord<InboundRecord>(row.record)
+
+            const lease = {
+              token: `${input.leaseOwner}:${randomUUID()}`,
+              version: record.version + 1,
+              expiresAt: input.now + input.leaseMs
+            }
+
+            const next = {
+              ...record,
+              version: lease.version,
+              dispatch: { ...record.dispatch, lease }
+            }
+
+            saveInbound(next)
+            work.push({
+              kind: needsPreparation(next) ? 'prepare' : 'dispatch',
+              record: next,
+              lease
+            })
+            preferredKind = 'send'
+          } else if (deliveryIndex < deliveries.length) {
+            const row = deliveries[deliveryIndex++]
+            if (!row) {
+              break
+            }
+            const record = decodeDurableRecord<OutboundRecord>(row.record)
+
+            const lease = {
+              token: `${input.leaseOwner}:${randomUUID()}`,
+              version: record.version + 1,
+              expiresAt: input.now + (input.sendLeaseMs ?? input.leaseMs)
+            }
+
+            const next = { ...record, version: lease.version, lease }
+            saveOutbound(next)
+            work.push({ kind: 'send', record: next, lease })
+            preferredKind = 'inbound'
+          } else {
+            break
+          }
         }
         return work
       })
