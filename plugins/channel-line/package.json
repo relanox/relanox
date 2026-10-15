@@ -16,11 +16,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@line/bot-sdk": "11.3.0",
     "@relanox/channel-media": "workspace:*",
+    "@relanox/markdown": "workspace:*",
     "@relanox/sdk": "workspace:*",
     "@relanox/transport": "workspace:*",
-    "zod": "4.6.5",
-    "@relanox/markdown": "workspace:*"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@relanox/core": "workspace:*",

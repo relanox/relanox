@@ -1,5 +1,6 @@
 import { markdownText } from '@relanox/markdown'
-import type { ChannelHost, Json, SendInput } from '@relanox/sdk'
+import type { ChannelHost, SendInput } from '@relanox/sdk'
+import type { messagingApi } from '@line/bot-sdk'
 import { lineContents } from './markdown.js'
 
 export function richError(
@@ -36,7 +37,7 @@ export function richError(
         media.reference.kind !== 'image' ||
         !['image/jpeg', 'image/png'].includes(media.reference.mimeType) ||
         media.data.byteLength >
-          Math.min(host.maxMediaBytes ?? 25 * 1024 * 1024, 10 * 1000 * 1000)
+          Math.min(host.maxMediaBytes ?? 100 * 1024 * 1024, 10 * 1000 * 1000)
     )
   ) {
     return 'image_format_or_size_unsupported'
@@ -47,8 +48,8 @@ export function richError(
 export async function richMessage(
   input: SendInput,
   host: ChannelHost
-): Promise<Json> {
-  const contents: Json[] = []
+): Promise<messagingApi.FlexMessage> {
+  const contents: messagingApi.FlexComponent[] = []
   const labels: string[] = []
   for (const part of input.chunk.richText ?? []) {
     if (part.type === 'text') {
@@ -70,7 +71,7 @@ export async function richMessage(
   }
   const preview = labels.join('\n').slice(0, 1500)
 
-  const message: Json = {
+  const message: messagingApi.FlexMessage = {
     type: 'flex',
     altText:
       (preview.isWellFormed() ? preview : preview.slice(0, -1)) || 'Message',

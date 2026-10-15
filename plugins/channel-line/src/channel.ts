@@ -7,27 +7,14 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
-import { z } from 'zod'
-import { readJson } from '@relanox/transport'
+import type { z } from 'zod'
+import { lineClient, sdkFailure, validateSignature } from './sdk.js'
 import { validateConfig, platformIdSchema } from './config.js'
 import type { LineConfig } from './config.js'
 import { receiveEvent } from './inbound.js'
 import { mediaError, messages, splitLineMarkdown } from './media.js'
-import {
-  failure,
-  parseBody,
-  rawBody,
-  request,
-  secret,
-  signed,
-  unavailable
-} from './io.js'
-import {
-  webhookSchema,
-  targetSchema,
-  retrySchema,
-  receiptSchema
-} from './schemas.js'
+import { parseBody, rawBody, secret } from './io.js'
+import { webhookSchema, targetSchema, retrySchema } from './schemas.js'
 
 async function retryIdentity(
   host: ChannelHost,
@@ -110,41 +97,23 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
       return outgoing
     }
     try {
-      const response = await request(
-        new URL(`${apiBase}/v2/bot/message/push`),
+      input.signal.throwIfAborted()
+
+      const receipt = await lineClient(config).pushMessage(
         {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${secret(config.accessToken)}`,
-            'content-type': 'application/json',
-            'x-line-retry-key': retry.retryKey
-          },
-          body: JSON.stringify({
-            to: target.destination,
-            messages: outgoing
-          })
+          to: target.destination,
+          messages: outgoing
         },
-        input.signal
+        retry.retryKey
       )
 
-      const acceptedId = response.headers.get('x-line-accepted-request-id')
-      if (response.status === 409 && acceptedId) {
-        return {
-          status: 'sent',
-          receipt: { data: { acceptedRequestId: acceptedId } }
-        }
-      }
-      if (!response.ok) {
-        return failure(response)
-      }
-      const receipt = receiptSchema.parse(await response.json())
       const first = receipt.sentMessages?.[0]
       return {
         status: 'sent',
         receipt: first ? { platformMessageId: first.id } : {}
       }
-    } catch {
-      return unavailable()
+    } catch (error) {
+      return sdkFailure(error)
     }
   }
 
@@ -168,7 +137,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
                 maxTextLength: 2000,
                 imageMimeTypes: ['image/jpeg', 'image/png'],
                 maxImageBytes: Math.min(
-                  runtime.host.maxMediaBytes ?? 25 * 1024 * 1024,
+                  runtime.host.maxMediaBytes ?? 100 * 1024 * 1024,
                   10 * 1000 * 1000
                 )
               }
@@ -234,23 +203,8 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
         throw new Error('already_setup')
       }
 
-      const response = await request(
-        new URL(`${apiBase}/v2/bot/info`),
-        {
-          headers: { authorization: `Bearer ${secret(config.accessToken)}` }
-        },
-        AbortSignal.timeout(10_000)
-      )
-
-      if (!response.ok) {
-        await response.body?.cancel()
-        throw new Error('identity_discovery_failed')
-      }
-
-      const identity = z
-        .object({ userId: platformIdSchema })
-        .parse(await readJson(response))
-
+      const identity = await lineClient(config).getBotInfo()
+      platformIdSchema.parse(identity.userId)
       const botUserId = identity.userId
       runtime = { host, account, config, botUserId }
       host.mountHttp('/webhook', async (incoming) => {
@@ -259,11 +213,10 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
         }
         const body = await rawBody(incoming)
         if (
-          !signed(
-            body,
-            incoming.headers.get('x-line-signature'),
+          !validateSignature(
+            Buffer.from(body),
             secret(config.channelSecret),
-            'base64'
+            incoming.headers.get('x-line-signature') ?? ''
           )
         ) {
           return new Response(null, { status: 401 })
