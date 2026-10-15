@@ -4,6 +4,8 @@ Read `docs/en/architecture.md` and `docs/en/development.md` before implementatio
 
 Supported components are the 15 native channels with text and media according to platform capability, dot/Grok, SQLite/PostgreSQL, observability and CLI. Streaming replies are outside the current scope. Use typed protocol boundaries and local protocol tests. Do not claim live-account compatibility from local tests.
 
+For deployment or server troubleshooting, read `docs/local/deployment.md` if present. In a worktree, read it from the primary checkout.
+
 ## Worktrees
 
 Every implementation task uses a new branch/worktree under `.worktree/`. GPT-6.1 Sol subagents work only in assigned worktrees and file scopes. Root reviews, integrates to master, pushes, and removes completed worktrees. Do not delete another task's checkout. Start dependent work only after prerequisite commits land; parallelize independent tasks.
