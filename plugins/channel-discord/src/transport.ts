@@ -6,6 +6,8 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 
+export { frameText, waitForStop } from '@relanox/transport'
+
 export function credential(
   ref: SecretRef,
   environment: NodeJS.ProcessEnv
