@@ -79,7 +79,12 @@ export async function peer(): Promise<{
   ): void
   token(this: void, code: number, body: Json): void
   holdToken(this: void): () => void
-  holdBody(this: void, path: string): () => void
+  holdBody(
+    this: void,
+    path: string,
+    body?: Json | Uint8Array,
+    code?: number
+  ): () => void
   keys(this: void, value: Json): void
   disconnect(this: void, path: string): void
   close(this: void): Promise<void>
@@ -229,14 +234,14 @@ export async function peer(): Promise<{
       })
       return release
     },
-    holdBody(path): () => void {
+    holdBody(path, body = {}, code = 503): () => void {
       let release: () => void = () => {}
 
       const wait = new Promise<void>((resolve) => {
         release = resolve
       })
 
-      routes.set(path, { status: 503, body: {}, headers: {}, wait })
+      routes.set(path, { status: code, body, headers: {}, wait })
       return release
     },
     keys(value: Json): void {
