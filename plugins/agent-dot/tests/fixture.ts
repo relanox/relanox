@@ -1,11 +1,11 @@
+import { createServer, listenPeer } from '../../../tests/listen.js'
 import type { CoreRuntime } from '../../../packages/core/src/index.js'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer } from 'node:http'
 import type {
   IncomingHttpHeaders,
   IncomingMessage,
   ServerResponse
-} from 'node:http'
+} from '../../../tests/listen.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -95,9 +95,7 @@ export async function peer(
     }
   }
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('peer_address')

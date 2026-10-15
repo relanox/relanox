@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { availablePort } from '../../../tests/listen.js'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -42,8 +43,8 @@ export async function fixture(): Promise<{
   const config = {
     relay,
     server: {
-      port: 0,
-      managementPort: 0
+      port: await availablePort(),
+      managementPort: await availablePort()
     }
   }
 

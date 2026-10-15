@@ -7,11 +7,10 @@ import { noopObservability } from '@relanox/sdk'
 import type { WorkerOptions } from '@relanox/core'
 import {
   closeServer,
-  createListeners,
-  listen
+  createListeners
 } from '../../../apps/cli/src/listeners.js'
 import { createLineChannel } from '../src/index.js'
-import { harness, peer } from './harness.js'
+import { harness, peer, listenPeer } from './harness.js'
 
 const cleanup: (() => Promise<void>)[] = []
 
@@ -120,7 +119,7 @@ async function runtime(
     () => true
   )
 
-  const origin = await listen(servers.business, 0, '127.0.0.1')
+  const origin = await listenPeer(servers.business)
   const closeHttp = async (): Promise<void> => closeServer(servers.business)
   cleanup.push(closeHttp)
   return { ...local, origin, closeHttp }

@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { fixture } from './authorization-runtime.js'
 import { mediaPeer } from '../../channel-telegram/tests/media-peer.js'
 import { WebSocketServer } from 'ws'
+import { socketPeer } from './peer.js'
 
 installPeerNetwork()
 
@@ -121,10 +122,7 @@ it('skips denied sender file downloads before authenticated HTTP acceptance and 
 })
 
 it('ACKs denied Socket Mode file shares without a download or durable inbound record', async () => {
-  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-  await new Promise<void>((resolve) => {
-    wss.once('listening', resolve)
-  })
+  const wss = await socketPeer((server) => new WebSocketServer({ server }))
   cleanup.push(async () => {
     for (const socket of wss.clients) {
       socket.terminate()

@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { afterEach } from 'vitest'
 import { createServer } from 'node:http'
 import type { IncomingHttpHeaders } from 'node:http'
@@ -98,9 +99,7 @@ export async function peer(
     })
     connected(socket)
   })
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('Missing local peer address')

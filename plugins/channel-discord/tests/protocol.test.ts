@@ -23,7 +23,8 @@ import {
   recorder,
   sendInput,
   createSqliteStorage,
-  sessionSchema
+  sessionSchema,
+  socketPeer
 } from './peer.js'
 
 installPeerNetwork()
@@ -138,10 +139,7 @@ async function gateway(): Promise<{
   wss: Server
   url: string
 }> {
-  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-  await new Promise<void>((resolve) => {
-    wss.once('listening', resolve)
-  })
+  const wss = await socketPeer((server) => new WebSocketServer({ server }))
 
   const url = registerPeer(
     `http://127.0.0.1:${(wss.address() as AddressInfo).port}`
