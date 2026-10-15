@@ -12,7 +12,7 @@ import type { WorkerConfig } from './options.js'
 import { jsonSnapshot } from '../json.js'
 import { validateDispatchOutcome, validateSendOutcome } from './outcomes.js'
 import { sendChunk } from './media.js'
-import { retryDelay, retryBudgetExhausted } from './retry.js'
+import { nextRetryAt, retryBudgetExhausted } from './retry.js'
 import { preparedRequest } from '../middleware.js'
 import { prepareRequest } from './prepare.js'
 
@@ -167,7 +167,7 @@ export function createWorker(
         id: request.requestId,
         lease: work.lease,
         outcome,
-        nextDueAt: now + retryDelay(outcome, attempts, worker),
+        nextDueAt: nextRetryAt(outcome, attempts, worker, now),
         now
       }
     }
@@ -198,7 +198,7 @@ export function createWorker(
       id: record.deliveryId,
       lease: work.lease,
       outcome,
-      nextDueAt: now + retryDelay(outcome, record.attempts, worker),
+      nextDueAt: nextRetryAt(outcome, record.attempts, worker, now),
       now
     }
   }

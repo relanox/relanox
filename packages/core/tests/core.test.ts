@@ -648,7 +648,7 @@ it.each(['endpoint', 'googlechat', 'media'])(
   }
 )
 
-it('passes lease fences, clamps retry delay, enforces budgets and isolates observers', async () => {
+it('passes lease fences, honors provider retry delay, enforces budgets and isolates observers', async () => {
   const lease = { token: 'lease', version: 7, expiresAt: Date.now() + 30_000 }
 
   const takeDue = vi
@@ -672,7 +672,7 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
     vi.fn().mockResolvedValue({
       status: 'retryable',
       errorCode: 'rate_limit',
-      retryAfterMs: 999_999
+      retryAfterMs: 3_600_000
     })
   )
 
@@ -715,7 +715,7 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
     throw new Error('Expected dispatch settlement')
   }
   expect((settlements[0]?.nextDueAt ?? 0) - (settlements[0]?.now ?? 0)).toBe(
-    300_000
+    3_600_000
   )
   expect(takeDue.mock.calls[0]?.[0].limit).toBe(1)
   takeDue.mockResolvedValueOnce([
@@ -753,6 +753,28 @@ it('passes lease fences, clamps retry delay, enforces budgets and isolates obser
     throw new Error('Expected dispatch settlement')
   }
   expect(settlements[2]?.nextDueAt).toBe(settlements[2]?.now)
+
+  vi.mocked(p.grok.dispatch).mockResolvedValueOnce({
+    status: 'retryable',
+    errorCode: 'rate_limit',
+    retryAfterMs: Number.MAX_SAFE_INTEGER
+  })
+  takeDue.mockResolvedValueOnce([
+    {
+      kind: 'dispatch',
+      record: {
+        snapshot,
+        version: 7,
+        dispatch: { status: 'due', attempts: 1, dueAt: 0 }
+      },
+      lease
+    }
+  ])
+  await runtime.processDue()
+  if (settlements[3]?.kind !== 'dispatch') {
+    throw new Error('Expected dispatch settlement')
+  }
+  expect(settlements[3]?.nextDueAt).toBe(Number.MAX_SAFE_INTEGER)
 })
 
 it('aborts bounded transport calls and preserves unknown effects', async () => {

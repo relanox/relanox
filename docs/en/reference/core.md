@@ -19,7 +19,7 @@ An agent response of `queued` confirms that a reply was saved. It is not a deliv
 
 ## What is retried automatically?
 
-Known temporary failures, such as a reported rate limit or a retryable service error, are retried with a delay. By default, there are up to eight attempts; the delay grows from one second up to five minutes unless a retryable response supplies a delay within that range. The standard CLI uses these retry defaults.
+Known temporary failures, such as a reported rate limit or a retryable service error, are retried with a delay. By default, there are up to eight attempts; the generated delay grows from one second up to five minutes. When a platform supplies a retry delay, Relanox waits at least that long, even if it exceeds five minutes. The standard CLI uses these retry defaults.
 
 If a call times out after it might have reached the remote service, repeating it could send a duplicate. Relanox marks ambiguous outcomes `unknown` and stops automatic attempts.
 
