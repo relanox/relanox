@@ -301,6 +301,11 @@ describe('grok configured Routine and scoped MCP', () => {
     expect(payload.attachments[0]).not.toHaveProperty('data')
   })
 
+  // Protect exact request/content identity and independent final-reply association.
+  // Merged requests or mismatched payloads must fail regardless of arrival order.
+  // Single-request coverage cannot catch this; equal acceptance timestamps are
+  // Ordered by UUID, so two ingest calls do not promise matching HTTP order.
+  // Real Core, SQLite, HTTP and MCP need no test-only production interface.
   it('keeps Routine requests distinct when two messages reach the same conversation', async () => {
     const { fx, receiver } = await setup()
     const first = await fx.ingest(0, 'question A', 'routine-a')
@@ -331,20 +336,24 @@ describe('grok configured Routine and scoped MCP', () => {
       }
     })
 
-    expect(contents).toEqual([
-      {
-        requestId: first.requestId,
-        text: 'question A',
-        channel: first.channel,
-        senderId: 'alice'
-      },
-      {
-        requestId: second.requestId,
-        text: 'question B',
-        channel: second.channel,
-        senderId: 'alice'
-      }
-    ])
+    expect(contents).toHaveLength(2)
+    expect(first.requestId).not.toBe(second.requestId)
+    expect(
+      contents.find((content) => content.requestId === first.requestId)
+    ).toEqual({
+      requestId: first.requestId,
+      text: 'question A',
+      channel: first.channel,
+      senderId: 'alice'
+    })
+    expect(
+      contents.find((content) => content.requestId === second.requestId)
+    ).toEqual({
+      requestId: second.requestId,
+      text: 'question B',
+      channel: second.channel,
+      senderId: 'alice'
+    })
     expect(first.channel).toBe(second.channel)
 
     const client = await fx.client('secret-0')
