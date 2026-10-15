@@ -29,6 +29,139 @@ afterEach(async () => {
 })
 const issuer = 'https://api.botframework.com'
 
+// Native quotation uses the source message ID in a quotedReply entity and text
+// Placeholder; threading independently targets the original root activity:
+// https://github.com/microsoft/teams.ts/blob/main/packages/api/src/activities/message/message.ts
+// https://microsoft.github.io/teams-sdk/blog/quoted-and-threaded-replies/
+it('quotes three selected requests out of order without moving replies out of the bound thread', async () => {
+  const local = await setup()
+  for (const id of ['1800000000001', '1800000000002', '1800000000003']) {
+    expect(
+      (
+        await local.core.fetch(
+          await local.incoming({}, { ...local.activity, id, text: id })
+        )
+      ).status
+    ).toBe(200)
+  }
+  const incoming = await local.storage.listInbound({ limit: 10 })
+  expect(incoming).toHaveLength(3)
+  for (const id of ['1800000000002', '1800000000001', '1800000000003']) {
+    const request = incoming.find((item) => item.snapshot.text === id)?.snapshot
+    if (!request) {
+      throw new Error('missing_incoming_activity')
+    }
+    expect(
+      await local.principal().sendMessage({
+        channel: request.channel.id,
+        text: `answer ${id}`,
+        reply: { requestId: request.requestId, kind: 'final' }
+      })
+    ).toMatchObject({ status: 'queued' })
+    await local.core.processDue()
+  }
+  const channel = incoming[0]?.snapshot.channel.id
+  if (!channel) {
+    throw new Error('missing_channel')
+  }
+  expect(
+    await local.principal().sendMessage({ channel, text: 'ordinary' })
+  ).toMatchObject({ status: 'queued' })
+  await local.core.processDue()
+
+  const sent = local.remote.traffic.filter((item) =>
+    item.path.includes('/activities')
+  )
+
+  expect(sent.map((item) => item.path)).toEqual([
+    '/teams/v3/conversations/conversation-1/activities/root-1',
+    '/teams/v3/conversations/conversation-1/activities/root-1',
+    '/teams/v3/conversations/conversation-1/activities/root-1',
+    '/teams/v3/conversations/conversation-1/activities/root-1'
+  ])
+  expect(sent.map((item) => JSON.parse(item.body) as unknown)).toMatchObject([
+    {
+      text: '<quoted messageId="1800000000002"/> answer 1800000000002',
+      entities: [
+        { type: 'quotedReply', quotedReply: { messageId: '1800000000002' } }
+      ],
+      replyToId: 'root-1'
+    },
+    {
+      text: '<quoted messageId="1800000000001"/> answer 1800000000001',
+      entities: [
+        { type: 'quotedReply', quotedReply: { messageId: '1800000000001' } }
+      ],
+      replyToId: 'root-1'
+    },
+    {
+      text: '<quoted messageId="1800000000003"/> answer 1800000000003',
+      entities: [
+        { type: 'quotedReply', quotedReply: { messageId: '1800000000003' } }
+      ],
+      replyToId: 'root-1'
+    },
+    { text: 'ordinary', replyToId: 'root-1' }
+  ])
+  expect(JSON.parse(sent[3]?.body ?? 'null') as unknown).not.toHaveProperty(
+    'entities'
+  )
+})
+
+it('uses the selected activity for root-conversation replies and keeps ordinary sends outside that reply chain', async () => {
+  const local = await setup()
+
+  const root = await harness(
+    createTeamsChannel(),
+    local.config,
+    'conversation-1',
+    'user-id'
+  )
+
+  cleanup.push(root.close)
+  const { replyToId: _thread, ...activity } = local.activity
+  expect(
+    (await root.core.fetch(await local.incoming({}, activity))).status
+  ).toBe(200)
+  const request = (await root.storage.listInbound({ limit: 1 }))[0]?.snapshot
+  if (!request) {
+    throw new Error('missing_incoming_activity')
+  }
+  expect(
+    await root.principal().sendMessage({
+      channel: request.channel.id,
+      text: 'answer',
+      reply: { requestId: request.requestId, kind: 'final' }
+    })
+  ).toMatchObject({ status: 'queued' })
+  await root.core.processDue()
+  expect(
+    await root
+      .principal()
+      .sendMessage({ channel: request.channel.id, text: 'ordinary' })
+  ).toMatchObject({ status: 'queued' })
+  await root.core.processDue()
+
+  const sent = local.remote.traffic.filter((item) =>
+    item.path.includes('/activities')
+  )
+
+  expect(sent.map((item) => item.path)).toEqual([
+    '/teams/v3/conversations/conversation-1/activities/activity-1',
+    '/teams/v3/conversations/conversation-1/activities'
+  ])
+  expect(JSON.parse(sent[0]?.body ?? 'null') as unknown).toMatchObject({
+    text: '<quoted messageId="activity-1"/> answer',
+    entities: [
+      { type: 'quotedReply', quotedReply: { messageId: 'activity-1' } }
+    ]
+  })
+  const ordinary: unknown = JSON.parse(sent[1]?.body ?? 'null')
+  expect(ordinary).toMatchObject({ text: 'ordinary' })
+  expect(ordinary).not.toHaveProperty('entities')
+  expect(ordinary).not.toHaveProperty('replyToId')
+})
+
 async function setup(
   endorsements = ['msteams'],
   filename = ':memory:',
