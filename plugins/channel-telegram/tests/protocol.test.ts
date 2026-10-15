@@ -350,7 +350,12 @@ describe('telegram native protocol', () => {
 
     cleanup.push(remote.close)
     const test = await setup(remote.url)
-    expect(await test.plugin.send(sendInput(test.target))).toEqual({
+    expect(
+      await test.plugin.send({
+        ...sendInput(test.target),
+        reply: { requestId: 'request-1', kind: 'final' }
+      })
+    ).toEqual({
       status: 'sent',
       receipt: { platformMessageId: '100' }
     })

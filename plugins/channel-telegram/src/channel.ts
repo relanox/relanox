@@ -40,7 +40,7 @@ export function createTelegramChannel(
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       if (
         address.platform !== 'telegram' ||
         address.accountId !== account.id ||
@@ -49,6 +49,20 @@ export function createTelegramChannel(
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
+      const current = identity()
+      const prior = targetSchema.safeParse(learned?.data)
+
+      const replyToId =
+        learned?.channel === 'telegram' &&
+        learned.accountId === account.id &&
+        learned.chatId === address.chatId &&
+        learned.threadId === address.threadId &&
+        prior.success &&
+        prior.data.botId === current.botId &&
+        prior.data.apiBaseUrl === current.apiBaseUrl
+          ? learned.replyToId
+          : undefined
+
       return {
         status: 'available',
         target: {
@@ -58,7 +72,8 @@ export function createTelegramChannel(
           ...(address.threadId !== undefined
             ? { threadId: address.threadId }
             : {}),
-          data: identity()
+          ...(replyToId ? { replyToId } : {}),
+          data: current
         }
       }
     },
@@ -202,7 +217,7 @@ export function createTelegramChannel(
             ...(input.target.threadId
               ? { message_thread_id: Number(input.target.threadId) }
               : {}),
-            ...(input.target.replyToId
+            ...(input.reply && input.target.replyToId
               ? {
                   reply_parameters: {
                     message_id: Number(input.target.replyToId),
