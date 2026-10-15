@@ -29,6 +29,8 @@ Invoke-RestMethod "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/getUpdate
 
 打开机器人，点击开始，然后发送“你好”。在群组中 @ 机器人或回复它；如果希望接收普通群消息，在 BotFather 调整隐私设置。请在配置绑定的会话或话题中发送。
 
+Agent 可通过 `reply.requestId` 引用指定来信，即使之后又收到新消息也不会改为引用最新消息。不传 `reply` 时不显示消息引用；论坛话题中的发送仍留在配置的话题中。
+
 ## 图片和文件
 
 像平常一样发送图片、语音、音频、视频或文件，说明文字可写你的问题。接收的云端文件需符合 Telegram 的 20 MB 下载限制及 Relanox 限制。回复可包含图片、音频、视频和文件；图片上传上限为 10 MB，其他上传为 50 MB，同时受 Relanox 限制。
