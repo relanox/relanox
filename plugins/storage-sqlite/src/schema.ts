@@ -15,6 +15,12 @@ import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
 export const isBlockingDelivery = (status: SQLiteColumn): SQL<boolean> =>
   sql<boolean>`${status} in ('pending','unknown')`
 
+export const isDueRequest = (status: SQLiteColumn): SQL<boolean> =>
+  sql<boolean>`${status} = 'due'`
+
+export const isPendingDelivery = (status: SQLiteColumn): SQL<boolean> =>
+  sql<boolean>`${status} = 'pending'`
+
 export const conversations = sqliteTable('conversations', {
   id: text('id').primaryKey(),
   endpoint: text('endpoint').notNull(),
@@ -34,11 +40,26 @@ export const inbound = sqliteTable(
     acceptedAt: integer('accepted_at').notNull(),
     status: text('status').notNull(),
     version: integer('version').notNull(),
-    record: text('record').notNull()
+    record: text('record').notNull(),
+    dueAt: integer('due_at').generatedAlwaysAs(
+      (): SQL => sql`json_extract(${inbound.record}, '$.dispatch.dueAt')`,
+      { mode: 'virtual' }
+    ),
+    leaseExpiresAt: integer('lease_expires_at').generatedAlwaysAs(
+      (): SQL =>
+        sql`json_extract(${inbound.record}, '$.dispatch.lease.expiresAt')`,
+      { mode: 'virtual' }
+    )
   },
   (table) => [
     unique().on(table.channel, table.account, table.event),
-    index('inbound_fifo').on(table.endpoint, table.acceptedAt, table.id)
+    index('inbound_fifo').on(table.endpoint, table.acceptedAt, table.id),
+    index('inbound_due')
+      .on(table.leaseExpiresAt, table.dueAt, table.acceptedAt, table.id)
+      .where(isDueRequest(table.status)),
+    index('inbound_lease')
+      .on(table.leaseExpiresAt)
+      .where(isDueRequest(table.status))
   ]
 )
 
@@ -53,13 +74,27 @@ export const outbound = sqliteTable(
     digest: text('digest').notNull(),
     status: text('status').notNull(),
     version: integer('version').notNull(),
-    record: text('record').notNull()
+    record: text('record').notNull(),
+    dueAt: integer('due_at').generatedAlwaysAs(
+      (): SQL => sql`json_extract(${outbound.record}, '$.dueAt')`,
+      { mode: 'virtual' }
+    ),
+    leaseExpiresAt: integer('lease_expires_at').generatedAlwaysAs(
+      (): SQL => sql`json_extract(${outbound.record}, '$.lease.expiresAt')`,
+      { mode: 'virtual' }
+    )
   },
   (table) => [
     unique().on(table.channelId, table.messageId),
     index('outbound_channel_order')
       .on(table.channelId)
-      .where(isBlockingDelivery(table.status))
+      .where(isBlockingDelivery(table.status)),
+    index('outbound_due')
+      .on(table.leaseExpiresAt, table.dueAt)
+      .where(isPendingDelivery(table.status)),
+    index('outbound_lease')
+      .on(table.leaseExpiresAt)
+      .where(isPendingDelivery(table.status))
   ]
 )
 

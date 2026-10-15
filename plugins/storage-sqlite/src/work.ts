@@ -2,6 +2,7 @@ import { decodeDurableRecord } from './record-codec.js'
 import type { Storage, InboundRecord, OutboundRecord } from '@relanox/sdk'
 import { isFiltered, needsPreparation } from '@relanox/sdk'
 import type { DatabaseContext } from './database.js'
+import { boundedLimit } from './database.js'
 import { randomUUID } from 'node:crypto'
 import {
   isActiveLease,
@@ -10,7 +11,13 @@ import {
 } from '@relanox/storage-support'
 import { and, eq, isNull, lt, lte, ne, notExists, or } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
-import { inbound, outbound, isBlockingDelivery } from './schema.js'
+import {
+  inbound,
+  outbound,
+  isBlockingDelivery,
+  isDueRequest,
+  isPendingDelivery
+} from './schema.js'
 import { jsonValue, rowId } from './expressions.js'
 
 export function createWorkOperations(
@@ -91,64 +98,86 @@ export function createWorkOperations(
       })
     },
     async takeDue(input) {
+      const limit = boundedLimit(input.limit)
       return transaction(() => {
         const work: Awaited<ReturnType<Storage['takeDue']>>[number][] = []
-        for (const record of db
+
+        // Bound recovery independently so expired calls cannot force full-backlog decoding.
+        const expiredRequests = db
           .select({ record: inbound.record })
           .from(inbound)
           .where(
             and(
-              eq(inbound.status, 'due'),
-              or(
-                lte(
-                  jsonValue<number>(
-                    inbound.record,
-                    '$.dispatch.lease.expiresAt'
-                  ),
-                  input.now
-                ),
-                and(
-                  isNull(jsonValue(inbound.record, '$.dispatch.lease')),
-                  lte(
-                    jsonValue<number>(inbound.record, '$.dispatch.dueAt'),
-                    input.now
-                  ),
-                  eq(jsonValue(inbound.record, '$.dispatch.status'), 'due')
-                )
-              )
+              isDueRequest(inbound.status),
+              lte(inbound.leaseExpiresAt, input.now)
             )
           )
           .orderBy(inbound.acceptedAt, inbound.id)
+          .limit(limit)
           .all()
-          .map((row) => decodeDurableRecord<InboundRecord>(row.record))) {
-          let next = record
-          if (
-            record.dispatch.lease &&
-            record.dispatch.lease.expiresAt <= input.now
-          ) {
-            next = expireInbound(record)
-            saveInbound(next)
+
+        for (const row of expiredRequests) {
+          saveInbound(expireInbound(decodeDurableRecord(row.record)))
+        }
+
+        const expiredDeliveries = db
+          .select({ record: outbound.record })
+          .from(outbound)
+          .where(
+            and(
+              isPendingDelivery(outbound.status),
+              lte(outbound.leaseExpiresAt, input.now)
+            )
+          )
+          .orderBy(rowId(outbound))
+          .limit(limit)
+          .all()
+
+        for (const row of expiredDeliveries) {
+          const record = decodeDurableRecord<OutboundRecord>(row.record)
+
+          const next = {
+            ...record,
+            version: record.version + 1,
+            status: input.safeRetryAccountIds.includes(record.target.accountId)
+              ? ('pending' as const)
+              : ('unknown' as const),
+            errorCode: 'lease_expired'
           }
-          if (
-            work.length >= input.limit ||
-            next.dispatch.status !== 'due' ||
-            next.dispatch.lease ||
-            next.dispatch.dueAt > input.now
-          ) {
-            continue
-          }
+
+          delete next.lease
+          saveOutbound(next)
+        }
+
+        const requests = db
+          .select({ record: inbound.record })
+          .from(inbound)
+          .where(
+            and(
+              isDueRequest(inbound.status),
+              isNull(inbound.leaseExpiresAt),
+              lte(inbound.dueAt, input.now)
+            )
+          )
+          .orderBy(inbound.acceptedAt, inbound.id)
+          .limit(limit)
+          .all()
+
+        for (const row of requests) {
+          const record = decodeDurableRecord<InboundRecord>(row.record)
 
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
-            version: next.version + 1,
+            version: record.version + 1,
             expiresAt: input.now + input.leaseMs
           }
 
-          next = {
-            ...next,
+          const next = {
+            ...record,
             version: lease.version,
-            dispatch: { ...next.dispatch, lease }
+            dispatch: { ...record.dispatch, lease }
           }
+
           saveInbound(next)
           work.push({
             kind: needsPreparation(next) ? 'prepare' : 'dispatch',
@@ -162,7 +191,7 @@ export function createWorkOperations(
           .from(outbound)
           .where(
             and(
-              eq(outbound.status, 'pending'),
+              isPendingDelivery(outbound.status),
               notExists(
                 db
                   .select({ id: earlier.id })
@@ -179,53 +208,21 @@ export function createWorkOperations(
                     )
                   )
               ),
-              or(
-                lte(
-                  jsonValue<number>(outbound.record, '$.lease.expiresAt'),
-                  input.now
-                ),
-                and(
-                  isNull(jsonValue(outbound.record, '$.lease')),
-                  lte(jsonValue<number>(outbound.record, '$.dueAt'), input.now)
-                )
-              )
+              isNull(outbound.leaseExpiresAt),
+              lte(outbound.dueAt, input.now)
             )
           )
           .orderBy(rowId(outbound))
+          .limit(limit - work.length)
           .all()
           .map((row) => decodeDurableRecord<OutboundRecord>(row.record))) {
-          let next = record
-          if (record.lease && record.lease.expiresAt <= input.now) {
-            next = {
-              ...record,
-              version: record.version + 1,
-              status: input.safeRetryAccountIds.includes(
-                record.target.accountId
-              )
-                ? 'pending'
-                : 'unknown',
-              errorCode: 'lease_expired'
-            }
-            const { lease: _expiredLease, ...recovered } = next
-            next = recovered
-            saveOutbound(next)
-          }
-          if (
-            work.length >= input.limit ||
-            next.status !== 'pending' ||
-            next.lease ||
-            next.dueAt > input.now
-          ) {
-            continue
-          }
-
           const lease = {
             token: `${input.leaseOwner}:${randomUUID()}`,
-            version: next.version + 1,
+            version: record.version + 1,
             expiresAt: input.now + (input.sendLeaseMs ?? input.leaseMs)
           }
 
-          next = { ...next, version: lease.version, lease }
+          const next = { ...record, version: lease.version, lease }
           saveOutbound(next)
           work.push({ kind: 'send', record: next, lease })
         }

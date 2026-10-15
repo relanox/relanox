@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "123eca5b-272e-4676-a687-8884280bc66f",
+  "id": "cca89278-f8fc-4431-ac58-23bcb5c824e5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "conversations": {
@@ -114,6 +114,28 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "generated": {
+            "as": "(json_extract(\"record\", '$.dispatch.dueAt'))",
+            "type": "virtual"
+          }
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "generated": {
+            "as": "(json_extract(\"record\", '$.dispatch.lease.expiresAt'))",
+            "type": "virtual"
+          }
         }
       },
       "indexes": {
@@ -121,6 +143,18 @@
           "name": "inbound_fifo",
           "columns": ["endpoint", "accepted_at", "id"],
           "isUnique": false
+        },
+        "inbound_due": {
+          "name": "inbound_due",
+          "columns": ["lease_expires_at", "due_at", "accepted_at", "id"],
+          "isUnique": false,
+          "where": "\"inbound\".\"status\" = 'due'"
+        },
+        "inbound_lease": {
+          "name": "inbound_lease",
+          "columns": ["lease_expires_at"],
+          "isUnique": false,
+          "where": "\"inbound\".\"status\" = 'due'"
         },
         "inbound_channel_account_event_unique": {
           "name": "inbound_channel_account_event_unique",
@@ -260,6 +294,28 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "generated": {
+            "as": "(json_extract(\"record\", '$.dueAt'))",
+            "type": "virtual"
+          }
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "generated": {
+            "as": "(json_extract(\"record\", '$.lease.expiresAt'))",
+            "type": "virtual"
+          }
         }
       },
       "indexes": {
@@ -268,6 +324,18 @@
           "columns": ["channel_id"],
           "isUnique": false,
           "where": "\"outbound\".\"status\" in ('pending','unknown')"
+        },
+        "outbound_due": {
+          "name": "outbound_due",
+          "columns": ["lease_expires_at", "due_at"],
+          "isUnique": false,
+          "where": "\"outbound\".\"status\" = 'pending'"
+        },
+        "outbound_lease": {
+          "name": "outbound_lease",
+          "columns": ["lease_expires_at"],
+          "isUnique": false,
+          "where": "\"outbound\".\"status\" = 'pending'"
         },
         "outbound_channel_id_message_id_unique": {
           "name": "outbound_channel_id_message_id_unique",

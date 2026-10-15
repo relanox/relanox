@@ -495,6 +495,66 @@ export function storageContract(
       expect((await s.getOutbound(record.deliveryId))?.status).toBe('sent')
     })
 
+    // Reject malformed numeric bounds before leasing; NaN can disable limit comparisons.
+    // Existing cases only use positive integer limits and cannot catch a whole-backlog claim.
+    // The real public storage API supplies the regression seam; no production seam is added.
+    it.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY])(
+      'rejects an invalid work limit %s without taking a lease',
+      async (limit) => {
+        await s.acceptInbound(snapshot())
+        await expect(
+          s.takeDue({
+            now: 100,
+            leaseMs: 10,
+            limit,
+            leaseOwner: 'invalid',
+            safeRetryAccountIds: []
+          })
+        ).rejects.toThrow('Invalid storage limit')
+        expect(await due(100)).toMatchObject([
+          { kind: 'dispatch', record: { snapshot: { requestId: 'r1' } } }
+        ])
+      }
+    )
+
+    // Keep runnable work reachable when restart recovery exceeds a claim's result limit.
+    // A bounded combined scan could hide runnable work behind expired claims.
+    // Existing single-expiry cases do not cover that backlog. No new seam is needed.
+    it('claims runnable work behind an expired request backlog without repeating uncertain calls', async () => {
+      const ids = ['expired-a', 'expired-b', 'expired-c']
+      for (const id of ids) {
+        await s.acceptInbound(snapshot(id))
+      }
+      const expired = await due(100)
+      expect(expired).toHaveLength(3)
+      await s.acceptInbound(snapshot('runnable', 105))
+
+      const work = await s.takeDue({
+        now: 110,
+        leaseMs: 10,
+        limit: 1,
+        leaseOwner: 'restarted',
+        safeRetryAccountIds: []
+      })
+
+      expect(work).toMatchObject([
+        { kind: 'dispatch', record: { snapshot: { requestId: 'runnable' } } }
+      ])
+      for (const [index, id] of ids.entries()) {
+        const item = required(expired[index])
+        expect(
+          await s.settleAttempt({
+            kind: 'dispatch',
+            id,
+            lease: item.lease,
+            outcome: { status: 'accepted' },
+            now: 110,
+            nextDueAt: 110
+          })
+        ).toEqual({ status: 'conflict' })
+      }
+    })
+
     // Both adapters must support long sends without delaying notification recovery.
     // Shared-lease cases cannot catch this split; this uses only real storage APIs.
     it('leases sends longer than notifications and permits their late settlement', async () => {
