@@ -134,12 +134,7 @@ export function createLineChannel(): ChannelPlugin<LineConfig> {
           ? {
               richText: {
                 maxParts: 20,
-                maxTextLength: 2000,
-                imageMimeTypes: ['image/jpeg', 'image/png'],
-                maxImageBytes: Math.min(
-                  runtime.host.maxMediaBytes ?? 100 * 1024 * 1024,
-                  10 * 1000 * 1000
-                )
+                maxTextLength: 2000
               }
             }
           : {}),

@@ -875,18 +875,19 @@ it('uploads images privately and posts ordered rich blocks in the same Slack thr
     status: 'rejected',
     errorCode: 'invalid_rich_media'
   })
+  // Core splitting is exercised through SQLite in sdk-rich.test.ts. Keep the
+  // Ordered image-ID guard at the SDK upload boundary, with no production seam.
   expect(
     await local.plugin.send({
       ...input,
-      chunk: {
-        ...input.chunk,
-        richText: [
-          { type: 'text', text: 'a'.repeat(2501) },
-          { type: 'image', media: richImage.reference, label: 'photo' }
-        ]
-      }
+      richMedia: [
+        {
+          ...richImage,
+          reference: { ...richImage.reference, id: 'wrong-image' }
+        }
+      ]
     })
-  ).toEqual({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
+  ).toEqual({ status: 'rejected', errorCode: 'invalid_rich_media' })
   expect(remote.requests).toHaveLength(count)
 })
 

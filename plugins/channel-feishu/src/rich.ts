@@ -1,16 +1,8 @@
-import type { SendInput, StoredMedia, RichTextPart } from '@relanox/sdk'
+import type { SendInput } from '@relanox/sdk'
 
 export const richCapabilities = {
   maxParts: 20,
-  maxTextLength: 8000,
-  imageMimeTypes: [
-    'image/png',
-    'image/jpeg',
-    'image/gif',
-    'image/webp',
-    'image/bmp'
-  ],
-  maxImageBytes: 10 * 1024 * 1024
+  maxTextLength: 8000
 }
 
 export function richError(input: SendInput): string | undefined {
@@ -18,53 +10,11 @@ export function richError(input: SendInput): string | undefined {
   if (!parts) {
     return undefined
   }
-  if (
-    input.chunk.text ||
-    input.chunk.media ||
-    input.media ||
-    parts.length === 0 ||
-    parts.length > richCapabilities.maxParts
-  ) {
-    return 'invalid_rich_text'
-  }
-
-  const text = parts
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text)
-    .join('')
-
-  if (Buffer.byteLength(text, 'utf8') > richCapabilities.maxTextLength) {
-    return 'rich_text_limit_exceeded'
-  }
   const images = parts.filter((part) => part.type === 'image')
-  if (images.length === 0 || images.length !== input.richMedia?.length) {
-    return 'invalid_rich_media'
-  }
-  for (const [index, part] of images.entries()) {
-    const stored = input.richMedia?.[index]
-    if (invalidImage(stored, part)) {
-      return 'invalid_rich_media'
-    }
-  }
-  return undefined
-}
-
-function invalidImage(
-  stored: StoredMedia | undefined,
-  part: Extract<RichTextPart, { type: 'image' }>
-): boolean {
-  return (
-    !stored ||
-    stored.reference.id !== part.media.id ||
-    stored.reference.kind !== 'image' ||
-    part.media.kind !== 'image' ||
-    stored.reference.mimeType !== part.media.mimeType ||
-    stored.reference.size !== part.media.size ||
-    stored.reference.sha256 !== part.media.sha256 ||
-    stored.reference.fileName !== part.media.fileName ||
-    stored.data.byteLength === 0 ||
-    stored.data.byteLength !== part.media.size ||
-    !richCapabilities.imageMimeTypes.includes(part.media.mimeType) ||
-    (part.label || part.media.fileName).length > 2000
-  )
+  return images.length !== input.richMedia?.length ||
+    images.some(
+      (part, index) => input.richMedia?.[index]?.reference.id !== part.media.id
+    )
+    ? 'invalid_rich_media'
+    : undefined
 }

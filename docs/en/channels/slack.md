@@ -36,6 +36,8 @@ When the Agent specifies an incoming request in `reply.requestId`, Slack replies
 
 Share images, audio, videos or files with your question. Relanox sends generated files back into the same channel/thread. Ensure the installed bot token has both file scopes, then reinstall the app after changing scopes.
 
+The SDK and Slack enforce current upload size and format limits, including images in ordered text/image replies. Relanox keeps its configured media budget (100 MiB by default), bounds incoming downloads and preserves the native layout's text and payload budgets.
+
 ## Troubleshooting
 
 If URL verification fails, check the public event URL and signing secret. If channel messages are missing, check event subscriptions and app membership. For Socket Mode failures, verify the app token and `connections:write`, then restart Relanox after updating its environment.

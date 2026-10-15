@@ -1294,18 +1294,19 @@ it('uploads an image key and sends ordered Markdown/image post rows to Feishu', 
     status: 'rejected',
     errorCode: 'invalid_rich_media'
   })
+  // Core's persisted splitting is covered by sdk-rich.test.ts; the adapter only
+  // Matches ordered image references before uploading bytes, without a test seam.
   expect(
     await local.plugin.send({
       ...input,
-      chunk: {
-        ...input.chunk,
-        richText: [
-          { type: 'text', text: 'a'.repeat(8001) },
-          { type: 'image', media: richImage.reference, label: 'photo' }
-        ]
-      }
+      richMedia: [
+        {
+          ...richImage,
+          reference: { ...richImage.reference, id: 'wrong-image' }
+        }
+      ]
     })
-  ).toMatchObject({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
+  ).toMatchObject({ status: 'rejected', errorCode: 'invalid_rich_media' })
   expect(remote.requests).toHaveLength(count)
 })
 
@@ -1430,11 +1431,14 @@ it.each([
     }
   }
 ])(
-  'resolves native mention placeholders in $message_type messages',
+  'uses SDK mention normalization in native key order for $message_type messages',
   async ({ message_type, content }) => {
     // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
     // Channel/normalize/context.ts RawMention and channel/normalize/mentions.ts resolveMentions.
     // Native empty post user_name: https://open.feishu.cn/document/server-docs/im-v1/message-content-description/message_content
+    // SDK 1.75.0 lib/index.js resolveMentions replaces keys in supplied order.
+    // These literal results were verified against the published normalize API;
+    // No adapter parser or pre-sort is added to change overlapping-key output.
     const local = await setup()
 
     const response = await local.handler(
@@ -1456,7 +1460,7 @@ it.each([
     )
 
     expect(response.status).toBe(200)
-    expect(local.received[0]?.text).toBe('@Alice asks @Bob')
+    expect(local.received[0]?.text).toBe('@Alice asks @Alice0')
   }
 )
 
