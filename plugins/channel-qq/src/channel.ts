@@ -117,6 +117,7 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         data: {
           type: replyTarget.scope,
           msgId: replyTarget.msgId,
+          ...(message.msgIdx ? { msgIdx: message.msgIdx } : {}),
           messageAt: Date.parse(message.timestamp),
           scope: { appId: config.appId, apiBase: new URL(apiBase(config)).href }
         }
@@ -175,6 +176,9 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
 
       const raw = await bot.send({
         target: nativeTarget,
+        ...(input.reply && target.msgIdx
+          ? { messageReference: { message_id: target.msgIdx } }
+          : {}),
         ...(media
           ? {
               content: input.chunk.text,
@@ -241,7 +245,11 @@ export function createQqChannel(): ChannelPlugin<QqConfig> {
         ...(known?.type === type &&
         known.msgId !== undefined &&
         known.messageAt !== undefined
-          ? { msgId: known.msgId, messageAt: known.messageAt }
+          ? {
+              msgId: known.msgId,
+              messageAt: known.messageAt,
+              ...(known.msgIdx ? { msgIdx: known.msgIdx } : {})
+            }
           : {})
       }
 
