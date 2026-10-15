@@ -12,9 +12,11 @@ export const jsonValue = <T = string>(
   path: string
 ): SQL<T> => sql<T>`json_extract(${column}, ${path})`
 
-/** Prefix matching must treat %, _ and backslashes literally, unlike LIKE. */
-export const keyPrefix = (column: SQLiteColumn, length: number): SQL<string> =>
-  sql<string>`substr(${column}, 1, ${length})`
+/** Native string matching preserves Unicode prefixes and treats LIKE wildcards literally. */
+export const keyStartsWith = (
+  column: SQLiteColumn,
+  prefix: string
+): SQL<boolean> => sql<boolean>`instr(${column}, ${prefix}) = 1`
 
 /** Staging quotas count bytes in SQLite blobs rather than JSON reference metadata. */
 export const blobLength = (column: SQLiteColumn): SQL<number> =>
