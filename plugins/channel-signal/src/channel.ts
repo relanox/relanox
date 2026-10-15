@@ -1,4 +1,5 @@
 import { signalMarkdown, splitSignalMarkdown } from './markdown.js'
+import type { z } from 'zod'
 import { requestTimeoutMs, reconnectDelayMs } from './constants.js'
 import type {
   AccountConfig,
@@ -30,6 +31,30 @@ import {
   rpcSchema
 } from './schemas.js'
 import { consumeEvents } from './stream.js'
+
+function signalChatId(target: z.infer<typeof targetSchema>): string {
+  return target.kind === 'group'
+    ? `group:${target.groupId}`
+    : `direct:${target.recipient}`
+}
+
+function quotedMessage(
+  input: SendInput,
+  target: z.infer<typeof targetSchema>
+): {
+  quoteTimestamp?: number
+  quoteAuthor?: string
+  quoteMessage?: string
+} {
+  const quote = input.reply ? target.quote : undefined
+  return quote
+    ? {
+        quoteTimestamp: quote.timestamp,
+        quoteAuthor: quote.author,
+        quoteMessage: quote.text
+      }
+    : {}
+}
 
 async function saveEventCursor(
   host: ChannelHost,
@@ -158,19 +183,26 @@ export function createSignalChannel(
             channel: 'signal',
             accountId: account.id,
             chatId,
-            data: groupId
-              ? {
-                  kind: 'group',
-                  groupId,
-                  serviceUrl: base,
-                  account: config.account
-                }
-              : {
-                  kind: 'direct',
-                  recipient: sender,
-                  serviceUrl: base,
-                  account: config.account
-                }
+            data: {
+              ...(groupId
+                ? {
+                    kind: 'group',
+                    groupId,
+                    serviceUrl: base,
+                    account: config.account
+                  }
+                : {
+                    kind: 'direct',
+                    recipient: sender,
+                    serviceUrl: base,
+                    account: config.account
+                  }),
+              quote: {
+                author: sender,
+                timestamp: message.timestamp,
+                text: message.message ?? ''
+              }
+            }
           },
           context: null
         })
@@ -247,10 +279,7 @@ export function createSignalChannel(
       target.data.serviceUrl !== base ||
       target.data.account !== config.account ||
       input.target.threadId !== undefined ||
-      input.target.chatId !==
-        (target.data.kind === 'group'
-          ? `group:${target.data.groupId}`
-          : `direct:${target.data.recipient}`)
+      input.target.chatId !== signalChatId(target.data)
     ) {
       return { status: 'rejected', errorCode: 'target_mismatch' }
     }
@@ -277,6 +306,7 @@ export function createSignalChannel(
             account: config.account,
             ...signalMarkdown(input.chunk.text),
             ...address,
+            ...quotedMessage(input, target.data),
             ...outboundAttachments(input)
           }
         })
@@ -328,7 +358,7 @@ export function createSignalChannel(
       }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       const { account, config, base } = configured()
       if (
         address.platform !== 'signal' ||
@@ -358,13 +388,28 @@ export function createSignalChannel(
       if (!data.success) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
+      const prior = targetSchema.safeParse(learned?.data)
+
+      const quote =
+        learned?.channel === 'signal' &&
+        learned.accountId === account.id &&
+        learned.chatId === address.chatId &&
+        learned.threadId === undefined &&
+        prior.success &&
+        prior.data.serviceUrl === base &&
+        prior.data.account === config.account &&
+        signalChatId(prior.data) === address.chatId
+          ? prior.data.quote
+          : undefined
+
+      const { quote: _quote, ...destinationData } = data.data
       return {
         status: 'available',
         target: {
           channel: 'signal',
           accountId: account.id,
           chatId: address.chatId,
-          data: data.data
+          data: { ...destinationData, ...(quote ? { quote } : {}) }
         }
       }
     },

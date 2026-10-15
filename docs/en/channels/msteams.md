@@ -33,6 +33,8 @@ Sending to a bound conversation also needs its Bot Connector service address and
 
 Open the installed bot’s personal chat and send “Hello”. For a group/channel binding, add the bot and mention it in that conversation. Use the tenant and user you configured.
 
+When the Agent specifies `reply.requestId`, the answer quotes that incoming message using Teams' native quoted reply. The answer stays in its bound thread; replying to a root-conversation message uses that selected message's reply chain. Text, cards and attachments share the same reference. Sending without `reply` omits the quote and stays in the bound conversation or thread.
+
 ## Images and files
 
 Send inline images or personal-chat files with your question. For file replies in personal chats, set `supportsFiles:true` in the Teams app manifest and configure exact `trustedUploadOrigins` for your tenant’s OneDrive upload service. When the bot asks for file consent, accept to receive the file. Personal-chat images above 15,000 bytes also arrive as file cards. Group/channel image replies above that size use the public media address described in [Media](../media.md).

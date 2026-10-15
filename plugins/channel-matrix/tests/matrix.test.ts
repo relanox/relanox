@@ -658,16 +658,17 @@ it('preserves an explicit threaded reply on the native HTTP send boundary', asyn
     `${peer.base}/dispatch`
   )
   expect(
-    await plugin.send(
-      input({
+    await plugin.send({
+      ...input({
         channel: 'matrix',
         accountId: 'bot',
         chatId: room,
         threadId: thread,
         replyToId: '$selected-message',
         data: { homeserver: peer.base, userId: '@bot:local.test' }
-      })
-    )
+      }),
+      reply: { requestId: 'request-1', kind: 'final' }
+    })
   ).toEqual({ status: 'sent', receipt: { platformMessageId: '$reply' } })
   expect(sent).toEqual([
     expect.objectContaining({

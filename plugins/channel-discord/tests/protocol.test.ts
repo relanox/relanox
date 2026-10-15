@@ -938,7 +938,12 @@ describe('discord native Gateway and REST', () => {
     const remote = await peer(() => ({ body: { id: '900' } }))
     cleanup.push(remote.close)
     const test = await setup(remote.url)
-    expect(await test.plugin.send(sendInput(test.target))).toEqual({
+    expect(
+      await test.plugin.send({
+        ...sendInput(test.target),
+        reply: { requestId: 'request-1', kind: 'final' }
+      })
+    ).toEqual({
       status: 'sent',
       receipt: { platformMessageId: '900' }
     })

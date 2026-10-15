@@ -27,6 +27,8 @@
 
 用允许的 Signal 联系人，向专用账号或其已加入的绑定群组发送“你好”。保持 signal-cli 和 Relanox 同时运行，以接收问题。
 
+Agent 可通过 `reply.requestId` 引用指定来信。Relanox 为 signal-cli 保存原始作者、消息时间戳和原文，之后的新消息不会改变引用目标。不传 `reply` 时不显示引用。在保存引用信息之前接收的旧消息仍可收到普通回复。
+
 ## 图片和文件
 
 正常发送图片、音频、视频或文件。确保 signal-cli 下载接收附件，以便 Relanox 获取。生成附件通过同一专用 Signal 账号发出，并需符合 Signal 与 Relanox 媒体限制。

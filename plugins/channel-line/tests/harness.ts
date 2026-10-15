@@ -238,6 +238,7 @@ export async function harness(
   core: Awaited<ReturnType<typeof createCore>>
   storage: ReturnType<typeof createSqliteStorage>
   dispatches: string[]
+  principal(this: void): ScopedAgentHost
   sendReply(
     this: void,
     text?: string
@@ -345,6 +346,7 @@ export async function harness(
     core,
     storage,
     dispatches,
+    principal,
     sendReply,
     async close(): Promise<void> {
       await storage.close()

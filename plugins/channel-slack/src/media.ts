@@ -194,13 +194,16 @@ export async function sendMedia(
   }
   const upload = prepared
 
+  const threadId =
+    input.target.threadId ?? (input.reply ? input.target.replyToId : undefined)
+
   const response = await postJson(
     `${base}/files.completeUploadExternal`,
     headers,
     {
       files: [{ id: upload.file_id, title: input.media.reference.fileName }],
       channel_id: input.target.chatId,
-      ...(input.target.threadId ? { thread_ts: input.target.threadId } : {}),
+      ...(threadId ? { thread_ts: threadId } : {}),
       ...(input.chunk.text
         ? {
             initial_comment: input.chunk.text

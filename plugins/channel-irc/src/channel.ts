@@ -6,8 +6,10 @@ import type { Socket } from 'node:net'
 import { connect as connectTls } from 'node:tls'
 import type {
   AccountConfig,
+  ChannelAddress,
   ChannelHost,
   ChannelPlugin,
+  ReplyTarget,
   SendInput,
   SendResult
 } from '@relanox/sdk'
@@ -15,7 +17,7 @@ import { validateConfig, nicknameSchema, channelSchema } from './config.js'
 import type { IrcConfig } from './config.js'
 import { delay, diagnose, ingest, secret, stopTask } from './protocol.js'
 import { recipientSchema, targetSchema } from './schemas.js'
-import { foldNick, parseMessage, wireLine } from './wire.js'
+import { escapeTag, foldNick, parseMessage, wireLine } from './wire.js'
 import type { CaseMapping, IrcMessage } from './wire.js'
 
 const authenticationFailures = new Set([
@@ -65,6 +67,7 @@ export function createIrcChannel(
   let controller: AbortController | undefined
   let socket: Socket | undefined
   let ready = false
+  let messageTags = false
   let nick = ''
   let channels: string[] = []
   let caseMapping: CaseMapping = 'rfc1459'
@@ -86,6 +89,26 @@ export function createIrcChannel(
 
   function write(current: Socket, value: string): void {
     current.write(wireLine(value))
+  }
+
+  function learnedReply(
+    address: ChannelAddress,
+    learned: ReplyTarget | undefined,
+    recipient: string
+  ): string | undefined {
+    const { account, config } = configured()
+    const prior = targetSchema.safeParse(learned?.data)
+    return learned?.channel === 'irc' &&
+      learned.accountId === account.id &&
+      learned.chatId === address.chatId &&
+      learned.threadId === undefined &&
+      prior.success &&
+      prior.data.server === config.server &&
+      prior.data.port === config.port &&
+      prior.data.tls === config.tls &&
+      fold(prior.data.recipient) === fold(recipient)
+      ? learned.replyToId
+      : undefined
   }
 
   async function receive(message: IrcMessage): Promise<void> {
@@ -160,6 +183,10 @@ export function createIrcChannel(
     const { config } = configured()
     const subcommand = message.params[1]
     const capabilities = message.params.at(-1)?.split(' ') ?? []
+    if (subcommand === 'DEL' && capabilities.includes('message-tags')) {
+      messageTags = false
+      return
+    }
     if (subcommand === 'LS') {
       for (const capability of capabilities) {
         offered.add(capability.split('=')[0] ?? capability)
@@ -185,9 +212,17 @@ export function createIrcChannel(
       return
     }
     if (subcommand === 'ACK') {
+      for (const capability of capabilities) {
+        if (capability === 'message-tags') {
+          messageTags = true
+        } else if (capability === '-message-tags') {
+          messageTags = false
+        }
+      }
       write(current, config.sasl ? 'AUTHENTICATE PLAIN' : 'CAP END')
     }
     if (subcommand === 'NAK') {
+      messageTags = false
       if (config.sasl) {
         throw new Error('sasl_rejected')
       }
@@ -300,6 +335,7 @@ export function createIrcChannel(
   async function connect(signal: AbortSignal): Promise<void> {
     const { host, config } = configured()
     ready = false
+    messageTags = false
     nick = config.nick
     caseMapping = 'rfc1459'
 
@@ -433,7 +469,12 @@ export function createIrcChannel(
     let line: string
     try {
       const text = ircMarkdown(input.chunk.text)
-      line = wireLine(`PRIVMSG ${target.data.recipient} :${text}`)
+
+      const quote =
+        input.reply && messageTags ? input.target.replyToId : undefined
+
+      const prefix = quote ? `@+reply=${escapeTag(quote)} ` : ''
+      line = wireLine(`${prefix}PRIVMSG ${target.data.recipient} :${text}`)
     } catch {
       return { status: 'rejected', errorCode: 'invalid_irc_text' }
     }
@@ -482,7 +523,7 @@ export function createIrcChannel(
       media: { receive: [], send: [] }
     },
     validateConfig,
-    async resolveChannel(address) {
+    async resolveChannel(address, learned) {
       const { account, config } = configured()
 
       const privateMessage = address.chatId.startsWith('dm:')
@@ -507,12 +548,15 @@ export function createIrcChannel(
       ) {
         return { status: 'unavailable', reason: 'invalid_address' }
       }
+      const replyToId = learnedReply(address, learned, recipient)
+
       return {
         status: 'available',
         target: {
           channel: 'irc',
           accountId: account.id,
           chatId: address.chatId,
+          ...(replyToId ? { replyToId } : {}),
           data: {
             recipient,
             server: config.server,

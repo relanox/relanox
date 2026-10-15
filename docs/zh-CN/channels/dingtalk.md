@@ -33,6 +33,8 @@
 
 ## 图片和文件
 
+当前应用机器人发送接口没有已验证的原生引用参数。Agent 可以提供 `reply.requestId`，将回复关联到选定请求并追踪完成状态，但钉钉会将其作为普通会话消息发送，不显示引用气泡。省略 `reply` 也普通发送。[官方 SDK 请求模型](https://github.com/alibabacloud-go/dingtalk/blob/1986c966942afc67b8ccae59d29d57989a45fe76/robot_1_0/client.go)定义了群聊和单聊接口支持的参数；Relanox 不会把消息 ID 填入未经文档确认的字段。
+
 可发送图片、音频、视频、文件或富文本消息。回复可包含 20 MB 内的 JPEG/PNG/GIF/BMP 图片、MP4 视频和文件，以及 2 MB 内的 AMR 音频，同时受 Relanox 限制。生成音频需带时长；视频还需图片预览和时长。文件回复使用 XLSX、PDF、ZIP、RAR、DOC 或 DOCX 格式。
 
 ## 常见问题

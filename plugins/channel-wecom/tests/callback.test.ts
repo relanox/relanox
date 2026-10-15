@@ -24,6 +24,63 @@ beforeEach(() => {
   vi.stubEnv('CALLBACK_KEY', callbackKey.toString('base64').replace(/=+$/u, ''))
 })
 
+test('HTTP replies finish the selected original callback after three requests arrive', async () => {
+  const host = await assemble(createWeComChannel(), callbackConfig, [
+    { chatId: 'user', senderId: 'user' }
+  ])
+
+  await host.start()
+  const streams = new Map<number, string>()
+  for (const number of [1, 2, 3]) {
+    const response = await callbackReply(
+      await host.runtime.fetch(
+        callbackRequest(callbackMessage(`message-${number}`))
+      )
+    )
+
+    streams.set(number, response.stream.id)
+  }
+  const accepted = await records(host.storage)
+  const principal = host.principal()
+  for (const number of [2, 1, 3]) {
+    const selected = accepted.find(
+      (item) => item.snapshot.source.eventId === `message-${number}`
+    )
+
+    const stream = streams.get(number)
+    if (!selected || !stream) {
+      throw new Error('missing_callback')
+    }
+
+    const queued = await principal.sendMessage({
+      channel: selected.snapshot.channel.id,
+      text: `answer ${number}`,
+      idempotencyKey: `reply-${number}`,
+      reply: { requestId: selected.snapshot.requestId, kind: 'final' }
+    })
+
+    expect(queued).toMatchObject({ status: 'queued' })
+    if (queued.status !== 'queued') {
+      throw new Error('missing_delivery')
+    }
+    await host.runtime.processDue()
+    expect(
+      await callbackReply(await host.runtime.fetch(streamRefresh(stream)))
+    ).toMatchObject({ stream: { finish: true, content: `answer ${number}` } })
+    // Core keeps the channel ordered until the platform polls the completed
+    // Response and the pending delivery is acknowledged on its saved due time.
+    await expect
+      .poll(
+        async () => {
+          await host.runtime.processDue()
+          return (await host.storage.getOutbound(queued.deliveryId))?.status
+        },
+        { timeout: 5000 }
+      )
+      .toBe('sent')
+  }
+})
+
 test('callback verifies URL challenges and rejects forged or stale encrypted requests before ingestion', async () => {
   const host = await assemble(createWeComChannel(), callbackConfig, [
     { chatId: 'user', senderId: 'user' }
@@ -526,7 +583,7 @@ test('WeCom HTTP resolves only a real unexpired unused authenticated callback ca
   if (resolved?.status !== 'available') {
     throw new Error('missing_callback_capability')
   }
-  expect(resolved.target.replyToId).toBeUndefined()
+  expect(resolved.target.replyToId).toBe('callback-1')
   expect(
     await plugin.send({
       ...sendInput('wecom', 'user', resolved.target.data),

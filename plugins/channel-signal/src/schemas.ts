@@ -32,18 +32,26 @@ export const receiveSchema = z.object({
   account: platformIdSchema.optional()
 })
 
+const quoteSchema = z.strictObject({
+  author: platformIdSchema,
+  timestamp: z.number().int().nonnegative(),
+  text: z.string()
+})
+
 export const targetSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('direct'),
     recipient: platformIdSchema,
     serviceUrl: z.string(),
-    account: platformIdSchema
+    account: platformIdSchema,
+    quote: quoteSchema.optional()
   }),
   z.strictObject({
     kind: z.literal('group'),
     groupId: platformIdSchema,
     serviceUrl: z.string(),
-    account: platformIdSchema
+    account: platformIdSchema,
+    quote: quoteSchema.optional()
   })
 ])
 

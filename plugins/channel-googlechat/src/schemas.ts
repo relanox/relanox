@@ -18,6 +18,8 @@ const threadId = z
 
 const messageSchema = z.object({
   name: platformIdSchema,
+  createTime: z.iso.datetime({ offset: true }).optional(),
+  lastUpdateTime: z.iso.datetime({ offset: true }).optional(),
   text: z.string().optional(),
   argumentText: z.string().optional(),
   sender: z.object({ name: platformIdSchema, type: z.string().optional() }),
@@ -45,6 +47,12 @@ export const eventSchema = z.object({
 export const targetSchema = z.strictObject({
   space: spaceId,
   thread: threadId.optional(),
+  quotedMessageMetadata: z
+    .strictObject({
+      name: z.string().regex(/^spaces\/[A-Za-z0-9_-]+\/messages\/[^/]+$/u),
+      lastUpdateTime: z.iso.datetime({ offset: true })
+    })
+    .optional(),
   scope: z.strictObject({ clientEmail: z.email(), apiBase: z.url() })
 })
 

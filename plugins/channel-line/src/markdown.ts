@@ -1,4 +1,4 @@
-import { markdownRuns, splitMarkdown } from '@relanox/markdown'
+import { markdownRuns, safeLink, splitMarkdown } from '@relanox/markdown'
 import type { MarkdownRun } from '@relanox/markdown'
 import type { Json } from '@relanox/sdk'
 
@@ -64,9 +64,43 @@ export function lineMarkdown(markdown: string): Json {
 
 export function splitLineMarkdown(markdown: string): readonly string[] {
   return splitMarkdown(markdown, {
-    maxLength: 30_000,
-    unit: 'utf8',
+    maxLength: 5000,
+    unit: 'utf16',
     measure: (part) =>
-      Buffer.byteLength(JSON.stringify(lineMarkdown(part)), 'utf8')
+      Math.max(
+        quotedPlainText(part).length,
+        // Normalize the Flex 30,000-byte ceiling to the text 5,000-unit budget.
+        Math.ceil(
+          Buffer.byteLength(JSON.stringify(lineMarkdown(part)), 'utf8') / 6
+        )
+      )
   })
+}
+
+export function quotedText(text: string, quoteToken: string | undefined): Json {
+  return quoteToken
+    ? { type: 'text', text: quotedPlainText(text), quoteToken }
+    : lineMarkdown(text)
+}
+
+function quotedPlainText(markdown: string): string {
+  const links: MarkdownRun[] = []
+  for (const run of markdownRuns(markdown)) {
+    const previous = links.at(-1)
+    if (run.href && previous?.href === run.href) {
+      links[links.length - 1] = {
+        text: previous.text + run.text,
+        href: run.href
+      }
+    } else {
+      links.push(run)
+    }
+  }
+  return links
+    .map((run) =>
+      run.href && safeLink(run.text) !== run.href
+        ? `${run.text} (${run.href})`
+        : run.text
+    )
+    .join('')
 }
