@@ -18,6 +18,7 @@ export const eventSchema = z.object({
       id: platformIdSchema,
       type: z.string(),
       text: z.string().optional(),
+      quoteToken: z.string().min(1).optional(),
       fileName: z.string().optional(),
       fileSize: z.number().int().nonnegative().optional(),
       duration: z.number().int().positive().optional(),
@@ -40,7 +41,8 @@ export const targetSchema = z.strictObject({
   destination: platformIdSchema,
   sourceType: z.enum(['user', 'group', 'room']).optional(),
   botId: platformIdSchema,
-  apiBaseUrl: z.string()
+  apiBaseUrl: z.string(),
+  quoteToken: z.string().min(1).optional()
 })
 
 export const retrySchema = z.strictObject({
