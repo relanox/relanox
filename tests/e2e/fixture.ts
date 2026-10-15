@@ -23,6 +23,7 @@ export const routineSchema = z.strictObject({
 })
 
 export const requestSchema = z.strictObject({
+  requestId: z.string().min(1),
   text: z.string(),
   context: z.json(),
   source: z.strictObject({
@@ -213,11 +214,17 @@ export async function sendMessage(
   client: Client,
   channel: string,
   text = '最终 answer 🌍',
-  idempotencyKey = `result-${channel}`
+  idempotencyKey = `result-${channel}`,
+  requestId?: string
 ): Promise<{ status: 'queued'; deliveryId: string; replay: boolean }> {
   const result = await client.callTool({
     name: 'relanox_send_message',
-    arguments: { channel, idempotencyKey, text }
+    arguments: {
+      channel,
+      idempotencyKey,
+      text,
+      ...(requestId ? { reply: { requestId, kind: 'final' } } : {})
+    }
   })
 
   return z
