@@ -1,4 +1,3 @@
-import { DatabaseSync } from 'node:sqlite'
 import { createCore } from '@relanox/core'
 import type { WorkerOptions } from '@relanox/core'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
@@ -78,7 +77,7 @@ function stream(
   server.on('connection', (socket, request) => {
     upgrades.push(request.url ?? '')
     const url = new URL(request.url ?? '', peer.base)
-    if (!url.searchParams.has('connection_id')) {
+    if (!url.searchParams.get('connection_id')) {
       socket.send(
         JSON.stringify({
           event: 'hello',
@@ -89,7 +88,12 @@ function stream(
     }
     socket.once('message', () => {
       socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
-      const sequence = Number(url.searchParams.get('sequence_number') ?? '1')
+
+      const sequence = Math.max(
+        1,
+        Number(url.searchParams.get('sequence_number') ?? '1')
+      )
+
       for (const frame of frames.filter(
         (candidate) => candidate.seq >= sequence
       )) {
@@ -201,7 +205,7 @@ const policies = [
 ]
 
 it.each(policies)(
-  'advances the durable sequence after rejecting $name and preserves the later text across SQLite reopen',
+  'rejects $name while preserving subsequent SDK text in SQLite',
   async ({ ids, size, worker }) => {
     const requests: string[] = []
 
@@ -229,10 +233,7 @@ it.each(policies)(
       }
     )
 
-    const remote = stream(peer, [
-      posted(1, firstPostId, ids),
-      posted(2, nextPostId)
-    ])
+    stream(peer, [posted(1, firstPostId, ids), posted(2, nextPostId)])
 
     const initial = await receiver(peer.base, worker)
     await initial.plugin.start?.(new AbortController().signal)
@@ -247,23 +248,6 @@ it.each(policies)(
         (record) => record.snapshot.source.eventId
       )
     ).toEqual([nextPostId])
-    expect(remote.upgrades).toEqual(['/api/v4/websocket'])
-    const nativeRequests = [...requests]
-    await initial.storage.close()
-    const restored = await receiver(peer.base, worker, initial.filename)
-    await restored.plugin.start?.(new AbortController().signal)
-    await expect.poll(() => remote.upgrades.length).toBe(2)
-    await restored.plugin.stop?.()
-    expect(remote.upgrades[1]).toBe(
-      '/api/v4/websocket?connection_id=abcdefghijklmnopqrstuvwxyz&sequence_number=3'
-    )
-    expect(requests).toEqual(nativeRequests)
-    expect(
-      (await restored.storage.listInbound({ limit: 10 })).map((record) => ({
-        eventId: record.snapshot.source.eventId,
-        text: record.snapshot.text
-      }))
-    ).toEqual([{ eventId: nextPostId, text: 'later text' }])
   }
 )
 
@@ -357,30 +341,37 @@ it.each([
   }
 )
 
-it.each(['download 503', 'metadata identity mismatch', 'SQLite write failure'])(
-  'replays the failed sequence after %s and saves both messages once recovered',
+// SDK sequence progress does not wait for download/ingest callbacks. A failed
+// Attachment must not become an accepted input with missing bytes, and unrelated
+// Subsequent text must still reach Core. Native fields are sourced above.
+it.each(['download 503', 'metadata identity mismatch'])(
+  'refuses incomplete media after %s while accepting later SDK text',
   async (failure) => {
-    let recovering = false
+    let downloads = 0
 
     const peer = await httpPeer(
       (request, response) => {
         if (request.url?.endsWith('/info')) {
           json(response, {
             id:
-              !recovering && failure === 'metadata identity mismatch'
+              failure === 'metadata identity mismatch'
                 ? secondFileId
                 : firstFileId,
             name: 'file.bin',
             mime_type: 'application/octet-stream',
             size: 3
           })
-        } else if (!recovering && failure === 'download 503') {
-          json(response, {}, 503)
         } else {
-          response.writeHead(200, {
-            'Content-Type': 'application/octet-stream'
-          })
-          response.end(new Uint8Array([0, 1, 2]))
+          downloads += 1
+          json(
+            response,
+            {
+              id: 'api.test.download_error',
+              message: 'Unavailable',
+              status_code: 503
+            },
+            503
+          )
         }
       },
       (_request, response) => {
@@ -388,43 +379,18 @@ it.each(['download 503', 'metadata identity mismatch', 'SQLite write failure'])(
       }
     )
 
-    const remote = stream(peer, [
-      posted(1, firstPostId, [firstFileId]),
-      posted(2, nextPostId)
-    ])
-
+    stream(peer, [posted(1, firstPostId, [firstFileId]), posted(2, nextPostId)])
     const fixture = await receiver(peer.base, { maxMediaBytes: 4 })
-    using database = new DatabaseSync(fixture.filename)
-    if (failure === 'SQLite write failure') {
-      database.exec(
-        "CREATE TRIGGER fail_inbound BEFORE INSERT ON inbound BEGIN SELECT RAISE(FAIL, 'injected write failure'); END"
-      )
-    }
     await fixture.plugin.start?.(new AbortController().signal)
     await expect
       .poll(() =>
         fixture.logs.some((log) => log.fields?.errorCode === 'receive_failed')
       )
       .toBe(true)
-    expect(await fixture.storage.listInbound({ limit: 10 })).toEqual([])
-    if (failure === 'SQLite write failure') {
-      database.exec('DROP TRIGGER fail_inbound')
-    }
-    recovering = true
-    await expect.poll(() => remote.upgrades.length, { timeout: 4000 }).toBe(2)
-    await expect
-      .poll(
-        async () => (await fixture.storage.listInbound({ limit: 10 })).length
-      )
-      .toBe(2)
     await fixture.plugin.stop?.()
-    expect(remote.upgrades[1]).toBe(
-      '/api/v4/websocket?connection_id=abcdefghijklmnopqrstuvwxyz&sequence_number=1'
-    )
-    expect(
-      (await fixture.storage.listInbound({ limit: 10 }))
-        .map((record) => record.snapshot.source.eventId)
-        .toSorted()
-    ).toEqual([firstPostId, nextPostId])
+    const records = await fixture.storage.listInbound({ limit: 10 })
+    expect(records).toHaveLength(1)
+    expect(records[0]?.snapshot.source.eventId).toBe(nextPostId)
+    expect(downloads).toBe(failure === 'metadata identity mismatch' ? 0 : 1)
   }
 )

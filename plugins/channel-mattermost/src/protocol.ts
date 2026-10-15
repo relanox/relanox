@@ -1,4 +1,4 @@
-import { setTimeout as pause } from 'node:timers/promises'
+import { ClientError } from '@mattermost/client'
 import type {
   ChannelHost,
   IngestInput,
@@ -17,8 +17,6 @@ export function secret(
   }
   return value
 }
-
-export { readJson } from '@relanox/transport'
 
 export function diagnose(host: ChannelHost, errorCode: string): void {
   host.observe.log('warn', 'operation.failed', {
@@ -59,41 +57,25 @@ export async function ingest(
   }
 }
 
-export function httpFailure(response: Response): SendResult {
-  if (response.status === 429) {
-    const seconds = Number(response.headers.get('retry-after'))
-
-    const retryAfterMs =
-      Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 1000
-
-    return { status: 'retryable', errorCode: 'rate_limited', retryAfterMs }
+export function sendFailure(error: unknown): SendResult {
+  if (error instanceof ClientError && error.status_code === 429) {
+    // Client4 exposes the native error status, but not Retry-After headers.
+    return {
+      status: 'retryable',
+      errorCode: 'rate_limited',
+      retryAfterMs: 1000
+    }
   }
-  if (response.status >= 400 && response.status < 500) {
+  if (error instanceof ClientError && error.status_code === 413) {
+    return { status: 'rejected', errorCode: 'media_limit_exceeded' }
+  }
+  if (
+    error instanceof ClientError &&
+    error.status_code !== undefined &&
+    error.status_code >= 400 &&
+    error.status_code < 500
+  ) {
     return { status: 'rejected', errorCode: 'platform_rejected' }
   }
-  return { status: 'unknown', errorCode: 'platform_response_unknown' }
-}
-
-export async function delay(
-  milliseconds: number,
-  signal: AbortSignal
-): Promise<void> {
-  await pause(milliseconds, undefined, { signal }).catch(() => {})
-}
-
-export async function stopTask(task: Promise<void> | undefined): Promise<void> {
-  if (!task) {
-    return
-  }
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  try {
-    await Promise.race([
-      task,
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, 5000)
-      })
-    ])
-  } finally {
-    clearTimeout(timeout)
-  }
+  return { status: 'unknown', errorCode: 'send_outcome_unknown' }
 }
