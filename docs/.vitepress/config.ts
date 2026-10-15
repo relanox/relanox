@@ -8,7 +8,7 @@ export default defineConfig({
   title: 'Relanox',
   description: 'Use dot and Grok Bot from your favorite chat apps.',
   base,
-  srcExclude: ['README.md'],
+  srcExclude: ['README.md', 'local/**'],
   cleanUrls: false,
   head: [
     [
