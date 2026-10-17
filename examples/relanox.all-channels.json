@@ -197,6 +197,17 @@
         },
         "channel": "irc",
         "allowedSenders": ["account:alice"]
+      },
+      {
+        "allowedSenders": ["user-id@im.wechat"],
+        "channel": "wechat",
+        "id": "wechat-main",
+        "config": {
+          "botToken": {
+            "env": "WECHAT_BOT_TOKEN"
+          },
+          "botId": "bot-id@im.bot"
+        }
       }
     ],
     "endpoints": [
@@ -227,6 +238,21 @@
           },
           "routineAuthorization": {
             "env": "RELANOX_AGENT_2_ROUTINE_AUTHORIZATION"
+          }
+        }
+      },
+      {
+        "agent": "muse",
+        "id": "agent-3",
+        "config": {
+          "mcp": {
+            "token": {
+              "env": "RELANOX_AGENT_3_MCP_TOKEN"
+            },
+            "auth": "path"
+          },
+          "credentialsDirectory": {
+            "env": "RELANOX_AGENT_3_CREDENTIALS_DIRECTORY"
           }
         }
       }
@@ -308,6 +334,11 @@
         "accountId": "irc-main",
         "chatId": "#support",
         "endpointId": "agent-1"
+      },
+      {
+        "endpointId": "agent-3",
+        "accountId": "wechat-main",
+        "chatId": "user-id@im.wechat"
       }
     ],
     "storage": {

@@ -9,6 +9,13 @@ export type WechatLoginOptions = {
   readonly signal: AbortSignal
 }
 
+export class WechatLoginHttpError extends Error {
+  constructor(readonly status: number) {
+    super('wechat_login_failed')
+    this.name = 'WechatLoginHttpError'
+  }
+}
+
 const qrSchema = z.object({
   qrcode: z.string().min(1),
   qrcode_img_content: z.string().min(1)
@@ -73,7 +80,7 @@ export async function beginWechatLogin(
   })
 
   if (!response.ok) {
-    throw new Error('wechat_login_failed')
+    throw new WechatLoginHttpError(response.status)
   }
   return qrSchema.parse(await readJson(response))
 }
@@ -98,7 +105,7 @@ export async function pollWechatLogin(
   })
 
   if (!response.ok) {
-    throw new Error('wechat_login_failed')
+    throw new WechatLoginHttpError(response.status)
   }
   const status = statusSchema.parse(await readJson(response))
   if (status.status === 'confirmed') {
