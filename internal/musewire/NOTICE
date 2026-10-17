@@ -4,9 +4,11 @@ Revision fa073045a5572a8e3367fae142c1b7a7c554f222
 Copyright (c) Meta Platforms, Inc. and affiliates.
 Licensed under the Apache License, Version 2.0.
 
-Adaptations: native Go transport, standard-library cryptography, bounded device
+Adaptations: native Go transport, github.com/flynn/noise XX handshake and cipher states, bounded device
 API requests, paired credential-file persistence, cancellation-aware directory
-serialization and explicit uncertain-send classification.
+serialization and explicit uncertain-send classification. The Muse-specific
+2^53-1 nonce ceiling and fatal authentication failure policy wrap the Noise
+library; the official SDK fixed-byte fixtures establish wire compatibility.
 
 The existing muse-client 0.1.0 TypeScript package was inspected as an unofficial
 reference for Relanox's prior behavior. It is not a runtime dependency.
