@@ -88,7 +88,7 @@ func (c *Channel) recoveryPlan(saved *cursor) *historyRecovery {
 			continue
 		}
 		seen[id] = true
-		since := saved.Watermarks[id]
+		since := max(saved.Watermarks[id], saved.BoundStarts[id])
 		if since == 0 {
 			since = saved.StartedAtMS
 		}

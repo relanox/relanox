@@ -22,6 +22,7 @@ type cursor struct {
 	NextSequence  int64            `json:"nextSequence"`
 	StartedAtMS   int64            `json:"startedAtMs"`
 	Watermarks    map[string]int64 `json:"watermarks,omitempty"`
+	BoundStarts   map[string]int64 `json:"boundStarts,omitempty"`
 	Recovery      *historyRecovery `json:"recovery,omitempty"`
 	RecoveryEpoch string           `json:"recoveryEpoch,omitempty"`
 }
@@ -74,11 +75,6 @@ func (c *Channel) session(ctx context.Context) error {
 	if saved.Identity != identity {
 		saved = cursor{Identity: identity}
 	}
-	for id := range saved.Watermarks {
-		if !common.Contains(c.host.BoundChatIDs(), id) {
-			delete(saved.Watermarks, id)
-		}
-	}
 	if c.config.RecoveryEpoch != "" && saved.RecoveryEpoch != c.config.RecoveryEpoch {
 		saved = cursor{Identity: identity, StartedAtMS: time.Now().UnixMilli(), RecoveryEpoch: c.config.RecoveryEpoch}
 		if err = common.SaveState(ctx, c.host.State(), "websocket-cursor", saved, nil); err != nil {
@@ -87,6 +83,10 @@ func (c *Channel) session(ctx context.Context) error {
 	}
 	if saved.StartedAtMS == 0 {
 		saved.StartedAtMS = time.Now().UnixMilli()
+	}
+	c.prepareBoundStarts(&saved)
+	if err = common.SaveState(ctx, c.host.State(), "websocket-cursor", saved, nil); err != nil {
+		return err
 	}
 	endpoint, _ := url.Parse(c.config.ServerURL + "/api/v4/websocket")
 	if endpoint.Scheme == "https" {
@@ -123,6 +123,33 @@ func (c *Channel) session(ctx context.Context) error {
 	go func() { defer close(pingDone); c.ping(lifetime, connection); cancel() }()
 	defer func() { cancel(); <-pingDone }()
 	return c.readFrames(lifetime, connection, &saved)
+}
+
+func (c *Channel) prepareBoundStarts(saved *cursor) {
+	bound := c.host.BoundChatIDs()
+	for id := range saved.Watermarks {
+		if !common.Contains(bound, id) {
+			delete(saved.Watermarks, id)
+		}
+	}
+	for id := range saved.BoundStarts {
+		if !common.Contains(bound, id) {
+			delete(saved.BoundStarts, id)
+		}
+	}
+	if saved.BoundStarts == nil {
+		saved.BoundStarts = map[string]int64{}
+	}
+	for _, id := range bound {
+		if saved.BoundStarts[id] != 0 {
+			continue
+		}
+		started := saved.Watermarks[id]
+		if started == 0 {
+			started = time.Now().UnixMilli()
+		}
+		saved.BoundStarts[id] = started
+	}
 }
 
 func (c *Channel) ping(ctx context.Context, connection *websocket.Conn) {
