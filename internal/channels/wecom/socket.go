@@ -28,11 +28,11 @@ type frame struct {
 }
 
 type socketSession struct {
-	conn    *websocket.Conn
-	done    chan struct{}
-	mu      sync.Mutex
-	pending map[string]chan frame
-	callMu  sync.Mutex
+	conn     *websocket.Conn
+	done     chan struct{}
+	mu       sync.Mutex
+	pending  map[string]chan frame
+	callGate chan struct{}
 }
 
 type nativeError struct{ code int }
@@ -40,9 +40,21 @@ type nativeError struct{ code int }
 func (e *nativeError) Error() string { return "wecom_native_error" }
 
 func (s *socketSession) call(ctx context.Context, command, id string, body any) (frame, error) {
-	s.callMu.Lock()
-	defer s.callMu.Unlock()
 	var result frame
+	s.mu.Lock()
+	if s.callGate == nil {
+		s.callGate = make(chan struct{}, 1)
+	}
+	gate := s.callGate
+	s.mu.Unlock()
+	select {
+	case gate <- struct{}{}:
+	case <-ctx.Done():
+		return result, ctx.Err()
+	case <-s.done:
+		return result, errors.New("wecom_socket_closed")
+	}
+	defer func() { <-gate }()
 	if ctx.Err() != nil {
 		return result, ctx.Err()
 	}
@@ -206,9 +218,7 @@ func (c *Channel) socket(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				case message := <-workQueue:
-					if err := c.receiveSocket(ctx, message); err != nil && ctx.Err() == nil {
-						c.host.Connection(model.Degraded, "ingest_failed")
-					}
+					c.receiveSocketUntilAccepted(ctx, message)
 				}
 			}
 		}()
@@ -245,6 +255,29 @@ func (c *Channel) socket(ctx context.Context) error {
 				return ctx.Err()
 			}
 		}
+	}
+}
+
+func (c *Channel) receiveSocketUntilAccepted(ctx context.Context, message frame) {
+	backoff := time.Second
+	for ctx.Err() == nil {
+		err := c.receiveSocket(ctx, message)
+		if err == nil {
+			return
+		}
+		if common.Contains([]string{"invalid_wecom_message", "unsupported_media_format", "invalid_media_key", "invalid_ciphertext", "invalid_padding"}, err.Error()) {
+			c.host.Connection(model.Degraded, "invalid_native_input")
+			return
+		}
+		// The documented websocket callback has no separate application ACK or
+		// durable replay cursor. Retain the received frame while transient media
+		// or storage failures are retried; never claim platform replay guarantees.
+		// WSClient.handleFrame: https://github.com/WecomTeam/aibot-node-sdk
+		c.host.Connection(model.Degraded, "ingest_failed")
+		if common.Delay(ctx, backoff) != nil {
+			return
+		}
+		backoff = min(backoff*2, 30*time.Second)
 	}
 }
 
