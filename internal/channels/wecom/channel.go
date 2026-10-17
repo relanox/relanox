@@ -336,22 +336,34 @@ func (c *Channel) callback(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
 		return
 	}
-	body, err := c.receiveCallback(r.Context(), message)
+	c.replyCallback(w, r, crypto, message)
+}
+
+func (c *Channel) replyCallback(w http.ResponseWriter, r *http.Request, crypto *CallbackCrypto, message nativeMessage) {
+	reply, err := c.receiveCallback(r.Context(), message)
 	if err != nil {
 		w.WriteHeader(503)
 		return
 	}
-	if body == nil {
+	if reply == nil {
 		w.WriteHeader(200)
 		return
 	}
 	timestamp, nonce := strconv.FormatInt(time.Now().Unix(), 10), common.RandomID()
-	ciphertext, signature, err := crypto.Encrypt(common.Data(body), timestamp, nonce)
+	ciphertext, signature, err := crypto.Encrypt(common.Data(reply.body), timestamp, nonce)
 	if err != nil {
 		w.WriteHeader(503)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	// The response may already be committed; write failures cannot be retried.
-	_ = json.NewEncoder(w).Encode(map[string]string{"encrypt": ciphertext, "msgsignature": signature, "timestamp": timestamp, "nonce": nonce})
+	raw := append(common.Data(map[string]string{"encrypt": ciphertext, "msgsignature": signature, "timestamp": timestamp, "nonce": nonce}), '\n')
+	if written, err := w.Write(raw); err != nil || written != len(raw) {
+		// A failed or partial transmission leaves the final delivery pending.
+		return
+	}
+	if err := c.confirmPassive(r.Context(), reply); err != nil {
+		// Output is already committed. A fenced or failed confirmation remains
+		// pending; the same native stream can be retrieved again safely.
+		return
+	}
 }

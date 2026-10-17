@@ -181,7 +181,7 @@ func (c *Channel) receiveSocket(ctx context.Context, frame frame) error {
 	return err
 }
 
-func (c *Channel) receiveCallback(ctx context.Context, message nativeMessage) (any, error) {
+func (c *Channel) receiveCallback(ctx context.Context, message nativeMessage) (*passiveReply, error) {
 	if message.BotID != c.config.BotID {
 		return nil, errors.New("callback_identity_mismatch")
 	}
