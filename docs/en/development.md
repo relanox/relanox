@@ -61,6 +61,17 @@ go run ./tools/docs
 The documentation renderer uses the pinned Go Markdown dependency, validates local
 Markdown links and writes `docs/site`. Keep English and Chinese operator pages
 aligned with actual native options. Documentation changes must pass this build.
+
+The [published documentation](https://relanox.github.io/) is built by this
+repository's `Documentation` workflow on documentation changes to `master`, or
+by manual dispatch. It sends a `documentation` repository dispatch to
+`relanox/relanox.github.io`, whose workflow builds and deploys the current source.
+The `DOCS_DISPATCH_TOKEN` Actions secret needs access only to that site repository,
+with Contents read/write permission for repository dispatch. There is no scheduled
+source polling. The site's `source-commit.txt`
+records the exact source revision. The same workflow maintains redirects from
+`/relanox/`, including URLs used before the Go migration.
+
 Deployment work must also read private `docs/local/deployment.md` from the primary checkout if present.
 
 ## Ent schema and migrations

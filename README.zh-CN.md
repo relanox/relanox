@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+[在线文档](https://relanox.github.io/zh-CN/quickstart.html)
+
 Relanox 将原生消息平台连接到已有的 dot、Grok 和 Muse Agent。Go 服务通过
 [Ent](https://entgo.io/) 将已接收消息、媒体和出站任务保存到 SQLite 或 PostgreSQL，
 在重启后保留原生回复上下文、会话归属和结果不明状态。
