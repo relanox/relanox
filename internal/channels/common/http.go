@@ -117,30 +117,11 @@ func Multipart(ctx context.Context, client *http.Client, endpoint string, header
 // MultipartMIME preserves the owned file's MIME type on the actual file part.
 // A separate native form field does not replace its Content-Type header.
 func MultipartMIME(ctx context.Context, client *http.Client, endpoint string, headers http.Header, fields map[string]string, field, filename, mimeType string, data []byte, output any) error {
-	if _, _, err := mime.ParseMediaType(mimeType); err != nil || strings.ContainsAny(mimeType, "\r\n") {
-		return errors.New("invalid_media_mime_type")
-	}
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	for name, value := range fields {
-		if err := writer.WriteField(name, value); err != nil {
-			return err
-		}
-	}
-	partHeaders := make(textproto.MIMEHeader)
-	partHeaders.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{"name": field, "filename": filename}))
-	partHeaders.Set("Content-Type", mimeType)
-	part, err := writer.CreatePart(partHeaders)
+	contentType, body, err := MultipartBody(fields, field, filename, mimeType, data)
 	if err != nil {
 		return err
 	}
-	if _, err = part.Write(data); err != nil {
-		return err
-	}
-	if err = writer.Close(); err != nil {
-		return err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -148,7 +129,7 @@ func MultipartMIME(ctx context.Context, client *http.Client, endpoint string, he
 	if request.Header == nil {
 		request.Header = make(http.Header)
 	}
-	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request.Header.Set("Content-Type", contentType)
 	raw, _, err := Do(client, request, MaxJSONBytes)
 	if err != nil || output == nil {
 		return err
@@ -157,6 +138,34 @@ func MultipartMIME(ctx context.Context, client *http.Client, endpoint string, he
 		return errors.New("native_invalid_response")
 	}
 	return nil
+}
+
+// MultipartBody encodes a native file form while preserving the owned MIME type.
+func MultipartBody(fields map[string]string, field, filename, mimeType string, data []byte) (string, []byte, error) {
+	if _, _, err := mime.ParseMediaType(mimeType); err != nil || strings.ContainsAny(mimeType, "\r\n") {
+		return "", nil, errors.New("invalid_media_mime_type")
+	}
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for name, value := range fields {
+		if err := writer.WriteField(name, value); err != nil {
+			return "", nil, err
+		}
+	}
+	partHeaders := make(textproto.MIMEHeader)
+	partHeaders.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{"name": field, "filename": filename}))
+	partHeaders.Set("Content-Type", mimeType)
+	part, err := writer.CreatePart(partHeaders)
+	if err != nil {
+		return "", nil, err
+	}
+	if _, err = part.Write(data); err != nil {
+		return "", nil, err
+	}
+	if err = writer.Close(); err != nil {
+		return "", nil, err
+	}
+	return writer.FormDataContentType(), body.Bytes(), nil
 }
 
 func Origin(value string) string {
