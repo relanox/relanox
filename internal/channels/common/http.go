@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,8 @@ import (
 
 const MaxJSONBytes int64 = 4 * 1024 * 1024
 
+var defaultHTTPClient = transport.NewClient(transport.Options{Timeout: 120 * time.Second})
+
 type HTTPError struct {
 	Status int
 	Header http.Header
@@ -34,7 +37,7 @@ type HTTPError struct {
 func (e *HTTPError) Error() string { return fmt.Sprintf("native_http_%d", e.Status) }
 
 func HTTPClient(base *http.Client) *http.Client {
-	client := *transport.NewClient(transport.Options{Timeout: 120 * time.Second})
+	client := *defaultHTTPClient
 	if base != nil {
 		client = *base
 	}
@@ -186,6 +189,7 @@ type DownloadOptions struct {
 	TrustedOrigins        []string
 	AllowInsecureLoopback bool
 	Headers               http.Header
+	TLSClientConfig       *tls.Config
 }
 
 type Downloaded struct {
@@ -209,7 +213,7 @@ func Download(ctx context.Context, value string, options DownloadOptions) (Downl
 	}
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	policy := transport.Options{Timeout: 120 * time.Second}
+	policy := transport.Options{Timeout: 120 * time.Second, TLSClientConfig: options.TLSClientConfig}
 	if trusted {
 		policy.AllowPrivateHosts = []string{u.Hostname()}
 	}

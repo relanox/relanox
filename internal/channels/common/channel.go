@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,8 +17,9 @@ import (
 )
 
 type Options struct {
-	HTTPClient    *http.Client
-	ResolveSecret func(model.SecretRef) (string, error)
+	HTTPClient      *http.Client
+	ResolveSecret   func(model.SecretRef) (string, error)
+	TLSClientConfig *tls.Config
 }
 
 func (o Options) Secret(ref model.SecretRef) (string, error) {
@@ -114,7 +116,7 @@ func PolicyRejection(err error) bool {
 	if errors.As(err, &coded) {
 		code = coded.Code()
 	}
-	return Contains([]string{"sender_not_allowed", "unbound_conversation", "media_too_large", "too_many_attachments", "media_total_too_large"}, code)
+	return Contains([]string{"sender_not_allowed", "unbound_conversation", "unauthorized_sender", "unauthorized_conversation", "unknown_account", "media_too_large", "too_many_attachments", "media_total_too_large"}, code)
 }
 
 func Ingest(ctx context.Context, host model.ChannelHost, input model.IngestInput) error {

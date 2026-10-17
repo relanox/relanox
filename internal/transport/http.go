@@ -4,6 +4,7 @@ package transport
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +27,9 @@ var (
 type Options struct {
 	Timeout      time.Duration
 	MaxRedirects int
+	// Administrator-supplied trust roots and client certificates for enterprise
+	// endpoints. The configuration is cloned; DNS/dial policy stays enforced.
+	TLSClientConfig *tls.Config
 	// AllowedHosts, when present, restricts all initial and redirect destinations.
 	AllowedHosts []string
 	// Private destinations require an explicit host allowlist, for example a
@@ -55,6 +59,9 @@ func NewClient(options Options) *http.Client {
 		ResponseHeaderTimeout:  options.Timeout,
 		ExpectContinueTimeout:  time.Second,
 		MaxResponseHeaderBytes: 1 << 20,
+	}
+	if options.TLSClientConfig != nil {
+		base.TLSClientConfig = options.TLSClientConfig.Clone()
 	}
 	return &http.Client{
 		Timeout:   options.Timeout,
