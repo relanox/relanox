@@ -60,9 +60,15 @@ node apps/cli/dist/main.js discover --config relanox.json --account wecom-main -
 
 超时范围为 1–600 秒，默认 120 秒；可按 Ctrl+C 提前停止。
 
+## 微信扫码配对
+
+在已构建的源码目录运行 `node apps/cli/dist/main.js wechat-login --output data/wechat.json`。配对会创建新的凭据导出文件，不读取或修改服务配置。按[微信指南](channels/wechat.md)扫码、按需提供验证码，并将返回的机器人标识、API 来源地址和 token 填入接入配置。
+
+部署 Muse 时，还需保留独立可写的配对目录，并挂载到容器中。仅备份数据库不能保存这些设备凭据，见[连接 Muse](agents.md#connect-muse)。
+
 ## 为容器选择插件
 
-默认 Docker 构建包含全部 21 个原生插件包，包括 `speech-tencent`，现有标准配置和 Compose 流程可继续使用。需要组装更小的镜像时，通过 `RELANOX_PLUGINS` 传入空格分隔的包名，不带 `@relanox/` scope：
+默认 Docker 构建包含全部 23 个原生插件包，包括 `speech-tencent`，现有标准配置和 Compose 流程可继续使用。需要组装更小的镜像时，通过 `RELANOX_PLUGINS` 传入空格分隔的包名，不带 `@relanox/` scope：
 
 ```sh
 docker build --build-arg "RELANOX_PLUGINS=storage-sqlite observability-standard agent-grok channel-telegram" -t relanox:telegram .

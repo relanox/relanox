@@ -52,7 +52,7 @@ WebSocket 接入由[企业微信官方 Node SDK](https://github.com/WecomTeam/ai
 
 HTTP 模式需要真实、已验证的消息回调以及可用的回复窗口。仅配置聊天 ID 无法建立回复目标；`recipientTypes` 只用于 WebSocket 模式。
 
-两种模式都需要公网 HTTPS 地址供 dot 或 Grok 访问 MCP。
+两种模式都需要公网 HTTPS 地址供 dot、Grok 或 Muse 访问 MCP。
 
 ## 发送第一条消息
 

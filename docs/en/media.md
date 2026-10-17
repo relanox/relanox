@@ -12,13 +12,13 @@ Small UTF-8 text, Markdown, CSV, TSV and JSON files up to 64 KB can be read dire
 
 ## Let your agent understand voice messages
 
-You can optionally enable [Tencent Cloud speech recognition](reference/configuration.md#speech-to-text). Relanox adds a transcript to incoming audio messages for dot and Grok and keeps the original audio. Without configuration, or if recognition fails, it forwards the original audio. Transcription does not analyze videos or other files.
+You can optionally enable [Tencent Cloud speech recognition](reference/configuration.md#speech-to-text). Relanox adds a transcript to incoming audio messages for dot, Grok and Muse and keeps the original audio. Without configuration, or if recognition fails, it forwards the original audio. Transcription does not analyze videos or other files.
 
 ## Receive a file from the Agent
 
 Try: “Create a small text file containing today’s checklist and send it as an attachment in this chat.” You should receive a downloadable file in the original chat, rather than only a filename or a message saying the file is ready.
 
-Ask the Agent to send its generated file back to the chat. dot can send files from its workspace. Grok Bot can upload a file from its cloud computer to Relanox, then send it as an attachment. A direct public HTTPS download link also works.
+Ask the Agent to send its generated file back to the chat. dot can send files from its workspace. Grok Bot and Muse can upload a file from its cloud computer to Relanox, then send it as an attachment. A direct public HTTPS download link also works.
 
 The connection supplies the upload instructions; no separate file service or prompt is required. Uploading saves the file, and the Agent must then send it to your chat.
 

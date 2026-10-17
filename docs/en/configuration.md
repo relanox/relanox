@@ -6,7 +6,7 @@ Use the [connection configurator](connect.md) to choose your chat apps, bot acco
 
 - **Another chat:** choose the account, click **Add chat**, enter its chat ID and select the receiving Agent.
 - **Another bot:** click **Add another account** and enter that account's own settings.
-- **Another Agent:** click **Add Agent**, choose dot or Grok and assign the chats it should answer.
+- **Another Agent:** click **Add Agent**, choose dot, Grok or Muse and assign the chats it should answer.
 
 Find chat and user IDs using the [channel guides](channels/index.md). For a first WeCom setup, [find the chat ID](channels/wecom.md) before returning to complete the form.
 
@@ -20,7 +20,7 @@ Several chats can use the same Agent. It can reply to the chat where a message a
 
 ## Set the service address and passwords
 
-Enter your Relanox service address under **Public HTTPS address**, such as `https://relay.example.com`. Both dot and Grok must be able to reach it. If you do not have an address yet, follow [Deployment and backups](operations.md).
+Enter your Relanox service address under **Public HTTPS address**, such as `https://relay.example.com`. dot, Grok and Muse must be able to reach it. If you do not have an address yet, follow [Deployment and backups](operations.md).
 
 The configurator generates an MCP password for each Agent; you can edit it. Copy it from **Setup guide** and set the server environment variables as instructed. Save the passwords before closing or reloading the configurator.
 

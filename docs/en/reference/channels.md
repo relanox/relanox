@@ -14,6 +14,7 @@ A binding selects an account, `chatId` and optional `threadId`. The channel reso
 | Discord         | Channel ID, with a thread channel ID where applicable; the bot needs access and send permissions.                                                                         |
 | Slack           | Conversation ID; omit `threadId` for ordinary messages, or use a real root message timestamp for a thread.                                                                |
 | Feishu / Lark   | Chat ID; a thread additionally needs a real message anchor from an authenticated event for that destination.                                                              |
+| WeChat          | Private user ID and authentic conversation context from an incoming message. Groups and threads are unavailable.                                                          |
 | WeCom WebSocket | Member userid or group chat ID; `recipientTypes` can specify `single` or `group` before an incoming message.                                                              |
 | WeCom HTTP      | An authenticated message callback with an available reply window; a configured chat ID alone is insufficient.                                                             |
 | DingTalk        | Staff user ID or open conversation ID; `recipientTypes` can specify `single` or `group`. Independent message API permissions are required.                                |
@@ -27,7 +28,7 @@ A binding selects an account, `chatId` and optional `threadId`. The channel reso
 | Signal          | `direct:` recipient or `group:` ID, using the configured signal-cli account.                                                                                              |
 | IRC             | Channel or `dm:<folded-nick>` on the configured server; the bot must be connected and join configured channels.                                                           |
 
-`recipientTypes` is an optional account `config` map keyed by the binding's exact `chatId`. It is supported by WeCom WebSocket, DingTalk and QQ. Without it, those channels can use recipient types learned from authenticated messages. The map does not bypass platform permissions, reply windows or quotas. WeCom, DingTalk, QQ, WhatsApp, LINE, Signal and IRC do not support `threadId`.
+`recipientTypes` is an optional account `config` map keyed by the binding's exact `chatId`. It is supported by WeCom WebSocket, DingTalk and QQ. Without it, those channels can use recipient types learned from authenticated messages. The map does not bypass platform permissions, reply windows or quotas. WeChat, WeCom, DingTalk, QQ, WhatsApp, LINE, Signal and IRC do not support `threadId`.
 
 Local protocol tests verify address resolution and generated requests; they do not establish live-account compatibility. Use each channel guide to verify the configured account with the platform.
 
@@ -41,6 +42,7 @@ Agent reply text is always Markdown; there is no formatting-mode setting. Relano
 | Discord         | Native message Markdown.                                                                |
 | Slack           | Structured rich-text blocks for emphasis, code and links.                               |
 | Feishu / Lark   | Post message containing a Markdown element.                                             |
+| WeChat          | Native text item; Markdown is sent as text.                                             |
 | WeCom           | Native Markdown; callback mode combines the final text and supported images.            |
 | DingTalk        | `sampleMarkdown` robot message.                                                         |
 | QQ              | Markdown message (`msg_type: 2`).                                                       |
@@ -61,23 +63,59 @@ See the native protocol references for [Feishu posts](https://open.feishu.cn/doc
 
 Use the internal references in [Ordered Markdown media](media.md#ordered-markdown-media) to select files. `relanox_status.channels[].richText` reports the layout available for the configured account:
 
-| Channels                                    | Mode               | Delivery                                                                                     |
-| ------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------- |
-| Feishu / Lark                               | `native`           | Post content with ordered Markdown and uploaded image elements.                              |
-| Discord                                     | `native`           | Components V2 with ordered text displays and attachment-backed media galleries.              |
-| DingTalk                                    | `native`           | Markdown with native uploaded image references.                                              |
-| QQ                                          | `native`           | Custom Markdown with ordered text and published HTTPS image URLs in private and group chats. |
-| Slack                                       | `native`           | Ordered text and image blocks using native file uploads.                                     |
-| Google Chat                                 | `native`           | Card sections with text and images served through Relanox's public HTTPS address.            |
-| Microsoft Teams                             | `native`           | An activity with Markdown text and inline images served through public HTTPS media URLs.     |
-| LINE                                        | `native`           | Flex content with ordered text and image components using public HTTPS media URLs.           |
-| Matrix                                      | `native`           | `formatted_body` with ordered text and uploaded `mxc://` image references.                   |
-| Mattermost                                  | `native`           | A post with ordered Markdown images served through public HTTPS media URLs.                  |
-| Telegram, WeCom WebSocket, WhatsApp, Signal | `sequential`       | Separate text and media messages in reading order.                                           |
-| WeCom HTTP callback                         | `text-then-images` | One final reply with all text followed by supported images.                                  |
-| IRC                                         | `text-only`        | Text only; attachments are rejected.                                                         |
+| Channels                                            | Mode               | Delivery                                                                                     |
+| --------------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------- |
+| Feishu / Lark                                       | `native`           | Post content with ordered Markdown and uploaded image elements.                              |
+| Discord                                             | `native`           | Components V2 with ordered text displays and attachment-backed media galleries.              |
+| DingTalk                                            | `native`           | Markdown with native uploaded image references.                                              |
+| QQ                                                  | `native`           | Custom Markdown with ordered text and published HTTPS image URLs in private and group chats. |
+| Slack                                               | `native`           | Ordered text and image blocks using native file uploads.                                     |
+| Google Chat                                         | `native`           | Card sections with text and images served through Relanox's public HTTPS address.            |
+| Microsoft Teams                                     | `native`           | An activity with Markdown text and inline images served through public HTTPS media URLs.     |
+| LINE                                                | `native`           | Flex content with ordered text and image components using public HTTPS media URLs.           |
+| Matrix                                              | `native`           | `formatted_body` with ordered text and uploaded `mxc://` image references.                   |
+| Mattermost                                          | `native`           | A post with ordered Markdown images served through public HTTPS media URLs.                  |
+| Telegram, WeChat, WeCom WebSocket, WhatsApp, Signal | `sequential`       | Separate text and media messages in reading order.                                           |
+| WeCom HTTP callback                                 | `text-then-images` | One final reply with all text followed by supported images.                                  |
+| IRC                                                 | `text-only`        | Text only; attachments are rejected.                                                         |
 
 Native layouts contain images; audio, video and file links use standalone media delivery. LINE, Google Chat, Teams, Mattermost and QQ require the public HTTPS media address for these layouts; the current status is authoritative. Native chunk limits are reported as `richTextLimits`, including optional inline MIME and byte limits. Images outside those inline limits are sent once as standalone media at their position. Channel attachment support and per-message limits still apply. Clients may display native content differently. These layouts are covered by local protocol tests, not live-account validation.
+
+## WeChat {#wechat}
+
+User setup: [Connect WeChat](../channels/wechat.md). QR pairing uses the standalone `wechat-login` command and does not require a completed relay configuration.
+
+```json
+{
+  "accounts": [
+    {
+      "id": "wechat-main",
+      "channel": "wechat",
+      "allowedSenders": ["user-id@im.wechat"],
+      "config": {
+        "botId": "bot-id@im.bot",
+        "botToken": { "env": "WECHAT_BOT_TOKEN" },
+        "apiBaseUrl": "https://ilinkai.weixin.qq.com"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "wechat-main",
+      "chatId": "user-id@im.wechat",
+      "endpointId": "agent-1"
+    }
+  ]
+}
+```
+
+Use the exact bot/user IDs and API origin returned by pairing. `apiBaseUrl` defaults to `https://ilinkai.weixin.qq.com`; `cdnBaseUrl` defaults to `https://novac2c.cdn.weixin.qq.com/c2c`. Native API and CDN connections use HTTPS. `allowInsecureLoopback` defaults to `false` and permits HTTP only on literal loopback/localhost for local protocol development. Native groups and `threadId` are unsupported.
+
+Relanox polls `getupdates` using the bot token, saves accepted incoming messages and their context, then advances the durable cursor. A transient failure before acceptance retains the prior cursor for replay. Native uint64 message identifiers are retained losslessly. Destination resolution requires authenticated conversation context; it is persisted under the bot identity and API origin and can be restored after restart. Changing those values does not reuse another identity's context.
+
+Incoming text, images, voice, video and files are supported. Native voice transcripts are appended when present; known audio codecs retain their native MIME type and unknown codecs are exposed as files. Outgoing text is split at 4,000 Unicode code points; image, video and file replies are uploaded to the native CDN using AES-128-ECB with PKCS#7 padding. Audio sending and native quoted replies are unavailable. Explicit `reply.requestId` still associates a final delivery with its incoming request. Media and text are separate ordered messages.
+
+HTTP 429 sends are retryable; timeouts and server failures with uncertain acceptance are reported as unknown. `client_id` is preserved across a delivery, but server-side deduplication is not assumed. A native session-expired response pauses polling for an hour and requires account reauthentication. Local protocol and SQLite restart tests do not establish live-account compatibility. See the [Tencent iLink protocol](https://github.com/Tencent/openclaw-weixin/blob/main/docs/protocol.md).
 
 ## DingTalk application robot {#dingtalk}
 

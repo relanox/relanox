@@ -77,7 +77,7 @@ Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中
 
 附件可以引用所选 channel 中收到或已上传的媒体，也可以包含新生成的字节。签发上传凭证前，用 `host.media.authorize({ channelId })` 检查权限；`host.media.upload({ channelId, mediaId, upload })` 保存归属于该 channel、不可覆盖的媒体。`host.media.read({ channelId, mediaId })` 读取可用字节。存储会在写入事务中重新检查当前归属、封面和未发送上传额度。入队后，引用的上传文件释放暂存额度；每条消息独立检查媒体限制。上传不会创建待发送消息，之后再将返回的 ID 传给 `sendMessage`。附件形式见[媒体传输](../media.md)和 SDK 导出的类型。
 
-通过 host 在 `/agents/<agentId>` 下注册 Agent HTTP 路由。不要把端点凭据混入通知或工具返回的字段。dot 和 Grok 已通过 `packages/agent-mcp` 共用 MCP 认证和消息工具；修改这些接入时可以复用现有辅助代码。
+通过 host 在 `/agents/<agentId>` 下注册 Agent HTTP 路由。不要把端点凭据混入通知或工具返回的字段。dot、Grok 和 Muse 已通过 `packages/agent-mcp` 共用 MCP 认证和消息工具；修改这些接入时可以复用现有辅助代码。
 
 使用 `host.readMessages({ requestId?, limit?, pending?, cursor? })` 补取保留的来信内容。读取会检查当前端点和频道归属，排除已清理记录、端点配置和私有回复目标。未传入 ID 时，先按当前授权频道及端点筛选，再查询最近的记录，最多返回 `limit` 条消息（默认 5，最大 20）。读取不会领取或确认任务。设置 `pending: true` 可从旧到新读取仍保留正文的未完成来信，将最后一条的 `{ acceptedAt, requestId }` 作为 `cursor` 继续读取。MCP 封装会将其作为 `nextCursor` 返回。未完成筛选在数据库限量前应用当前有效频道和端点权限。每条读取结果包含 `reply` 状态。发送时传入 `reply: { requestId, kind: "progress" | "final" }` 可关联来信，也可用 `host.status({ requestId })` 查询状态。每条来信只有一个最终投递，全部发送完成后才算完成。详见[消息状态与恢复](core.md)。
 
@@ -94,7 +94,7 @@ Core 解析[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中
 
 原消息和执行计划入库后 Core 才确认接收，之后在通知或 Agent 读取前完成预处理。整链结果一起保存，通知重试复用这些结果。重启后，待处理任务仍使用接收时保存的顺序和选项；缺失的中间件以 `disabled` 跳过。预处理租约过期则记录 `interrupted`，转发原始内容，不重新执行整条链。删除插件不会删除已完成结果；保留期清理会同时清除所有派生文本和元数据。
 
-`@relanox/speech-tencent` 通过此接口使用腾讯云官方 SDK，仅在 setup 时加载。插件负责音频筛选、模型选项、转写标记、逐段失败元数据及语音指标，在所有目标 Agent 之前生效，不导入 dot、Grok、渠道或数据库代码。Core 没有 ASR 专用的运行接口或任务类型。详见[配置与升级说明](configuration.md#speech-to-text)。
+`@relanox/speech-tencent` 通过此接口使用腾讯云官方 SDK，仅在 setup 时加载。插件负责音频筛选、模型选项、转写标记、逐段失败元数据及语音指标，在所有目标 Agent 之前生效，不导入 dot、Grok、Muse、渠道或数据库代码。Core 没有 ASR 专用的运行接口或任务类型。详见[配置与升级说明](configuration.md#speech-to-text)。
 
 ## 保存 channel 和投递
 
