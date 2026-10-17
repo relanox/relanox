@@ -284,6 +284,8 @@ func accountFields(kind model.ChannelKind) []formField {
 		return []formField{{name: "homeserver"}, {name: "accessToken", secret: true}}
 	case model.Discord:
 		return []formField{{name: "botToken", secret: true}}
+	case model.Mattermost:
+		return []formField{{name: "serverUrl"}, {name: "token", secret: true}}
 	default:
 		return nil
 	}
