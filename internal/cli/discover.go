@@ -45,7 +45,9 @@ func (c *command) discoverCommand() *cobra.Command {
 			_ = channel.Close(closeCtx)
 		}()
 		if !c.json {
-			fmt.Fprintln(c.options.Err, "Send a message to the WeCom bot. Only native chat and sender IDs will be printed.")
+			if _, err := fmt.Fprintln(c.options.Err, "Send a message to the WeCom bot. Only native chat and sender IDs will be printed."); err != nil {
+				return err
+			}
 		}
 		<-ctx.Done()
 		if cmd.Context().Err() != nil {

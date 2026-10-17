@@ -21,7 +21,11 @@ func TestTypedRuntimeConstructionPreservesBindingAllowlistSemantics(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	cfg.Bindings[0].AllowedSenders = []string{}
 	if _, err := core.New(cfg, store, core.Options{}); err == nil {
 		t.Fatal("explicit empty narrowing allowlist silently inherited account scope")
@@ -64,7 +68,11 @@ func TestChannelBoundAddressesPreserveThreadAndAccountScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	runtime, err := core.New(cfg, store, core.Options{})
 	if err != nil {
 		t.Fatal(err)

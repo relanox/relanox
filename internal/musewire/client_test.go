@@ -175,7 +175,7 @@ func TestCancellationBeforeAndAfterChatWrite(t *testing.T) {
 					if err != nil {
 						return
 					}
-					defer conn.CloseNow()
+					defer func() { _ = conn.CloseNow() }()
 					if _, _, err = conn.Read(r.Context()); err != nil {
 						return
 					}
@@ -245,7 +245,7 @@ func peerChat(t *testing.T, w http.ResponseWriter, r *http.Request, onBody func(
 		t.Error(err)
 		return
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	conn.SetReadLimit(4 << 20)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()

@@ -44,7 +44,8 @@ func boundedFile(path string, maximum int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	// Read errors are checked below; closing this read-only handle is cleanup.
+	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, maximum+1))
 	if err != nil || int64(len(data)) > maximum {
 		return nil, problem("file_unreadable_or_too_large")
@@ -147,7 +148,8 @@ func (d *document) save() (string, error) {
 	if err != nil {
 		return "", problem("config_locked")
 	}
-	defer os.Remove(d.Path + ".lock")
+	// Cleanup must not turn a committed configuration replacement into a failed save.
+	defer func() { _ = os.Remove(d.Path + ".lock") }()
 	_ = lock.Close()
 	if err = d.verifyOriginal(); err != nil {
 		return "", err
@@ -160,7 +162,8 @@ func (d *document) save() (string, error) {
 	if err != nil {
 		return "", problem("config_unwritable")
 	}
-	defer os.Remove(temp.Name())
+	// A successful replacement has already moved this temporary file.
+	defer func() { _ = os.Remove(temp.Name()) }()
 	if err = privatePath(temp.Name(), false); err == nil {
 		_, err = temp.Write(data)
 	}

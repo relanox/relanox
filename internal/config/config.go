@@ -113,7 +113,8 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, invalid("config", "unreadable")
 	}
-	defer file.Close()
+	// Closing a read-only descriptor does not change the decoded configuration.
+	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, MaxConfigBytes+1))
 	if err != nil {
 		return Config{}, invalid("config", "unreadable")

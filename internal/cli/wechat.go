@@ -75,7 +75,8 @@ func (c *command) pairWechat(ctx context.Context, d *document, id string, option
 		}
 		options.verification = file.Name()
 		_ = file.Close()
-		defer os.Remove(file.Name())
+		// Remove the temporary verification input after pairing finishes.
+		defer func() { _ = os.Remove(file.Name()) }()
 		if err = privatePath(file.Name(), false); err != nil {
 			return problem("verification_file_permissions_failed")
 		}

@@ -67,7 +67,7 @@ func (p *dingPeer) socket(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer connection.CloseNow()
+	defer func() { _ = connection.CloseNow() }()
 	if r.URL.Query().Get("ticket") != "native-ticket" {
 		p.t.Error("native Stream ticket missing")
 		return
@@ -213,7 +213,11 @@ func TestDingTalkACKFollowsDurableAcceptanceAndOriginatingSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	var replacement *websocket.Conn
 	select {
 	case replacement = <-p.replacement:

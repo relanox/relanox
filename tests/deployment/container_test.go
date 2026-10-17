@@ -78,7 +78,11 @@ func assertPersisted(t *testing.T, container, directory string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	marker, err := store.GetState(context.Background(), model.StateNamespace{Component: "deployment", OwnerID: "smoke"}, "persistent-marker")
 	if err != nil || marker == nil || string(marker.Value) != `{"retained":true}` {
 		t.Fatalf("container lost durable state: %#v %v", marker, err)

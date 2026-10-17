@@ -156,7 +156,8 @@ func attachComponents(runtime *core.Runtime, cfg config.Config, client *http.Cli
 			return invalid("account", "component_initialization_failed")
 		}
 		if err = runtime.AttachChannel(account.ID, channel); err != nil {
-			channel.Close(context.Background())
+			// Initialization already failed; teardown must preserve that error.
+			_ = channel.Close(context.Background())
 			return err
 		}
 	}
@@ -170,7 +171,8 @@ func attachComponents(runtime *core.Runtime, cfg config.Config, client *http.Cli
 			return invalid("endpoint", "component_initialization_failed")
 		}
 		if err = runtime.AttachAgent(endpoint.ID, agent); err != nil {
-			agent.Close(context.Background())
+			// Initialization already failed; teardown must preserve that error.
+			_ = agent.Close(context.Background())
 			return err
 		}
 	}

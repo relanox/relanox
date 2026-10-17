@@ -62,7 +62,7 @@ func TestDiscoveryUsesNativeSocketAndPrintsOnlyAddresses(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer connection.CloseNow()
+		defer func() { _ = connection.CloseNow() }()
 		_, data, err := connection.Read(ctx)
 		if err != nil {
 			return

@@ -91,7 +91,8 @@ func postCallback(ctx context.Context, deps agentmcp.Dependencies, sub subscript
 	if err != nil {
 		return 0, nil, errors.New("callback_unavailable")
 	}
-	defer response.Body.Close()
+	// Cleanup cannot change the callback receipt or make an ambiguous send retryable.
+	defer func() { _ = response.Body.Close() }()
 	if !readBody {
 		return response.StatusCode, nil, nil
 	}

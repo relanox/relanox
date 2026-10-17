@@ -93,7 +93,8 @@ func (c *command) statusCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		// Operations report their outcome before releasing this command's database handle.
+		defer func() { _ = store.Close() }()
 		stats, err := store.Stats(cmd.Context())
 		if err != nil {
 			return problem("status_unavailable")
@@ -110,12 +111,8 @@ func (c *command) statusCommand() *cobra.Command {
 		if c.json {
 			return c.output(value, "")
 		}
-		fmt.Fprintf(c.options.Out, "Pending: %d  Undelivered: %d  Unknown: %d\n", stats.Pending, stats.Undelivered, stats.Unknown)
-		for _, r := range requests {
-			fmt.Fprintf(c.options.Out, "request %s version=%d status=%s endpoint=%s\n", r.Snapshot.RequestID, r.Version, r.Dispatch.Status, r.Snapshot.Endpoint.ID)
-		}
-		for _, r := range deliveries {
-			fmt.Fprintf(c.options.Out, "delivery %s version=%d status=%s endpoint=%s\n", r.DeliveryID, r.Version, r.Status, r.Endpoint.ID)
+		if err := c.printStatus(stats, requests, deliveries); err != nil {
+			return err
 		}
 		if include {
 			return json.NewEncoder(c.options.Out).Encode(value)
@@ -129,6 +126,23 @@ func (c *command) statusCommand() *cobra.Command {
 	cmd.Flags().Var((*deliveryFlag)(&filter.DeliveryStatus), "delivery-status", "pending, sent, rejected or unknown")
 	cmd.Flags().BoolVar(&include, "include-content", false, "Include message text in output")
 	return cmd
+}
+
+func (c *command) printStatus(stats model.StorageStats, requests []model.InboundRecord, deliveries []model.OutboundRecord) error {
+	if _, err := fmt.Fprintf(c.options.Out, "Pending: %d  Undelivered: %d  Unknown: %d\n", stats.Pending, stats.Undelivered, stats.Unknown); err != nil {
+		return err
+	}
+	for _, r := range requests {
+		if _, err := fmt.Fprintf(c.options.Out, "request %s version=%d status=%s endpoint=%s\n", r.Snapshot.RequestID, r.Version, r.Dispatch.Status, r.Snapshot.Endpoint.ID); err != nil {
+			return err
+		}
+	}
+	for _, r := range deliveries {
+		if _, err := fmt.Fprintf(c.options.Out, "delivery %s version=%d status=%s endpoint=%s\n", r.DeliveryID, r.Version, r.Status, r.Endpoint.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type attemptFlag model.AttemptStatus
@@ -214,7 +228,8 @@ func (c *command) requeueCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		// Operations report their outcome before releasing this command's database handle.
+		defer func() { _ = store.Close() }()
 		input.Now = time.Now()
 		result, err := store.Requeue(cmd.Context(), input)
 		if err != nil {
@@ -251,7 +266,8 @@ func (c *command) cleanupCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		// Operations report their outcome before releasing this command's database handle.
+		defer func() { _ = store.Close() }()
 		removed, err := store.Cleanup(cmd.Context(), model.CleanupInput{Before: cutoff, Limit: limit})
 		if err != nil {
 			return problem("cleanup_failed")
@@ -285,8 +301,8 @@ func (c *command) doctorCommand() *cobra.Command {
 		store, err := openExisting(cmd.Context(), cfg)
 		if err == nil {
 			health, healthErr := store.Health(cmd.Context())
-			store.Close()
-			checks["storage"] = health.OK && healthErr == nil
+			closeErr := store.Close()
+			checks["storage"] = health.OK && healthErr == nil && closeErr == nil
 		} else {
 			checks["storage"] = false
 		}
@@ -362,6 +378,6 @@ func probeManagement(ctx context.Context, address string) bool {
 	if err != nil {
 		return false
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	return response.StatusCode == http.StatusOK
 }

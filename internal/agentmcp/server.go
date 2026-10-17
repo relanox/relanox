@@ -199,7 +199,8 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, maxBytes int64, tim
 	}
 	controller := http.NewResponseController(w)
 	_ = controller.SetReadDeadline(time.Now().Add(timeout))
-	defer controller.SetReadDeadline(time.Time{})
+	// Some HTTP writers do not support deadlines; resetting is best effort.
+	defer func() { _ = controller.SetReadDeadline(time.Time{}) }()
 	return io.ReadAll(http.MaxBytesReader(w, r.Body, maxBytes))
 }
 

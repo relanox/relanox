@@ -110,15 +110,20 @@ func (c *command) prompt(label, fallback string, secret bool) (string, error) {
 	if c.json {
 		return "", problem("interactive_input_unavailable_with_json")
 	}
+	prompt := label + ": "
 	if fallback != "" {
-		fmt.Fprintf(c.options.Err, "%s [%s]: ", label, fallback)
-	} else {
-		fmt.Fprintf(c.options.Err, "%s: ", label)
+		prompt = fmt.Sprintf("%s [%s]: ", label, fallback)
+	}
+	if _, err := io.WriteString(c.options.Err, prompt); err != nil {
+		return "", err
 	}
 	var value string
 	if file, ok := c.options.In.(*os.File); ok && secret && term.IsTerminal(int(file.Fd())) {
 		data, err := term.ReadPassword(int(file.Fd()))
-		fmt.Fprintln(c.options.Err)
+		_, newlineErr := fmt.Fprintln(c.options.Err)
+		if newlineErr != nil {
+			return "", newlineErr
+		}
 		if err != nil {
 			return "", problem("input_unavailable")
 		}
@@ -147,7 +152,9 @@ func (c *command) saved(d *document) error {
 	}
 	if !c.json {
 		for _, instruction := range next {
-			fmt.Fprintln(c.options.Out, instruction)
+			if _, err := fmt.Fprintln(c.options.Out, instruction); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
