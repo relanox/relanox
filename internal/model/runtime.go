@@ -147,6 +147,9 @@ type ChannelHost interface {
 	CommonHost
 	Ingest(context.Context, IngestInput) (IngestReceipt, error)
 	BoundChatIDs() []string
+	// BoundAddresses returns a fresh snapshot of this account's configured
+	// conversations, including exact threads, for native subscriptions/recovery.
+	BoundAddresses() []ChannelAddress
 	DiscoverConversation(context.Context, DiscoveredConversation) error
 	MaxMediaBytes() int64
 	Media() ChannelMediaHost

@@ -63,16 +63,28 @@ type discordRelay struct {
 	closed  atomic.Bool
 }
 
-func startDiscordRelay(t *testing.T, peer *httptest.Server, path string, fail bool) *discordRelay {
+type fixtureOptions struct {
+	Epoch    string
+	Bindings []model.Binding
+}
+
+func startDiscordRelay(t *testing.T, peer *httptest.Server, path string, fail bool, options ...fixtureOptions) *discordRelay {
 	t.Helper()
 	f := &discordRelay{}
 	ctx, cancel := context.WithCancel(context.Background())
 	f.cancel = cancel
 	t.Cleanup(func() { f.close(t) })
 	f.routine = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.Copy(io.Discard, r.Body); w.WriteHeader(204) }))
-	account := model.AccountConfig{ID: "discord", Channel: model.Discord, AllowedSenders: []string{"200"}, Config: common.Data(Config{BotToken: model.SecretRef{Env: "DISCORD_TOKEN"}, APIBaseURL: peer.URL})}
+	nativeConfig := Config{BotToken: model.SecretRef{Env: "DISCORD_TOKEN"}, APIBaseURL: peer.URL}
+	if len(options) > 0 {
+		nativeConfig.RecoveryEpoch = options[0].Epoch
+	}
+	account := model.AccountConfig{ID: "discord", Channel: model.Discord, AllowedSenders: []string{"200"}, Config: common.Data(nativeConfig)}
 	endpoint := model.EndpointConfig{ID: "grok", Agent: model.Grok, Config: common.Data(grok.Config{MCP: agentmcp.Config{Auth: "bearer", Token: model.SecretRef{Env: "MCP"}}, RoutineURL: model.SecretRef{Env: "ROUTINE"}, RoutineAuthorization: model.SecretRef{Env: "AUTH"}})}
 	cfg := config.Config{Accounts: []model.AccountConfig{account}, Endpoints: []model.EndpointConfig{endpoint}, Bindings: []model.Binding{{AccountID: account.ID, ChatID: "400", ThreadID: "300", EndpointID: endpoint.ID}}, Storage: config.Storage{Driver: "sqlite", Path: path}, HTTP: config.HTTP{PublicURL: "https://relay.example.org"}, Queue: config.Queue{Concurrency: 1, PollIntervalMS: 5}}
+	if len(options) > 0 && options[0].Bindings != nil {
+		cfg.Bindings = options[0].Bindings
+	}
 	var err error
 	f.store, err = storage.Open(ctx, cfg.Storage, nil)
 	if err != nil {

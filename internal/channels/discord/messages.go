@@ -18,9 +18,27 @@ import (
 	"github.com/relanox/relanox/internal/text"
 )
 
-func (c *Channel) receive(ctx context.Context, raw json.RawMessage, bot *identity) error {
+func (c *Channel) dispatchMessage(ctx context.Context, raw json.RawMessage, bot *identity, state *gatewayState) error {
 	var message discordgo.Message
-	if json.Unmarshal(raw, &message) != nil || !snowflake(message.ID) || !snowflake(message.ChannelID) || message.Author == nil {
+	if json.Unmarshal(raw, &message) != nil || !snowflake(message.ID) {
+		return errors.New("invalid_native_message")
+	}
+	// A surviving old session may replay posts from before a newly configured
+	// binding existed. Its persisted scope boundary applies to resume replay as
+	// well as REST compensation; previously unauthorized history stays skipped.
+	if started := state.BoundSinceMS[message.ChannelID]; started > state.StartedAtMS && started >= discordEpochMS {
+		if messageNumber(message.ID) < uint64(started-discordEpochMS)<<22 {
+			return nil
+		}
+	}
+	if err := c.receiveMessage(ctx, message, bot, nil); err != nil && !common.PolicyRejection(err) {
+		return err
+	}
+	return c.rememberMessage(message.ID, message.ChannelID, state)
+}
+
+func (c *Channel) receiveMessage(ctx context.Context, message discordgo.Message, bot *identity, known *discordgo.Channel) error {
+	if !snowflake(message.ID) || !snowflake(message.ChannelID) || message.Author == nil {
 		return errors.New("invalid_native_message")
 	}
 	if message.Author.Bot || message.Author.ID == bot.UserID || !common.Contains(c.account.AllowedSenders, message.Author.ID) {
@@ -29,12 +47,12 @@ func (c *Channel) receive(ctx context.Context, raw json.RawMessage, bot *identit
 	if message.Type != discordgo.MessageTypeDefault && message.Type != discordgo.MessageTypeReply {
 		return nil
 	}
-	var native discordgo.Channel
-	if err := c.api(ctx, http.MethodGet, "/channels/"+message.ChannelID, nil, &native); err != nil {
-		return err
+	if _, bound := c.boundAddress(message.ChannelID); !bound {
+		return nil
 	}
-	if native.ID != message.ChannelID || native.GuildID != message.GuildID {
-		return errors.New("native_channel_identity_changed")
+	native, err := c.messageChannel(ctx, message, known)
+	if err != nil {
+		return err
 	}
 	chat, thread := native.ID, ""
 	if native.IsThread() {
@@ -52,9 +70,24 @@ func (c *Channel) receive(ctx context.Context, raw json.RawMessage, bot *identit
 	}
 	received := message.Timestamp
 	if received.IsZero() {
-		received = time.Now()
+		return errors.New("invalid_native_timestamp")
 	}
 	return common.Ingest(ctx, c.host, model.IngestInput{Source: model.SourceKey{Channel: model.Discord, AccountID: c.account.ID, EventID: message.ID}, SenderID: message.Author.ID, Text: message.Content, Attachments: attachments, ReceivedAt: received, Target: model.ReplyTarget{Channel: model.Discord, AccountID: c.account.ID, ChatID: chat, ThreadID: thread, ReplyToID: message.ID, Data: common.Data(targetData{APIBaseURL: c.config.APIBaseURL, BotID: bot.UserID, GuildID: native.GuildID})}})
+}
+
+func (c *Channel) messageChannel(ctx context.Context, message discordgo.Message, known *discordgo.Channel) (*discordgo.Channel, error) {
+	native := known
+	if native == nil {
+		var channel discordgo.Channel
+		if err := c.api(ctx, http.MethodGet, "/channels/"+message.ChannelID, nil, &channel); err != nil {
+			return nil, err
+		}
+		native = &channel
+	}
+	if native.ID != message.ChannelID || message.GuildID != "" && native.GuildID != message.GuildID {
+		return nil, errors.New("native_channel_identity_changed")
+	}
+	return native, nil
 }
 
 func (c *Channel) attachments(ctx context.Context, native []*discordgo.MessageAttachment) ([]model.MediaUpload, error) {
