@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 )
 
 // WhatsApp requires the file part's actual Content-Type, independently of its
@@ -47,7 +49,7 @@ func TestMultipartPreservesExplicitFileMIMEAndLegacyDefault(t *testing.T) {
 			if err != nil || string(data) != "native-bytes" {
 				t.Error("multipart file bytes changed")
 			}
-			writePeerResponse(t, w, string([]byte(`{"id":"media"}`)))
+			channeltest.WriteResponse(t, w, `{"id":"media"}`)
 		}))
 		var err error
 		if explicit {
@@ -59,13 +61,5 @@ func TestMultipartPreservesExplicitFileMIMEAndLegacyDefault(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	}
-}
-
-// writePeerResponse fails the fixture when its native response cannot be delivered.
-func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
-	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
-		t.Error(err)
 	}
 }

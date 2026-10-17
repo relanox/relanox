@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/model"
 )
 
@@ -79,7 +80,7 @@ func (p *messagePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error("native OAuth fields lost")
 		}
 		p.secret = body.Secret
-		writePeerResponse(p.t, w, fmt.Sprintf(`{"access_token":%q,"expires_in":"7200"}`, "token-"+body.Secret))
+		channeltest.WriteResponse(p.t, w, fmt.Sprintf(`{"access_token":%q,"expires_in":"7200"}`, "token-"+body.Secret))
 		return
 	}
 	p.sends++
@@ -96,9 +97,9 @@ func (p *messagePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(p.status)
 	}
 	if p.body != "" {
-		writePeerResponse(p.t, w, p.body)
+		channeltest.WriteResponse(p.t, w, p.body)
 	} else {
-		writePeerResponse(p.t, w, `{"id":"native-sent"}`)
+		channeltest.WriteResponse(p.t, w, `{"id":"native-sent"}`)
 	}
 }
 
