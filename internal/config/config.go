@@ -245,10 +245,8 @@ func (c Config) validateRuntimeLimits() error {
 }
 
 func (c Config) validateObservabilityAndSpeech() error {
-	switch c.Observability.Level {
-	case "debug", "info", "warn", "error":
-	default:
-		return invalid("observability.level", "invalid_level")
+	if err := ValidateObservability(c.Observability); err != nil {
+		return err
 	}
 	if c.Speech != nil {
 		return ValidateSpeech(*c.Speech)

@@ -30,6 +30,9 @@ func TestDecodeRejectsInvalidRelationsWithoutLeakingInput(t *testing.T) {
 		{"short_dispatch_lease", strings.Replace(validConfig, `"storage":`, `"queue":{"leaseSeconds":29},"storage":`, 1), "queue", "invalid_limits"},
 		{"speech_engine", strings.Replace(validConfig, `"storage":`, `"speech":{"enabled":true,"secretId":{"env":"ASR_ID"},"secretKey":{"env":"ASR_KEY"},"engineModelType":"unconfigured-secret"},"storage":`, 1), "speech.engineModelType", "unsupported_engine"},
 		{"speech_region", strings.Replace(validConfig, `"storage":`, `"speech":{"enabled":true,"secretId":{"env":"ASR_ID"},"secretKey":{"env":"ASR_KEY"},"region":"unconfigured-secret/path"},"storage":`, 1), "speech.region", "invalid_region"},
+		{"collector_credentials", strings.Replace(validConfig, `"storage":`, `"observability":{"otlpEndpoint":"https://user:unconfigured-secret@example.com/v1/traces"},"storage":`, 1), "observability.otlpEndpoint", "invalid_collector_url"},
+		{"collector_query", strings.Replace(validConfig, `"storage":`, `"observability":{"otlpEndpoint":"https://example.com/v1/traces?token=unconfigured-secret"},"storage":`, 1), "observability.otlpEndpoint", "invalid_collector_url"},
+		{"collector_empty_port", strings.Replace(validConfig, `"storage":`, `"observability":{"otlpEndpoint":"https://example.com:/v1/traces"},"storage":`, 1), "observability.otlpEndpoint", "invalid_collector_url"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
