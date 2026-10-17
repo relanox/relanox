@@ -1,5 +1,5 @@
 {
-  "goVersion": "go1.26.0",
+  "goVersion": "go1.27.2",
   "collector": "github.com/google/go-licenses/v2@v2.0.1",
   "targets": [
     "darwin/amd64",
@@ -12,13 +12,13 @@
   "modules": [
     {
       "Path": "ariga.io/atlas",
-      "Version": "v0.36.2-0.20250730182955-2c6300d0a3e1",
-      "Sum": "h1:NPPfBaVZgz4LKBCIc0FbMogCjvXN+yGf7CZwotOwJo8="
+      "Version": "v1.3.0",
+      "Sum": "h1:/ZQLypoRURfNO0VJmXUNz8k6lGoeJLDPlSOZOhxG/1U="
     },
     {
       "Path": "cloud.google.com/go/auth",
-      "Version": "v0.24.1-0.20261001053825-dbc26066f70a",
-      "Sum": "h1:jW1ZLFy9oa5ai8LOI40z6s+DL1cO/L1KSm9hVGnibn8="
+      "Version": "v0.24.1",
+      "Sum": "h1:NTmd2iJb4DsGIav0KiqFMYI88nMshA2wnFMBatRmoCs="
     },
     {
       "Path": "cloud.google.com/go/auth/oauth2adapt",
@@ -42,8 +42,8 @@
     },
     {
       "Path": "github.com/Masterminds/semver/v3",
-      "Version": "v3.4.0",
-      "Sum": "h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0="
+      "Version": "v3.5.0",
+      "Sum": "h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE="
     },
     {
       "Path": "github.com/MicahParks/jwkset",
@@ -64,6 +64,11 @@
       "Path": "github.com/apparentlymart/go-textseg/v15",
       "Version": "v15.0.0",
       "Sum": "h1:uYvfpb3DyLSCGWnctWKGj857c6ew1u1fNQOlOtuGxQY="
+    },
+    {
+      "Path": "github.com/apparentlymart/go-textseg/v17",
+      "Version": "v17.0.1",
+      "Sum": "h1:bpMXRgQ5cEoRNuQke1a80/Nl6w3G5eoIbWo9f3gXkAs="
     },
     {
       "Path": "github.com/beorn7/perks",
@@ -97,8 +102,8 @@
     },
     {
       "Path": "github.com/dustin/go-humanize",
-      "Version": "v1.0.1",
-      "Sum": "h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY="
+      "Version": "v1.1.0",
+      "Sum": "h1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg="
     },
     {
       "Path": "github.com/dyatlov/go-opengraph/opengraph",
@@ -122,8 +127,8 @@
     },
     {
       "Path": "github.com/go-asn1-ber/asn1-ber",
-      "Version": "v1.5.7",
-      "Sum": "h1:DTX+lbVTWaTw1hQ+PbZPlnDZPEIs0SS/GCZAl535dDk="
+      "Version": "v1.5.8",
+      "Sum": "h1:H9AZkK22UOmfX8J84ubyaZxKJZ3FMHVwn8swoMML7iQ="
     },
     {
       "Path": "github.com/go-logr/logr",
@@ -137,8 +142,8 @@
     },
     {
       "Path": "github.com/go-openapi/inflect",
-      "Version": "v0.19.0",
-      "Sum": "h1:9jCH9scKIbHeV9m12SmPilScz6krDxKRasNNSNPXu/4="
+      "Version": "v1.0.1",
+      "Sum": "h1:gqN2BW4CxqueOg9FO861a592OZKBNJ7GV1XE+gDI1DU="
     },
     {
       "Path": "github.com/goccy/go-yaml",
@@ -192,8 +197,8 @@
     },
     {
       "Path": "github.com/grpc-ecosystem/grpc-gateway/v2",
-      "Version": "v2.30.0",
-      "Sum": "h1:/Tnpcb2E0Pz/tN9s3bfEY2Q8ePCEX9iuS+cneUwncnw="
+      "Version": "v2.32.0",
+      "Sum": "h1:QMILzF8BA7xftE4zVORkRrlv08m12St3csK4RsyRgRs="
     },
     {
       "Path": "github.com/hashicorp/errwrap",
@@ -212,13 +217,13 @@
     },
     {
       "Path": "github.com/hashicorp/go-plugin",
-      "Version": "v1.7.0",
-      "Sum": "h1:YghfQH/0QmPNc/AZMTFE3ac8fipZyZECHdDPshfk+mA="
+      "Version": "v1.8.0",
+      "Sum": "h1:ie8S6RRY8RvB2usYZv+AAZ/wBvx2AU5p5QeP5j/FORs="
     },
     {
       "Path": "github.com/hashicorp/hcl/v2",
-      "Version": "v2.18.1",
-      "Sum": "h1:6nxnOJFku1EuSawSD81fuviYUV8DxFr3fp2dUi3ZYSo="
+      "Version": "v2.25.0",
+      "Sum": "h1:HmmQVYRny4MaBo4b20TjmL46wyuUxpnMWkPZ4+NTbWk="
     },
     {
       "Path": "github.com/hashicorp/yamux",
@@ -247,8 +252,8 @@
     },
     {
       "Path": "github.com/jackc/puddle/v2",
-      "Version": "v2.2.2",
-      "Sum": "h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo="
+      "Version": "v2.2.3",
+      "Sum": "h1:f8HoREISb3l5eO9coPgK7U3hKLhWGokOFVcThl5jrao="
     },
     {
       "Path": "github.com/larksuite/oapi-sdk-go/v3",
@@ -272,18 +277,18 @@
     },
     {
       "Path": "github.com/mattermost/logr/v2",
-      "Version": "v2.0.22",
-      "Sum": "h1:npFkXlkAWR9J8payh8ftPcCZvLbHSI125mAM5/r/lP4="
+      "Version": "v2.0.23",
+      "Sum": "h1:BnOksEREt3xfKS1UdELEnlFgmG6GJlslLxU3OZKjVUM="
     },
     {
       "Path": "github.com/mattermost/mattermost/server/public",
-      "Version": "v0.4.0",
-      "Sum": "h1:DtD89e3zvuWXdAPr3MbyEk6+EA59FySGbnHQ8o0S92Q="
+      "Version": "v0.5.0",
+      "Sum": "h1:gdzb0wcbdaVxI74fhCErwt6YzrrjePnX3cey98DlyPk="
     },
     {
       "Path": "github.com/mattn/go-colorable",
-      "Version": "v0.1.14",
-      "Sum": "h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE="
+      "Version": "v0.1.16",
+      "Sum": "h1:+2YjeAe7xP1OQbZW1jERPWWCDLlNqFNCvjiqGiAt84A="
     },
     {
       "Path": "github.com/mattn/go-isatty",
@@ -307,8 +312,8 @@
     },
     {
       "Path": "github.com/ncruces/go-strftime",
-      "Version": "v1.0.0",
-      "Sum": "h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w="
+      "Version": "v1.1.0",
+      "Sum": "h1:vtPmPWMkb539RGV9WpWT9EwJGvrOCKvMNI4obWL47Hk="
     },
     {
       "Path": "github.com/oklog/run",
@@ -327,8 +332,8 @@
     },
     {
       "Path": "github.com/philhofer/fwd",
-      "Version": "v1.2.0",
-      "Sum": "h1:e6DnBTl7vGY+Gz322/ASL4Gyp1FspeMvx1RNDoToZuM="
+      "Version": "v1.2.1",
+      "Sum": "h1:UtpS73q8bFgy/yH3gCq8LSNvj5gv/FowNOiWZa7uKwQ="
     },
     {
       "Path": "github.com/pkg/errors",
@@ -347,8 +352,8 @@
     },
     {
       "Path": "github.com/prometheus/common",
-      "Version": "v0.72.0",
-      "Sum": "h1:tAYsE+sPJxIncDAobm4H5aQjmox9ZxEIIqPbiffa8G4="
+      "Version": "v0.72.1",
+      "Sum": "h1:ZAiQed/nk8IIcsdzb2TlJu23NEUDyDLQ9TXTN2WRK6Y="
     },
     {
       "Path": "github.com/prometheus/procfs",
@@ -367,8 +372,8 @@
     },
     {
       "Path": "github.com/segmentio/asm",
-      "Version": "v1.1.3",
-      "Sum": "h1:WM03sfUOENvvKexOLp+pCqgb/WDjsi7EK8gIsICtzhc="
+      "Version": "v1.2.1",
+      "Sum": "h1:DTNbBqs57ioxAD4PrArqftgypG4/qNpXoJx8TVXxPR0="
     },
     {
       "Path": "github.com/segmentio/encoding",
@@ -382,13 +387,13 @@
     },
     {
       "Path": "github.com/spf13/cobra",
-      "Version": "v1.7.0",
-      "Sum": "h1:hyqWnYt1ZQShIddO5kBpj3vu05/++x6tJ6dg8EC572I="
+      "Version": "v1.10.2",
+      "Sum": "h1:DMTTonx5m65Ic0GOoRY2c16WCbHxOOw6xxezuLaBpcU="
     },
     {
       "Path": "github.com/spf13/pflag",
-      "Version": "v1.0.5",
-      "Sum": "h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA="
+      "Version": "v1.0.10",
+      "Sum": "h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk="
     },
     {
       "Path": "github.com/stretchr/testify",
@@ -412,13 +417,13 @@
     },
     {
       "Path": "github.com/tidwall/match",
-      "Version": "v1.1.1",
-      "Sum": "h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA="
+      "Version": "v1.2.0",
+      "Sum": "h1:0pt8FlkOwjN2fPt4bIl4BoNxb98gGHN2ObFEDkrfZnM="
     },
     {
       "Path": "github.com/tidwall/pretty",
-      "Version": "v1.2.1",
-      "Sum": "h1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4="
+      "Version": "v1.2.2",
+      "Sum": "h1:dz1jrRuE7or/74V490B4/GP1pZm5WKlt2bgCP5A83w8="
     },
     {
       "Path": "github.com/tidwall/sjson",
@@ -427,8 +432,8 @@
     },
     {
       "Path": "github.com/tinylib/msgp",
-      "Version": "v1.6.3",
-      "Sum": "h1:bCSxiTz386UTgyT1i0MSCvdbWjVW+8sG3PjkGsZQt4s="
+      "Version": "v1.6.5",
+      "Sum": "h1:iAH6XTP7BpzErjBZlujJQXxA+GmRi2YWs6M4KdLtNbE="
     },
     {
       "Path": "github.com/vmihailenco/msgpack/v5",
@@ -462,13 +467,13 @@
     },
     {
       "Path": "github.com/zclconf/go-cty",
-      "Version": "v1.14.4",
-      "Sum": "h1:uXXczd9QDGsgu0i/QFR/hzI5NYCHLf6NQw/atrbnhq8="
+      "Version": "v1.19.0",
+      "Sum": "h1:IV8WdqYZc2c5rLX9bEoLNXKojBAp0MZPBHMIrCoa/s4="
     },
     {
       "Path": "github.com/zclconf/go-cty-yaml",
-      "Version": "v1.1.0",
-      "Sum": "h1:nP+jp0qPHv2IhUVqmQSzjvqAWcObN0KBkUl2rWBdig0="
+      "Version": "v1.2.0",
+      "Sum": "h1:GDyL4+e/Qe/S0B7YaecMLbVvAR/Mp21CXMOSiCTOi1M="
     },
     {
       "Path": "go.mau.fi/util",
@@ -482,8 +487,8 @@
     },
     {
       "Path": "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
-      "Version": "v0.70.0",
-      "Sum": "h1:LMuyCAyfalSjDyjdC65nK6N0zoTT63+E/u95X0JovZI="
+      "Version": "v0.72.0",
+      "Sum": "h1:LxwW/9ctSCv+QkE/cLR7M91ZIkXNMqJtEMi1vCw9U8s="
     },
     {
       "Path": "go.opentelemetry.io/otel",
@@ -522,8 +527,8 @@
     },
     {
       "Path": "go.opentelemetry.io/proto/otlp",
-      "Version": "v1.11.0",
-      "Sum": "h1:5rrYs0Ykyj50sdU/JU0x8etU+LubXWb+gED6TbEdMIk="
+      "Version": "v1.11.1",
+      "Sum": "h1:SCrPqH9NE5CmBrOqpjNCiT0X5mGwMyGERXdogfR7Yjw="
     },
     {
       "Path": "go.yaml.in/yaml/v3",
@@ -632,8 +637,8 @@
     },
     {
       "Path": "modernc.org/libc",
-      "Version": "v1.77.1",
-      "Sum": "h1:Ct8j47QtiZ1Enj2DtFXQtUqrPCAjdCmPjtCuvrYQ0Hs="
+      "Version": "v1.79.0",
+      "Sum": "h1:9Dvvv++bAMSkSuBzuOFAatbTV5OIoq6Y6FohmD3e7q8="
     },
     {
       "Path": "modernc.org/mathutil",

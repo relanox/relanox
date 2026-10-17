@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 
@@ -68,7 +68,7 @@ func (_c *StateCreate) SetNillableExpiresAt(v *int64) *StateCreate {
 }
 
 // SetValue sets the "value" field.
-func (_c *StateCreate) SetValue(v json.RawMessage) *StateCreate {
+func (_c *StateCreate) SetValue(v jsontext.Value) *StateCreate {
 	_c.mutation.SetValue(v)
 	return _c
 }
@@ -335,7 +335,7 @@ func (u *StateUpsert) ClearExpiresAt() *StateUpsert {
 }
 
 // SetValue sets the "value" field.
-func (u *StateUpsert) SetValue(v json.RawMessage) *StateUpsert {
+func (u *StateUpsert) SetValue(v jsontext.Value) *StateUpsert {
 	u.Set(state.FieldValue, v)
 	return u
 }
@@ -506,7 +506,7 @@ func (u *StateUpsertOne) ClearExpiresAt() *StateUpsertOne {
 }
 
 // SetValue sets the "value" field.
-func (u *StateUpsertOne) SetValue(v json.RawMessage) *StateUpsertOne {
+func (u *StateUpsertOne) SetValue(v jsontext.Value) *StateUpsertOne {
 	return u.Update(func(s *StateUpsert) {
 		s.SetValue(v)
 	})
@@ -846,7 +846,7 @@ func (u *StateUpsertBulk) ClearExpiresAt() *StateUpsertBulk {
 }
 
 // SetValue sets the "value" field.
-func (u *StateUpsertBulk) SetValue(v json.RawMessage) *StateUpsertBulk {
+func (u *StateUpsertBulk) SetValue(v jsontext.Value) *StateUpsertBulk {
 	return u.Update(func(s *StateUpsert) {
 		s.SetValue(v)
 	})

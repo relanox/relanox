@@ -1,6 +1,6 @@
 # Send your first message
 
-Build Relanox with Go 1.26, configure one native account and one hosted agent,
+Build Relanox with Go 1.27.2, configure one native account and one hosted agent,
 then bind their exact conversation IDs. The service uses a durable queue and
 requires a machine that can keep its connections and workers running.
 

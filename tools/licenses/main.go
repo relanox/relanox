@@ -93,19 +93,22 @@ func goCommand(target string, args ...string) ([]byte, error) {
 
 func collectTarget(temporary, raw, target string, index int, modules map[string]module, reports map[string][]string) error {
 	fmt.Fprintln(os.Stderr, "Collecting licenses for", target)
+	if err := collectReviewedNotice(target, raw, reports); err != nil {
+		return err
+	}
 	destination := filepath.Join(temporary, fmt.Sprintf("target-%d", index))
 	// Build the collector for the host, then inspect packages for the target.
 	tool, err := collector(temporary)
 	if err != nil {
 		return err
 	}
-	command := exec.Command(tool, "save", "./cmd/relanox", "--save_path", destination, "--ignore", "github.com/relanox/relanox")
+	command := exec.Command(tool, "save", "./cmd/relanox", "--save_path", destination, "--ignore", collectorIgnored)
 	parts := strings.Split(target, "/")
 	command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+parts[0], "GOARCH="+parts[1])
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("license_scan_%s: %w\n%s", target, err, output)
 	}
-	reportCommand := exec.Command(tool, "report", "./cmd/relanox", "--ignore", "github.com/relanox/relanox")
+	reportCommand := exec.Command(tool, "report", "./cmd/relanox", "--ignore", collectorIgnored)
 	reportCommand.Env = command.Env
 	var diagnostic bytes.Buffer
 	reportCommand.Stderr = &diagnostic

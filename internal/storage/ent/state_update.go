@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 
@@ -134,13 +134,13 @@ func (_u *StateUpdate) ClearExpiresAt() *StateUpdate {
 }
 
 // SetValue sets the "value" field.
-func (_u *StateUpdate) SetValue(v json.RawMessage) *StateUpdate {
+func (_u *StateUpdate) SetValue(v jsontext.Value) *StateUpdate {
 	_u.mutation.SetValue(v)
 	return _u
 }
 
 // AppendValue appends value to the "value" field.
-func (_u *StateUpdate) AppendValue(v json.RawMessage) *StateUpdate {
+func (_u *StateUpdate) AppendValue(v jsontext.Value) *StateUpdate {
 	_u.mutation.AppendValue(v)
 	return _u
 }
@@ -355,13 +355,13 @@ func (_u *StateUpdateOne) ClearExpiresAt() *StateUpdateOne {
 }
 
 // SetValue sets the "value" field.
-func (_u *StateUpdateOne) SetValue(v json.RawMessage) *StateUpdateOne {
+func (_u *StateUpdateOne) SetValue(v jsontext.Value) *StateUpdateOne {
 	_u.mutation.SetValue(v)
 	return _u
 }
 
 // AppendValue appends value to the "value" field.
-func (_u *StateUpdateOne) AppendValue(v json.RawMessage) *StateUpdateOne {
+func (_u *StateUpdateOne) AppendValue(v jsontext.Value) *StateUpdateOne {
 	_u.mutation.AppendValue(v)
 	return _u
 }

@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"sync"
@@ -4640,8 +4640,8 @@ type StateMutation struct {
 	live          *bool
 	expires_at    *int64
 	addexpires_at *int64
-	value         *json.RawMessage
-	appendvalue   json.RawMessage
+	value         *jsontext.Value
+	appendvalue   jsontext.Value
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*State, error)
@@ -5023,13 +5023,13 @@ func (m *StateMutation) ResetExpiresAt() {
 }
 
 // SetValue sets the "value" field.
-func (m *StateMutation) SetValue(jm json.RawMessage) {
-	m.value = &jm
+func (m *StateMutation) SetValue(j jsontext.Value) {
+	m.value = &j
 	m.appendvalue = nil
 }
 
 // Value returns the value of the "value" field in the mutation.
-func (m *StateMutation) Value() (r json.RawMessage, exists bool) {
+func (m *StateMutation) Value() (r jsontext.Value, exists bool) {
 	v := m.value
 	if v == nil {
 		return
@@ -5040,7 +5040,7 @@ func (m *StateMutation) Value() (r json.RawMessage, exists bool) {
 // OldValue returns the old "value" field's value of the State entity.
 // If the State object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *StateMutation) OldValue(ctx context.Context) (v json.RawMessage, err error) {
+func (m *StateMutation) OldValue(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldValue is only allowed on UpdateOne operations")
 	}
@@ -5054,13 +5054,13 @@ func (m *StateMutation) OldValue(ctx context.Context) (v json.RawMessage, err er
 	return oldValue.Value, nil
 }
 
-// AppendValue adds jm to the "value" field.
-func (m *StateMutation) AppendValue(jm json.RawMessage) {
-	m.appendvalue = append(m.appendvalue, jm...)
+// AppendValue adds j to the "value" field.
+func (m *StateMutation) AppendValue(j jsontext.Value) {
+	m.appendvalue = append(m.appendvalue, j...)
 }
 
 // AppendedValue returns the list of values that were appended to the "value" field in this mutation.
-func (m *StateMutation) AppendedValue() (json.RawMessage, bool) {
+func (m *StateMutation) AppendedValue() (jsontext.Value, bool) {
 	if len(m.appendvalue) == 0 {
 		return nil, false
 	}
@@ -5240,7 +5240,7 @@ func (m *StateMutation) SetField(name string, value ent.Value) error {
 		m.SetExpiresAt(v)
 		return nil
 	case state.FieldValue:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

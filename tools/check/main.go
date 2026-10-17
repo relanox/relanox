@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -16,7 +17,7 @@ func main() {
 		fail(err)
 	}
 	if len(files) > 0 {
-		out, err := exec.Command("gofmt", append([]string{"-l"}, files...)...).CombinedOutput()
+		out, err := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "gofmt"), append([]string{"-l"}, files...)...).CombinedOutput()
 		if err != nil {
 			fail(fmt.Errorf("gofmt: %s", out))
 		}
