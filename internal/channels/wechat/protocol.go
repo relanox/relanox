@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/relanox/relanox/internal/channels/common"
 )
 
 // Native numbering and identifier optionality are defined by Tencent's iLink
@@ -111,9 +113,9 @@ func TransportURL(value string, insecure bool) (*url.URL, error) {
 
 func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
-		return c.HTTP
+		return common.HTTPClient(c.HTTP)
 	}
-	return &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	return common.HTTPClient(nil)
 }
 
 func readJSON(response *http.Response, out any) error {
@@ -133,6 +135,9 @@ func readJSON(response *http.Response, out any) error {
 		return errors.New("wechat_invalid_response")
 	}
 	code := status.Ret
+	if status.Ret == -14 || status.Errcode == -14 {
+		return &APIError{Code: -14}
+	}
 	if code == 0 {
 		code = status.Errcode
 	}

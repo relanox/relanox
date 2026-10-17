@@ -2,12 +2,22 @@ package wechat
 
 import (
 	"context"
+	"crypto/aes"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/model"
 )
 
 // Protects lossless native IDs and authentication boundaries with documented
@@ -54,7 +64,7 @@ func TestNativeIDsAndPairingHTTP(t *testing.T) {
 		}
 	}))
 	defer peer.Close()
-	options := LoginOptions{APIBase: peer.URL, AllowInsecureLoopback: true}
+	options := LoginOptions{APIBase: peer.URL, AllowInsecureLoopback: true, HTTP: peer.Client()}
 	qr, err := BeginLogin(context.Background(), options)
 	if err != nil || qr.Code != "public-qr" {
 		t.Fatalf("QR: %+v %v", qr, err)
@@ -63,11 +73,128 @@ func TestNativeIDsAndPairingHTTP(t *testing.T) {
 	if err != nil || status.Status != "need_verifycode" {
 		t.Fatalf("status: %+v %v", status, err)
 	}
-	client := &Client{APIBase: peer.URL, Token: func() string { return "public-fixture-token" }}
+	client := &Client{APIBase: peer.URL, Token: func() string { return "public-fixture-token" }, HTTP: peer.Client()}
 	if err = client.Post(context.Background(), "getupdates", map[string]any{"get_updates_buf": "prior"}, &updates, time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if !gotBegin || !gotStatus || !gotUpdates || updates.Cursor != "committed" {
 		t.Fatal("native requests did not complete")
+	}
+}
+
+func TestSessionExpirationPrecedesGenericResult(t *testing.T) {
+	// Tencent monitor checks errcode=-14 even when the generic ret is nonzero.
+	// https://github.com/Tencent/openclaw-weixin/blob/main/src/monitor/monitor.ts
+	for _, body := range []string{`{"ret":-14}`, `{"ret":-1,"errcode":-14}`} {
+		err := readJSON(&http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, new(map[string]any))
+		var native *APIError
+		if !errors.As(err, &native) || native.Code != -14 {
+			t.Fatalf("session expiry lost for %s: %v", body, err)
+		}
+	}
+}
+
+// Protects outbound native upload and media envelope rather than matching two
+// implementations of the same cipher. A wrong media_type or numeric len changes
+// the real HTTP request. Prior pairing coverage never uploads bytes. No new seam.
+func TestNativeFileUploadThroughSend(t *testing.T) {
+	var key, ciphertext []byte
+	var gotUpload, gotSend bool
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/ilink/bot/getuploadurl":
+			var body struct {
+				AESKey    string `json:"aeskey"`
+				MediaType int    `json:"media_type"`
+				RawSize   int    `json:"rawsize"`
+				RawMD5    string `json:"rawfilemd5"`
+				FileSize  int    `json:"filesize"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if body.MediaType != 3 || body.RawSize != 3 || body.FileSize != 16 || body.RawMD5 != "900150983cd24fb0d6963f7d28e17f72" {
+				t.Errorf("incorrect native upload: %+v", body)
+			}
+			key, _ = hex.DecodeString(body.AESKey)
+			fmt.Fprint(w, `{"upload_param":"public-upload-ticket"}`)
+		case "/c2c/upload":
+			gotUpload = true
+			ciphertext, _ = io.ReadAll(r.Body)
+			if r.URL.Query().Get("encrypted_query_param") != "public-upload-ticket" || r.Header.Get("Authorization") != "" {
+				t.Error("incorrect CDN upload boundary")
+			}
+			w.Header().Set("x-encrypted-param", "public-download-ticket")
+		case "/ilink/bot/sendmessage":
+			gotSend = true
+			var body struct {
+				Message Message `json:"msg"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if len(body.Message.Items) != 1 || body.Message.Items[0].Type != 4 || body.Message.Items[0].File == nil {
+				t.Error("missing native file item")
+				return
+			}
+			file := body.Message.Items[0].File
+			if file.Length != "3" || file.FileName != "opaque file.bin" || file.Media.Query != "public-download-ticket" {
+				t.Errorf("file identifiers/length changed: %+v", file)
+			}
+			fmt.Fprint(w, `{"ret":0}`)
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer peer.Close()
+	cfg := Config{BotID: "bot", BotToken: model.SecretRef{Env: "PUBLIC_FIXTURE"}, APIBaseURL: peer.URL, CDNBaseURL: peer.URL + "/c2c", AllowInsecureLoopback: true}
+	channel, err := New(nil, model.AccountConfig{ID: "wechat", Channel: model.WeChat, Config: common.Data(cfg)}, common.Options{HTTPClient: peer.Client(), ResolveSecret: func(model.SecretRef) (string, error) { return "public-token", nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	media := model.StoredMedia{Reference: model.MediaReference{ID: "asset", Kind: model.File, MIMEType: "application/octet-stream", FileName: "opaque file.bin", Size: 3}, Data: []byte("abc")}
+	result, err := channel.Send(context.Background(), model.SendInput{Target: model.ReplyTarget{Channel: model.WeChat, AccountID: "wechat", ChatID: "alice", Data: common.Data(targetData{BotID: "bot", APIBaseURL: peer.URL, ContextToken: "public-context"})}, Chunk: model.DeliveryChunk{Media: &media.Reference, IdempotencyKey: "public-message"}, Media: &media})
+	if err != nil || result.Status != model.Sent {
+		t.Fatalf("send: %+v %v", result, err)
+	}
+	if !gotUpload || !gotSend || len(ciphertext) != 16 || len(key) != 16 {
+		t.Fatal("native media transfer missing")
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := make([]byte, 16)
+	block.Decrypt(plain, ciphertext)
+	if string(plain[:3]) != "abc" || plain[15] != 13 {
+		t.Fatalf("incorrect native AES ECB envelope: %x", plain)
+	}
+}
+
+func TestLoginExplicitLoopbackAndExistingCredential(t *testing.T) {
+	// Explicit insecure loopback is a production local testing option; using a
+	// custom HTTP client here would conceal a broken option in the real CLI.
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"qrcode":"public-qr","qrcode_img_content":"https://weixin.qq.com/fixture"}`)
+	}))
+	defer peer.Close()
+	if _, err := BeginLogin(context.Background(), LoginOptions{APIBase: peer.URL, AllowInsecureLoopback: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BeginLogin(context.Background(), LoginOptions{APIBase: peer.URL}); err == nil {
+		t.Fatal("implicit insecure login accepted")
+	}
+	filename := filepath.Join(t.TempDir(), "credentials.json")
+	if err := os.WriteFile(filename, []byte("preserved"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Login(context.Background(), LoginOptions{Output: filename}); err == nil {
+		t.Fatal("existing credentials overwritten")
+	}
+	raw, err := os.ReadFile(filename)
+	if err != nil || string(raw) != "preserved" {
+		t.Fatal("existing credentials changed")
 	}
 }
