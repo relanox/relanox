@@ -3,10 +3,7 @@ package mattermost
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/url"
 	"sort"
-	"strconv"
 
 	mm "github.com/mattermost/mattermost/server/public/model"
 	"github.com/relanox/relanox/internal/channels/common"
@@ -98,12 +95,11 @@ func (c *Channel) recoveryPlan(saved *cursor) *historyRecovery {
 }
 
 func (c *Channel) recoverChannel(ctx context.Context, saved *cursor, channel *historyChannel, token string) error {
-	query := url.Values{"since": []string{strconv.FormatInt(channel.SinceMS, 10)}, "collapsed_threads": []string{"false"}}
-	var list mm.PostList
-	if err := common.JSON(ctx, c.client, http.MethodGet, c.config.ServerURL+"/api/v4/channels/"+channel.ChannelID+"/posts?"+query.Encode(), bearer(token), nil, &list); err != nil {
+	list, response, err := c.nativeClient(ctx, token, common.MaxJSONBytes).GetPostsSince(ctx, channel.ChannelID, channel.SinceMS, false)
+	if nativeError(response, err) != nil || list == nil {
 		return errHistoryUnavailable
 	}
-	posts, err := validateHistory(&list, channel.ChannelID)
+	posts, err := validateHistory(list, channel.ChannelID)
 	if err != nil {
 		return err
 	}

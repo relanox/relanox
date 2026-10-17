@@ -20,14 +20,14 @@ func (c *Channel) nativeContent(ctx context.Context, id string) (common.Download
 	if err != nil {
 		return common.Downloaded{}, err
 	}
+	client, err := sdk.NewMessagingApiBlobAPI(strings.TrimPrefix(headers.Get("Authorization"), "Bearer "), sdk.WithBlobHTTPClient(common.SDKHTTPClient(c.client, ctx, common.MediaLimit(c.host))))
+	if err != nil {
+		return common.Downloaded{}, err
+	}
+	client.WithContext(ctx)
 	for attempt := 0; attempt < 3; attempt++ {
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, contentBase+"/v2/bot/message/"+url.PathEscape(id)+"/content", nil)
-		if err != nil {
-			return common.Downloaded{}, err
-		}
-		request.Header = headers.Clone()
-		response, err := c.client.Do(request)
-		if err != nil {
+		response, _, err := client.GetMessageContentWithHttpInfo(id)
+		if err := nativeError(response, err); err != nil {
 			return common.Downloaded{}, err
 		}
 		if response.StatusCode == 202 {
@@ -66,7 +66,7 @@ func (c *Channel) receiveMedia(ctx context.Context, m nativeMessage) ([]model.Me
 	var downloaded common.Downloaded
 	var err error
 	if m.Provider != nil && m.Provider.Type == "external" {
-		downloaded, err = common.Download(ctx, m.Provider.URL, common.DownloadOptions{MaxBytes: common.MediaLimit(c.host), TLSClientConfig: c.options.TLSClientConfig})
+		downloaded, err = common.Download(ctx, m.Provider.OriginalContentUrl, common.DownloadOptions{MaxBytes: common.MediaLimit(c.host), TLSClientConfig: c.options.TLSClientConfig})
 	} else {
 		downloaded, err = c.nativeContent(ctx, m.ID)
 	}
@@ -161,20 +161,19 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if time.Now().UnixMilli()-retry.StartedAt >= int64(24*time.Hour/time.Millisecond) {
 		return model.SendResult{Status: model.Unknown, ErrorCode: "retry_key_expired"}, nil
 	}
-	headers.Set("X-Line-Retry-Key", retry.Key)
 	if ctx.Err() != nil {
 		return common.Retry("send_cancelled_before_transmit", 0), nil
 	}
-	var result sdk.PushMessageResponse
-	// The official SDK owns native discriminator/field serialization. Keep our
-	// bounded transport: v8.23.0's generated API client reads error bodies with
-	// unbounded io.ReadAll before returning them to the caller.
-	err = common.JSON(ctx, c.client, http.MethodPost, apiBase+"/v2/bot/message/push", headers, &sdk.PushMessageRequest{To: target.Destination, Messages: messages}, &result)
+	client, err := c.nativeClient(ctx, headers)
 	if err != nil {
+		return common.Failure(err, true), nil
+	}
+	response, result, err := client.PushMessageWithHttpInfo(&sdk.PushMessageRequest{To: target.Destination, Messages: messages}, retry.Key)
+	if err := nativeError(response, err); err != nil {
 		return lineFailure(err), nil
 	}
 	receipt := common.Sent("")
-	if len(result.SentMessages) > 0 {
+	if result != nil && len(result.SentMessages) > 0 {
 		receipt.Receipt.PlatformMessageID = result.SentMessages[0].Id
 	}
 	return receipt, nil

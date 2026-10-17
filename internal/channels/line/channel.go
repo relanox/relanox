@@ -3,16 +3,14 @@ package line
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
-	sdk "github.com/line/line-bot-sdk-go/v8/linebot/messaging_api"
+	"github.com/line/line-bot-sdk-go/v8/linebot/webhook"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
@@ -20,7 +18,6 @@ import (
 )
 
 const apiBase = "https://api.line.me"
-const contentBase = "https://api-data.line.me"
 
 type Config struct {
 	ChannelSecret model.SecretRef `json:"channelSecret"`
@@ -148,11 +145,15 @@ func (c *Channel) identityFor(ctx context.Context, headers http.Header) (string,
 	if c.botID != "" && c.credential == credential {
 		return c.botID, nil
 	}
-	var identity sdk.BotInfoResponse
-	if err := common.JSON(ctx, c.client, http.MethodGet, apiBase+"/v2/bot/info", headers, nil, &identity); err != nil {
+	client, err := c.nativeClient(ctx, headers)
+	if err != nil {
 		return "", err
 	}
-	if !platformID(identity.UserId) {
+	response, identity, err := client.GetBotInfoWithHttpInfo()
+	if err := nativeError(response, err); err != nil {
+		return "", err
+	}
+	if identity == nil || !platformID(identity.UserId) {
 		return "", errors.New("invalid_bot_identity")
 	}
 	c.botID = identity.UserId
@@ -192,32 +193,6 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 	return model.ChannelResolution{Available: true, Target: &target}, nil
 }
 
-type nativeMessage struct {
-	ID         string `json:"id"`
-	Type       string `json:"type"`
-	Text       string `json:"text,omitempty"`
-	QuoteToken string `json:"quoteToken,omitempty"`
-	Filename   string `json:"fileName,omitempty"`
-	Size       int64  `json:"fileSize,omitempty"`
-	Duration   int64  `json:"duration,omitempty"`
-	Provider   *struct {
-		Type string `json:"type"`
-		URL  string `json:"originalContentUrl,omitempty"`
-	} `json:"contentProvider,omitempty"`
-}
-
-type event struct {
-	Type   string `json:"type"`
-	ID     string `json:"webhookEventId"`
-	Source *struct {
-		Type    string `json:"type"`
-		UserID  string `json:"userId,omitempty"`
-		GroupID string `json:"groupId,omitempty"`
-		RoomID  string `json:"roomId,omitempty"`
-	} `json:"source,omitempty"`
-	Message *nativeMessage `json:"message,omitempty"`
-}
-
 func (c *Channel) webhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(405)
@@ -233,17 +208,11 @@ func (c *Channel) webhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(413)
 		return
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(raw)
-	signature, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Line-Signature"))
-	if err != nil || !hmac.Equal(signature, mac.Sum(nil)) {
+	if !webhook.ValidateSignature(secret, r.Header.Get("X-Line-Signature"), raw) {
 		w.WriteHeader(401)
 		return
 	}
-	var body struct {
-		Destination string  `json:"destination"`
-		Events      []event `json:"events"`
-	}
+	var body webhook.CallbackRequest
 	if json.Unmarshal(raw, &body) != nil || !platformID(body.Destination) {
 		w.WriteHeader(400)
 		return
@@ -258,7 +227,11 @@ func (c *Channel) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, event := range body.Events {
-		if err = c.receive(r.Context(), event, botID); err != nil && !common.PolicyRejection(err) {
+		message, ok := event.(webhook.MessageEvent)
+		if !ok {
+			continue
+		}
+		if err = c.receive(r.Context(), message, botID); err != nil && !common.PolicyRejection(err) {
 			w.WriteHeader(503)
 			return
 		}
@@ -266,37 +239,31 @@ func (c *Channel) webhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
-func (c *Channel) receive(ctx context.Context, event event, botID string) error {
-	if event.Type != "message" || event.Source == nil || event.Message == nil || event.Source.UserID == botID {
+func (c *Channel) receive(ctx context.Context, event webhook.MessageEvent, botID string) error {
+	if event.Source == nil || event.Message == nil {
 		return nil
 	}
-	source, m := event.Source, event.Message
-	if !common.Contains(c.account.AllowedSenders, source.UserID) || !common.Contains([]string{"text", "image", "audio", "video", "file"}, m.Type) {
+	source, err := nativeSource(event.Source)
+	if err != nil {
+		return err
+	}
+	m, ok := nativeContent(event.Message)
+	if !ok || source.user == botID || !common.Contains(c.account.AllowedSenders, source.user) {
 		return nil
 	}
-	if !platformID(event.ID) || !platformID(m.ID) {
+	if !platformID(event.WebhookEventId) || !platformID(m.ID) {
 		return errors.New("invalid_event_identity")
 	}
-	destination := source.UserID
-	switch source.Type {
-	case "user":
-	case "group":
-		destination = source.GroupID
-	case "room":
-		destination = source.RoomID
-	default:
-		return errors.New("invalid_source_type")
-	}
-	if !platformID(destination) {
+	if !platformID(source.destination) {
 		return errors.New("invalid_destination")
 	}
-	attachments, err := c.receiveMedia(ctx, *m)
+	attachments, err := c.receiveMedia(ctx, m)
 	if err != nil {
 		return err
 	}
 	if m.Text == "" && len(attachments) == 0 {
 		return nil
 	}
-	target := model.ReplyTarget{Channel: model.LINE, AccountID: c.account.ID, ChatID: destination, ReplyToID: m.ID, Data: common.Data(targetData{Destination: destination, SourceType: source.Type, BotID: botID, APIBaseURL: apiBase, QuoteToken: m.QuoteToken})}
-	return common.Ingest(ctx, c.host, model.IngestInput{Source: model.SourceKey{Channel: model.LINE, AccountID: c.account.ID, EventID: event.ID}, SenderID: source.UserID, Text: m.Text, Attachments: attachments, Target: target, ReceivedAt: time.Now()})
+	target := model.ReplyTarget{Channel: model.LINE, AccountID: c.account.ID, ChatID: source.destination, ReplyToID: m.ID, Data: common.Data(targetData{Destination: source.destination, SourceType: source.kind, BotID: botID, APIBaseURL: apiBase, QuoteToken: m.QuoteToken})}
+	return common.Ingest(ctx, c.host, model.IngestInput{Source: model.SourceKey{Channel: model.LINE, AccountID: c.account.ID, EventID: event.WebhookEventId}, SenderID: source.user, Text: m.Text, Attachments: attachments, Target: target, ReceivedAt: time.Now()})
 }

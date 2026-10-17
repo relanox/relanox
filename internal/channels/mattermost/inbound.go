@@ -3,7 +3,6 @@ package mattermost
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 	"time"
 
@@ -13,10 +12,6 @@ import (
 	"github.com/relanox/relanox/internal/model"
 )
 
-// Native models come from the pinned official SDK. Its Client4 response decoder
-// reads unbounded bodies, and UploadFile uses CreateFormFile's generic MIME type;
-// these calls keep the shared bounded HTTP and MIME-preserving multipart boundary.
-// https://github.com/mattermost/mattermost/blob/master/server/public/model/client4.go
 func validPost(post *mm.Post) bool {
 	return mm.IsValidId(post.Id) && mm.IsValidId(post.ChannelId) && mm.IsValidId(post.UserId) && (post.RootId == "" || mm.IsValidId(post.RootId)) && post.CreateAt > 0
 }
@@ -55,8 +50,8 @@ func (c *Channel) receiveFiles(ctx context.Context, post *mm.Post) ([]model.Medi
 	if err != nil {
 		return nil, err
 	}
-	var infos []*mm.FileInfo
-	if err = common.JSON(ctx, c.client, http.MethodGet, c.config.ServerURL+"/api/v4/posts/"+post.Id+"/files/info", bearer(token), nil, &infos); err != nil {
+	infos, response, err := c.nativeClient(ctx, token, common.MaxJSONBytes).GetFileInfosForPost(ctx, post.Id, "")
+	if err := nativeError(response, err); err != nil {
 		return nil, err
 	}
 	attachments := make([]model.MediaUpload, 0, len(post.FileIds))
@@ -88,13 +83,8 @@ func (c *Channel) receiveFile(ctx context.Context, postID, id, token string, inf
 	if info.Size > common.MediaLimit(c.host) {
 		return output, errors.New("media_too_large")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.config.ServerURL+"/api/v4/files/"+id, nil)
-	if err != nil {
-		return output, err
-	}
-	request.Header = bearer(token)
-	raw, _, err := common.Do(c.client, request, common.MediaLimit(c.host))
-	if err != nil {
+	raw, response, err := c.nativeClient(ctx, token, common.MediaLimit(c.host)).GetFile(ctx, id)
+	if err := nativeError(response, err); err != nil {
 		return output, err
 	}
 	mimeType := strings.ToLower(strings.TrimSpace(strings.Split(info.MimeType, ";")[0]))

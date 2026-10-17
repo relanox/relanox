@@ -170,6 +170,10 @@ func (c *Channel) ping(ctx context.Context, connection *websocket.Conn) {
 	}
 }
 
+// The SDK WebSocketEvent decoder collapses an omitted seq into zero, and its
+// Listen loop blocks on full event channels without a context-aware shutdown.
+// Keep the bounded decoder here so an absent sequence cannot advance durable
+// state and Close can join all workers. REST operations use the SDK client.
 func (c *Channel) readFrames(ctx context.Context, connection *websocket.Conn, saved *cursor) error {
 	// A reliable reconnect can replay the retained queue without a new hello.
 	// The upgrade is authenticated by the checked current-user token header.
