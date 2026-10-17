@@ -74,6 +74,11 @@ func (c *Channel) session(ctx context.Context) error {
 	if saved.Identity != identity {
 		saved = cursor{Identity: identity}
 	}
+	for id := range saved.Watermarks {
+		if !common.Contains(c.host.BoundChatIDs(), id) {
+			delete(saved.Watermarks, id)
+		}
+	}
 	if c.config.RecoveryEpoch != "" && saved.RecoveryEpoch != c.config.RecoveryEpoch {
 		saved = cursor{Identity: identity, StartedAtMS: time.Now().UnixMilli(), RecoveryEpoch: c.config.RecoveryEpoch}
 		if err = common.SaveState(ctx, c.host.State(), "websocket-cursor", saved, nil); err != nil {
@@ -201,10 +206,12 @@ func (c *Channel) processFrame(ctx context.Context, input frame, saved *cursor) 
 		if err := c.receive(ctx, &post, saved.Identity); err != nil {
 			return err
 		}
-		if saved.Watermarks == nil {
-			saved.Watermarks = map[string]int64{}
+		if common.Contains(c.host.BoundChatIDs(), post.ChannelId) {
+			if saved.Watermarks == nil {
+				saved.Watermarks = map[string]int64{}
+			}
+			saved.Watermarks[post.ChannelId] = max(saved.Watermarks[post.ChannelId], post.CreateAt)
 		}
-		saved.Watermarks[post.ChannelId] = max(saved.Watermarks[post.ChannelId], post.CreateAt)
 	}
 	// Advance only after durable acceptance. A crash between accept and this CAS
 	// replays the native event, which Core deduplicates using the immutable post ID.

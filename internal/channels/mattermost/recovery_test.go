@@ -172,3 +172,28 @@ func TestRecoveryEpochValidation(t *testing.T) {
 		}
 	}
 }
+
+// A bot can observe many authenticated channels before the operator binds one.
+// Recording all their replay watermarks grows durable state with memberships.
+// This keeps discovery observable while excluding unbound posts from the replay
+// index; prior recovery tests use only configured conversations. No new seam.
+func TestUnboundDiscoveryDoesNotGrowReplayWatermarks(t *testing.T) {
+	p := recoveryPeer(t)
+	p.unboundPost.Store(true)
+	peer := httptest.NewServer(p)
+	defer peer.Close()
+	f := openFixture(t, filepath.Join(t.TempDir(), "discovery.db"), peer)
+	receive(t, p.connections)
+	state := awaitCursor(t, f, 2)
+	if len(state.Watermarks) != 0 {
+		t.Fatalf("unbound channel entered replay state: %+v", state.Watermarks)
+	}
+	discovered, err := f.runtime.Discoveries(context.Background(), "mattermost", 20)
+	if err != nil || len(discovered) != 1 || discovered[0].ChatID != "vvvvvvvvvvvvvvvvvvvvvvvvvv" {
+		t.Fatalf("discovery lost: %+v %v", discovered, err)
+	}
+	rows, err := f.store.ListInbound(context.Background(), model.ListInboundInput{StatusFilter: model.StatusFilter{Limit: 10}})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("unbound native post accepted: %d %v", len(rows), err)
+	}
+}
