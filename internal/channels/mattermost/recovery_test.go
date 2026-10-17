@@ -16,7 +16,7 @@ import (
 )
 
 func recoveryPeer(t *testing.T) *nativePeer {
-	return &nativePeer{t: t, connections: make(chan map[string]string, 16), posts: make(chan *mm.Post, 16), uploads: make(chan []byte, 16), downloadStarted: make(chan struct{}), postStarted: make(chan struct{}), historyRequests: make(chan string, 16), history: historyFixtures()}
+	return &nativePeer{t: t, connections: make(chan map[string]string, 16), posts: make(chan *mm.Post, 16), uploads: make(chan []byte, 16), downloadStarted: make(chan struct{}), postStarted: make(chan struct{}), historyRequests: make(chan string, 16)}
 }
 
 // Protects a lost native socket queue with a complete, unordered modified-post
@@ -40,7 +40,7 @@ func TestHistoryGapRecoversWholeSetInChronologicalOrder(t *testing.T) {
 	p.failHistory.Store(true)
 	f = openFixture(t, path, peer)
 	receive(t, p.connections)
-	if since := receive(t, p.historyRequests); since != "1792195200122" {
+	if since := receive(t, p.historyRequests); since != fmt.Sprint(p.createdAt.Load()-1) {
 		t.Fatalf("durable overlap boundary: %s", since)
 	}
 	state := awaitRecovery(t, f)
@@ -144,22 +144,22 @@ func awaitRecovery(t *testing.T, f *fixture) cursor {
 	return cursor{}
 }
 
-func historyFixtures() map[string]json.RawMessage {
+func historyFixtures(base int64) map[string]json.RawMessage {
 	posts := map[string]any{}
-	posts[gapPostID] = map[string]any{"id": gapPostID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "newer gap", "type": "", "create_at": 1792195200125, "update_at": 1792195200125}
+	posts[gapPostID] = map[string]any{"id": gapPostID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "newer gap", "type": "", "create_at": base + 2, "update_at": base + 2}
 	olderID := "eeeeeeeeeeeeeeeeeeeeeeeeee"
-	posts[olderID] = map[string]any{"id": olderID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "older gap", "type": "", "create_at": 1792195200124, "update_at": 1792195200124}
-	posts[postID] = map[string]any{"id": postID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "native input", "type": "", "file_ids": []string{fileID}, "create_at": 1792195200123, "update_at": 1792195200123}
+	posts[olderID] = map[string]any{"id": olderID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "older gap", "type": "", "create_at": base + 1, "update_at": base + 1}
+	posts[postID] = map[string]any{"id": postID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "native input", "type": "", "file_ids": []string{fileID}, "create_at": base, "update_at": base}
 	editedID := "iiiiiiiiiiiiiiiiiiiiiiiiii"
 	deletedID := "xxxxxxxxxxxxxxxxxxxxxxxxxx"
-	posts[editedID] = map[string]any{"id": editedID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "old post edited recently", "type": "", "create_at": 1792195100000, "update_at": 1792195200127}
-	posts[deletedID] = map[string]any{"id": deletedID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "deleted gap", "type": "", "create_at": 1792195200124, "update_at": 1792195200128, "delete_at": 1792195200128}
+	posts[editedID] = map[string]any{"id": editedID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "old post edited recently", "type": "", "create_at": base - 100000, "update_at": base + 4}
+	posts[deletedID] = map[string]any{"id": deletedID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "deleted gap", "type": "", "create_at": base + 1, "update_at": base + 5, "delete_at": base + 5}
 	result := map[string]json.RawMessage{"complete": common.Data(map[string]any{"order": []string{gapPostID, postID, deletedID, olderID, editedID}, "posts": posts})}
 	order := []string{}
 	for n := range 1000 {
 		id := fmt.Sprintf("%026d", n)
 		order = append(order, id)
-		posts[id] = map[string]any{"id": id, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "capped native history", "type": "", "create_at": 1792195200200 + int64(n), "update_at": 1792195200200 + int64(n)}
+		posts[id] = map[string]any{"id": id, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "capped native history", "type": "", "create_at": base + 100 + int64(n), "update_at": base + 100 + int64(n)}
 	}
 	result["capped"] = common.Data(map[string]any{"order": order, "posts": posts})
 	return result
@@ -195,5 +195,45 @@ func TestUnboundDiscoveryDoesNotGrowReplayWatermarks(t *testing.T) {
 	rows, err := f.store.ListInbound(context.Background(), model.ListInboundInput{StatusFilter: model.StatusFilter{Limit: 10}})
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("unbound native post accepted: %d %v", len(rows), err)
+	}
+}
+
+// A newly configured conversation must not inherit an account's months-old
+// connection start. Seed the durable native checkpoint without this binding,
+// then reopen the real runtime: its one-time binding start must bound the HTTP
+// history request and remain unchanged on the next reopen. Existing tests use
+// bindings present since account creation. No production-only seam is needed.
+func TestNewBindingGetsOneDurableHistoryStart(t *testing.T) {
+	p := recoveryPeer(t)
+	peer := httptest.NewServer(p)
+	defer peer.Close()
+	path := filepath.Join(t.TempDir(), "new-binding.db")
+	f := openFixture(t, path, peer)
+	receive(t, p.connections)
+	state := awaitCursor(t, f, 2)
+	receive(t, f.notifications)
+	state.StartedAtMS = time.Now().Add(-90 * 24 * time.Hour).UnixMilli()
+	state.Watermarks = nil
+	state.BoundStarts = nil
+	if err := common.SaveState(context.Background(), f.host.State(), "websocket-cursor", state, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.close(t)
+	p.resetConnection.Store(true)
+	before := time.Now().UnixMilli()
+	f = openFixture(t, path, peer)
+	receive(t, p.connections)
+	since := receive(t, p.historyRequests)
+	state = awaitCursor(t, f, 1)
+	started := state.BoundStarts[roomID]
+	if started < before || since != fmt.Sprint(started-1) {
+		t.Fatalf("new binding inherited old history: start=%d since=%s", started, since)
+	}
+	f.close(t)
+	f = openFixture(t, path, peer)
+	receive(t, p.connections)
+	state = awaitCursor(t, f, 1)
+	if state.BoundStarts[roomID] != started {
+		t.Fatal("existing binding history start reset on restart")
 	}
 }

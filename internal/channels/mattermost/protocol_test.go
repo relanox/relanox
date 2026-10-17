@@ -54,7 +54,7 @@ type nativePeer struct {
 	failHistory     atomic.Bool
 	cappedHistory   atomic.Bool
 	unboundPost     atomic.Bool
-	history         map[string]json.RawMessage
+	createdAt       atomic.Int64
 	historyRequests chan string
 }
 
@@ -143,7 +143,8 @@ func (p *nativePeer) socket(w http.ResponseWriter, r *http.Request) {
 	// A retained reliable stream can resume directly with posted, without hello.
 	// The source event is not advanced when its preceding file download failed.
 	if query.Get("sequence_number") != "2" && !p.resetConnection.Load() {
-		post := map[string]any{"id": postID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "native input", "type": "", "file_ids": []string{fileID}, "create_at": 1792195200123}
+		p.createdAt.CompareAndSwap(0, time.Now().UnixMilli())
+		post := map[string]any{"id": postID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "native input", "type": "", "file_ids": []string{fileID}, "create_at": p.createdAt.Load()}
 		if p.unboundPost.Load() {
 			post["channel_id"] = "vvvvvvvvvvvvvvvvvvvvvvvvvv"
 		}
@@ -174,7 +175,7 @@ func (p *nativePeer) historyPage(w http.ResponseWriter, r *http.Request) {
 	if p.cappedHistory.Load() {
 		key = "capped"
 	}
-	raw, ok := p.history[key]
+	raw, ok := historyFixtures(p.createdAt.Load())[key]
 	if !ok {
 		p.t.Error("missing native history fixture")
 		w.WriteHeader(400)
@@ -399,7 +400,7 @@ func TestNativeSocketDurableResumeAndFileReply(t *testing.T) {
 		t.Fatalf("resumed durable source: %d %v", len(rows), err)
 	}
 	input := rows[0].Snapshot
-	if input.Source.EventID != postID || input.Target.ThreadID != rootID || input.Target.ReplyToID != postID || input.ReceivedAt.UnixMilli() != 1792195200123 || input.Text != "native input" {
+	if input.Source.EventID != postID || input.Target.ThreadID != rootID || input.Target.ReplyToID != postID || input.ReceivedAt.UnixMilli() != p.createdAt.Load() || input.Text != "native input" {
 		t.Fatalf("native source changed: %+v", input)
 	}
 	media, err := f.store.GetMedia(context.Background(), input.Channel.ID, input.Attachments[0].ID)
