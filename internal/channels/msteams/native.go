@@ -2,10 +2,10 @@ package msteams
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +13,8 @@ import (
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/relanox/relanox/internal/channels/common"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 // Teams implements the Activity wire protocol directly because the official
@@ -96,27 +98,45 @@ func (c *NativeClient) AccessToken(ctx context.Context) (string, error) {
 func (c *NativeClient) requestToken(ctx context.Context, secret string) (string, time.Time, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	form := url.Values{"grant_type": {"client_credentials"}, "client_id": {c.AppID}, "client_secret": {secret}, "scope": {"https://api.botframework.com/.default"}}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.TokenURL, strings.NewReader(form.Encode()))
+	client := common.SDKHTTPClient(c.HTTP, ctx, common.MaxJSONBytes)
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, client)
+	credentials := clientcredentials.Config{ClientID: c.AppID, ClientSecret: secret, TokenURL: c.TokenURL, Scopes: []string{"https://api.botframework.com/.default"}, AuthStyle: oauth2.AuthStyleInParams}
+	// Use one retrieval, not a long-lived SDK TokenSource: the outer cache checks
+	// the current secret and owns invalidation. InParams disables auth probing.
+	token, err := credentials.Token(ctx)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, oauthError(ctx, err)
 	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	raw, _, err := common.Do(c.HTTP, request, common.MaxJSONBytes)
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	var token struct {
-		AccessToken string `json:"access_token"`
-		ExpiresIn   int64  `json:"expires_in"`
-	}
-	if err = json.Unmarshal(raw, &token); err != nil {
-		return "", time.Time{}, err
-	}
-	if token.AccessToken == "" || token.ExpiresIn <= 0 {
+	if token == nil || token.AccessToken == "" || !token.Expiry.After(time.Now()) || !positiveExpiry(token.Extra("expires_in")) {
 		return "", time.Time{}, errors.New("oauth_unavailable")
 	}
-	return token.AccessToken, time.Now().Add(time.Duration(token.ExpiresIn) * time.Second), nil
+	return token.AccessToken, token.Expiry, nil
+}
+
+func positiveExpiry(value any) bool {
+	// The SDK converts JSON lifetimes through int32; check the original value
+	// too so an out-of-range negative lifetime cannot wrap into a future expiry.
+	switch value := value.(type) {
+	case float64:
+		return value > 0
+	case string:
+		seconds, err := strconv.ParseInt(value, 10, 64)
+		return err == nil && seconds > 0
+	}
+	return false
+}
+
+func oauthError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	var response *oauth2.RetrieveError
+	if errors.As(err, &response) && response.Response != nil && (response.Response.StatusCode < 200 || response.Response.StatusCode >= 300) {
+		// RetrieveError includes remote descriptions and bodies; keep only the
+		// native status and retry headers, without exposing credential echoes.
+		return &common.HTTPError{Status: response.Response.StatusCode, Header: response.Response.Header}
+	}
+	return errors.New("oauth_unavailable")
 }
 
 func (c *NativeClient) keySet(ctx context.Context, endpoint string) (keyfunc.Keyfunc, error) {
