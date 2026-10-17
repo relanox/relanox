@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/relanox/relanox/internal/channels/common"
@@ -24,6 +25,9 @@ import (
 type Config struct {
 	BotToken   model.SecretRef `json:"botToken"`
 	APIBaseURL string          `json:"apiBaseUrl,omitempty"`
+	// Changing this nonempty administrator-selected epoch explicitly abandons
+	// unavailable inbound history once. Already committed Core work is untouched.
+	RecoveryEpoch string `json:"recoveryEpoch,omitempty"`
 }
 
 func parseConfig(raw json.RawMessage) (Config, error) {
@@ -33,6 +37,9 @@ func parseConfig(raw json.RawMessage) (Config, error) {
 	}
 	if err := config.ValidateSecretRef(cfg.BotToken, "botToken"); err != nil {
 		return cfg, err
+	}
+	if len(cfg.RecoveryEpoch) > 128 || strings.IndexFunc(cfg.RecoveryEpoch, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+		return cfg, errors.New("invalid_recovery_epoch")
 	}
 	if cfg.APIBaseURL == "" {
 		cfg.APIBaseURL = "https://discord.com/api/v10"
@@ -66,6 +73,7 @@ type Channel struct {
 	lifecycle    common.Lifecycle
 	identity     atomic.Pointer[identity]
 	identityGate chan struct{}
+	addresses    []model.ChannelAddress
 }
 
 func New(host model.ChannelHost, account model.AccountConfig, options common.Options) (*Channel, error) {
@@ -81,7 +89,7 @@ func New(host model.ChannelHost, account model.AccountConfig, options common.Opt
 		u, _ := url.Parse(cfg.APIBaseURL)
 		client = transport.NewClient(transport.Options{Timeout: 45 * time.Second, AllowPrivateHosts: []string{u.Hostname()}, TLSClientConfig: options.TLSClientConfig})
 	}
-	return &Channel{host: host, account: account, config: cfg, options: options, http: common.HTTPClient(client), identityGate: make(chan struct{}, 1)}, nil
+	return &Channel{host: host, account: account, config: cfg, options: options, http: common.HTTPClient(client), identityGate: make(chan struct{}, 1), addresses: host.BoundAddresses()}, nil
 }
 
 func (c *Channel) Kind() model.ChannelKind { return model.Discord }

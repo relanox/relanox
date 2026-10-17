@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +31,17 @@ func (h *channelHost) BoundChatIDs() []string {
 	}
 	slices.Sort(ids)
 	return ids
+}
+
+func (h *channelHost) BoundAddresses() []model.ChannelAddress {
+	addresses := make([]model.ChannelAddress, 0)
+	for _, conversation := range h.runtime.configured {
+		if conversation.Address.AccountID == h.account.ID {
+			addresses = append(addresses, conversation.Address)
+		}
+	}
+	slices.SortFunc(addresses, func(a, b model.ChannelAddress) int { return strings.Compare(a.ID, b.ID) })
+	return addresses
 }
 
 func (h *channelHost) MaxMediaBytes() int64 { return h.runtime.cfg.Media.MaxBytes }

@@ -18,9 +18,14 @@ import (
 )
 
 type gatewayState struct {
-	SessionID string `json:"sessionId,omitempty"`
-	ResumeURL string `json:"resumeUrl,omitempty"`
-	Sequence  *int64 `json:"sequence"`
+	SessionID     string            `json:"sessionId,omitempty"`
+	ResumeURL     string            `json:"resumeUrl,omitempty"`
+	Sequence      *int64            `json:"sequence"`
+	StartedAtMS   int64             `json:"startedAtMs"`
+	Anchors       map[string]string `json:"anchors"`
+	BoundSinceMS  map[string]int64  `json:"boundSinceMs"`
+	Recovering    bool              `json:"recovering,omitempty"`
+	RecoveryEpoch string            `json:"recoveryEpoch,omitempty"`
 }
 
 // Gateway s is nullable outside Dispatch; zero remains a valid native sequence.
@@ -29,7 +34,10 @@ type gatewayFrame struct {
 	Sequence *int64 `json:"s"`
 }
 
-type gatewayFailure struct{ reset, fatal bool }
+type gatewayFailure struct {
+	reset, fatal bool
+	delay        time.Duration
+}
 
 func (e *gatewayFailure) Error() string { return "native_gateway_disconnected" }
 
@@ -57,16 +65,28 @@ func (c *Channel) loop(ctx context.Context) {
 			break
 		}
 		var native *gatewayFailure
-		if errors.As(err, &native) && (native.fatal || native.reset) {
-			code := "gateway_fatal_close"
-			if native.reset {
-				code = "gateway_resume_unavailable"
+		delay := time.Second
+		if errors.As(err, &native) {
+			if native.fatal {
+				c.host.Connection(model.Degraded, "gateway_fatal_close")
+				return
 			}
-			c.host.Connection(model.Degraded, code)
-			return
+			if native.reset {
+				if err = c.requireHistory(ctx, bot); err != nil {
+					c.host.Connection(model.Degraded, "history_checkpoint_failed")
+				}
+			}
+			if native.delay > 0 {
+				delay = native.delay
+			}
 		}
-		c.host.Connection(model.Degraded, "gateway_reconnecting")
-		if common.Delay(ctx, time.Second) != nil {
+		code := "gateway_reconnecting"
+		if err != nil && err.Error() == "history_gap_unresolved" {
+			code = "history_gap_unresolved"
+			delay = 2 * time.Minute
+		}
+		c.host.Connection(model.Degraded, code)
+		if common.Delay(ctx, delay) != nil {
 			break
 		}
 	}
@@ -92,19 +112,21 @@ func (c *Channel) validateGateway(value string) (string, error) {
 }
 
 func (c *Channel) session(ctx context.Context, bot *identity) error {
-	state, _, err := common.ReadState[gatewayState](ctx, c.host.State(), c.gatewayKey(bot))
+	state, err := c.initialState(ctx, bot)
 	if err != nil {
 		return err
 	}
 	endpoint := state.ResumeURL
 	if endpoint == "" {
-		var response struct {
-			URL string `json:"url"`
-		}
+		var response discordgo.GatewayBotResponse
 		if err = c.api(ctx, http.MethodGet, "/gateway/bot", nil, &response); err != nil {
 			return err
 		}
 		endpoint = response.URL
+		if response.SessionStartLimit.Total > 0 && response.SessionStartLimit.Remaining <= 0 {
+			delay := time.Duration(response.SessionStartLimit.ResetAfter) * time.Millisecond
+			return &gatewayFailure{delay: max(time.Second, min(delay, 24*time.Hour))}
+		}
 	}
 	endpoint, err = c.validateGateway(endpoint)
 	if err != nil {
@@ -297,32 +319,48 @@ func (c *Channel) dispatch(ctx context.Context, frame gatewayFrame, bot *identit
 	if frame.Sequence == nil || *frame.Sequence < 0 {
 		return errors.New("invalid_gateway_sequence")
 	}
-	switch frame.Type {
-	case "READY":
-		var ready struct {
-			discordgo.Ready
-			ResumeURL string `json:"resume_gateway_url"`
-		}
-		if json.Unmarshal(frame.RawData, &ready) != nil || ready.SessionID == "" || ready.User == nil || ready.User.ID != bot.UserID {
-			return errors.New("invalid_gateway_identity")
-		}
-		endpoint, err := c.validateGateway(ready.ResumeURL)
-		if err != nil {
+	if frame.Type == "READY" {
+		if err := c.ready(ctx, frame, bot, state); err != nil {
 			return err
 		}
-		state.SessionID = ready.SessionID
-		state.ResumeURL = endpoint
-		c.host.Connection(model.Connected, "")
-	case "RESUMED":
-		c.host.Connection(model.Connected, "")
-	case "MESSAGE_CREATE":
-		if err := c.receive(ctx, frame.RawData, bot); err != nil && !common.PolicyRejection(err) {
+	}
+	if state.Recovering {
+		if err := c.recoverHistory(ctx, bot, state); err != nil {
 			return err
 		}
+	}
+	if frame.Type == "MESSAGE_CREATE" {
+		if err := c.dispatchMessage(ctx, frame.RawData, bot, state); err != nil {
+			return err
+		}
+	}
+	if frame.Type == "READY" || frame.Type == "RESUMED" {
+		c.host.Connection(model.Connected, "")
 	}
 	state.Sequence = frame.Sequence
 	if state.SessionID == "" {
 		return errors.New("gateway_dispatch_before_ready")
 	}
 	return common.SaveState(ctx, c.host.State(), c.gatewayKey(bot), state, nil)
+}
+
+func (c *Channel) ready(ctx context.Context, frame gatewayFrame, bot *identity, state *gatewayState) error {
+	var ready struct {
+		discordgo.Ready
+		ResumeURL string `json:"resume_gateway_url"`
+	}
+	if json.Unmarshal(frame.RawData, &ready) != nil || ready.SessionID == "" || ready.User == nil || ready.User.ID != bot.UserID {
+		return errors.New("invalid_gateway_identity")
+	}
+	endpoint, err := c.validateGateway(ready.ResumeURL)
+	if err != nil {
+		return err
+	}
+	state.SessionID = ready.SessionID
+	state.ResumeURL = endpoint
+	state.Sequence = frame.Sequence
+	if state.Recovering {
+		return common.SaveState(ctx, c.host.State(), c.gatewayKey(bot), state, nil)
+	}
+	return nil
 }

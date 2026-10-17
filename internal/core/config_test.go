@@ -50,3 +50,45 @@ func TestTypedRuntimeConstructionPreservesBindingAllowlistSemantics(t *testing.T
 		t.Fatal("explicit empty scope was lost across a configuration snapshot")
 	}
 }
+
+// Native subscriptions/recovery need exact configured threads without seeing
+// another account's addresses. A shared-host implementation can accidentally
+// return every configured conversation or an alias of its internal snapshot;
+// existing ingest authorization tests do not exercise this discovery boundary.
+// Real storage and the public host API suffice; no production seam is added.
+func TestChannelBoundAddressesPreserveThreadAndAccountScope(t *testing.T) {
+	cfg := relayConfig(t, "", model.AccountConfig{ID: "wechat", Channel: model.WeChat, AllowedSenders: []string{"alice"}, Config: json.RawMessage(`{}`)}, model.EndpointConfig{ID: "grok", Agent: model.Grok, Config: json.RawMessage(`{}`)}, filepath.Join(t.TempDir(), "relay.db"))
+	cfg.Accounts = append(cfg.Accounts, model.AccountConfig{ID: "other", Channel: model.WeChat, AllowedSenders: []string{"alice"}, Config: json.RawMessage(`{}`)})
+	cfg.Bindings = append(cfg.Bindings, model.Binding{AccountID: "wechat", ChatID: "alice", ThreadID: "thread", EndpointID: "grok"}, model.Binding{AccountID: "other", ChatID: "private", ThreadID: "private-thread", EndpointID: "grok"})
+	store, err := storage.Open(context.Background(), cfg.Storage, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	runtime, err := core.New(cfg, store, core.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := runtime.ChannelHost("wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addresses := host.BoundAddresses()
+	if len(addresses) != 2 {
+		t.Fatalf("exact account bindings missing: %+v", addresses)
+	}
+	threads := map[string]bool{}
+	for _, address := range addresses {
+		if address.AccountID != "wechat" || address.ChatID != "alice" || address.ID == "" {
+			t.Fatalf("account scope escaped: %+v", address)
+		}
+		threads[address.ThreadID] = true
+	}
+	if !threads[""] || !threads["thread"] {
+		t.Fatalf("configured thread was omitted: %+v", addresses)
+	}
+	addresses[0].ChatID = "mutated"
+	if host.BoundAddresses()[0].ChatID == "mutated" {
+		t.Fatal("bound address snapshot mutated runtime scope")
+	}
+}
