@@ -90,3 +90,23 @@ func TestLiteralEntitiesSurviveSplit(t *testing.T) {
 		t.Fatal("accepted invalid UTF-8")
 	}
 }
+
+func TestHardBreakRemainsVisibleWhenLongDocumentIsSplit(t *testing.T) {
+	// CommonMark hard breaks must retain their two spaces when AST splitting is
+	// triggered by an unrelated long block. Softening this break changes HTML.
+	parts, err := text.SplitMarkdown(strings.Repeat("x", 40)+"\n\nline  \nnext", 14, model.UTF8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	for _, part := range parts {
+		var b bytes.Buffer
+		if err := goldmark.Convert([]byte(part), &b); err != nil {
+			t.Fatal(err)
+		}
+		output.Write(b.Bytes())
+	}
+	if !strings.Contains(output.String(), "line<br>\nnext") {
+		t.Fatalf("hard break lost: %s", output.String())
+	}
+}

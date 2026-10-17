@@ -204,7 +204,7 @@ func nodeParts(n ast.Node, source []byte, fits fitsFunc, depth int) ([]string, e
 	case *ast.Text:
 		s := decoded(value.Value(source))
 		if value.HardLineBreak() {
-			s += "\n"
+			s += "  \n"
 		} else if value.SoftLineBreak() {
 			s += "\n"
 		}
