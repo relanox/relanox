@@ -107,20 +107,7 @@ func (c *Channel) prepareAttachment(ctx context.Context, input model.SendInput, 
 		return preparedAttachment{}, err
 	}
 	if entry == nil {
-		state = consentState{Phase: "posting", ConversationID: target.ConversationID, UserID: target.UserID, BotID: target.BotID}
-		result, err := c.host.State().CompareAndSet(ctx, model.CompareAndSetStateInput{Key: key, Value: common.Data(state)})
-		if err != nil {
-			return preparedAttachment{}, err
-		}
-		if result.Status != model.Updated {
-			return outcome(common.Retry("file_consent_contention", time.Second)), nil
-		}
-		context := map[string]string{"consentId": input.Chunk.IdempotencyKey}
-		description := input.Chunk.Text
-		if description == "" {
-			description = media.Reference.FileName
-		}
-		return preparedAttachment{consentKey: key, attachment: &attachment{ContentType: "application/vnd.microsoft.teams.card.file.consent", Name: media.Reference.FileName, Content: common.Data(map[string]any{"description": description, "sizeInBytes": media.Reference.Size, "acceptContext": context, "declineContext": context})}}, nil
+		return c.reserveConsent(ctx, key, input, target)
 	}
 	if !state.matches(target) {
 		return outcome(common.Reject("invalid_file_consent_identity")), nil
@@ -153,6 +140,23 @@ func (c *Channel) prepareAttachment(ctx context.Context, input model.SendInput, 
 		}
 	}
 	return preparedAttachment{attachment: &attachment{ContentType: "application/vnd.microsoft.teams.card.file.info", ContentURL: info.ContentURL, Name: media.Reference.FileName, Content: common.Data(map[string]string{"uniqueId": info.UniqueID, "fileType": info.FileType})}}, nil
+}
+
+func (c *Channel) reserveConsent(ctx context.Context, key string, input model.SendInput, target targetData) (preparedAttachment, error) {
+	state := consentState{Phase: "posting", ConversationID: target.ConversationID, UserID: target.UserID, BotID: target.BotID}
+	result, err := c.host.State().CompareAndSet(ctx, model.CompareAndSetStateInput{Key: key, Value: common.Data(state)})
+	if err != nil {
+		return preparedAttachment{}, err
+	}
+	if result.Status != model.Updated {
+		return outcome(common.Retry("file_consent_contention", time.Second)), nil
+	}
+	context := map[string]string{"consentId": input.Chunk.IdempotencyKey}
+	description := input.Chunk.Text
+	if description == "" {
+		description = input.Media.Reference.FileName
+	}
+	return preparedAttachment{consentKey: key, attachment: &attachment{ContentType: "application/vnd.microsoft.teams.card.file.consent", Name: input.Media.Reference.FileName, Content: common.Data(map[string]any{"description": description, "sizeInBytes": input.Media.Reference.Size, "acceptContext": context, "declineContext": context})}}, nil
 }
 
 func (c *Channel) uploadFile(ctx context.Context, key string, input model.SendInput) (*model.SendResult, error) {
@@ -188,12 +192,8 @@ func (c *Channel) uploadFile(ctx context.Context, key string, input model.SendIn
 		if readErr != nil {
 			return nil, readErr
 		}
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			result := common.Reject("file_upload_failed")
-			if response.StatusCode == 429 || response.StatusCode >= 500 {
-				result = common.Retry("file_upload_failed", common.RetryAfter(response.Header))
-			}
-			return &result, nil
+		if result := uploadFailure(response); result != nil {
+			return result, nil
 		}
 		complete := end == size && response.StatusCode != 202
 		if end == size && !complete {
@@ -216,6 +216,17 @@ func (c *Channel) uploadFile(ctx context.Context, key string, input model.SendIn
 		entry.Version = result.Version
 	}
 	return nil, nil
+}
+
+func uploadFailure(response *http.Response) *model.SendResult {
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		return nil
+	}
+	result := common.Reject("file_upload_failed")
+	if response.StatusCode == 429 || response.StatusCode >= 500 {
+		result = common.Retry("file_upload_failed", common.RetryAfter(response.Header))
+	}
+	return &result
 }
 
 func (c *Channel) consentRefused(ctx context.Context, key string) error {

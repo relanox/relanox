@@ -166,7 +166,7 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 		return model.ChannelResolution{Reason: "invalid_address"}, nil
 	}
 	var data targetData
-	known := learned != nil && learned.Channel == model.WeCom && learned.AccountID == c.account.ID && learned.ChatID == address.ChatID && learned.ThreadID == "" && json.Unmarshal(learned.Data, &data) == nil && c.valid(data)
+	known := c.learnedTarget(address, learned, &data)
 	if c.config.Mode == "webhook" {
 		if !known {
 			return model.ChannelResolution{Reason: "address_unresolved"}, nil
@@ -200,22 +200,17 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 	return model.ChannelResolution{Available: true, Target: &target}, nil
 }
 
+func (c *Channel) learnedTarget(address model.ChannelAddress, learned *model.ReplyTarget, data *targetData) bool {
+	return learned != nil && learned.Channel == model.WeCom && learned.AccountID == c.account.ID && learned.ChatID == address.ChatID && learned.ThreadID == "" && json.Unmarshal(learned.Data, data) == nil && c.valid(*data)
+}
+
 func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendResult, error) {
 	var target targetData
 	if input.Target.Channel != model.WeCom || input.Target.AccountID != c.account.ID || input.Target.ThreadID != "" || json.Unmarshal(input.Target.Data, &target) != nil || !c.valid(target) {
 		return common.Reject("invalid_target"), nil
 	}
 	if c.config.Mode == "webhook" {
-		if input.Target.ReplyToID != "" && target.EventID != input.Target.ReplyToID {
-			return common.Reject("target_identity_changed"), nil
-		}
-		c.mu.Lock()
-		closed := c.closed
-		c.mu.Unlock()
-		if closed {
-			return common.Retry("callback_stopped", 0), nil
-		}
-		return c.stagePassive(ctx, streamID(c.config.BotID, target.EventID), target.EventID, input)
+		return c.sendPassive(ctx, target, input)
 	}
 	c.mu.Lock()
 	session := c.active
@@ -262,6 +257,19 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 		return socketFailure(err, false), nil
 	}
 	return common.Sent(""), nil
+}
+
+func (c *Channel) sendPassive(ctx context.Context, target targetData, input model.SendInput) (model.SendResult, error) {
+	if input.Target.ReplyToID != "" && target.EventID != input.Target.ReplyToID {
+		return common.Reject("target_identity_changed"), nil
+	}
+	c.mu.Lock()
+	closed := c.closed
+	c.mu.Unlock()
+	if closed {
+		return common.Retry("callback_stopped", 0), nil
+	}
+	return c.stagePassive(ctx, streamID(c.config.BotID, target.EventID), target.EventID, input)
 }
 
 func (c *Channel) callback(w http.ResponseWriter, r *http.Request) {

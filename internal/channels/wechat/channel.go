@@ -127,29 +127,11 @@ func (c *Channel) accept(ctx context.Context, message Message) error {
 	if !common.Contains(c.account.AllowedSenders, message.From) || message.ContextToken == "" {
 		return nil
 	}
-	id := string(message.ID)
-	if id == "" {
-		for _, item := range message.Items {
-			if item.MessageID != "" {
-				id = string(item.MessageID)
-				break
-			}
-		}
-	}
-	if id == "" {
-		id = message.ClientID
-	}
+	id := messageID(message)
 	if id == "" {
 		return errors.New("wechat_missing_message_id")
 	}
-	var fragments []string
-	for _, item := range message.Items {
-		if item.Type == 1 && item.Text != nil && item.Text.Text != "" {
-			fragments = append(fragments, item.Text.Text)
-		} else if item.Voice != nil && item.Voice.Text != "" {
-			fragments = append(fragments, item.Voice.Text)
-		}
-	}
+	fragments := messageText(message)
 	attachments, err := c.client.receiveMedia(ctx, message.Items, common.MediaLimit(c.host), c.config.AllowInsecureLoopback)
 	if err != nil {
 		return err
@@ -166,6 +148,34 @@ func (c *Channel) accept(ctx context.Context, message Message) error {
 		return err
 	}
 	return common.SaveState(ctx, c.host.State(), c.key("context:"+message.From), data, nil)
+}
+
+func messageID(message Message) string {
+	id := string(message.ID)
+	if id == "" {
+		for _, item := range message.Items {
+			if item.MessageID != "" {
+				id = string(item.MessageID)
+				break
+			}
+		}
+	}
+	if id == "" {
+		id = message.ClientID
+	}
+	return id
+}
+
+func messageText(message Message) []string {
+	var fragments []string
+	for _, item := range message.Items {
+		if item.Type == 1 && item.Text != nil && item.Text.Text != "" {
+			fragments = append(fragments, item.Text.Text)
+		} else if item.Voice != nil && item.Voice.Text != "" {
+			fragments = append(fragments, item.Voice.Text)
+		}
+	}
+	return fragments
 }
 
 func (c *Channel) poll(ctx context.Context) {

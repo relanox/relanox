@@ -26,71 +26,7 @@ func TestNativeUploadChunksAndSingleReply(t *testing.T) {
 	bytesWanted := bytes.Repeat([]byte{42}, 600*1024)
 	gotBytes := make(chan []byte, 1)
 	gotReply := make(chan map[string]any, 1)
-	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		defer conn.CloseNow()
-		conn.SetReadLimit(1024 * 1024)
-		var content []byte
-		index := 0
-		for {
-			_, raw, err := conn.Read(r.Context())
-			if err != nil {
-				return
-			}
-			var request frame
-			if json.Unmarshal(raw, &request) != nil {
-				t.Error("invalid frame")
-				return
-			}
-			body := map[string]any{}
-			switch request.Command {
-			case "aibot_upload_media_init":
-				var input struct {
-					Type   string `json:"type"`
-					Size   int    `json:"total_size"`
-					Chunks int    `json:"total_chunks"`
-				}
-				json.Unmarshal(request.Body, &input)
-				if input.Type != "voice" || input.Size != len(bytesWanted) || input.Chunks != 2 {
-					t.Errorf("wrong init: %+v", input)
-				}
-				body["upload_id"] = "native-upload"
-			case "aibot_upload_media_chunk":
-				var input struct {
-					ID    string `json:"upload_id"`
-					Index int    `json:"chunk_index"`
-					Data  string `json:"base64_data"`
-				}
-				json.Unmarshal(request.Body, &input)
-				if input.ID != "native-upload" || input.Index != index {
-					t.Errorf("incorrect native index: %+v", input)
-				}
-				part, err := base64.StdEncoding.DecodeString(input.Data)
-				if err != nil {
-					t.Error(err)
-				}
-				content = append(content, part...)
-				index++
-			case "aibot_upload_media_finish":
-				body["media_id"] = "native-media"
-				gotBytes <- content
-			case "aibot_respond_msg":
-				var input map[string]any
-				json.Unmarshal(request.Body, &input)
-				gotReply <- input
-			default:
-				t.Errorf("unexpected command: %s", request.Command)
-			}
-			response := map[string]any{"headers": map[string]string{"req_id": request.Headers.RequestID}, "errcode": 0, "body": body}
-			if err = conn.Write(r.Context(), websocket.MessageText, common.Data(response)); err != nil {
-				return
-			}
-		}
-	}))
+	peer := httptest.NewServer(uploadPeer(t, bytesWanted, gotBytes, gotReply))
 	defer peer.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -187,4 +123,72 @@ func TestQueuedSocketSendObservesCancellation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("active request did not stop")
 	}
+}
+
+func uploadPeer(t *testing.T, bytesWanted []byte, gotBytes chan<- []byte, gotReply chan<- map[string]any) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		conn.SetReadLimit(1024 * 1024)
+		var content []byte
+		index := 0
+		for {
+			_, raw, err := conn.Read(r.Context())
+			if err != nil {
+				return
+			}
+			var request frame
+			if json.Unmarshal(raw, &request) != nil {
+				t.Error("invalid frame")
+				return
+			}
+			body := map[string]any{}
+			switch request.Command {
+			case "aibot_upload_media_init":
+				var input struct {
+					Type   string `json:"type"`
+					Size   int    `json:"total_size"`
+					Chunks int    `json:"total_chunks"`
+				}
+				json.Unmarshal(request.Body, &input)
+				if input.Type != "voice" || input.Size != len(bytesWanted) || input.Chunks != 2 {
+					t.Errorf("wrong init: %+v", input)
+				}
+				body["upload_id"] = "native-upload"
+			case "aibot_upload_media_chunk":
+				var input struct {
+					ID    string `json:"upload_id"`
+					Index int    `json:"chunk_index"`
+					Data  string `json:"base64_data"`
+				}
+				json.Unmarshal(request.Body, &input)
+				if input.ID != "native-upload" || input.Index != index {
+					t.Errorf("incorrect native index: %+v", input)
+				}
+				part, err := base64.StdEncoding.DecodeString(input.Data)
+				if err != nil {
+					t.Error(err)
+				}
+				content = append(content, part...)
+				index++
+			case "aibot_upload_media_finish":
+				body["media_id"] = "native-media"
+				gotBytes <- content
+			case "aibot_respond_msg":
+				var input map[string]any
+				json.Unmarshal(request.Body, &input)
+				gotReply <- input
+			default:
+				t.Errorf("unexpected command: %s", request.Command)
+			}
+			response := map[string]any{"headers": map[string]string{"req_id": request.Headers.RequestID}, "errcode": 0, "body": body}
+			if err = conn.Write(r.Context(), websocket.MessageText, common.Data(response)); err != nil {
+				return
+			}
+		}
+	})
 }

@@ -235,7 +235,7 @@ func (c *Channel) activities(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
 		return
 	}
-	if input.ChannelID != "msteams" || input.Recipient.ID != c.config.BotID || input.ChannelData.Tenant.ID != c.config.TenantID || (input.Conversation.TenantID != "" && input.Conversation.TenantID != c.config.TenantID) || !c.serviceURL(input.ServiceURL) {
+	if !c.validActivity(input) {
 		w.WriteHeader(403)
 		return
 	}
@@ -262,7 +262,7 @@ func (c *Channel) activities(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		return
 	}
-	if input.Type != "message" || input.From.ID == c.config.BotID || (input.Text == "" && len(input.Attachments) == 0) {
+	if !c.userMessage(input) {
 		w.WriteHeader(200)
 		return
 	}
@@ -279,6 +279,14 @@ func (c *Channel) activities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(200)
+}
+
+func (c *Channel) validActivity(input activity) bool {
+	return input.ChannelID == "msteams" && input.Recipient.ID == c.config.BotID && input.ChannelData.Tenant.ID == c.config.TenantID && (input.Conversation.TenantID == "" || input.Conversation.TenantID == c.config.TenantID) && c.serviceURL(input.ServiceURL)
+}
+
+func (c *Channel) userMessage(input activity) bool {
+	return input.Type == "message" && input.From.ID != c.config.BotID && (input.Text != "" || len(input.Attachments) != 0)
 }
 
 func (c *Channel) receive(ctx context.Context, input activity) error {
@@ -315,7 +323,7 @@ func (c *Channel) outbound(input model.SendInput, target targetData, media *atta
 
 func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendResult, error) {
 	var target targetData
-	if input.Target.Channel != model.MSTeams || input.Target.AccountID != c.account.ID || json.Unmarshal(input.Target.Data, &target) != nil || !c.valid(target, input.Target.ChatID) || (input.Target.ThreadID != "" && target.ReplyToID != input.Target.ThreadID) || (input.Reply != nil && !platformID(input.Target.ReplyToID)) {
+	if !c.sendTarget(input, &target) {
 		return common.Reject("invalid_target"), nil
 	}
 	if !c.serviceURL(target.ServiceURL) {
@@ -366,4 +374,8 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 		return model.SendResult{Status: model.Pending, RetryAfter: 30 * time.Second}, nil
 	}
 	return common.Sent(id), nil
+}
+
+func (c *Channel) sendTarget(input model.SendInput, target *targetData) bool {
+	return input.Target.Channel == model.MSTeams && input.Target.AccountID == c.account.ID && json.Unmarshal(input.Target.Data, target) == nil && c.valid(*target, input.Target.ChatID) && (input.Target.ThreadID == "" || target.ReplyToID == input.Target.ThreadID) && (input.Reply == nil || platformID(input.Target.ReplyToID))
 }
