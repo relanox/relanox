@@ -33,11 +33,11 @@ func main() {
 		fail(err)
 	}
 	if len(sources) > 0 {
-		runGo(append([]string{"tool", "github.com/fzipp/gocyclo/cmd/gocyclo", "-over", "20"}, sources...)...)
+		runCommand("go", append([]string{"tool", "github.com/fzipp/gocyclo/cmd/gocyclo", "-over", "20"}, sources...)...)
 	}
-	runGo("vet", "./...")
+	runCommand("go", "vet", "./...")
 	runLint()
-	runGo("test", "./...")
+	runCommand("go", "test", "./...")
 }
 
 func runLint() {
@@ -56,10 +56,6 @@ func runLint() {
 	}
 	runCommand(tool, "config", "verify")
 	runCommand(tool, "run", "./...")
-}
-
-func runGo(args ...string) {
-	runCommand("go", args...)
 }
 
 func runCommand(name string, args ...string) {
