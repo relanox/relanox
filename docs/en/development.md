@@ -41,7 +41,33 @@ documentation, recording or verified SDK source. Local HTTP/socket peers emulate
 only external protocols. They cannot implement the behavior being tested. Local
 protocol checks do not establish compatibility with a real account.
 
-The Go rewrite currently has no documentation renderer or executable. Keep this
-guide and README aligned as those are implemented; do not reuse archived Node.js
-commands as Go instructions. Deployment work must also read private
-`docs/local/deployment.md` from the primary checkout if present.
+## Executable and documentation
+
+```sh
+go build -trimpath -o bin/relanox ./cmd/relanox
+go run ./tools/docs
+```
+
+The documentation renderer uses the pinned Go Markdown dependency, validates local
+Markdown links and writes `docs/site`. Keep English and Chinese operator pages
+aligned with actual native options. Documentation changes must pass this build.
+Do not reuse archived Node.js commands as Go instructions. Deployment work must
+also read private `docs/local/deployment.md` from the primary checkout if present.
+
+## Ent schema and migrations
+
+SQLite and PostgreSQL share `internal/storage/ent/schema/records.go`, generated
+Ent query builders and transaction APIs. The pinned generator is a Go tool in
+`go.mod`; use the existing directive, which enables `sql/upsert`:
+
+```sh
+go generate ./internal/storage/...
+git diff --exit-code -- internal/storage/ent
+```
+
+When intentionally changing the schema, review and commit the generated changes
+and migrations under `internal/storage/migrations/sqlite` and `postgres`. Generate
+migration statements using `internal/storage/cmd/migrations` against an empty
+development database. Do not edit generated schema SQL or add handwritten runtime
+queries. A database format change requires an explicit migration policy; the
+runtime must continue refusing incompatible existing stores.

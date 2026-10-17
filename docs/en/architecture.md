@@ -1,8 +1,8 @@
 # Architecture
 
 Relanox is a Go service connecting native messaging accounts to cloud agents.
-The Go implementation is under construction; this document describes the contracts
-that implementations must preserve. `ref/typescript` is an archived reference,
+The executable composes the native implementations described here.
+`ref/typescript` is an archived reference,
 excluded from Go builds and runtime dependencies.
 
 The application constructs concrete channel, agent, storage, speech and observer

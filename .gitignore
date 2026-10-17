@@ -3,7 +3,7 @@
 .ref/
 .worktree/
 node_modules/
-dist/
+/dist/
 coverage/
 .env
 .env.*
@@ -27,6 +27,7 @@ deploy/relanox.json
 /relanox.json
 /secrets/
 /state/
+/docs/site/
 /relanox.json.backup-*
 /relanox.json.lock
 *.secret
