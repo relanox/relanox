@@ -121,6 +121,11 @@
       "Sum": "h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeORc="
     },
     {
+      "Path": "github.com/flynn/noise",
+      "Version": "v1.1.0",
+      "Sum": "h1:KjPQoQCEFdZDiP03phOvGi11+SVVhBG2wOWAorLsstg="
+    },
+    {
       "Path": "github.com/francoispqt/gojay",
       "Version": "v1.2.13",
       "Sum": "h1:d2m3sFjloqoIUQU3TsHBgj6qg/BVGlTBeHDUmyJnXKk="
@@ -144,6 +149,16 @@
       "Path": "github.com/go-openapi/inflect",
       "Version": "v1.0.1",
       "Sum": "h1:gqN2BW4CxqueOg9FO861a592OZKBNJ7GV1XE+gDI1DU="
+    },
+    {
+      "Path": "github.com/go-sphere/wecom-aibot-go-sdk",
+      "Version": "v1.0.5",
+      "Sum": "h1:M/T4PROt6rEnV8pLljJm5XNQdmxGA7vBGytWix1Evo0="
+    },
+    {
+      "Path": "github.com/go-telegram/bot",
+      "Version": "v1.27.0",
+      "Sum": "h1:PG9yBDzM8O26oUerE9SZwWlHon4RpH8WcNslZ7CEZmE="
     },
     {
       "Path": "github.com/goccy/go-yaml",
@@ -321,6 +336,16 @@
       "Sum": "h1:O8x3yXwah4A73hJdlrwo/2X6J62gE5qTMusH0dvz60E="
     },
     {
+      "Path": "github.com/open-dingtalk/dingtalk-stream-sdk-go",
+      "Version": "v0.9.1",
+      "Sum": "h1:Lb/Uzkiw2Ugt2Xf03J5wmv81PdkYOiWbI8CNBi1boC8="
+    },
+    {
+      "Path": "github.com/openilink/openilink-sdk-go",
+      "Version": "v0.6.0",
+      "Sum": "h1:3hfNdNpDiUZLoK91Hmrpmon0tsMwhWzEOiHcgBUr6XQ="
+    },
+    {
       "Path": "github.com/pborman/uuid",
       "Version": "v1.2.1",
       "Sum": "h1:+ZZIw58t/ozdjRaXh/3awHfmWRbzYxJoAdNJxe/3pvw="
@@ -334,6 +359,11 @@
       "Path": "github.com/philhofer/fwd",
       "Version": "v1.2.1",
       "Sum": "h1:UtpS73q8bFgy/yH3gCq8LSNvj5gv/FowNOiWZa7uKwQ="
+    },
+    {
+      "Path": "github.com/piusalfred/whatsapp",
+      "Version": "v0.1.12",
+      "Sum": "h1:C3MmWCzWHw/pyLBwrjOW6MbKC71oucqDksPpyBePm6E="
     },
     {
       "Path": "github.com/pkg/errors",
@@ -396,9 +426,19 @@
       "Sum": "h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk="
     },
     {
+      "Path": "github.com/standard-webhooks/standard-webhooks/libraries",
+      "Version": "v0.0.1",
+      "Sum": "h1:uOfcYT+3QungH6tIGSVCR/Y3KJmgJiHcojJbMTPDZAI="
+    },
+    {
       "Path": "github.com/stretchr/testify",
       "Version": "v1.12.1",
       "Sum": "h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE="
+    },
+    {
+      "Path": "github.com/taigrr/signalcli",
+      "Version": "v0.1.1",
+      "Sum": "h1:sOjjDWewPfYyxxXXhHA67Wqgbs+i2Tj/lZ81AYSycLI="
     },
     {
       "Path": "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/asr",
