@@ -51,6 +51,10 @@ jobs:
       - run: go mod verify
       - run: go mod tidy -diff
       - run: go run ./tools/check
+        env:
+          # Real SQLite recovery suites share the runner disk. Keep package
+          # binaries serial on Windows; their internal concurrency is unchanged.
+          GOFLAGS: ${{ runner.os == 'Windows' && '-p=1' || '' }}
       - run: go generate ./internal/storage/...
       - run: git diff --exit-code -- internal/storage/ent
       - run: go run ./tools/docs
