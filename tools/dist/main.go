@@ -41,7 +41,7 @@ func build(targetOS, arch, version, out string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(temporary)
+	defer func() { _ = os.Remove(temporary) }() // Best-effort cleanup after the build.
 	name := "relanox"
 	extension := ".tar.gz"
 	if targetOS == "windows" {
@@ -49,7 +49,7 @@ func build(targetOS, arch, version, out string) error {
 		extension = ".zip"
 	}
 	binary := filepath.Join(temporary, name)
-	defer os.Remove(binary)
+	defer func() { _ = os.Remove(binary) }()
 	command := exec.Command("go", "build", "-trimpath", "-ldflags", "-s -w -X main.version="+version, "-o", binary, "./cmd/relanox")
 	command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+targetOS, "GOARCH="+arch)
 	command.Stdout = os.Stdout

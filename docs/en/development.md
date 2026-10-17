@@ -8,9 +8,21 @@ git config core.hooksPath .githooks
 go run ./tools/check
 ```
 
+Install the official golangci-lint binary at the version pinned in
+`.golangci-lint-version` in the ignored `bin/` directory or on `PATH` before running
+the gate (`bin/` takes precedence). Follow the
+[upstream installation guide](https://golangci-lint.run/docs/welcome/install/local/).
+CI installs the same binary version. The linter is separate from `go.mod`, so its
+dependencies do not change the application dependency graph.
+
 The tracked hook runs the same gate: gofmt validation, complexity at most 20,
-nesting at most four levels, `go vet ./...` and `go test ./...`. Format changed files with `gofmt -w` first. Keep native dependencies
-pinned, review their licenses and retain attribution when porting protocol code.
+nesting at most four levels, `go vet ./...`, golangci-lint and `go test ./...`.
+Lint checks unchecked errors, ineffective assignments, unused code and static
+correctness/simplification rules. Generated files follow their generator;
+handwritten production and test code are both checked. Any `nolint` directive must
+name its linter and explain the exception. Format changed files with `gofmt -w`
+first. Keep native dependencies pinned, review their licenses and retain
+attribution when porting protocol code.
 Do not bypass hooks. Inspect recent commit messages before every commit and follow
 the dominant existing convention.
 

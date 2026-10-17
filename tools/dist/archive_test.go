@@ -48,7 +48,7 @@ func readZip(t *testing.T, path string) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	result := map[string]string{}
 	for _, file := range reader.File {
 		if file.Name == "release/relanox" && file.Mode().Perm() != 0755 {
@@ -59,7 +59,7 @@ func readZip(t *testing.T, path string) map[string]string {
 			t.Fatal(err)
 		}
 		data, err := io.ReadAll(stream)
-		stream.Close()
+		_ = stream.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,12 +74,12 @@ func readTar(t *testing.T, path string) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	compressed, err := gzip.NewReader(file)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer compressed.Close()
+	defer func() { _ = compressed.Close() }()
 	reader := tar.NewReader(compressed)
 	result := map[string]string{}
 	for {

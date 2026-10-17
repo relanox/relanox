@@ -65,7 +65,7 @@ func zipArchive(output io.Writer, prefix string, entries []entry) (result error)
 			mode = 0755
 		}
 		header.SetMode(mode)
-		header.SetModTime(time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC))
+		header.Modified = time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)
 		entry, err := writer.CreateHeader(header)
 		if err != nil {
 			return err
@@ -82,7 +82,7 @@ func copyEntry(output io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // Read errors are reported by io.Copy.
 	_, err = io.Copy(output, file)
 	return err
 }

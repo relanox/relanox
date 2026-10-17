@@ -193,7 +193,11 @@ func writeBundle(stage, raw string, modules map[string]module, reports map[strin
 	if err := sourceArchive(filepath.Join(stage, "source-notices.tar.gz"), raw); err != nil {
 		return err
 	}
-	if err := copyNotice(filepath.Join(runtime.GOROOT(), "LICENSE"), filepath.Join(stage, "go-standard-library", "LICENSE")); err != nil {
+	root, err := exec.Command("go", "env", "GOROOT").Output()
+	if err != nil {
+		return err
+	}
+	if err := copyNotice(filepath.Join(strings.TrimSpace(string(root)), "LICENSE"), filepath.Join(stage, "go-standard-library", "LICENSE")); err != nil {
 		return err
 	}
 	for _, port := range []string{"internal/musewire", "internal/channels/qq", "internal/channels/dingtalk"} {
