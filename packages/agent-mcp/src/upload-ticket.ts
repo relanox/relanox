@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto'
+import type { AgentId } from '@relanox/sdk'
 import { z } from 'zod'
 import type { McpConfig } from './config.js'
 import { equalSecret, resolveAgentSecret } from './secrets.js'
@@ -64,7 +65,7 @@ export type UploadTicket = z.infer<typeof ticketSchema>
 export function uploadTickets(
   config: McpConfig,
   endpointId: string,
-  agent: 'dot' | 'grok',
+  agent: AgentId,
   origin: string
 ): {
   matches(this: void, request: Request): boolean

@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/server'
-import type { ScopedAgentHost } from '@relanox/sdk'
+import type { AgentId, ScopedAgentHost } from '@relanox/sdk'
 import { z } from 'zod'
 import type { McpConfig } from './config.js'
 import { uploadInput, uploadTickets } from './upload-ticket.js'
@@ -59,7 +59,7 @@ export function createUploadTransport(
   host: ScopedAgentHost,
   config: McpConfig,
   endpointId: string,
-  agent: 'dot' | 'grok',
+  agent: AgentId,
   origin: string
 ): {
   matches(this: void, request: Request): boolean
