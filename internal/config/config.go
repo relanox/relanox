@@ -250,13 +250,8 @@ func (c Config) validateObservabilityAndSpeech() error {
 	default:
 		return invalid("observability.level", "invalid_level")
 	}
-	if c.Speech != nil && c.Speech.Enabled {
-		if err := ValidateSecretRef(c.Speech.SecretID, "speech.secretId"); err != nil {
-			return err
-		}
-		if err := ValidateSecretRef(c.Speech.SecretKey, "speech.secretKey"); err != nil {
-			return err
-		}
+	if c.Speech != nil {
+		return ValidateSpeech(*c.Speech)
 	}
 	return nil
 }
