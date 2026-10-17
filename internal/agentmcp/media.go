@@ -100,19 +100,8 @@ func (s *Server) issueTicket(ticket mediaTicket, upload bool) (string, error) {
 
 func (s *Server) decodeTicket(r *http.Request) (mediaTicket, bool, error) {
 	var ticket mediaTicket
-	deployment, _ := url.Parse(s.Origin)
-	if r.Host != deployment.Host || r.URL.Host != "" && r.URL.Host != deployment.Host {
+	if !s.allowedRequestOrigin(r) {
 		return ticket, false, errors.New("unauthorized")
-	}
-	origin := r.Header.Get("Origin")
-	if origin != "" {
-		allowed := false
-		for _, v := range s.Options.Config.AllowedOrigins {
-			allowed = allowed || v == origin
-		}
-		if !allowed {
-			return ticket, false, errors.New("unauthorized")
-		}
 	}
 	upload := strings.HasPrefix(r.URL.EscapedPath(), s.mediaPrefix()+"upload/")
 	if upload && r.Method != "PUT" || !upload && r.Method != "GET" {
@@ -122,17 +111,9 @@ func (s *Server) decodeTicket(r *http.Request) (mediaTicket, bool, error) {
 	if len(values) != 1 || len(values[0]) > 8192 {
 		return ticket, upload, errors.New("unauthorized")
 	}
-	parts := strings.Split(values[0], ".")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return ticket, upload, errors.New("unauthorized")
-	}
-	signature, err := s.signTicket(parts[0], upload)
-	if err != nil || !EqualSecret(signature, parts[1]) {
-		return ticket, upload, errors.New("unauthorized")
-	}
-	data, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil || Decode(data, &ticket) != nil {
-		return ticket, upload, errors.New("unauthorized")
+	ticket, err := s.decodeSignedTicket(values[0], upload)
+	if err != nil {
+		return ticket, upload, err
 	}
 	if ticket.EndpointID != s.Options.Endpoint.ID || !ID(ticket.ChannelID) || !ID(ticket.MediaID) || ticket.ExpiresAt <= time.Now().UnixMilli() || r.URL.EscapedPath() != s.ticketPath(ticket, upload) {
 		return ticket, upload, errors.New("unauthorized")
@@ -141,6 +122,23 @@ func (s *Server) decodeTicket(r *http.Request) (mediaTicket, bool, error) {
 		return ticket, upload, errors.New("unauthorized")
 	}
 	return ticket, upload, nil
+}
+
+func (s *Server) decodeSignedTicket(value string, upload bool) (mediaTicket, error) {
+	var ticket mediaTicket
+	parts := strings.Split(value, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return ticket, errors.New("unauthorized")
+	}
+	signature, err := s.signTicket(parts[0], upload)
+	if err != nil || !EqualSecret(signature, parts[1]) {
+		return ticket, errors.New("unauthorized")
+	}
+	data, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil || Decode(data, &ticket) != nil {
+		return ticket, errors.New("unauthorized")
+	}
+	return ticket, nil
 }
 
 func (s *Server) mountMedia() error {
@@ -231,13 +229,8 @@ func uploadErrorStatus(err error) int {
 }
 
 func validUpload(in uploadInput) bool {
-	if !ID(in.Channel) || in.Size <= 0 || !mimePattern.MatchString(in.MIMEType) || len(in.MIMEType) > 128 || len(in.FileName) == 0 || len(in.FileName) > 255 || !utf8.ValidString(in.FileName) || in.FileName == "." || in.FileName == ".." {
+	if !ID(in.Channel) || in.Size <= 0 || !mimePattern.MatchString(in.MIMEType) || len(in.MIMEType) > 128 || !validFileName(in.FileName) {
 		return false
-	}
-	for _, r := range in.FileName {
-		if unicode.IsControl(r) || r == '/' || r == '\\' {
-			return false
-		}
 	}
 	if in.Kind != model.Image && in.Kind != model.Audio && in.Kind != model.Video && in.Kind != model.File {
 		return false
@@ -249,6 +242,18 @@ func validUpload(in uploadInput) bool {
 		return false
 	}
 	return in.PreviewMediaID == "" || uuidPattern.MatchString(in.PreviewMediaID)
+}
+
+func validFileName(value string) bool {
+	if len(value) == 0 || len(value) > 255 || !utf8.ValidString(value) || value == "." || value == ".." {
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) || r == '/' || r == '\\' {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) registerMediaTools() {

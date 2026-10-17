@@ -215,6 +215,42 @@ type assembler struct {
 	dead    bool
 }
 
+type transportChunk struct {
+	id, index, total uint64
+	payload          []byte
+}
+
+func parseTransportChunk(data []byte) (transportChunk, error) {
+	var chunk transportChunk
+	f, err := decode(data)
+	if err != nil {
+		return chunk, err
+	}
+	chunk.id, err = getUint(f, 1)
+	if err != nil {
+		return chunk, err
+	}
+	chunk.index, err = getUint(f, 2)
+	if err != nil {
+		return chunk, err
+	}
+	chunk.total, err = getUint(f, 3)
+	if err != nil {
+		return chunk, err
+	}
+	if len(f[3]) == 0 {
+		chunk.total = 1
+	}
+	chunk.payload, err = getBytes(f, 4)
+	if err != nil {
+		return chunk, err
+	}
+	if chunk.total < 1 || chunk.total > 256 || chunk.index >= chunk.total || len(chunk.payload) > maxChunk {
+		return chunk, errProtocol
+	}
+	return chunk, nil
+}
+
 func (a *assembler) accept(data []byte) (out []byte, complete bool, err error) {
 	if a.dead {
 		return nil, false, errProtocol
@@ -225,31 +261,9 @@ func (a *assembler) accept(data []byte) (out []byte, complete bool, err error) {
 			a.pending = nil
 		}
 	}()
-	f, err := decode(data)
+	chunk, err := parseTransportChunk(data)
 	if err != nil {
 		return nil, false, err
-	}
-	id, err := getUint(f, 1)
-	if err != nil {
-		return nil, false, err
-	}
-	i, err := getUint(f, 2)
-	if err != nil {
-		return nil, false, err
-	}
-	total, err := getUint(f, 3)
-	if err != nil {
-		return nil, false, err
-	}
-	if len(f[3]) == 0 {
-		total = 1
-	}
-	payload, err := getBytes(f, 4)
-	if err != nil {
-		return nil, false, err
-	}
-	if total < 1 || total > 256 || i >= total || len(payload) > maxChunk {
-		return nil, false, errProtocol
 	}
 	if a.pending == nil {
 		a.pending = make(map[uint64]*assembly)
@@ -259,26 +273,26 @@ func (a *assembler) accept(data []byte) (out []byte, complete bool, err error) {
 			delete(a.pending, key)
 		}
 	}
-	item := a.pending[id]
+	item := a.pending[chunk.id]
 	if item == nil {
 		if len(a.pending) >= 16 {
 			return nil, false, errProtocol
 		}
-		item = &assembly{total: total, chunks: make(map[uint64][]byte), created: time.Now()}
-		a.pending[id] = item
+		item = &assembly{total: chunk.total, chunks: make(map[uint64][]byte), created: time.Now()}
+		a.pending[chunk.id] = item
 	}
-	if item.total != total {
+	if item.total != chunk.total {
 		return nil, false, errProtocol
 	}
-	if _, ok := item.chunks[i]; ok {
+	if _, ok := item.chunks[chunk.index]; ok {
 		return nil, false, errProtocol
 	}
-	item.chunks[i] = append([]byte{}, payload...)
-	if uint64(len(item.chunks)) != total {
+	item.chunks[chunk.index] = append([]byte{}, chunk.payload...)
+	if uint64(len(item.chunks)) != chunk.total {
 		return nil, false, nil
 	}
-	delete(a.pending, id)
-	for i := uint64(0); i < total; i++ {
+	delete(a.pending, chunk.id)
+	for i := uint64(0); i < chunk.total; i++ {
 		out = append(out, item.chunks[i]...)
 	}
 	return out, true, nil
