@@ -199,12 +199,17 @@ func (p *cloudPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("messaging_product") != "whatsapp" || r.FormValue("type") != "image/png" {
 			p.t.Error("upload metadata")
 		}
-		file, _, err := r.FormFile("file")
+		// Meta's own sample supplies both the type field and file part Content-Type:
+		// https://github.com/fbsamples/whatsapp-api-examples/blob/main/media-messages-js/complete-app/controller/media.js
+		file, header, err := r.FormFile("file")
 		if err != nil {
 			p.t.Error(err)
 			return
 		}
 		defer file.Close()
+		if header.Header.Get("Content-Type") != "image/png" {
+			p.t.Error("native upload file MIME")
+		}
 		raw, _ := io.ReadAll(file)
 		if string(raw) != "png" {
 			p.t.Error("upload bytes")
