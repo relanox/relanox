@@ -71,7 +71,7 @@ type Binding struct {
 	ThreadID   string `json:"threadId,omitempty"`
 	EndpointID string `json:"endpointId"`
 	// Nil inherits the account allowlist; a configured list must be nonempty.
-	AllowedSenders []string `json:"allowedSenders,omitempty"`
+	AllowedSenders []string `json:"allowedSenders"`
 }
 
 type ChannelAddress struct {
