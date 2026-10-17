@@ -20,6 +20,9 @@ func nativeDiagnostic(err error) error {
 		return invalid("config."+field.Field, field.Code)
 	}
 	code := err.Error()
+	if code == "invalid_homeserver" || code == "insecure_homeserver" {
+		return invalid("config.homeserver", code)
+	}
 	switch code {
 	case "invalid_api_base_url", "insecure_api_base_url", "missing_bot_id", "invalid_bot_id", "invalid_webhook_configuration", "invalid_websocket_configuration", "invalid_wecom_mode", "invalid_recipient_type", "invalid_feishu_identity", "invalid_feishu_domain", "invalid_dingtalk_identity", "invalid_qq_app_id", "invalid_qq_environment", "invalid_trusted_upload_origin", "invalid_teams_identity", "invalid_token_endpoint", "trusted_service_origins_required", "invalid_trusted_origin", "invalid_business_identity", "invalid_signal_identity", "invalid_service_url", "insecure_service_url", "invalid_irc_identity", "irc_tls_required", "invalid_muse_identifier", "invalid_configuration":
 		return invalid("config", code)
