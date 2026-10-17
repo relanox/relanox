@@ -106,7 +106,7 @@ func authenticationPeer(t *testing.T, key *rsa.PrivateKey, oauthRequests *atomic
 			if err := r.ParseForm(); err != nil {
 				t.Error(err)
 			}
-			if r.Form.Get("client_id") != "app" || r.Form.Get("scope") != "https://api.botframework.com/.default" {
+			if r.Form.Get("client_id") != "app" || r.Form.Get("scope") != "https://api.botframework.com/.default" || r.Form.Get("grant_type") != "client_credentials" || r.Header.Get("Authorization") != "" {
 				t.Error("incorrect OAuth identity/scope")
 			}
 			fmt.Fprintf(w, `{"access_token":%q,"expires_in":3600}`, "issued-"+r.Form.Get("client_secret"))
