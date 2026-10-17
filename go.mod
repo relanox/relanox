@@ -68,8 +68,8 @@ require (
 	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/spf13/cobra v1.7.0
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/asr v1.3.182
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.193
 	github.com/yuin/goldmark v1.8.6
