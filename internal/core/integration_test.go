@@ -190,19 +190,7 @@ func newWeChatPeer(t *testing.T, sends chan<- wechat.Message) *httptest.Server {
 
 func awaitInbound(t *testing.T, store *storage.Store, status model.AttemptStatus) *model.InboundRecord {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		records, err := store.ListInbound(context.Background(), model.ListInboundInput{StatusFilter: model.StatusFilter{Limit: 20, DispatchStatus: status}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(records) > 0 {
-			return &records[0]
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("durable inbound did not reach expected outcome")
-	return nil
+	return awaitInboundRecord(t, store, "", status)
 }
 
 type bearerTransport struct{ base http.RoundTripper }
@@ -283,18 +271,23 @@ func TestNativeHTTPToMCPAndFinalDelivery(t *testing.T) {
 
 func awaitDelivery(t *testing.T, store *storage.Store, id string, status model.DeliveryStatus) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		record, err := store.GetOutbound(context.Background(), id)
+	waitForQueue(t, "durable delivery "+id+" to reach "+string(status), func(ctx context.Context) (bool, string, error) {
+		record, err := store.GetOutbound(ctx, id)
 		if err != nil {
-			t.Fatal(err)
+			return false, "read failed", err
 		}
-		if record != nil && record.Status == status {
-			return
+		if record == nil {
+			return false, "delivery absent", nil
 		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("durable delivery did not settle")
+		detail := fmt.Sprintf("status=%s chunk=%d/%d version=%d attempts=%d error=%q lease=%v", record.Status, record.CurrentChunk, len(record.Chunks), record.Version, record.Attempts, record.ErrorCode, record.Lease)
+		if record.Status == status {
+			return true, detail, nil
+		}
+		if record.Status != model.DeliveryPending {
+			return false, detail, fmt.Errorf("unexpected terminal delivery status %s", record.Status)
+		}
+		return false, detail, nil
+	})
 }
 
 func TestCoreRejectsScopeAndKeepsDiscoverySeparate(t *testing.T) {
