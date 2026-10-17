@@ -100,6 +100,10 @@ func (c *Channel) Kind() model.ChannelKind { return model.WeCom }
 func (c *Channel) Capabilities() model.ChannelCapabilities {
 	capabilities := model.ChannelCapabilities{Transport: model.ConnectionTransport, MaxTextLength: 20 * 1024, LengthUnit: model.UTF8, Media: model.MediaCapabilities{Receive: []model.MediaKind{model.Image, model.Video, model.File}, Send: common.AllMedia()}}
 	if c.config.Mode == "webhook" {
+		// Callback state reserves the delivery and each chunk by durable CAS.
+		// Replaying an interrupted lease reads that reservation instead of
+		// appending the answer again; socket sends have no such guarantee.
+		capabilities.IdempotentSend = true
 		capabilities.Transport = model.HTTPTransport
 		capabilities.MaxTextLengthPerMessage = 20 * 1024
 		capabilities.MaxChunksPerMessage = 11
