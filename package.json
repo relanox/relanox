@@ -1,0 +1,21 @@
+{
+  "name": "relanox-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:check": "vue-tsc --noEmit -p docs/.vitepress/tsconfig.json",
+    "docs:build": "pnpm docs:check && vitepress build docs && go run ./tools/docs-redirects",
+    "docs:preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vitepress": "1.6.4",
+    "vue": "3.5.43",
+    "vue-tsc": "3.3.12"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.33.4"
+}

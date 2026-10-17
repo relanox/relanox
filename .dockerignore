@@ -8,6 +8,9 @@ bin
 dist
 coverage
 docs/site
+docs/.vitepress/cache
+docs/.vitepress/dist
+docs/.vitepress/redirects
 docs/local
 secrets
 state

@@ -46,11 +46,13 @@ Install the golangci-lint version in `.golangci-lint-version` into `bin/` or ont
 ```sh
 git config core.hooksPath .githooks
 go run ./tools/check
-go run ./tools/docs
+pnpm install --frozen-lockfile
+pnpm docs:build
 ```
 
 The gate checks gofmt, complexity/nesting, vet, golangci-lint and Go tests.
-The documentation renderer writes `docs/site`. Read [Architecture](docs/en/architecture.md) and
+The VitePress documentation build uses Node.js 24.14.1 and writes `docs/.vitepress/dist`.
+Read [Architecture](docs/en/architecture.md) and
 [Development](docs/en/development.md) before implementation.
 
 Relanox is licensed under the [MIT License](LICENSE). Third-party notices and

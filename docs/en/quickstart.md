@@ -17,6 +17,10 @@ commands are described in [Deployment](deployment.md).
 
 ## Create the configuration
 
+Use the [connection configurator](connect.md) to choose accounts, Agents and
+conversation bindings, then download `relanox.json`. The CLI example below
+creates the same native configuration directly.
+
 Choose a public HTTPS origin for native callbacks and MCP, such as
 `https://relay.example.com`. Terminate TLS at a reverse proxy and forward the
 original Host header to the application listener.

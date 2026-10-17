@@ -4,6 +4,8 @@
 `relanox.json`，最后是用户配置目录中的 `relanox/relanox.json`。数据库、凭据文件和
 Muse 目录的相对路径，都以所选配置文件所在目录为基准。
 
+[连接配置器](connect.md)可以生成这一 JSON 格式，凭据使用环境变量或文件引用。
+
 ## 账号、端点和会话绑定
 
 ```json

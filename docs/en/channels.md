@@ -11,22 +11,22 @@ Secret fields below take [secret references](configuration.md#credentials).
 
 | Channel | Required native options | Connection and constraints |
 | --- | --- | --- |
-| Telegram | `botToken`, `webhookSecret` | Native webhook and Bot API; register the callback URL and `secret_token` with Telegram. Topics retain their native thread IDs. |
-| Discord | `botToken` | Native Gateway and REST; the bot needs the required intents and channel permissions. Native nonce suppression has a short window and is not a durable retry guarantee. |
-| Slack | `botToken`, `appId`, exactly one of `appToken` / `signingSecret` | Socket Mode uses an app token; signed Events API uses the signing secret. The installation's native team/bot/app identities must match. |
-| Feishu / Lark | `appId`, `tenantKey`, `appSecret`, `verificationToken`, `encryptKey` | Signed/encrypted callback and native IM APIs. Set `domain` to `lark` for Lark. |
-| WeCom | `botId` in both modes; `secret` for websocket mode | Webhook mode uses `mode: "webhook"`, `token` and `encodingAESKey`, and rejects `secret` and `recipientTypes`. It supports a final passive reply within the native callback window. |
-| WeChat | Saved by `wechat-login` | Native QR pairing and polling for direct chats. Sending requires a context token learned from accepted incoming messages; a binding alone does not establish a send target. |
-| DingTalk | `clientId`, `clientSecret`, `robotCode` | Native Stream callbacks and robot REST APIs. Group messages must mention the robot. |
-| QQ | `appId`, `clientSecret` | Native Gateway and v2 messages; optional `environment: "sandbox"`. Passive send permission is rechecked after uploads. |
-| Microsoft Teams | `appId`, `botId`, `tenantId`, `appSecret`, `trustedServiceOrigins` | Authenticated Bot Framework activities, tenant/bot checks and trusted native service origins. Personal file delivery uses native consent. |
-| WhatsApp | `phoneNumberId`, `businessAccountId`, `appSecret`, `verifyToken`, `accessToken` | Signed Cloud API webhook. Native customer-service windows still apply. |
-| Matrix | `homeserver`, `accessToken` | Native `/sync`, media APIs and transactions through mautrix. End-to-end encrypted rooms are unsupported: incoming messages are not relayed, and sends are rejected. |
-| Mattermost | `serverUrl`, `token` | Native v4 REST and WebSocket APIs; use the installation's HTTPS URL and a bot/user access token. |
-| Google Chat | `serviceAccount` | Native authenticated interaction events and Chat REST APIs. Configure the printed webhook URL as the app's endpoint/audience. |
-| LINE | `channelSecret`, `accessToken` | Signed Messaging API webhook and SDK push messages with native quote tokens and durable retry keys. |
-| Signal | `serviceUrl`, `account` | Existing signal-cli daemon: JSON-RPC at `/api/v1/rpc` and SSE events at `/api/v1/events`. Optional `selfUuid` and authorization reference. |
-| IRC | `server`, `nick` | TLS IRC/IRCv3 connection; optional server password and SASL credentials. Text only. |
+| <span id="telegram">Telegram</span> | `botToken`, `webhookSecret` | Native webhook and Bot API; register the callback URL and `secret_token` with Telegram. Topics retain their native thread IDs. |
+| <span id="discord">Discord</span> | `botToken` | Native Gateway and REST; the bot needs the required intents and channel permissions. Native nonce suppression has a short window and is not a durable retry guarantee. |
+| <span id="slack">Slack</span> | `botToken`, `appId`, exactly one of `appToken` / `signingSecret` | Socket Mode uses an app token; signed Events API uses the signing secret. The installation's native team/bot/app identities must match. |
+| <span id="feishu">Feishu / Lark</span> | `appId`, `tenantKey`, `appSecret`, `verificationToken`, `encryptKey` | Signed/encrypted callback and native IM APIs. Set `domain` to `lark` for Lark. |
+| <span id="wecom">WeCom</span> | `botId` in both modes; `secret` for websocket mode | Webhook mode uses `mode: "webhook"`, `token` and `encodingAESKey`, and rejects `secret` and `recipientTypes`. It supports a final passive reply within the native callback window. |
+| <span id="wechat">WeChat</span> | Saved by `wechat-login` | Native QR pairing and polling for direct chats. Sending requires a context token learned from accepted incoming messages; a binding alone does not establish a send target. |
+| <span id="dingtalk">DingTalk</span> | `clientId`, `clientSecret`, `robotCode` | Native Stream callbacks and robot REST APIs. Group messages must mention the robot. |
+| <span id="qq">QQ</span> | `appId`, `clientSecret` | Native Gateway and v2 messages; optional `environment: "sandbox"`. Passive send permission is rechecked after uploads. |
+| <span id="msteams">Microsoft Teams</span> | `appId`, `botId`, `tenantId`, `appSecret`, `trustedServiceOrigins` | Authenticated Bot Framework activities, tenant/bot checks and trusted native service origins. Personal file delivery uses native consent. |
+| <span id="whatsapp">WhatsApp</span> | `phoneNumberId`, `businessAccountId`, `appSecret`, `verifyToken`, `accessToken` | Signed Cloud API webhook. Native customer-service windows still apply. |
+| <span id="matrix">Matrix</span> | `homeserver`, `accessToken` | Native `/sync`, media APIs and transactions through mautrix. End-to-end encrypted rooms are unsupported: incoming messages are not relayed, and sends are rejected. |
+| <span id="mattermost">Mattermost</span> | `serverUrl`, `token` | Native v4 REST and WebSocket APIs; use the installation's HTTPS URL and a bot/user access token. |
+| <span id="googlechat">Google Chat</span> | `serviceAccount` | Native authenticated interaction events and Chat REST APIs. Configure the printed webhook URL as the app's endpoint/audience. |
+| <span id="line">LINE</span> | `channelSecret`, `accessToken` | Signed Messaging API webhook and SDK push messages with native quote tokens and durable retry keys. |
+| <span id="signal">Signal</span> | `serviceUrl`, `account` | Existing signal-cli daemon: JSON-RPC at `/api/v1/rpc` and SSE events at `/api/v1/events`. Optional `selfUuid` and authorization reference. |
+| <span id="irc">IRC</span> | `server`, `nick` | TLS IRC/IRCv3 connection; optional server password and SASL credentials. Text only. |
 
 For WeCom WebSocket mode, DingTalk and QQ, `recipientTypes` can map known chat IDs to their native
 recipient kind when a proactive target must be resolved before an incoming event.
