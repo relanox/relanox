@@ -1,6 +1,6 @@
 module github.com/relanox/relanox
 
-go 1.26.0
+go 1.26.4
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0
@@ -20,7 +20,7 @@ require (
 )
 
 require (
-	ariga.io/atlas v0.36.2-0.20250730182955-2c6300d0a3e1
+	ariga.io/atlas v1.3.0
 	entgo.io/ent v0.14.6
 	github.com/MicahParks/jwkset v0.11.3 // indirect
 	github.com/MicahParks/keyfunc/v3 v3.8.2
