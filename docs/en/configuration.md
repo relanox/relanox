@@ -52,7 +52,7 @@ lists. An empty list is invalid. Omitting it inherits the account list.
 ## Credentials
 
 A secret reference is `{ "env": "NAME", "file": "relative/path.secret" }`.
-Either field may be omitted. A nonempty environment value wins; otherwise Relanox
+At least one of `env` or `file` is required. A nonempty environment value wins; otherwise Relanox
 reads the file at use time, so rotation does not embed old secrets in queued work.
 Files contain the actual token, key or JSON credential, rather than a path to a
 second secret file. Trailing newlines are removed; empty and oversized files fail.
@@ -93,6 +93,15 @@ Defaults are four workers, a 500 ms polling interval, 60-second dispatch leases,
 lower. Configure `queue`, `media` and HTTP timeout fields only when their defaults
 do not fit the deployment. Unknown structural fields and invalid bounds fail
 offline validation.
+
+| HTTP field | Default | Scope |
+| --- | --- | --- |
+| `readTimeoutSeconds` | 30 seconds | Incoming requests on the application and management servers. |
+| `writeTimeoutSeconds` | 60 seconds | Responses from the application and management servers. |
+| `maxBodyBytes` | 4,194,304 bytes (4 MiB) | Default request-body limit for routes that do not declare their own limit. |
+
+These fields do not set a global deadline for outgoing SDK requests. Native
+operations have their own deadlines and remain bound to the caller's context.
 
 ## Speech and observability
 

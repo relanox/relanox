@@ -6,7 +6,7 @@
 ## 账号选项
 
 下表中的秘密字段使用[凭据引用](configuration.md#凭据)。`account add` 提供交互表单；
-`--native-config` 可以传入其他原生选项，不使用插件或兼容格式。
+`--native-config` 可以用 JSON 对象传入其他原生选项。
 
 | 通道 | 必需原生选项 | 连接及限制 |
 | --- | --- | --- |
@@ -14,20 +14,20 @@
 | Discord | `botToken` | Gateway / REST；需要相应 intents 和频道权限。短期 nonce 不能提供持久重试保证。 |
 | Slack | `botToken`、`appId`，以及 `appToken` / `signingSecret` 之一 | Socket Mode 使用 app token，签名 Events API 使用 signing secret；安装的原生 team、bot、app 身份必须匹配。 |
 | 飞书 / Lark | `appId`、`tenantKey`、`appSecret`、`verificationToken`、`encryptKey` | 签名、加密回调和 IM API；Lark 设置 `domain: "lark"`。 |
-| 企业微信 | websocket 模式使用 `botId`、`secret` | 原生机器人 socket；webhook 模式改用 `mode: "webhook"`、`token`、`encodingAESKey`，在平台回调窗口内被动完成最终回复。 |
-| 微信 | `wechat-login` 自动保存 | 原生扫码与轮询，保存实际 token 和确认的用户 ID。 |
+| 企业微信 | 两种模式都需要 `botId`；websocket 模式另需 `secret` | webhook 模式使用 `mode: "webhook"`、`token`、`encodingAESKey`，不能配置 `secret` 或 `recipientTypes`；在平台回调窗口内被动完成最终回复。 |
+| 微信 | `wechat-login` 自动保存 | 原生扫码与私聊轮询。发送需要从已接受的入站消息中学习上下文令牌；仅添加 binding 不会建立可发送目标。 |
 | 钉钉 | `clientId`、`clientSecret`、`robotCode` | Stream 回调与机器人 REST；群消息需要提及机器人。 |
 | QQ | `appId`、`clientSecret` | Gateway 和 v2 消息；可设置 `environment: "sandbox"`。上传后重新检查被动回复权限。 |
 | Microsoft Teams | `appId`、`botId`、`tenantId`、`appSecret`、`trustedServiceOrigins` | 认证的 Bot Framework 活动，检查租户、bot 和受信原生服务地址；个人文件需要原生 consent。 |
 | WhatsApp | `phoneNumberId`、`businessAccountId`、`appSecret`、`verifyToken`、`accessToken` | 签名 Cloud API webhook，仍受客户服务窗口限制。 |
-| Matrix | `homeserver`、`accessToken` | mautrix 原生 `/sync`、媒体和事务 API；加密房间所需的端到端加密不由该适配器提供。 |
+| Matrix | `homeserver`、`accessToken` | mautrix 原生 `/sync`、媒体和事务 API；不支持端到端加密房间：不转发其入站消息，出站发送会被拒绝。 |
 | Mattermost | `serverUrl`、`token` | 原生 v4 REST / WebSocket，使用实例 HTTPS 地址和 bot / 用户访问 token。 |
 | Google Chat | `serviceAccount` | 原生认证交互事件与 Chat REST；在应用中配置打印出的 webhook URL 与 audience。 |
 | LINE | `channelSecret`、`accessToken` | 签名 Messaging API webhook，通过 SDK push 消息发送，保留原生引用令牌和持久化重试键。 |
 | Signal | `serviceUrl`、`account` | 已有 signal-cli daemon：`/api/v1/rpc` JSON-RPC 与 `/api/v1/events` SSE 事件，可配置 `selfUuid` 与认证引用。 |
 | IRC | `server`、`nick` | TLS IRC/IRCv3，可选 server password 和 SASL；仅文本。 |
 
-企业微信、钉钉和 QQ 的 `recipientTypes` 可以声明尚未接收消息时主动发送所需的原生
+企业微信 WebSocket 模式、钉钉和 QQ 的 `recipientTypes` 可以声明尚未接收消息时主动发送所需的原生
 接收者类型；配置必须与已学到的原生身份一致。测试或桥接端点的本地 HTTP 许可需要
 显式开启；不可信媒体 URL 不会自动获得访问私网的权限。
 
@@ -52,7 +52,7 @@
 | Google Chat | `/channels/googlechat/{account}/webhook` | `spaces/...`、`users/...`、可选 `spaces/.../threads/...`。 |
 | LINE | `/channels/line/{account}/webhook` | 原生用户、群组或房间 ID；允许列表使用发送者 `userId`。 |
 | Signal | 无，出站 daemon SSE 事件 | `direct:<sender>` 或 `group:<groupId>`；发送者优先 UUID，再回退到平台号码或 source。 |
-| IRC | 无，出站 IRC 连接 | 原生频道或私聊昵称，发送者使用连接接受的原生身份。 |
+| IRC | 无，出站 IRC 连接 | `#room` 等频道名，或私聊 `dm:<nick>`。发送者 ID 使用 `account:<account>`；详见下方 IRC 说明。 |
 
 Socket / 轮询通道不需要入站回调，但其云端 MCP 与公开媒体 URL 仍可能需要公网 HTTPS。
 
@@ -79,7 +79,15 @@ Telegram、Discord、Slack、飞书、钉钉、QQ、Teams、WhatsApp、Matrix、
 
 Google Chat 接收原生附件；出站使用公开 URL 图片卡片和文件按钮，不是原生附件上传。
 部分富文本和媒体路径也需要外部平台可访问配置的 HTTPS 地址。Teams 个人文件可能等待
-接收者 consent；QQ 和 WhatsApp 可能因原生回复窗口过期而变得不可发送。
+接收者 consent。
+
+WhatsApp 发送需要处于已记录入站消息后的 24 小时客户服务窗口内。QQ 群聊的被动回复
+窗口按 5 分钟、C2C 按 1 小时处理；过期后省略 `msg_id`，尝试主动发送，仍受平台权限
+和配额限制。
+
+LINE 的 push 重试键会跨重启保留；首次尝试满 24 小时后停止重发，保留结果不明状态。
+企业微信 webhook 的最终回复在平台取回前仍为 Pending。IRC 在 socket 写入成功后
+确认发送，这不代表接收者已收到消息。
 
 Agent 的 `relanox_status` 报告当前能力与发送可用性。本地协议测试覆盖信封格式、授权与
 恢复，不代表真实账号已具备权限或完成兼容性验证。
@@ -97,6 +105,13 @@ Relanox 请求 `GUILD_MESSAGES`、`DIRECT_MESSAGES` 和 `MESSAGE_CONTENT`；内�
 使用父频道 ID，`threadId` 使用原生线程频道 ID；普通频道省略 `threadId`，私聊使用
 DM 频道 ID。Relanox 不会创建、加入或取消归档线程。参见官方[权限文档](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx)。
 
+## IRC 身份
+
+频道绑定使用 `#room` 等原生频道名；私聊使用 `dm:<nick>`，昵称按服务器的 case mapping
+折叠。发送者允许列表使用认证账号标签提供的 `account:<account>`。显式启用
+`allowNickFallback: true` 后，没有认证账号标签的发送者也可以使用
+`nick:<折叠后的昵称>`；裸昵称不能直接作为允许列表 ID。
+
 ## 恢复边界
 
 Discord 首先尝试 Gateway 原生 resume；会话过期后，对每个已配置会话执行最多
@@ -113,3 +128,10 @@ Mattermost 持久化已接受的原生 WebSocket sequence 和 connection ID。�
 跳过从未进入队列的消息。以后使用相同 epoch 重启不会再次重置，Core 已接受的任务仍然
 保留。Mattermost 接受 1–128 个 ASCII 字符，格式为 `[A-Za-z0-9][A-Za-z0-9._:-]*`；
 Discord 最多 128 字节，不能包含空白或控制字符。每次恢复决策使用不同的值。
+
+Matrix 的 limited timeline 从之前已接受的事件锚点恢复，最多回溯 20 页、每页 100 条。
+找不到锚点时保留旧的全局 sync cursor，并报告 `sync_gap_unresolved`。
+
+微信在整批消息接受成功后保存轮询 cursor。Signal 在事件处理成功后保存 SSE ID，重连时
+发送 `Last-Event-ID`；能否重放早期事件取决于 daemon。这些检查点不代表每个原生通道
+都能恢复完整历史。

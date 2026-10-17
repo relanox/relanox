@@ -29,7 +29,12 @@ go run ./tools/licenses -check
 The collector is pinned to `github.com/google/go-licenses/v2@v2.0.1`. It scans the
 actual executable dependency graph for all six distribution targets, rejects
 unrecognized licenses, combines required sources without changing their bytes,
-and writes a deterministic archive. The assembly notices produced by the
+and writes a deterministic archive. `github.com/segmentio/asm` v1.2.1 uses MIT-0,
+which this collector version does not classify. `tools/licenses/reviewed.go`
+handles that exact module version only after verifying the full upstream license
+file against its pinned SHA-256, then copies the original notice and records
+MIT-0. A different version or changed license text fails collection and requires
+review. The assembly notices produced by the
 collector identify files that are included in the Go packages but cannot be
 independently analyzed for additional dependencies; their module notices remain
 included.

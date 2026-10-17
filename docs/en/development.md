@@ -8,8 +8,8 @@ git config core.hooksPath .githooks
 go run ./tools/check
 ```
 
-The tracked hook runs the same gate: gofmt validation, `go vet ./...` and
-`go test ./...`. Format changed files with `gofmt -w` first. Keep native dependencies
+The tracked hook runs the same gate: gofmt validation, complexity at most 20,
+nesting at most four levels, `go vet ./...` and `go test ./...`. Format changed files with `gofmt -w` first. Keep native dependencies
 pinned, review their licenses and retain attribution when porting protocol code.
 Do not bypass hooks. Inspect recent commit messages before every commit and follow
 the dominant existing convention.
@@ -33,7 +33,7 @@ outcomes, lease fencing and retention behavior.
 
 Tests protect observable API, protocol, configuration, migration, security or release
 contracts. Before adding a test, identify the behavior, a credible regression, the
-gap in existing coverage, and whether a production-only seam is needed; explain
+gap in existing coverage, and whether it needs a seam unused by production; explain
 that rationale in the pull request. External response fixtures require a platform
 documentation, recording or verified SDK source. Local HTTP/socket peers emulate
 only external protocols. They cannot implement the behavior being tested. Local
