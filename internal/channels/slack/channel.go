@@ -2,7 +2,6 @@
 package slack
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -170,30 +169,6 @@ func (c *Channel) Close(ctx context.Context) error {
 	return c.lifecycle.Close(ctx)
 }
 
-// slack-go's JSON parser streams an unbounded body. Its HTTP-client option is a
-// production boundary for enforcing the same limits as other native channels;
-// all API serialization, response types and Slack errors remain SDK-owned.
-type boundedClient struct{ client *http.Client }
-
-func (c boundedClient) Do(request *http.Request) (*http.Response, error) {
-	response, err := c.client.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	limit := common.MaxJSONBytes
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		limit = 64 * 1024
-	}
-	raw, err := common.ReadBounded(response.Body, limit)
-	if err != nil {
-		return nil, err
-	}
-	response.Body = io.NopCloser(bytes.NewReader(raw))
-	response.ContentLength = int64(len(raw))
-	return response, nil
-}
-
 func (c *Channel) credentials() (string, string, error) {
 	bot, err := c.options.Secret(c.config.BotToken)
 	if err != nil {
@@ -217,7 +192,7 @@ func (c *Channel) client(ctx context.Context) (*slackapi.Client, *identity, erro
 	if err != nil {
 		return nil, nil, err
 	}
-	client := slackapi.New(bot, slackapi.OptionAPIURL(c.config.APIBaseURL+"/"), slackapi.OptionHTTPClient(boundedClient{c.http}), slackapi.OptionAppLevelToken(app), slackapi.OptionLog(log.New(io.Discard, "", 0)))
+	client := slackapi.New(bot, slackapi.OptionAPIURL(c.config.APIBaseURL+"/"), slackapi.OptionHTTPClient(common.SDKHTTPClient(c.http, ctx, common.MaxJSONBytes)), slackapi.OptionAppLevelToken(app), slackapi.OptionLog(log.New(io.Discard, "", 0)))
 	credential := sha256.Sum256([]byte(bot + "\x00" + app))
 	select {
 	case c.identityGate <- struct{}{}:

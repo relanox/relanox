@@ -85,6 +85,10 @@ func (c *Channel) loop(ctx context.Context) {
 	c.host.Connection(model.Disconnected, "")
 }
 
+// irc.Client sends CAP END from its internal CAP ACK filter before calling the
+// user handler, without waiting for SASL authentication. Keep registration and
+// bounded I/O here so SASL completes before CAP END; parsing and serialization
+// still use the SDK's Message and Writer implementations.
 func (c *Channel) connect(ctx context.Context) error {
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
 	var socket net.Conn

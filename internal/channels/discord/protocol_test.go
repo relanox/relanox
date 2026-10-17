@@ -169,6 +169,8 @@ type nativePeer struct {
 	identifies  chan map[string]any
 	sends       chan map[string]any
 	rateLimited atomic.Bool
+	badGateway  atomic.Bool
+	sendCalls   atomic.Int32
 }
 
 func (p *nativePeer) serve(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +265,11 @@ func (p *nativePeer) heartbeat(ctx context.Context, socket *websocket.Conn) {
 }
 
 func (p *nativePeer) send(w http.ResponseWriter, r *http.Request) {
+	p.sendCalls.Add(1)
+	if p.badGateway.Load() {
+		w.WriteHeader(http.StatusBadGateway)
+		return
+	}
 	if p.rateLimited.Load() {
 		w.WriteHeader(429)
 		_, _ = io.WriteString(w, `{"message":"rate limited","retry_after":1.25,"global":false}`)
@@ -374,8 +381,20 @@ func assertDiscordSend(t *testing.T, f *discordRelay, p *nativePeer) {
 		t.Fatalf("native quote, mentions or nonce: %+v", payload)
 	}
 	p.rateLimited.Store(true)
-	result, err = f.channel.Send(context.Background(), input)
-	if err != nil || result.Status != model.Retryable || result.RetryAfter != 1250*time.Millisecond {
+	// discordgo v0.29's default REST path retries both 429 and 502. Each native
+	// Send must make one attempt so Core owns delay and ambiguous effects.
+	// https://github.com/bwmarrin/discordgo/blob/v0.29.0/restapi.go
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	before := p.sendCalls.Load()
+	result, err = f.channel.Send(ctx, input)
+	if err != nil || result.Status != model.Retryable || result.RetryAfter != 1250*time.Millisecond || p.sendCalls.Load() != before+1 {
 		t.Fatalf("native fractional retry_after: %+v %v", result, err)
+	}
+	p.badGateway.Store(true)
+	before = p.sendCalls.Load()
+	result, err = f.channel.Send(ctx, input)
+	if err != nil || result.Status != model.Unknown || p.sendCalls.Load() != before+1 {
+		t.Fatalf("SDK replayed an uncertain 502 send: %+v %v", result, err)
 	}
 }

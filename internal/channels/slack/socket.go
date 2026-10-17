@@ -44,6 +44,10 @@ func (c *Channel) socketURL(value string) (string, error) {
 	return u.String(), nil
 }
 
+// socketmode.Client exposes delayed ACKs but keeps its connection private and
+// calls ReadJSON without a read limit. Its dialer option cannot install a
+// post-handshake connection limit. Keep the bounded native socket here while
+// using the SDK for apps.connections.open and all REST operations.
 func (c *Channel) session(ctx context.Context) error {
 	client, bot, err := c.client(ctx)
 	if err != nil {
