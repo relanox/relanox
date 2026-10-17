@@ -161,12 +161,15 @@ func nativePeer(t *testing.T, notifications chan<- struct{}, sends chan<- map[st
 			// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
 			w.WriteHeader(http.StatusOK)
 		case "/bot123:bot-secret/sendMessage":
-			var body map[string]any
-			if json.NewDecoder(r.Body).Decode(&body) != nil {
+			// Telegram accepts multipart for every method; the SDK uses it for
+			// sendMessage too. https://core.telegram.org/bots/api#making-requests
+			if r.ParseMultipartForm(1024*1024) != nil {
 				t.Error("native body invalid")
 				w.WriteHeader(400)
 				return
 			}
+			defer r.MultipartForm.RemoveAll()
+			body := map[string]any{"text": r.FormValue("text"), "chat_id": r.FormValue("chat_id")}
 			sends <- body
 			_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":102}}`)
 		default:

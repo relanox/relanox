@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -120,9 +119,14 @@ func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.URL.Path {
 	case "/bot123:public-fixture-token/getFile":
-		var request map[string]string
-		if json.NewDecoder(r.Body).Decode(&request) != nil || request["file_id"] != "voice-id" {
+		// The Bot API accepts multipart for every method; go-telegram/bot uses
+		// that native encoding for getFile as well as uploads.
+		// https://core.telegram.org/bots/api#making-requests
+		if r.ParseMultipartForm(1024*1024) != nil || r.FormValue("file_id") != "voice-id" {
 			p.t.Error("getFile body")
+		}
+		if r.MultipartForm != nil {
+			defer r.MultipartForm.RemoveAll()
 		}
 		io.WriteString(w, `{"ok":true,"result":{"file_path":"voice/file.oga","file_size":3}}`)
 	case "/file/bot123:public-fixture-token/voice/file.oga":
@@ -157,29 +161,43 @@ func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Native retry_after is carried in the Bot API envelope even on HTTP429. A
-// generic status-only mapper loses the retry deadline; existing media traffic
-// checks cover only success. Unknown send outcomes must not be blindly retried.
+// generic status-only mapper loses the retry deadline; success-only media
+// coverage also misses SDK acceptance of success bodies on HTTP failures and
+// missing receipts. These protocol regressions need no production-only seam.
 // https://core.telegram.org/bots/api#responseparameters
 func TestNativeFailureMapping(t *testing.T) {
-	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(429)
-		io.WriteString(w, `{"ok":false,"error_code":429,"parameters":{"retry_after":17}}`)
-	}))
-	defer peer.Close()
-	host := &protocolHost{}
-	c, err := New(host, model.AccountConfig{ID: "tg", Channel: model.Telegram, Config: common.Data(Config{BotToken: model.SecretRef{Env: "TOKEN"}, WebhookSecret: model.SecretRef{Env: "WEBHOOK"}, APIBaseURL: peer.URL, AllowInsecureLoopback: true})}, common.Options{HTTPClient: peer.Client(), ResolveSecret: func(model.SecretRef) (string, error) { return "123:public", nil }})
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := c.Resolve(context.Background(), model.ChannelAddress{Platform: model.Telegram, AccountID: "tg", ChatID: "4"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := c.Send(context.Background(), model.SendInput{Target: *resolved.Target, Chunk: model.DeliveryChunk{Text: "hello"}})
-	if err != nil || result.Status != model.Retryable || result.RetryAfter != 17*time.Second {
-		t.Fatalf("native failure: %+v %v", result, err)
-	}
-	if failure(&apiError{code: 408}, false).Status != model.Unknown || failure(&apiError{code: 500}, false).Status != model.Unknown {
-		t.Fatal("uncertain send became retryable")
+	for _, fixture := range []struct {
+		name   string
+		status int
+		body   string
+		want   model.Outcome
+		retry  time.Duration
+	}{
+		{"http-limit", 429, `{"ok":false,"error_code":429,"parameters":{"retry_after":17}}`, model.Retryable, 17 * time.Second},
+		{"envelope-limit", 200, `{"ok":false,"error_code":429,"parameters":{"retry_after":17}}`, model.Retryable, 17 * time.Second},
+		{"http-failure-with-success-envelope", 500, `{"ok":true,"result":{"message_id":1234}}`, model.Unknown, 0},
+		{"http-timeout", 408, `{"ok":false,"error_code":408}`, model.Unknown, 0},
+		{"missing-receipt", 200, `{"ok":true,"result":{}}`, model.Unknown, 0},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(fixture.status)
+				io.WriteString(w, fixture.body)
+			}))
+			defer peer.Close()
+			host := &protocolHost{}
+			c, err := New(host, model.AccountConfig{ID: "tg", Channel: model.Telegram, Config: common.Data(Config{BotToken: model.SecretRef{Env: "TOKEN"}, WebhookSecret: model.SecretRef{Env: "WEBHOOK"}, APIBaseURL: peer.URL, AllowInsecureLoopback: true})}, common.Options{HTTPClient: peer.Client(), ResolveSecret: func(model.SecretRef) (string, error) { return "123:public", nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := c.Resolve(context.Background(), model.ChannelAddress{Platform: model.Telegram, AccountID: "tg", ChatID: "4"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := c.Send(context.Background(), model.SendInput{Target: *resolved.Target, Chunk: model.DeliveryChunk{Text: "hello"}})
+			if err != nil || result.Status != fixture.want || result.RetryAfter != fixture.retry {
+				t.Fatalf("native failure: %+v %v", result, err)
+			}
+		})
 	}
 }

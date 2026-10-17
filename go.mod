@@ -10,6 +10,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/flynn/noise v1.1.0
 	github.com/go-sphere/wecom-aibot-go-sdk v1.0.5
+	github.com/go-telegram/bot v1.27.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
@@ -22,6 +23,8 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/slack-go/slack v0.30.1
 	github.com/spf13/cobra v1.10.2
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1
+	github.com/taigrr/signalcli v0.1.1
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/asr v1.3.182
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.193
 	github.com/yuin/goldmark v1.8.6
@@ -111,7 +114,6 @@ require (
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/tidwall/gjson v1.20.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect

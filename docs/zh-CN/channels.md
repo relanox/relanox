@@ -24,7 +24,7 @@
 | Mattermost | `serverUrl`、`token` | 原生 v4 REST / WebSocket，使用实例 HTTPS 地址和 bot / 用户访问 token。 |
 | Google Chat | `serviceAccount` | 原生认证交互事件与 Chat REST；在应用中配置打印出的 webhook URL 与 audience。 |
 | LINE | `channelSecret`、`accessToken` | 签名 Messaging API webhook，通过 SDK push 消息发送，保留原生引用令牌和持久化重试键。 |
-| Signal | `serviceUrl`、`account` | 已有原生 Signal JSON-RPC daemon 和事件 websocket，可配置 `selfUuid` 与认证引用。 |
+| Signal | `serviceUrl`、`account` | 已有 signal-cli daemon：`/api/v1/rpc` JSON-RPC 与 `/api/v1/events` SSE 事件，可配置 `selfUuid` 与认证引用。 |
 | IRC | `server`、`nick` | TLS IRC/IRCv3，可选 server password 和 SASL；仅文本。 |
 
 企业微信、钉钉和 QQ 的 `recipientTypes` 可以声明尚未接收消息时主动发送所需的原生
@@ -51,7 +51,7 @@
 | Mattermost | 无，出站原生 WebSocket | 原生 26 字符频道、用户 ID；线程使用根帖子 ID。 |
 | Google Chat | `/channels/googlechat/{account}/webhook` | `spaces/...`、`users/...`、可选 `spaces/.../threads/...`。 |
 | LINE | `/channels/line/{account}/webhook` | 原生用户、群组或房间 ID；允许列表使用发送者 `userId`。 |
-| Signal | 无，出站 daemon 事件 websocket | `direct:<sender>` 或 `group:<groupId>`；发送者优先 UUID，再回退到平台号码或 source。 |
+| Signal | 无，出站 daemon SSE 事件 | `direct:<sender>` 或 `group:<groupId>`；发送者优先 UUID，再回退到平台号码或 source。 |
 | IRC | 无，出站 IRC 连接 | 原生频道或私聊昵称，发送者使用连接接受的原生身份。 |
 
 Socket / 轮询通道不需要入站回调，但其云端 MCP 与公开媒体 URL 仍可能需要公网 HTTPS。
