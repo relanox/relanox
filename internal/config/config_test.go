@@ -92,7 +92,7 @@ func TestLoadResolvesPathsAndRotatingSecretReferences(t *testing.T) {
 }
 
 func TestPublicURLRequiresDeploymentOrigin(t *testing.T) {
-	for _, value := range []string{"https://example.com/path", "https://user:secret@example.com", "http://example.com", "https://example.com?", "https://example.com#", "https://example.com/../", "https://example.com\\evil"} {
+	for _, value := range []string{"https://example.com/path", "https://user:secret@example.com", "http://example.com", "https://example.com?", "https://example.com#", "https://example.com/../", "https://example.com\\evil", "https://:443", "https://example.com:99999", "https://example.com:0", "https://example.com:"} {
 		if _, err := config.ValidatePublicURL(value); err == nil {
 			t.Errorf("accepted unsafe origin %q", value)
 		}
