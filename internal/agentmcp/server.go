@@ -62,7 +62,10 @@ func New(options Options) (*Server, error) {
 			return nil, err
 		}
 	}
-	s.handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.SDK }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 1 << 20, PropagateRequestCancellation: true})
+	// ServeHTTP always checks the configured deployment Host and allowed Origin
+	// before reaching this private handler. That guard also supports reverse
+	// proxies preserving a public Host while connecting to a loopback listener.
+	s.handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.SDK }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 1 << 20, PropagateRequestCancellation: true, DisableLocalhostProtection: true})
 	prefix := "/agents/" + string(options.Endpoint.Agent) + "/mcp/" + url.PathEscape(options.Endpoint.ID)
 	if err = options.Dependencies.Host.MountHTTP(model.HTTPRoute{Pattern: prefix, Handler: s, MaxBodyBytes: 1 << 20}); err != nil {
 		return nil, err
