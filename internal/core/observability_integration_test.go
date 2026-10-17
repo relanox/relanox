@@ -110,19 +110,7 @@ func (t asrTraceTransport) RoundTrip(request *http.Request) (*http.Response, err
 
 func waitTracedInbound(t *testing.T, f *relayFixture, id string) *model.InboundRecord {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		record, err := f.store.GetInbound(f.ctx, id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if record != nil && record.Dispatch.Status == model.AttemptAccepted {
-			return record
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("prepared native dispatch did not complete")
-	return nil
+	return awaitInboundRecord(t, f.store, id, model.AttemptAccepted)
 }
 
 func closeTraceObserver(t *testing.T, observer *observability.Observer) {
