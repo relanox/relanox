@@ -144,6 +144,13 @@ func (r *Runtime) send(ctx context.Context, record model.OutboundRecord) model.S
 	if record.Attempts >= r.cfg.Queue.MaxAttempts {
 		return model.SendResult{Status: model.Rejected, ErrorCode: "retry_budget_exhausted"}
 	}
+	authorized, err := r.authorizeDelivery(ctx, record)
+	if err != nil {
+		return model.SendResult{Status: model.Retryable, ErrorCode: "authorization_unavailable"}
+	}
+	if !authorized {
+		return model.SendResult{Status: model.Rejected, ErrorCode: "unauthorized_conversation"}
+	}
 	channel := r.channel(record.Target.AccountID)
 	if channel == nil || channel.Kind() != record.Target.Channel {
 		return model.SendResult{Status: model.Rejected, ErrorCode: "channel_missing"}
@@ -174,6 +181,18 @@ func (r *Runtime) send(ctx context.Context, record model.OutboundRecord) model.S
 		return model.SendResult{Status: model.Rejected, ErrorCode: "retry_budget_exhausted"}
 	}
 	return result
+}
+
+func (r *Runtime) authorizeDelivery(ctx context.Context, record model.OutboundRecord) (bool, error) {
+	current, ok := r.configured[record.ChannelID]
+	if !ok || !equal(current.Endpoint, record.Endpoint) || !targetMatches(record.Target, current.Address) {
+		return false, nil
+	}
+	conversation, err := r.store.GetConversation(ctx, record.ChannelID, false)
+	if err != nil || conversation == nil {
+		return false, err
+	}
+	return equal(conversation.Address, current.Address) && equal(conversation.Endpoint, record.Endpoint), nil
 }
 
 func (r *Runtime) sendInput(ctx context.Context, record model.OutboundRecord) (model.SendInput, error) {
