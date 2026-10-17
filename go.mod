@@ -9,6 +9,7 @@ require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/coder/websocket v1.8.15
 	github.com/flynn/noise v1.1.0
+	github.com/go-sphere/wecom-aibot-go-sdk v1.0.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
@@ -16,6 +17,7 @@ require (
 	github.com/line/line-bot-sdk-go/v8 v8.23.0
 	github.com/mattermost/mattermost/server/public v0.5.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
+	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.2-beta.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/rs/zerolog v1.35.1
 	github.com/slack-go/slack v0.30.1

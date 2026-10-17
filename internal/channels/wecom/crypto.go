@@ -1,46 +1,46 @@
 package wecom
 
 import (
-	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"crypto/sha1"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-sphere/wecom-aibot-go-sdk/aibot"
 )
 
-// CallbackCrypto implements the native WeCom callback envelope. The wire layout
-// and 32-byte PKCS#7 padding follow WecomTeam/aibot-node-sdk 1.0.7,
-// src/wecom-crypto/index.ts (MIT), not the 16-byte default used by AES helpers.
+// CallbackCrypto implements the native WeCom callback envelope through the SDK.
+// Its 32-byte PKCS#7 padding also matches WecomTeam/aibot-node-sdk 1.0.7.
 // https://github.com/WecomTeam/aibot-node-sdk
-type CallbackCrypto struct {
-	token     string
-	key       []byte
-	receiveID string
-}
+type CallbackCrypto struct{ crypto *aibot.WecomCrypto }
 
 func NewCallbackCrypto(token, encodedKey, receiveID string) (*CallbackCrypto, error) {
-	key, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(encodedKey, "="))
-	if err != nil || len(key) != 32 || token == "" {
+	key, err := callbackKey(encodedKey)
+	if err != nil || token == "" {
 		return nil, errors.New("invalid_callback_credentials")
 	}
-	return &CallbackCrypto{token: token, key: key, receiveID: receiveID}, nil
+	crypto, err := aibot.NewWecomCrypto(token, key, receiveID)
+	if err != nil {
+		return nil, errors.New("invalid_callback_credentials")
+	}
+	return &CallbackCrypto{crypto: crypto}, nil
+}
+
+func callbackKey(encoded string) (string, error) {
+	key, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(encoded, "="))
+	if err != nil || len(key) != 32 {
+		return "", errors.New("invalid_crypto_key")
+	}
+	return base64.StdEncoding.EncodeToString(key), nil
 }
 
 func (c *CallbackCrypto) Signature(timestamp, nonce, encrypted string) string {
-	parts := []string{c.token, timestamp, nonce, encrypted}
-	sort.Strings(parts)
-	digest := sha1.Sum([]byte(strings.Join(parts, "")))
-	return hex.EncodeToString(digest[:])
+	return c.crypto.ComputeSignature(timestamp, nonce, encrypted)
 }
 
 func (c *CallbackCrypto) Verify(query url.Values, encrypted string, now time.Time) bool {
@@ -53,86 +53,41 @@ func (c *CallbackCrypto) Verify(query url.Values, encrypted string, now time.Tim
 	if err != nil || len(signature) != sha1.Size {
 		return false
 	}
+	// The SDK compares strings directly; freshness and constant-time comparison
+	// remain at the authenticated callback boundary.
 	expected, _ := hex.DecodeString(c.Signature(timestamp, nonce, encrypted))
 	return subtle.ConstantTimeCompare(signature, expected) == 1
 }
 
-func unpad(data []byte, block int) ([]byte, error) {
-	if len(data) == 0 {
-		return nil, errors.New("invalid_padding")
-	}
-	n := int(data[len(data)-1])
-	if n < 1 || n > block || n > len(data) {
-		return nil, errors.New("invalid_padding")
-	}
-	for _, value := range data[len(data)-n:] {
-		if int(value) != n {
-			return nil, errors.New("invalid_padding")
-		}
-	}
-	return data[:len(data)-n], nil
-}
-
-func decryptCBC(encrypted, key []byte) ([]byte, error) {
-	if len(key) != 32 || len(encrypted) == 0 || len(encrypted)%aes.BlockSize != 0 {
-		return nil, errors.New("invalid_ciphertext")
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	plain := make([]byte, len(encrypted))
-	cipher.NewCBCDecrypter(block, key[:aes.BlockSize]).CryptBlocks(plain, encrypted)
-	return unpad(plain, 32)
-}
-
 func (c *CallbackCrypto) Decrypt(encoded string) ([]byte, error) {
-	encrypted, err := base64.StdEncoding.DecodeString(encoded)
+	plain, err := c.crypto.Decrypt(encoded)
 	if err != nil {
+		// SDK errors may contain the decrypted receive ID.
 		return nil, errors.New("invalid_callback_ciphertext")
 	}
-	plain, err := decryptCBC(encrypted, c.key)
-	if err != nil || len(plain) < 20 {
-		return nil, errors.New("invalid_callback_ciphertext")
-	}
-	length := uint64(binary.BigEndian.Uint32(plain[16:20]))
-	if length > uint64(len(plain)-20) {
-		return nil, errors.New("invalid_callback_length")
-	}
-	end := 20 + int(length)
-	if c.receiveID != "" && string(plain[end:]) != c.receiveID {
-		return nil, errors.New("callback_identity_mismatch")
-	}
-	return plain[20:end], nil
+	return []byte(plain), nil
 }
 
 func (c *CallbackCrypto) Encrypt(plain []byte, timestamp, nonce string) (string, string, error) {
 	if uint64(len(plain)) > uint64(^uint32(0)) {
 		return "", "", errors.New("callback_too_large")
 	}
-	raw := make([]byte, 20, 20+len(plain)+len(c.receiveID)+32)
-	if _, err := rand.Read(raw[:16]); err != nil {
-		return "", "", err
-	}
-	binary.BigEndian.PutUint32(raw[16:], uint32(len(plain)))
-	raw = append(raw, plain...)
-	raw = append(raw, c.receiveID...)
-	n := 32 - len(raw)%32
-	raw = append(raw, bytes.Repeat([]byte{byte(n)}, n)...)
-	block, err := aes.NewCipher(c.key)
+	encrypted, signature, err := c.crypto.Encrypt(string(plain), timestamp, nonce)
 	if err != nil {
-		return "", "", err
+		return "", "", errors.New("callback_encrypt_failed")
 	}
-	cipher.NewCBCEncrypter(block, c.key[:aes.BlockSize]).CryptBlocks(raw, raw)
-	encrypted := base64.StdEncoding.EncodeToString(raw)
-	return encrypted, c.Signature(timestamp, nonce, encrypted), nil
+	return encrypted, signature, nil
 }
 
 // DecryptFile uses the independent key on each media resource, not the bot key.
 func DecryptFile(encrypted []byte, encodedKey string) ([]byte, error) {
-	key, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(encodedKey, "="))
+	key, err := callbackKey(encodedKey)
 	if err != nil {
 		return nil, errors.New("invalid_media_key")
 	}
-	return decryptCBC(encrypted, key)
+	plain, err := aibot.DecryptFile(encrypted, key)
+	if err != nil {
+		return nil, errors.New("invalid_media_ciphertext")
+	}
+	return plain, nil
 }

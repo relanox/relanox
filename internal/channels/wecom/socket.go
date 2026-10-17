@@ -18,6 +18,8 @@ import (
 // Native frame and upload fields verified against @wecom/aibot-node-sdk 1.0.7
 // WsConnectionManager and WSClient.uploadMedia (MIT).
 // https://github.com/WecomTeam/aibot-node-sdk
+// The Go SDK's queued SendMessage/SendReply have no per-call context; this
+// transport keeps cancellation attached to the actual socket write and receipt.
 type frame struct {
 	Command string `json:"cmd,omitempty"`
 	Headers struct {
