@@ -360,6 +360,7 @@ describe('configuration boundary', () => {
       'slack',
       'feishu',
       'wecom',
+      'wechat',
       'dingtalk',
       'qq',
       'msteams',
@@ -378,6 +379,14 @@ describe('configuration boundary', () => {
         }).accounts[0]?.channel
       ).toBe(channel)
     }
+    // Native identifiers must pass Core before their plugins can validate setup.
+    // Existing dot fixtures cannot detect a missing Muse identifier; no new seam.
+    expect(
+      validateConfig({
+        ...config,
+        endpoints: [{ ...config.endpoints[0], agent: 'muse' }]
+      }).endpoints[0]?.agent
+    ).toBe('muse')
   })
 })
 
