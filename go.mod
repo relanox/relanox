@@ -15,7 +15,8 @@ require (
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/slack-go/slack v0.30.1 // indirect
 )
 
 require (
