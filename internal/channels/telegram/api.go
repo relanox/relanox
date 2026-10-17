@@ -141,7 +141,7 @@ func (c *Channel) download(ctx context.Context, m message) ([]model.MediaUpload,
 	if err != nil {
 		return nil, sdkError(err)
 	}
-	if !validFilePath(result.FilePath) || result.FileSize > maximum {
+	if result == nil || !validFilePath(result.FilePath) || result.FileSize < 0 || result.FileSize > maximum {
 		return nil, errors.New("invalid_telegram_file")
 	}
 	token, err := c.options.Secret(c.config.BotToken)

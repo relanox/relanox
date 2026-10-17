@@ -80,9 +80,19 @@ func TestWebhookAndVoiceProtocol(t *testing.T) {
 	}
 	duration := int64(1250)
 	media := model.StoredMedia{Reference: model.MediaReference{ID: "owned", Kind: model.Audio, MIMEType: "audio/ogg", FileName: "voice.oga", Size: 3, DurationMS: &duration}, Data: []byte("ogg")}
-	sent, err := c.Send(context.Background(), model.SendInput{Target: *resolved.Target, Reply: &model.ReplyReference{RequestID: "req", Kind: model.Final}, Chunk: model.DeliveryChunk{Text: "**voice**", Media: &media.Reference}, Media: &media})
-	if err != nil || sent.Status != model.Sent || sent.Receipt.PlatformMessageID != "1234" || !peerState.voice {
-		t.Fatalf("send: %+v %v", sent, err)
+	// Ceiling seconds must stay positive at the int64 millisecond boundary;
+	// small-duration media traffic would miss the previous +999 overflow.
+	for _, fixture := range []struct {
+		milliseconds int64
+		seconds      string
+	}{{1250, "2"}, {9223372036854775807, "9223372036854776"}} {
+		duration = fixture.milliseconds
+		peerState.duration = fixture.seconds
+		peerState.voice = false
+		sent, err := c.Send(context.Background(), model.SendInput{Target: *resolved.Target, Reply: &model.ReplyReference{RequestID: "req", Kind: model.Final}, Chunk: model.DeliveryChunk{Text: "**voice**", Media: &media.Reference}, Media: &media})
+		if err != nil || sent.Status != model.Sent || sent.Receipt.PlatformMessageID != "1234" || !peerState.voice {
+			t.Fatalf("send: %+v %v", sent, err)
+		}
 	}
 	mutated := *resolved.Target
 	mutated.Data = common.Data(targetData{BotID: "999", APIBaseURL: peer.URL})
@@ -113,6 +123,7 @@ type telegramPeer struct {
 	t         *testing.T
 	downloads int
 	voice     bool
+	duration  string
 }
 
 func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +150,7 @@ func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
-		if r.FormValue("chat_id") != "-100123" || r.FormValue("message_thread_id") != "4" || r.FormValue("duration") != "2" || r.FormValue("caption") != "voice" || !strings.Contains(r.FormValue("reply_parameters"), `"message_id":77`) {
+		if r.FormValue("chat_id") != "-100123" || r.FormValue("message_thread_id") != "4" || r.FormValue("duration") != p.duration || r.FormValue("caption") != "voice" || !strings.Contains(r.FormValue("reply_parameters"), `"message_id":77`) {
 			p.t.Errorf("native voice fields: %+v", r.Form)
 		}
 		file, header, err := r.FormFile("voice")
@@ -149,7 +160,7 @@ func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 		raw, _ := io.ReadAll(file)
-		if header.Filename != "voice.oga" || string(raw) != "ogg" {
+		if header.Filename != "voice.oga" || header.Header.Get("Content-Type") != "application/octet-stream" || string(raw) != "ogg" {
 			p.t.Error("voice upload")
 		}
 		p.voice = true
