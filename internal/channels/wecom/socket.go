@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -267,7 +268,7 @@ func (c *Channel) receiveSocketUntilAccepted(ctx context.Context, message frame)
 		if err == nil {
 			return
 		}
-		if common.Contains([]string{"invalid_wecom_message", "unsupported_media_format", "invalid_media_key", "invalid_ciphertext", "invalid_padding"}, err.Error()) {
+		if slices.Contains([]string{"invalid_wecom_message", "unsupported_media_format", "invalid_media_key", "invalid_ciphertext", "invalid_padding"}, err.Error()) {
 			c.host.Connection(model.Degraded, "invalid_native_input")
 			return
 		}

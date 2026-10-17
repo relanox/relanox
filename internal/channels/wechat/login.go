@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/transport"
 )
 
@@ -156,17 +157,6 @@ func loginHTTP(options LoginOptions) *http.Client {
 	return (&Client{HTTP: transport.NewClient(policy)}).httpClient()
 }
 
-func delay(ctx context.Context, duration time.Duration) error {
-	timer := time.NewTimer(duration)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
 func readVerification(path string) (string, error) {
 	if path == "" {
 		return "", errors.New("wechat_verification_code_file_required")
@@ -200,7 +190,7 @@ func retryPoll(ctx context.Context, options LoginOptions, code, verification str
 		if errors.As(err, &native) && native.Status != 429 && native.Status != 500 && native.Status != 502 && native.Status != 503 && native.Status != 504 {
 			return result, err
 		}
-		if err = delay(ctx, time.Second); err != nil {
+		if err = common.Delay(ctx, time.Second); err != nil {
 			return result, err
 		}
 	}
@@ -266,7 +256,7 @@ func Authenticate(ctx context.Context, options LoginOptions) (Credentials, error
 		if needsCode && options.VerificationCodeFile == "" {
 			return credentials, errors.New("wechat_verification_code_file_required")
 		}
-		if err = delay(ctx, time.Second); err != nil {
+		if err = common.Delay(ctx, time.Second); err != nil {
 			return credentials, err
 		}
 	}
@@ -279,7 +269,7 @@ func nextVerification(ctx context.Context, path, submitted string) (string, bool
 		return "", false, err
 	}
 	if verification == "" || verification == submitted {
-		return "", false, delay(ctx, time.Second)
+		return "", false, common.Delay(ctx, time.Second)
 	}
 	return verification, true, nil
 }

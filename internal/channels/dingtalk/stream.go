@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/coder/websocket"
@@ -52,10 +53,10 @@ func (c *Channel) receive(ctx context.Context, frame streamFrame) error {
 	if message.RobotCode != c.config.RobotCode || message.SenderID == message.BotUserID || (message.ConversationType == "2" && !message.Mentioned) {
 		return nil
 	}
-	if !common.Contains(c.account.AllowedSenders, message.SenderID) {
+	if !slices.Contains(c.account.AllowedSenders, message.SenderID) {
 		return nil
 	}
-	if !common.Contains([]string{"text", "picture", "audio", "video", "file", "richText"}, message.Type) {
+	if !slices.Contains([]string{"text", "picture", "audio", "video", "file", "richText"}, message.Type) {
 		return nil
 	}
 	chatID := message.StaffID

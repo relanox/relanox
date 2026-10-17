@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -138,7 +139,7 @@ func (c *Channel) accept(ctx context.Context, message Message) error {
 	if err := c.host.DiscoverConversation(ctx, model.DiscoveredConversation{ChatID: message.From, SenderID: message.From}); err != nil {
 		return err
 	}
-	if !common.Contains(c.account.AllowedSenders, message.From) || message.ContextToken == "" {
+	if !slices.Contains(c.account.AllowedSenders, message.From) || message.ContextToken == "" {
 		return nil
 	}
 	id := messageID(message)

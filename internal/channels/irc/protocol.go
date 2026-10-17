@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/text"
 	wire "gopkg.in/irc.v4"
 )
 
 func (c *Channel) handle(ctx context.Context, current *connection, message *wire.Message) error {
-	if common.Contains([]string{"902", "904", "905", "906", "907", "433", "ERROR"}, message.Command) {
+	if slices.Contains([]string{"902", "904", "905", "906", "907", "433", "ERROR"}, message.Command) {
 		return errors.New("irc_registration_failed")
 	}
 	switch message.Command {
@@ -91,7 +91,7 @@ func (c *Channel) negotiate(ctx context.Context, current *connection, message *w
 	case "ACK":
 		current.acknowledge(capabilities)
 		if c.config.SASL != nil {
-			if !common.Contains(capabilities, "sasl") {
+			if !slices.Contains(capabilities, "sasl") {
 				return errors.New("sasl_unavailable")
 			}
 			current.saslStarted = true
@@ -144,7 +144,7 @@ func (c *Channel) requestCapabilities(ctx context.Context, current *connection) 
 	}
 	if c.config.SASL != nil {
 		mechanisms, ok := current.offered["sasl"]
-		if !ok || mechanisms != "" && !common.Contains(strings.Split(mechanisms, ","), "PLAIN") {
+		if !ok || mechanisms != "" && !slices.Contains(strings.Split(mechanisms, ","), "PLAIN") {
 			return errors.New("sasl_unavailable")
 		}
 	}
@@ -211,7 +211,7 @@ func (c *connection) support(message *wire.Message) error {
 			continue
 		}
 		if key == "CASEMAPPING" {
-			if !common.Contains([]string{"ascii", "rfc1459", "strict-rfc1459"}, value) {
+			if !slices.Contains([]string{"ascii", "rfc1459", "strict-rfc1459"}, value) {
 				return errors.New("unsupported_casemapping")
 			}
 			c.state.CaseMapping = value

@@ -3,6 +3,7 @@ package qq
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 
@@ -67,7 +68,7 @@ func (c *Channel) receive(ctx context.Context, frame gatewayFrame) error {
 		sender = message.Author.MemberID
 		chatID = message.GroupID
 	}
-	if !validID(sender) || !validID(chatID) || !common.Contains(c.account.AllowedSenders, sender) {
+	if !validID(sender) || !validID(chatID) || !slices.Contains(c.account.AllowedSenders, sender) {
 		return nil
 	}
 	messageAt, err := time.Parse(time.RFC3339Nano, message.Timestamp)

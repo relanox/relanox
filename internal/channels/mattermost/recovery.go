@@ -3,6 +3,7 @@ package mattermost
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 
 	mm "github.com/mattermost/mattermost/server/public/model"
@@ -46,7 +47,7 @@ func (c *Channel) recoverHistory(ctx context.Context, saved *cursor) error {
 	budget := historyChannelsPerSession
 	for i := range saved.Recovery.Channels {
 		channel := &saved.Recovery.Channels[i]
-		if !common.Contains(c.host.BoundChatIDs(), channel.ChannelID) {
+		if !slices.Contains(c.host.BoundChatIDs(), channel.ChannelID) {
 			channel.Done = true
 		}
 		if channel.Done {
@@ -67,7 +68,7 @@ func (c *Channel) recoverHistory(ctx context.Context, saved *cursor) error {
 		saved.Watermarks = map[string]int64{}
 	}
 	for _, channel := range saved.Recovery.Channels {
-		if common.Contains(c.host.BoundChatIDs(), channel.ChannelID) {
+		if slices.Contains(c.host.BoundChatIDs(), channel.ChannelID) {
 			saved.Watermarks[channel.ChannelID] = max(saved.Watermarks[channel.ChannelID], channel.HighWaterMS)
 		}
 	}

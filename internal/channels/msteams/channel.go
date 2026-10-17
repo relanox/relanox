@@ -7,6 +7,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -139,7 +140,7 @@ func (c *Channel) valid(data targetData, chatID string) bool {
 
 func (c *Channel) serviceURL(value string) bool {
 	u, err := url.Parse(value)
-	return err == nil && validEndpoint(value) && u.RawQuery == "" && common.Contains(c.config.TrustedServiceOrigins, common.Origin(value))
+	return err == nil && validEndpoint(value) && u.RawQuery == "" && slices.Contains(c.config.TrustedServiceOrigins, common.Origin(value))
 }
 
 func (c *Channel) conversationKey(chatID string) string {
@@ -246,11 +247,11 @@ func (c *Channel) activities(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 		return
 	}
-	if !common.Contains(c.account.AllowedSenders, input.From.ID) {
+	if !slices.Contains(c.account.AllowedSenders, input.From.ID) {
 		w.WriteHeader(200)
 		return
 	}
-	if common.Contains([]string{"message", "conversationUpdate", "installationUpdate"}, input.Type) {
+	if slices.Contains([]string{"message", "conversationUpdate", "installationUpdate"}, input.Type) {
 		data := targetData{AppID: c.config.AppID, ServiceURL: input.ServiceURL, ConversationID: input.Conversation.ID, TenantID: c.config.TenantID, BotID: c.config.BotID, UserID: input.From.ID, Personal: input.Conversation.Type == "personal"}
 		if err = common.SaveState(r.Context(), c.host.State(), c.conversationKey(input.Conversation.ID), data, nil); err != nil {
 			w.WriteHeader(503)
@@ -349,7 +350,7 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if len(input.Chunk.RichText) > 0 {
 		rich, err := c.richAttachment(ctx, input)
 		if err != nil {
-			if common.Contains([]string{"media_publication_unavailable", "invalid_publication_url", "rich_text_limit_exceeded"}, err.Error()) {
+			if slices.Contains([]string{"media_publication_unavailable", "invalid_publication_url", "rich_text_limit_exceeded"}, err.Error()) {
 				return common.Reject(err.Error()), nil
 			}
 			return common.Failure(err, true), nil

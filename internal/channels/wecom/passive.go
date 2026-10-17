@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
@@ -118,7 +119,7 @@ func appendImage(images []passiveImage, input model.SendInput) ([]passiveImage, 
 		return images, ""
 	}
 	media := input.Media
-	if media.Reference.Kind != model.Image || !common.Contains([]string{"image/png", "image/jpeg"}, media.Reference.MIMEType) {
+	if media.Reference.Kind != model.Image || !slices.Contains([]string{"image/png", "image/jpeg"}, media.Reference.MIMEType) {
 		return nil, "unsupported_callback_media"
 	}
 	if len(media.Data) == 0 || len(media.Data) > 10*1024*1024 || len(images) >= 10 {

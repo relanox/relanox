@@ -6,6 +6,7 @@ import (
 	"errors"
 	"html"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,7 +31,7 @@ func validMXC(value id.ContentURIString) (id.ContentURI, error) {
 }
 
 func (c *Channel) receive(ctx context.Context, client *mautrix.Client, roomID string, message *event.Event) error {
-	if message.Type != event.EventMessage || message.Sender == client.UserID || !common.Contains(c.account.AllowedSenders, string(message.Sender)) {
+	if message.Type != event.EventMessage || message.Sender == client.UserID || !slices.Contains(c.account.AllowedSenders, string(message.Sender)) {
 		return nil
 	}
 	var content event.MessageEventContent

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -128,12 +129,12 @@ func (c *Channel) session(ctx context.Context) error {
 func (c *Channel) prepareBoundStarts(saved *cursor) {
 	bound := c.host.BoundChatIDs()
 	for id := range saved.Watermarks {
-		if !common.Contains(bound, id) {
+		if !slices.Contains(bound, id) {
 			delete(saved.Watermarks, id)
 		}
 	}
 	for id := range saved.BoundStarts {
-		if !common.Contains(bound, id) {
+		if !slices.Contains(bound, id) {
 			delete(saved.BoundStarts, id)
 		}
 	}
@@ -262,7 +263,7 @@ func (c *Channel) receivePosted(ctx context.Context, post *mm.Post, saved *curso
 	if err := c.receive(ctx, post, saved.Identity); err != nil {
 		return err
 	}
-	if common.Contains(c.host.BoundChatIDs(), post.ChannelId) {
+	if slices.Contains(c.host.BoundChatIDs(), post.ChannelId) {
 		if saved.Watermarks == nil {
 			saved.Watermarks = map[string]int64{}
 		}
