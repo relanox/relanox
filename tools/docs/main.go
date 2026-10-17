@@ -47,14 +47,18 @@ type view struct {
 func main() {
 	source := flag.String("source", "docs", "Markdown source directory")
 	out := flag.String("out", "docs/site", "Output directory")
+	redirectBase := flag.String("redirect-base", "", "Publish redirects to this documentation site instead of page content")
 	flag.Parse()
-	if err := build(*source, *out); err != nil {
+	if err := build(*source, *out, *redirectBase); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func build(source, out string) error {
+func build(source, out, redirectBase string) error {
+	if err := validateRedirectBase(redirectBase); err != nil {
+		return err
+	}
 	pages, err := readPages(source)
 	if err != nil {
 		return err
@@ -72,9 +76,17 @@ func build(source, out string) error {
 		return err
 	}
 	for _, current := range pages {
-		if err = writePage(out, current, pages); err != nil {
+		if redirectBase == "" {
+			err = writePage(out, current, pages)
+		} else {
+			err = writeRedirect(out, current.Path, redirectBase+current.Path)
+		}
+		if err != nil {
 			return err
 		}
+	}
+	if err = writeLegacyRedirects(out, redirectBase); err != nil {
+		return err
 	}
 	fmt.Printf("Built %d documentation pages in %s\n", len(pages), out)
 	return nil

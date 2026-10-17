@@ -2,6 +2,8 @@
 
 [简体中文](README.zh-CN.md)
 
+[Documentation](https://relanox.github.io/en/quickstart.html)
+
 Relanox connects native messaging channels to existing dot, Grok and Muse agents.
 The Go service stores accepted messages, media and outbound work in SQLite or
 PostgreSQL using [Ent](https://entgo.io/). It preserves native reply context,
