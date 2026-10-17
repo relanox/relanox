@@ -130,7 +130,7 @@ func (c *CallbackCrypto) Encrypt(plain []byte, timestamp, nonce string) (string,
 
 // DecryptFile uses the independent key on each media resource, not the bot key.
 func DecryptFile(encrypted []byte, encodedKey string) ([]byte, error) {
-	key, err := base64.StdEncoding.DecodeString(encodedKey)
+	key, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(encodedKey, "="))
 	if err != nil {
 		return nil, errors.New("invalid_media_key")
 	}
