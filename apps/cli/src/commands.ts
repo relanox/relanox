@@ -11,6 +11,7 @@ import { readConfig } from './config.js'
 import type { AppConfig } from './config.js'
 import { startRuntime, validateApp } from './runtime.js'
 import { discoverConversations } from './discovery.js'
+import { addWechatLogin } from './wechat-login.js'
 
 export function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`)
@@ -238,8 +239,8 @@ export function createProgram(): Command {
   const program = new Command()
     .name('relanox')
     .version('0.1.0')
-    .description('Connect chat apps to dot or Grok Bot')
-    .requiredOption('-c, --config <path>', 'JSON configuration path')
+    .description('Connect chat apps to dot, Grok Bot or Muse')
+    .option('-c, --config <path>', 'JSON configuration path')
     .exitOverride()
     .configureOutput({ writeErr() {} })
 
@@ -317,5 +318,6 @@ export function createProgram(): Command {
   addStatus(program)
   addRecovery(program)
   addDiscovery(program)
+  addWechatLogin(program)
   return program
 }

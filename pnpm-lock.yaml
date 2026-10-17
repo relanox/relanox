@@ -244,6 +244,9 @@ importers:
       proper-lockfile:
         specifier: 4.1.2
         version: 4.1.2
+      qrcode-terminal:
+        specifier: 0.12.0
+        version: 0.12.0
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -254,6 +257,9 @@ importers:
       '@relanox/agent-grok':
         specifier: workspace:*
         version: link:../../plugins/agent-grok
+      '@relanox/agent-muse':
+        specifier: workspace:*
+        version: link:../../plugins/agent-muse
       '@relanox/channel-dingtalk':
         specifier: workspace:*
         version: link:../../plugins/channel-dingtalk
@@ -293,6 +299,9 @@ importers:
       '@relanox/channel-telegram':
         specifier: workspace:*
         version: link:../../plugins/channel-telegram
+      '@relanox/channel-wechat':
+        specifier: workspace:*
+        version: link:../../plugins/channel-wechat
       '@relanox/channel-wecom':
         specifier: workspace:*
         version: link:../../plugins/channel-wecom
@@ -314,6 +323,9 @@ importers:
       '@types/proper-lockfile':
         specifier: 4.1.4
         version: 4.1.4
+      '@types/qrcode-terminal':
+        specifier: 0.12.2
+        version: 0.12.2
       '@types/ws':
         specifier: 8.18.2
         version: 8.18.2
@@ -425,6 +437,34 @@ importers:
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: 2.3.1
+        version: 2.3.1
+      '@relanox/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@relanox/storage-sqlite':
+        specifier: workspace:*
+        version: link:../storage-sqlite
+
+  plugins/agent-muse:
+    dependencies:
+      '@modelcontextprotocol/server':
+        specifier: 2.3.1
+        version: 2.3.1
+      '@relanox/agent-mcp':
+        specifier: workspace:*
+        version: link:../../packages/agent-mcp
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      muse-client:
+        specifier: 0.1.0
+        version: 0.1.0
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -761,6 +801,18 @@ importers:
       '@relanox/markdown':
         specifier: workspace:*
         version: link:../../packages/markdown
+      '@relanox/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
+  plugins/channel-wechat:
+    dependencies:
+      '@relanox/channel-media':
+        specifier: workspace:*
+        version: link:../../packages/channel-media
       '@relanox/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -2339,6 +2391,9 @@ packages:
   '@types/proper-lockfile@4.1.4':
     resolution: {integrity: sha512-uo2ABllncSqg9F1D4nugVl9v93RmjxF6LJzQLMLDdPaXCUIDPeOJ21Gbqi43xNKzBi/WQ0Q0dICqufzQbMjipQ==}
 
+  '@types/qrcode-terminal@0.12.2':
+    resolution: {integrity: sha512-v+RcIEJ+Uhd6ygSQ0u5YYY7ZM+la7GgPbs0V/7l/kFs2uO4S8BcIUEMoP7za4DNIqNnUD5npf0A/7kBhrCKG5Q==}
+
   '@types/retry@0.12.5':
     resolution: {integrity: sha512-3xSjTp3v03X/lSQLkczaN9UIEwJMoMCA1+Nb5HfbJEQWogdeQIyVtTvxPXDQjZ5zws8rFQfVfRdz03ARihPJgw==}
 
@@ -3339,6 +3394,10 @@ packages:
   muggle-string@0.4.1:
     resolution: {integrity: sha512-VNTrAak/KhO2i8dqqnqnAHOa3cYBwXEZe9h+D5h/1ZqFSTEFHdM65lR7RoIqq3tBBYavsOXV84NoHXZ0AkPyqQ==}
 
+  muse-client@0.1.0:
+    resolution: {integrity: sha512-C1xYgF0RXfvUN5d8SwMvZZAqo3NTQXwftLw0FjQqXgE8HyRMXizUhVW62Zwq4qmX/KrzhcE0lw1lgVr2W14cMg==}
+    engines: {node: '>=22.18.0'}
+
   nanoid@3.3.20:
     resolution: {integrity: sha512-uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -3536,6 +3595,10 @@ packages:
   qified@0.10.1:
     resolution: {integrity: sha512-+Owyggi9IxT1ePKGafcI87ubSmxol6smwJ+RAHDQlx9+9cPwFWDiKFFCPuWhr9ignlGpZ9vDQLw67N4dcTVFEA==}
     engines: {node: '>=20'}
+
+  qrcode-terminal@0.12.0:
+    resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
+    hasBin: true
 
   quick-format-unescaped@4.0.4:
     resolution: {integrity: sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg==}
@@ -4947,6 +5010,8 @@ snapshots:
     dependencies:
       '@types/retry': 0.12.5
 
+  '@types/qrcode-terminal@0.12.2': {}
+
   '@types/retry@0.12.5': {}
 
   '@types/simple-oauth2@5.0.8': {}
@@ -5895,6 +5960,13 @@ snapshots:
 
   muggle-string@0.4.1: {}
 
+  muse-client@0.1.0:
+    dependencies:
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   nanoid@3.3.20: {}
 
   natural-compare@1.4.0: {}
@@ -6082,6 +6154,8 @@ snapshots:
   qified@0.10.1:
     dependencies:
       hookified: 2.2.0
+
+  qrcode-terminal@0.12.0: {}
 
   quick-format-unescaped@4.0.4: {}
 

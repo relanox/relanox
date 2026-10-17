@@ -4,6 +4,7 @@ import { CoreError } from '@relanox/core'
 import { PublicUrlError } from '@relanox/sdk'
 import { PluginError } from './plugin-manifest.js'
 import { createProgram } from './commands.js'
+import { WechatLoginError } from './wechat-login.js'
 
 try {
   await createProgram().parseAsync(process.argv)
@@ -14,6 +15,7 @@ try {
     let errorCode = 'command_failed'
     if (
       error instanceof PluginError ||
+      error instanceof WechatLoginError ||
       error instanceof PublicUrlError ||
       (error instanceof CoreError && error.code === 'public_url_required')
     ) {

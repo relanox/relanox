@@ -3,7 +3,9 @@ import { expect, test } from 'vitest'
 import { appConfigSchema } from '../src/config.js'
 import { cli, fixture } from './fixture.js'
 
-test('the shipped all-channel example validates every native factory and both agents without opening storage', async () => {
+// Protect the shipped plugin set against missing CLI dependencies or stale examples.
+// Plugin-local tests do not exercise CLI package resolution; no production seam is needed.
+test('the shipped all-channel example validates every native factory and agent without opening storage', async () => {
   const value = await fixture()
   try {
     const input: unknown = JSON.parse(
@@ -30,12 +32,13 @@ test('the shipped all-channel example validates every native factory and both ag
       'signal',
       'slack',
       'telegram',
+      'wechat',
       'wecom',
       'whatsapp'
     ])
     expect(
       config.relay.endpoints.map((endpoint) => endpoint.agent).toSorted()
-    ).toEqual(['dot', 'grok'])
+    ).toEqual(['dot', 'grok', 'muse'])
     await value.save({
       ...config,
       relay: {
@@ -51,8 +54,8 @@ test('the shipped all-channel example validates every native factory and both ag
     expect(validated.stderr).toBe('')
     expect(JSON.parse(validated.stdout)).toEqual({
       ok: true,
-      accounts: 15,
-      endpoints: 2
+      accounts: 16,
+      endpoints: 3
     })
     await expect(access(value.filename)).rejects.toThrow()
   } finally {

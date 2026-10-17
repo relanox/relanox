@@ -18,11 +18,13 @@
     "@relanox/sdk": "workspace:*",
     "commander": "15.0.0",
     "proper-lockfile": "4.1.2",
+    "qrcode-terminal": "0.12.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@relanox/agent-dot": "workspace:*",
     "@relanox/agent-grok": "workspace:*",
+    "@relanox/agent-muse": "workspace:*",
     "@relanox/channel-dingtalk": "workspace:*",
     "@relanox/channel-discord": "workspace:*",
     "@relanox/channel-feishu": "workspace:*",
@@ -36,6 +38,7 @@
     "@relanox/channel-signal": "workspace:*",
     "@relanox/channel-slack": "workspace:*",
     "@relanox/channel-telegram": "workspace:*",
+    "@relanox/channel-wechat": "workspace:*",
     "@relanox/channel-wecom": "workspace:*",
     "@relanox/channel-whatsapp": "workspace:*",
     "@relanox/observability-standard": "workspace:*",
@@ -43,6 +46,7 @@
     "@relanox/storage-postgres": "workspace:*",
     "@relanox/storage-sqlite": "workspace:*",
     "@types/proper-lockfile": "4.1.4",
+    "@types/qrcode-terminal": "0.12.2",
     "@types/ws": "8.18.2",
     "ws": "8.22.0"
   },
