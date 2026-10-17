@@ -123,8 +123,10 @@ func (*discoveryHost) State() model.StateStore         { return nil }
 func (*discoveryHost) Observer() model.Observer        { return nil }
 func (*discoveryHost) MountHTTP(model.HTTPRoute) error { return problem("discovery_http_forbidden") }
 func (*discoveryHost) BoundChatIDs() []string          { return nil }
-func (*discoveryHost) MaxMediaBytes() int64            { return 0 }
-func (*discoveryHost) Media() model.ChannelMediaHost   { return nil }
+
+func (*discoveryHost) BoundAddresses() []model.ChannelAddress { return nil }
+func (*discoveryHost) MaxMediaBytes() int64                   { return 0 }
+func (*discoveryHost) Media() model.ChannelMediaHost          { return nil }
 func (*discoveryHost) Ingest(context.Context, model.IngestInput) (model.IngestReceipt, error) {
 	return model.IngestReceipt{}, problem("discovery_forwarding_forbidden")
 }
