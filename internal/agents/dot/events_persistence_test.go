@@ -36,14 +36,7 @@ func TestPersistedEventsVerifyRotateAndClassifyNativeCallbacks(t *testing.T) {
 	secret := "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
 	params := subscriptionParams(secret)
 	receiptData := h.eventCall(t, token, "events/subscribe", params)
-	var receipt subscriptionResult
-	if json.Unmarshal(receiptData, &receipt) != nil || receipt.ID == "" || receipt.Truncated || receipt.Cursor != nil {
-		t.Fatalf("invalid native subscription receipt %s", receiptData)
-	}
-	expiry, parseErr := time.Parse(time.RFC3339Nano, receipt.RefreshBefore)
-	if parseErr != nil || time.Until(expiry) > 24*time.Hour || time.Until(expiry) < 23*time.Hour {
-		t.Fatal("native subscription TTL was not capped before duration conversion")
-	}
+	assertSubscriptionReceipt(t, receiptData)
 	if callback.challenges.Load() != 1 {
 		t.Fatal("callback was not verified")
 	}
@@ -269,4 +262,16 @@ func newCallbackPeer(t *testing.T) *callbackPeer {
 
 func eventInput(endpoint model.EndpointConfig) model.DispatchInput {
 	return model.DispatchInput{Request: model.InboundSnapshot{RequestID: "request-native", AcceptedAt: time.Date(2026, 10, 17, 1, 2, 3, 4000000, time.UTC), Text: "message-native", Context: json.RawMessage(`{"native":"value"}`), Endpoint: endpoint, Channel: model.ChannelAddress{ID: "channel-native", Platform: model.Telegram, AccountID: "account-native", ChatID: "chat-native"}, SenderID: "sender-native"}}
+}
+
+func assertSubscriptionReceipt(t *testing.T, receiptData json.RawMessage) {
+	t.Helper()
+	var receipt subscriptionResult
+	if json.Unmarshal(receiptData, &receipt) != nil || receipt.ID == "" || receipt.Truncated || receipt.Cursor != nil {
+		t.Fatalf("invalid native subscription receipt %s", receiptData)
+	}
+	expiry, parseErr := time.Parse(time.RFC3339Nano, receipt.RefreshBefore)
+	if parseErr != nil || time.Until(expiry) > 24*time.Hour || time.Until(expiry) < 23*time.Hour {
+		t.Fatal("native subscription TTL was not capped before duration conversion")
+	}
 }

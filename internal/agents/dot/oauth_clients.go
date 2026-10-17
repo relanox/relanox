@@ -45,30 +45,9 @@ func nativeRedirect(value string) bool {
 }
 
 func (c clientRegistry) register(metadata oauthClient) (oauthClient, error) {
-	if metadata.ClientName == "" {
-		metadata.ClientName = "ChatGPT"
-	}
-	if metadata.AuthMethod == "" {
-		metadata.AuthMethod = "none"
-	}
-	if metadata.GrantTypes == nil {
-		metadata.GrantTypes = []string{"authorization_code", "refresh_token"}
-	}
-	if metadata.ResponseTypes == nil {
-		metadata.ResponseTypes = []string{"code"}
-	}
-	if len(metadata.ClientName) > 100 || metadata.AuthMethod != "none" || len(metadata.RedirectURIs) < 1 || len(metadata.RedirectURIs) > 10 || len(metadata.ResponseTypes) != 1 || metadata.ResponseTypes[0] != "code" || len(metadata.GrantTypes) < 1 || len(metadata.GrantTypes) > 2 || !slices.Contains(metadata.GrantTypes, "authorization_code") {
+	metadata = defaultClientMetadata(metadata)
+	if !validClientMetadata(metadata) {
 		return oauthClient{}, oauthFailure("invalid_client_metadata")
-	}
-	for _, grant := range metadata.GrantTypes {
-		if grant != "authorization_code" && grant != "refresh_token" {
-			return oauthClient{}, oauthFailure("invalid_client_metadata")
-		}
-	}
-	for _, redirect := range metadata.RedirectURIs {
-		if !nativeRedirect(redirect) {
-			return oauthClient{}, oauthFailure("invalid_client_metadata")
-		}
 	}
 	metadata.ClientID = ""
 	data, err := json.Marshal(clientRegistration{Metadata: metadata, ExpiresAt: time.Now().Add(clientLifetime).UnixMilli()})
@@ -81,6 +60,39 @@ func (c clientRegistry) register(metadata oauthClient) (oauthClient, error) {
 	}
 	metadata.ClientID = payload + "." + c.sign(payload)
 	return metadata, nil
+}
+
+func defaultClientMetadata(metadata oauthClient) oauthClient {
+	if metadata.ClientName == "" {
+		metadata.ClientName = "ChatGPT"
+	}
+	if metadata.AuthMethod == "" {
+		metadata.AuthMethod = "none"
+	}
+	if metadata.GrantTypes == nil {
+		metadata.GrantTypes = []string{"authorization_code", "refresh_token"}
+	}
+	if metadata.ResponseTypes == nil {
+		metadata.ResponseTypes = []string{"code"}
+	}
+	return metadata
+}
+
+func validClientMetadata(metadata oauthClient) bool {
+	if len(metadata.ClientName) > 100 || metadata.AuthMethod != "none" || len(metadata.RedirectURIs) < 1 || len(metadata.RedirectURIs) > 10 || len(metadata.ResponseTypes) != 1 || metadata.ResponseTypes[0] != "code" || len(metadata.GrantTypes) < 1 || len(metadata.GrantTypes) > 2 || !slices.Contains(metadata.GrantTypes, "authorization_code") {
+		return false
+	}
+	for _, grant := range metadata.GrantTypes {
+		if grant != "authorization_code" && grant != "refresh_token" {
+			return false
+		}
+	}
+	for _, redirect := range metadata.RedirectURIs {
+		if !nativeRedirect(redirect) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c clientRegistry) resolve(id string) (oauthClient, error) {

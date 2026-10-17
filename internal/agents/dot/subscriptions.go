@@ -87,14 +87,9 @@ func (a *Agent) subscribe(ctx context.Context, input *subscribeParams) (*subscri
 	if err != nil {
 		return nil, err
 	}
-	var old subscription
-	if entry != nil {
-		if json.Unmarshal(entry.Value, &old) != nil {
-			return nil, errors.New("invalid_subscription_state")
-		}
-		if old.OwnerConfig != a.ownerConfig {
-			old = subscription{}
-		}
+	old, err := a.previousOwnedSubscription(entry)
+	if err != nil {
+		return nil, err
 	}
 	now := time.Now()
 	ttl := 24 * time.Hour
@@ -102,13 +97,7 @@ func (a *Agent) subscribe(ctx context.Context, input *subscribeParams) (*subscri
 		ttl = time.Duration(min(*input.TTLMS, int64(ttl/time.Millisecond))) * time.Millisecond
 	}
 	sub := subscription{ID: id, Owner: a.endpoint.ID, EndpointID: a.endpoint.ID, OwnerConfig: a.ownerConfig, Name: eventName, Arguments: map[string]any{}, URL: destination, Secret: input.Delivery.Secret, ExpiresAt: now.Add(ttl).UnixMilli(), VerifiedAt: now.UnixMilli()}
-	if old.ID != "" && old.Secret != sub.Secret {
-		sub.PreviousSecret = old.Secret
-		sub.PreviousUntil = now.Add(time.Minute).UnixMilli()
-	} else if old.PreviousSecret != "" && old.PreviousUntil > now.UnixMilli() {
-		sub.PreviousSecret = old.PreviousSecret
-		sub.PreviousUntil = old.PreviousUntil
-	}
+	applySigningKeyOverlap(&sub, old, now)
 	if old.ID == "" || old.ExpiresAt <= now.UnixMilli() || old.Secret != sub.Secret || now.UnixMilli()-old.VerifiedAt > 60000 {
 		if err = a.verifySubscription(ctx, sub); err != nil {
 			return nil, err
@@ -138,6 +127,32 @@ func (a *Agent) subscribe(ctx context.Context, input *subscribeParams) (*subscri
 		return nil, &jsonrpc.Error{Code: -32000, Message: "subscription_conflict"}
 	}
 	return &subscriptionResult{ID: id, RefreshBefore: expires.UTC().Format(time.RFC3339Nano)}, nil
+}
+
+func (a *Agent) previousOwnedSubscription(entry *model.StateEntry) (subscription, error) {
+	if entry == nil {
+		return subscription{}, nil
+	}
+	var previous subscription
+	if json.Unmarshal(entry.Value, &previous) != nil {
+		return subscription{}, errors.New("invalid_subscription_state")
+	}
+	if previous.OwnerConfig != a.ownerConfig {
+		return subscription{}, nil
+	}
+	return previous, nil
+}
+
+func applySigningKeyOverlap(sub *subscription, old subscription, now time.Time) {
+	if old.ID != "" && old.Secret != sub.Secret {
+		sub.PreviousSecret = old.Secret
+		sub.PreviousUntil = now.Add(time.Minute).UnixMilli()
+		return
+	}
+	if old.PreviousSecret != "" && old.PreviousUntil > now.UnixMilli() {
+		sub.PreviousSecret = old.PreviousSecret
+		sub.PreviousUntil = old.PreviousUntil
+	}
 }
 
 func (a *Agent) verifySubscription(ctx context.Context, sub subscription) error {

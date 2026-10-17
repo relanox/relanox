@@ -30,48 +30,7 @@ import (
 func TestSendMessageRotatesCredentialsAndPreservesSession(t *testing.T) {
 	var refreshes atomic.Int32
 	var sends atomic.Int32
-	var server *httptest.Server
-	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/fetch_vms":
-			if r.Header.Get("X-API-Version") != "1.0.0" {
-				t.Error("API version missing")
-			}
-			if r.Header.Get("Authorization") == "Bearer old-access" {
-				w.WriteHeader(401)
-				return
-			}
-			if r.Header.Get("Authorization") != "Bearer new-access" {
-				t.Error("unexpected device token")
-				w.WriteHeader(401)
-				return
-			}
-			_, _ = io.WriteString(w, `{"vm_list":[{"vm_id":"vm-A","vm_name":"A","vm_ws_url":"wss://unused.example/vm","vm_auth_token":"vm-token","default":true}]}`)
-		case "/device_token/refresh":
-			refreshes.Add(1)
-			if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer hatch_refresh:old-refresh" {
-				t.Error("wrong token refresh request")
-			}
-			var body map[string]string
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body["device_id"] != "homelink-334455" || body["sdk_token"] != "sdk-secret" {
-				t.Error("wrong device identity")
-			}
-			_, _ = io.WriteString(w, `{"payload":{"access_token":"new-access","refresh_token":"hatch_refresh:new-refresh"}}`)
-		case "/v1/noise":
-			if r.URL.Query().Get("vm_id") != "vm-A" || r.Header.Get("Authorization") != "Bearer vm-token" {
-				t.Error("wrong Noise authentication")
-			}
-			peerChat(t, w, r, func(body []byte) {
-				var request map[string]string
-				if json.Unmarshal(body, &request) != nil || request["message"] != "payload" || request["session_id"] != "session-native" || request["output_modality"] != "text" {
-					t.Errorf("wrong chat body %s", body)
-				}
-				sends.Add(1)
-			}, false)
-		default:
-			w.WriteHeader(404)
-		}
-	}))
+	server := httptest.NewTLSServer(rotationHandler(t, &refreshes, &sends))
 	defer server.Close()
 	directory := pairedDirectory(t, server.URL)
 	options := Options{CredentialsDirectory: directory, HTTPClient: server.Client(), SessionID: "session-native"}
@@ -480,4 +439,49 @@ func peerRequestBody(data []byte) ([]byte, error) {
 		return nil, errProtocol
 	}
 	return getBytes(request, 4)
+}
+
+func rotationHandler(t *testing.T, refreshes, sends *atomic.Int32) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/fetch_vms":
+			if r.Header.Get("X-API-Version") != "1.0.0" {
+				t.Error("API version missing")
+			}
+			if r.Header.Get("Authorization") == "Bearer old-access" {
+				w.WriteHeader(401)
+				return
+			}
+			if r.Header.Get("Authorization") != "Bearer new-access" {
+				t.Error("unexpected device token")
+				w.WriteHeader(401)
+				return
+			}
+			_, _ = io.WriteString(w, `{"vm_list":[{"vm_id":"vm-A","vm_name":"A","vm_ws_url":"wss://unused.example/vm","vm_auth_token":"vm-token","default":true}]}`)
+		case "/device_token/refresh":
+			refreshes.Add(1)
+			if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer hatch_refresh:old-refresh" {
+				t.Error("wrong token refresh request")
+			}
+			var body map[string]string
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body["device_id"] != "homelink-334455" || body["sdk_token"] != "sdk-secret" {
+				t.Error("wrong device identity")
+			}
+			_, _ = io.WriteString(w, `{"payload":{"access_token":"new-access","refresh_token":"hatch_refresh:new-refresh"}}`)
+		case "/v1/noise":
+			if r.URL.Query().Get("vm_id") != "vm-A" || r.Header.Get("Authorization") != "Bearer vm-token" {
+				t.Error("wrong Noise authentication")
+			}
+			peerChat(t, w, r, func(body []byte) {
+				var request map[string]string
+				if json.Unmarshal(body, &request) != nil || request["message"] != "payload" || request["session_id"] != "session-native" || request["output_modality"] != "text" {
+					t.Errorf("wrong chat body %s", body)
+				}
+				sends.Add(1)
+			}, false)
+		default:
+			w.WriteHeader(404)
+		}
+	})
 }

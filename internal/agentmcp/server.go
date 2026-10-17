@@ -148,13 +148,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GuardHost(w http.ResponseWriter, r *http.Request) bool {
-	deployment, _ := url.Parse(s.Origin)
-	origin := r.Header.Get("Origin")
-	if r.Host != deployment.Host || r.URL.Host != "" && r.URL.Host != deployment.Host || origin != "" && !slices.Contains(s.Options.Config.AllowedOrigins, origin) {
+	if !s.allowedRequestOrigin(r) {
 		JSON(w, 403, map[string]string{"error": "forbidden_origin"})
 		return false
 	}
 	return true
+}
+
+func (s *Server) allowedRequestOrigin(r *http.Request) bool {
+	deployment, _ := url.Parse(s.Origin)
+	origin := r.Header.Get("Origin")
+	return r.Host == deployment.Host && (r.URL.Host == "" || r.URL.Host == deployment.Host) && (origin == "" || slices.Contains(s.Options.Config.AllowedOrigins, origin))
 }
 
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) bool {

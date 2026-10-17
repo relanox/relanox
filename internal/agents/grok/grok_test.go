@@ -21,46 +21,7 @@ import (
 // records actual traffic and implements no Relanox routing or persistence.
 func TestRoutineDispatchProjectsExactRequestAndRotatesReferences(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		index := calls.Add(1)
-		if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer rotated" {
-			t.Error("invalid Routine credentials")
-		}
-		var envelope struct {
-			Content string `json:"content"`
-			Source  string `json:"source"`
-			SentAt  string `json:"sentAt"`
-		}
-		if json.NewDecoder(r.Body).Decode(&envelope) != nil || envelope.Source != "relanox" || envelope.SentAt != "2026-10-17T01:02:03.004Z" {
-			t.Error("invalid Routine envelope")
-		}
-		var content map[string]json.RawMessage
-		if json.Unmarshal([]byte(envelope.Content), &content) != nil {
-			t.Error("invalid content JSON")
-		}
-		var id string
-		_ = json.Unmarshal(content["requestId"], &id)
-		if index == 1 && id != "request-first" || index == 2 && id != "request-second" {
-			t.Errorf("lost exact request ID: %s", id)
-		}
-		var source struct {
-			Channel  model.ChannelAddress `json:"channel"`
-			SenderID string               `json:"senderId"`
-		}
-		_ = json.Unmarshal(content["source"], &source)
-		if source.Channel.ChatID != "native-chat-9001" || source.Channel.ID != "authorized-channel" || source.SenderID != "sender-7" {
-			t.Errorf("wrong source %+v", source)
-		}
-		if _, ok := content["endpoint"]; ok {
-			t.Error("leaked endpoint configuration")
-		}
-		var attachments []map[string]any
-		_ = json.Unmarshal(content["attachments"], &attachments)
-		if len(attachments) != 1 || attachments[0]["id"] != "media-native" || attachments[0]["data"] != nil {
-			t.Error("invalid media projection")
-		}
-		w.WriteHeader(202)
-	}))
+	server := httptest.NewTLSServer(routineProjectionPeer(t, &calls))
 	defer server.Close()
 	t.Setenv("GROK_ROUTINE", server.URL)
 	t.Setenv("GROK_AUTH", "Bearer original")
@@ -143,4 +104,48 @@ func routineEndpoint(t *testing.T) model.EndpointConfig {
 
 func routineInput(endpoint model.EndpointConfig) model.DispatchInput {
 	return model.DispatchInput{Request: model.InboundSnapshot{RequestID: "request-first", AcceptedAt: time.Date(2026, 10, 17, 1, 2, 3, 4000000, time.UTC), Endpoint: endpoint, Channel: model.ChannelAddress{ID: "authorized-channel", Platform: model.Telegram, AccountID: "account-1", ChatID: "native-chat-9001"}, SenderID: "sender-7", Text: "message", Context: json.RawMessage(`{"native_id":"9001"}`), Attachments: []model.MediaReference{{ID: "media-native", Kind: model.Image, MIMEType: "image/png", FileName: "a.png", Size: 3, SHA256: "native-digest"}}}}
+}
+
+func routineProjectionPeer(t *testing.T, calls *atomic.Int32) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		index := calls.Add(1)
+		if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer rotated" {
+			t.Error("invalid Routine credentials")
+		}
+		var envelope struct {
+			Content string `json:"content"`
+			Source  string `json:"source"`
+			SentAt  string `json:"sentAt"`
+		}
+		if json.NewDecoder(r.Body).Decode(&envelope) != nil || envelope.Source != "relanox" || envelope.SentAt != "2026-10-17T01:02:03.004Z" {
+			t.Error("invalid Routine envelope")
+		}
+		var content map[string]json.RawMessage
+		if json.Unmarshal([]byte(envelope.Content), &content) != nil {
+			t.Error("invalid content JSON")
+		}
+		var id string
+		_ = json.Unmarshal(content["requestId"], &id)
+		if index == 1 && id != "request-first" || index == 2 && id != "request-second" {
+			t.Errorf("lost exact request ID: %s", id)
+		}
+		var source struct {
+			Channel  model.ChannelAddress `json:"channel"`
+			SenderID string               `json:"senderId"`
+		}
+		_ = json.Unmarshal(content["source"], &source)
+		if source.Channel.ChatID != "native-chat-9001" || source.Channel.ID != "authorized-channel" || source.SenderID != "sender-7" {
+			t.Errorf("wrong source %+v", source)
+		}
+		if _, ok := content["endpoint"]; ok {
+			t.Error("leaked endpoint configuration")
+		}
+		var attachments []map[string]any
+		_ = json.Unmarshal(content["attachments"], &attachments)
+		if len(attachments) != 1 || attachments[0]["id"] != "media-native" || attachments[0]["data"] != nil {
+			t.Error("invalid media projection")
+		}
+		w.WriteHeader(202)
+	})
 }
