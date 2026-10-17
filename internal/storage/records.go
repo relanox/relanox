@@ -44,6 +44,7 @@ func digest(value any) string {
 }
 
 func messageDigest(message model.OutboundMessage) string {
+	message.MessageID = ""
 	message.CreatedAt = time.Time{}
 	return digest(message)
 }

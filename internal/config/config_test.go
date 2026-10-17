@@ -27,6 +27,7 @@ func TestDecodeRejectsInvalidRelationsWithoutLeakingInput(t *testing.T) {
 		{"empty_allowlist", strings.Replace(validConfig, `["sender"]`, `[]`, 1), "accounts[0].allowedSenders", "nonempty_allowlist_required"},
 		{"unknown_field", strings.Replace(validConfig, `"accounts":`, `"unconfigured-secret":"value","accounts":`, 1), "config", "invalid_json_or_unknown_field"},
 		{"legacy_storage", strings.Replace(validConfig, `"driver":"sqlite"`, `"plugin":"sqlite"`, 1), "config", "invalid_json_or_unknown_field"},
+		{"short_dispatch_lease", strings.Replace(validConfig, `"storage":`, `"queue":{"leaseSeconds":29},"storage":`, 1), "queue", "invalid_limits"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -179,10 +179,7 @@ func enqueueNew(ctx context.Context, tx *ent.Tx, input model.EnqueueMessageInput
 
 func matchesInitial(input model.EnqueueMessageInput, conv model.ConversationRecord) bool {
 	r := input.Outbound
-	if r.DeliveryID == "" || r.MessageID == "" || r.ChannelID != input.ChannelID || r.MessageID != input.Message.MessageID || !equal(r.Reply, input.Message.Reply) || !r.CreatedAt.Equal(input.Message.CreatedAt) || !equal(r.Endpoint, conv.Endpoint) || !targetMatches(r.Target, conv.Address) {
-		return false
-	}
-	if r.CurrentChunk != 0 || len(r.Receipts) != 0 || r.Status != model.DeliveryPending || r.Version != 1 || r.Attempts != 0 || r.Lease != nil || r.RedactedAt != nil || len(r.Chunks) == 0 {
+	if !matchesMessageIdentity(input, conv) || !initialDeliveryState(r) {
 		return false
 	}
 	var refs []model.MediaReference
@@ -195,6 +192,15 @@ func matchesInitial(input model.EnqueueMessageInput, conv model.ConversationReco
 		refs = append(refs, chunkMedia(chunk)...)
 	}
 	return equal(refs, input.Message.Attachments) || len(refs) == 0 && len(input.Message.Attachments) == 0
+}
+
+func matchesMessageIdentity(input model.EnqueueMessageInput, conv model.ConversationRecord) bool {
+	r := input.Outbound
+	return r.DeliveryID != "" && r.MessageID != "" && r.ChannelID == input.ChannelID && r.MessageID == input.Message.MessageID && equal(r.Reply, input.Message.Reply) && r.CreatedAt.Equal(input.Message.CreatedAt) && equal(r.Endpoint, conv.Endpoint) && targetMatches(r.Target, conv.Address)
+}
+
+func initialDeliveryState(r model.OutboundRecord) bool {
+	return r.CurrentChunk == 0 && len(r.Receipts) == 0 && r.Status == model.DeliveryPending && r.Version == 1 && r.Attempts == 0 && r.Lease == nil && r.RedactedAt == nil && len(r.Chunks) > 0
 }
 
 func chunkMedia(chunk model.DeliveryChunk) []model.MediaReference {
