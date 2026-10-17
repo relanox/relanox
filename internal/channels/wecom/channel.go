@@ -98,8 +98,9 @@ func New(host model.ChannelHost, account model.AccountConfig, options common.Opt
 func (c *Channel) Kind() model.ChannelKind { return model.WeCom }
 
 func (c *Channel) Capabilities() model.ChannelCapabilities {
-	capabilities := model.ChannelCapabilities{Transport: model.BothTransports, MaxTextLength: 20 * 1024, LengthUnit: model.UTF8, Media: model.MediaCapabilities{Receive: []model.MediaKind{model.Image, model.Video, model.File}, Send: common.AllMedia()}}
+	capabilities := model.ChannelCapabilities{Transport: model.ConnectionTransport, MaxTextLength: 20 * 1024, LengthUnit: model.UTF8, Media: model.MediaCapabilities{Receive: []model.MediaKind{model.Image, model.Video, model.File}, Send: common.AllMedia()}}
 	if c.config.Mode == "webhook" {
+		capabilities.Transport = model.HTTPTransport
 		capabilities.MaxTextLengthPerMessage = 20 * 1024
 		capabilities.MaxChunksPerMessage = 11
 		capabilities.MaxAttachments = 10
