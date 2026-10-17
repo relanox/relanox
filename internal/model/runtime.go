@@ -171,8 +171,12 @@ type HTTPRoute struct {
 	Authorize    func(*http.Request) error
 }
 
-// Channel and Agent implementations receive scoped hosts, state and credentials
-// in their constructors. Start owns background connections until cancellation.
+// Channel and Agent implementations receive scoped hosts, state and credential
+// references in constructors that validate offline and mount explicit HTTP routes.
+// Start initiates connections and background loops, then returns; it must not block
+// for the service lifetime. Its context owns those loops until cancellation.
+// Close stops and joins workers within the supplied shutdown deadline. Validation
+// must remain independently usable without constructors or network connections.
 type Channel interface {
 	Kind() ChannelKind
 	Capabilities() ChannelCapabilities
