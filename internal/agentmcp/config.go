@@ -12,9 +12,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/transport"
@@ -53,13 +55,7 @@ func (c *Config) Validate(allowed ...string) error {
 	if c.Auth == "" {
 		c.Auth = allowed[0]
 	}
-	valid := false
-	for _, v := range allowed {
-		if c.Auth == v {
-			valid = true
-		}
-	}
-	if !valid {
+	if !slices.Contains(allowed, c.Auth) {
 		return errors.New("mcp.auth: unsupported_authentication")
 	}
 	if err := config.ValidateSecretRef(c.Token, "mcp.token"); err != nil {
@@ -97,25 +93,7 @@ func Opaque() string {
 	return base64.RawURLEncoding.EncodeToString(data[:])
 }
 
-func UUID() string {
-	var data [16]byte
-	if _, err := rand.Read(data[:]); err != nil {
-		panic("secure_random_unavailable")
-	}
-	data[6] = data[6]&15 | 64
-	data[8] = data[8]&63 | 128
-	return hexGroup(data[:4]) + "-" + hexGroup(data[4:6]) + "-" + hexGroup(data[6:8]) + "-" + hexGroup(data[8:10]) + "-" + hexGroup(data[10:])
-}
-
-func hexGroup(data []byte) string {
-	const digits = "0123456789abcdef"
-	out := make([]byte, len(data)*2)
-	for i, b := range data {
-		out[i*2] = digits[b>>4]
-		out[i*2+1] = digits[b&15]
-	}
-	return string(out)
-}
+func UUID() string { return uuid.NewString() }
 
 func JSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

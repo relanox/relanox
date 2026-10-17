@@ -147,20 +147,15 @@ func (s *Server) status(ctx context.Context, in statusInput) (*mcp.CallToolResul
 	if s.Options.StatusContext == nil {
 		return Envelope(result, false), nil
 	}
-	data, err := json.Marshal(result)
-	if err != nil {
-		return toolError("Status unavailable."), nil
-	}
-	var out map[string]any
-	if json.Unmarshal(data, &out) != nil {
-		return toolError("Status unavailable."), nil
-	}
+
 	extra, err := s.Options.StatusContext(ctx)
 	if err != nil {
 		return toolError("Status unavailable."), nil
 	}
-	out["connection"] = extra
-	return Envelope(out, false), nil
+	return Envelope(struct {
+		model.AgentStatus
+		Connection map[string]any `json:"connection"`
+	}{AgentStatus: result, Connection: extra}, false), nil
 }
 
 func (s *Server) read(ctx context.Context, in readInput) (*mcp.CallToolResult, error) {

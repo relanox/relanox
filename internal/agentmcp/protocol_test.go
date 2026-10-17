@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -300,4 +301,60 @@ func TestMediaCapabilitiesAreBoundAndRotateWithSecret(t *testing.T) {
 	if _, _, err = s.decodeTicket(r); err == nil {
 		t.Fatal("old signed ticket survived rotation")
 	}
+}
+
+// The status tool must keep its public fields when dot adds connection metadata.
+// Existing protocol tests stop at discovery or reject tool input. This exercises
+// actual MCP serialization; the host only supplies a fixed status snapshot and
+// does not implement JSON encoding, routing, authorization or persistence.
+func TestStatusWirePreservesFieldsWithConnectionMetadata(t *testing.T) {
+	t.Setenv("MCP_TOKEN", "token")
+	s := protocolServer("http://127.0.0.1:8787", "bearer", model.Dot)
+	s.Host = statusSnapshotScope{}
+	s.Options.StatusContext = func(context.Context) (map[string]any, error) {
+		return map[string]any{"endpointId": "endpoint-A", "eventName": "relanox.message_available", "activeSubscriptions": 2}, nil
+	}
+	s.registerTools()
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relanox_status","arguments":{},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	r := httptest.NewRequest("POST", s.Origin+"/agents/dot/mcp/endpoint-A", strings.NewReader(body))
+	setMCPHeaders(r)
+	r.Header.Set("Mcp-Method", "tools/call")
+	r.Header.Set("Mcp-Name", "relanox_status")
+	r.Header.Set("Authorization", "Bearer token")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	var response struct {
+		Result struct {
+			IsError    bool            `json:"isError"`
+			Structured json.RawMessage `json:"structuredContent"`
+			Content    []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != http.StatusOK || response.Result.IsError {
+		t.Fatalf("status response: %d %s (%v)", w.Code, w.Body.String(), err)
+	}
+	if len(response.Result.Content) != 1 {
+		t.Fatalf("expected one JSON text result: %s", w.Body.String())
+	}
+	var want map[string]any
+	if err := json.Unmarshal([]byte(`{"channels":[],"mediaLimits":{"maxBytes":1024,"maxTotalBytes":2048,"maxAttachments":2},"delivery":{"id":"delivery-A","channel":"channel-A","status":"sent"},"connection":{"endpointId":"endpoint-A","eventName":"relanox.message_available","activeSubscriptions":2}}`), &want); err != nil {
+		t.Fatal(err)
+	}
+	for _, data := range []json.RawMessage{response.Result.Structured, json.RawMessage(response.Result.Content[0].Text)} {
+		var fields map[string]any
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(fields, want) {
+			t.Fatalf("status fields changed: %s", data)
+		}
+	}
+}
+
+type statusSnapshotScope struct{ unavailableScope }
+
+func (statusSnapshotScope) Status(context.Context, model.StatusInput) (model.AgentStatus, error) {
+	return model.AgentStatus{MediaLimits: model.MediaLimits{MaxBytes: 1024, MaxTotalBytes: 2048, MaxAttachments: 2}, Delivery: &model.DeliverySummary{ID: "delivery-A", Channel: "channel-A", Status: model.DeliverySent}}, nil
 }
