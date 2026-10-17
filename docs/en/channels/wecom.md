@@ -52,7 +52,7 @@ For HTTP callback mode, start Relanox behind your public HTTPS address, then ent
 
 HTTP mode needs a real authenticated message callback and an available reply window. Configuring a chat ID alone cannot open a reply destination; `recipientTypes` applies only to WebSocket mode.
 
-Both modes require a public HTTPS address for dot or Grok MCP access.
+Both modes require a public HTTPS address for dot, Grok or Muse MCP access.
 
 ## Send your first message
 

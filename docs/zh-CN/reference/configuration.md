@@ -41,9 +41,9 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 默认监听地址和监控开关无需重复填写，生成器会省略这些默认值。不写 `server` 时，业务端口为 `127.0.0.1:8787`，管理端口为 `127.0.0.1:8788`；省略 `relay.observability` 即可启用标准日志和指标。只在部署需要时添加覆盖值；容器中需要设置 `server.host: "0.0.0.0"`。
 
-dot 和 Grok 的 MCP 连接都需要公网可访问的 HTTPS 地址，包括主动连接平台的渠道。将 `publicUrl` 设置为这个地址；切换渠道时会保留已填写的服务地址。
+dot、Grok 和 Muse 的 MCP 连接都需要公网可访问的 HTTPS 地址，包括主动连接平台的渠道。将 `publicUrl` 设置为这个地址；切换渠道时会保留已填写的服务地址。
 
-配置器加载时会在浏览器中生成 32 字节十六进制 MCP token，可以编辑或重新生成。将生成的准确值复制到服务器环境变量中；JSON 保留环境变量引用。Relanox 不会自动加载 `.env` 文件。dot 使用这个值作为 OAuth 授权密码，Grok 将它作为 URL token。手动配置仍可使用[快速开始](../getting-started.md)中的随机 token 命令。
+配置器加载时会在浏览器中生成 32 字节十六进制 MCP token，可以编辑或重新生成。将生成的准确值复制到服务器环境变量中；JSON 保留环境变量引用。Relanox 不会自动加载 `.env` 文件。dot 使用这个值作为 OAuth 授权密码，Grok 和 Muse 将它作为 URL token。手动配置仍可使用[快速开始](../getting-started.md)中的随机 token 命令。
 
 ## 公开地址只配置一次
 
@@ -64,7 +64,7 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 三个列表描述你的连接：
 
 - **账号**（`accounts`）：聊天平台上的机器人或服务账号，例如 Telegram bot。`config` 保存平台设置，`allowedSenders` 列出允许使用它的人。
-- **Agent 连接**（`endpoints`）：一个已连接的 dot 或 Grok Agent。`config` 保存 MCP 凭据以及通知这个 Agent 的方式。
+- **Agent 连接**（`endpoints`）：一个已连接的 dot、Grok 或 Muse Agent。`config` 保存 MCP 凭据以及通知这个 Agent 的方式。
 - **聊天绑定**（`bindings`）：把账号中的一个聊天连接到一个 Agent。这个聊天的消息发给所选 Agent，回信也发回这里。
 
 例如，以下绑定将 Telegram 聊天 `123456789` 交给名为 `agent-1` 的 Grok：
@@ -93,7 +93,7 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 
 绑定按聊天和话题精确匹配。省略 `threadId` 时仅匹配没有线程的消息。每个话题分别添加绑定。普通 Slack 频道或私聊消息省略 `threadId`；消息串内的回复使用该串真实根消息的时间戳作为 `threadId`，并为它配置精确绑定。账号的 `allowedSenders` 必填，至少包含一人；绑定中的可选 `allowedSenders` 进一步限制该聊天，发送者必须同时出现在两个名单中。ID 格式请按[对应平台的接入指南](../channels/index.md)填写。
 
-[完整示例](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) 包含十五个渠道和两种 Agent。复制需要的条目，然后替换其中的 ID、凭据和绑定。
+[完整示例](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) 包含十六个渠道和三种 Agent。复制需要的条目，然后替换其中的 ID、凭据和绑定。
 
 ## 用环境变量保存凭据
 
@@ -105,7 +105,7 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 
 把变量提供给运行 Relanox 的进程。终端启动读取当前终端的环境变量；Compose 使用配置的 `env_file`。源码启动时，需先将 `.env` 中的值载入进程环境。Google Chat 的服务账号变量保存完整的服务账号 JSON。
 
-不同 Agent 连接使用独立 MCP token。Routine 的 Authorization 保留平台提供的完整值，它的 URL 也应作为密钥保护。[连接 Agent](../agents.md) 给出 dot 和 Grok 的具体设置。
+不同 Agent 连接使用独立 MCP token。Routine 的 Authorization 保留平台提供的完整值，它的 URL 也应作为密钥保护。[连接 Agent](../agents.md) 给出 dot、Grok 和 Muse 的具体设置。
 
 轮换 token 时更新服务管理器的环境设置并重启。有排队回信时，保持原来的 bot/账号身份。更换 Grok Routine 时，使用新的环境变量名和 Agent 连接，已有消息仍然引用原来的设置。
 
@@ -117,7 +117,7 @@ Relanox 用它校验 MCP Host、生成附件下载链接，并推导 Google Chat
 
 ## 可选的腾讯云语音识别 {#speech-to-text}
 
-如需将发给 **dot 或 Grok** 的语音转成文字，把下面的片段合并到现有 `relanox.json`，保留原来的 `relay`、`publicUrl` 等配置。`middleware` 是顶层的可选列表，默认空列表；配置器暂不生成此项：
+如需将发给 **dot、Grok 或 Muse** 的语音转成文字，把下面的片段合并到现有 `relanox.json`，保留原来的 `relay`、`publicUrl` 等配置。`middleware` 是顶层的可选列表，默认空列表；配置器暂不生成此项：
 
 ```json
 {
@@ -283,7 +283,7 @@ node apps/cli/dist/main.js plugins install ./artifacts/relanox-channel-telegram-
 
 ## 使用 CLI
 
-从仓库根目录运行构建后的 CLI。每条命令带 `--config <文件>`，也可简写为 `-c`：
+从仓库根目录运行构建后的 CLI。服务命令带 `--config <文件>`，也可简写为 `-c`：
 
 ```sh
 node apps/cli/dist/main.js validate --config relanox.json
@@ -302,6 +302,16 @@ node apps/cli/dist/main.js status --config relanox.json --limit 100
 | `cleanup`  | 按保留策略清理符合条件的旧消息内容                           |
 
 `plugins install <spec>` 只读取配置中的插件设置，安装精确 npm 版本或本地 `.tgz`。详见[安装和加载原生插件](#安装和加载原生插件)。
+
+`wechat-login` 独立运行，不需要 `--config`、存储或 Agent 设置：
+
+```sh
+node apps/cli/dist/main.js wechat-login --output data/wechat.json
+```
+
+`--output` 必填，必须指向新的文件。结果包含 `botId`、`botToken`、`apiBaseUrl` 和 `userId`，按[微信指南](../channels/wechat.md)将它们填入账号配置和环境变量。命令向 stdout 输出状态 JSON，向 stderr 输出渲染后的二维码。完成事件不包含 token。命令以独占创建方式预留输出文件、请求私有文件权限，失败时移除未完成的输出，不修改服务配置。
+
+可选参数为 `--api-base-url <url>`（默认 `https://ilinkai.weixin.qq.com`）、`--verification-code-file <path>` 和 `--timeout <seconds>`（默认 180，范围 1–600）。验证码文件包含 4–12 位数字。验证码被拒绝时输出 `wechat_verification_code_rejected`，并等待文件内容修改。暂时的网络故障、超时、HTTP 429 与部分服务器错误，在总等待期限内最多连续重试两次。区域跳转仅接受选定来源地址或 HTTPS 微信域名。二维码过期、验证被阻止或已绑定时结束尝试；已有凭据文件不变。
 
 `validate` 检查配置结构和所需插件接口，不建立连接；`doctor` 查找缺失变量，再发送消息验证平台连接。新安装应先运行一次 `run`，让存储检查正常。`doctor` 的管理 URL 使用本地 HTTP 来源，例如上述地址。
 

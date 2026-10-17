@@ -6,7 +6,7 @@
 
 - **另一个聊天**：在对应账号下点击“添加聊天”，填写聊天 ID，并选择接收 Agent。
 - **另一个机器人**：点击“添加同渠道账号”，为它填写独立的账号信息。
-- **另一个 Agent**：点击“添加 Agent”，选择 dot 或 Grok，再把需要的聊天交给它。
+- **另一个 Agent**：点击“添加 Agent”，选择 dot、Grok 或 Muse，再把需要的聊天交给它。
 
 聊天和用户 ID 的获取方法见[渠道指南](channels/index.md)。企业微信首次配置可以按指南先[获取聊天 ID](channels/wecom.md)，再回来补全。
 
@@ -20,7 +20,7 @@
 
 ## 填写服务地址和密码
 
-在“公开 HTTPS 地址”中填写你的 Relanox 服务地址，例如 `https://relay.example.com`。dot 和 Grok 都需要能访问这个地址。地址还没准备好时，先按[部署与备份](operations.md)完成部署。
+在“公开 HTTPS 地址”中填写你的 Relanox 服务地址，例如 `https://relay.example.com`。dot、Grok 和 Muse 都需要能访问这个地址。地址还没准备好时，先按[部署与备份](operations.md)完成部署。
 
 配置器会生成每个 Agent 的 MCP 密码，也可以自行修改。在“接入教程”中复制密码，并按教程设置服务器上的环境变量。关闭或刷新配置器前请保存好密码。
 

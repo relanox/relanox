@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-在常用聊天软件里，让 **dot 或 Grok Bot** 帮你做事。
+在常用聊天软件里，让 **dot、Grok Bot 或 Muse** 帮你做事。
 
 把 Relanox 部署到自己的电脑或服务器，连接聊天账号和 Agent。你在聊天里发消息，Agent 处理后直接回复到原会话。你也可以发送图片和文件，或让 Agent 把生成的内容发回来。
 
@@ -12,9 +12,9 @@
 
 1. 按[快速开始](https://relanox.github.io/zh-CN/getting-started.html)安装并启动 Relanox。
 2. 选择[消息渠道](https://relanox.github.io/zh-CN/channels/index.html)，准备机器人账号和权限。
-3. [连接 dot 或 Grok Bot](https://relanox.github.io/zh-CN/agents.html)，在聊天里发送第一条消息。
+3. [连接 dot、Grok Bot 或 Muse](https://relanox.github.io/zh-CN/agents.html)，在聊天里发送第一条消息。
 
-支持 Telegram、Discord、Slack、飞书、企业微信、钉钉、QQ、Microsoft Teams、WhatsApp Business Cloud、Google Chat、LINE、Matrix、Mattermost、Signal 和 IRC。各渠道指南会说明账号准备、配置和文件收发方式。
+支持 Telegram、Discord、Slack、飞书、企业微信、微信、钉钉、QQ、Microsoft Teams、WhatsApp Business Cloud、Google Chat、LINE、Matrix、Mattermost、Signal 和 IRC。各渠道指南会说明账号准备、配置和文件收发方式。
 
 ## 部署
 

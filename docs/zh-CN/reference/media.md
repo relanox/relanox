@@ -16,7 +16,7 @@ MCP 连接自带附件说明，并提供 `relanox_read_media`、`relanox_send_me
 
 dot 可以在 `relanox_send_message.files` 中传入宿主提供的 `openai/fileParams` 文件对象。Relanox 从其中的临时下载地址取得字节，保存后发送。OpenAI 的 `file_id` 不是 Relanox 媒体 ID。
 
-Grok Bot 可以调用 `relanox_create_upload`，把云电脑中的文件通过 PUT 上传到返回的签名地址，再将成功响应中的 `fileId` 用作 `attachments[].mediaId`。能使用终端或 HTTP 工具的 dot 也可以走这条路径。上传沿用现有公网地址和数据库，无需另开对象存储账号。协议和示例见 [Agent 文件工具](agents.md#上传本地文件)。
+Grok Bot 和 Muse 可以调用 `relanox_create_upload`，把云电脑中的文件通过 PUT 上传到返回的签名地址，再将成功响应中的 `fileId` 用作 `attachments[].mediaId`。能使用终端或 HTTP 工具的 dot 也可以走这条路径。上传沿用现有公网地址和数据库，无需另开对象存储账号。协议和示例见 [Agent 文件工具](agents.md#上传本地文件)。
 
 `attachments` 仍然接受直接返回文件内容的公网 HTTPS 链接。音视频目标渠道可能需要 `durationMs` 和封面，可通过上传工具或 URL 附件参数提供这些信息。发送前查看[对应渠道指南](../channels/index.md)。
 

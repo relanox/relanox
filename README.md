@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-Work with **dot or Grok Bot** from the chat apps you already use.
+Work with **dot, Grok Bot or Muse** from the chat apps you already use.
 
 Run Relanox on your own computer or server, then connect a chat account and an Agent. Send a message in your chat and receive the Agent's reply in the same conversation. You can also share pictures and files, or ask the Agent to send back something it creates.
 
@@ -12,9 +12,9 @@ Connect one chat account first. Once you receive your first reply, you can add m
 
 1. Follow the [quick start](https://relanox.github.io/en/getting-started.html) to install and start Relanox.
 2. Choose a [messaging channel](https://relanox.github.io/en/channels/index.html) and prepare its bot account and permissions.
-3. [Connect dot or Grok Bot](https://relanox.github.io/en/agents.html), then send your first message.
+3. [Connect dot, Grok Bot or Muse](https://relanox.github.io/en/agents.html), then send your first message.
 
-Channels include Telegram, Discord, Slack, Feishu, WeCom, DingTalk, QQ, Microsoft Teams, WhatsApp Business Cloud, Google Chat, LINE, Matrix, Mattermost, Signal and IRC. Each guide explains account setup, configuration and how to send files.
+Channels include Telegram, Discord, Slack, Feishu, WeCom, WeChat, DingTalk, QQ, Microsoft Teams, WhatsApp Business Cloud, Google Chat, LINE, Matrix, Mattermost, Signal and IRC. Each guide explains account setup, configuration and how to send files.
 
 ## Deployment
 

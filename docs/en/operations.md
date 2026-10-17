@@ -60,9 +60,15 @@ node apps/cli/dist/main.js discover --config relanox.json --account wecom-main -
 
 The timeout accepts 1–600 seconds (default 120); press Ctrl+C to stop sooner.
 
+## Pair a WeChat bot
+
+Run `node apps/cli/dist/main.js wechat-login --output data/wechat.json` from a built source checkout. Pairing creates a new credential export; it does not read or change your service configuration. Follow [WeChat](channels/wechat.md) to scan, provide a verification code if needed, and copy the returned bot identity, API origin and token into your setup.
+
+For Muse deployments, also retain the separate writable pairing directory and mount it into the container. Database backups alone do not preserve those device credentials; see [Connect Muse](agents.md#connect-muse).
+
 ## Select plugins for a container
 
-The default Docker build includes all 21 native plugin packages, including `speech-tencent`, preserving the standard configuration and Compose flow. To assemble a smaller image, pass space-separated package names without the `@relanox/` scope in `RELANOX_PLUGINS`:
+The default Docker build includes all 23 native plugin packages, including `speech-tencent`, preserving the standard configuration and Compose flow. To assemble a smaller image, pass space-separated package names without the `@relanox/` scope in `RELANOX_PLUGINS`:
 
 ```sh
 docker build --build-arg "RELANOX_PLUGINS=storage-sqlite observability-standard agent-grok channel-telegram" -t relanox:telegram .

@@ -1,11 +1,12 @@
 # Agent 配置与协议
 
-连接已有的 dot 或 Grok Bot，让它接收渠道消息并回信。每个 Agent 连接有自己的 HTTPS MCP 地址：Grok 使用 URL 中的 token，dot 使用 OAuth；Relanox 还需要通过 Grok Routine webhook 或 dot Events 订阅通知它。
+连接已有的 dot、Grok Bot 或 Muse，让它接收渠道消息并回信。每个 Agent 连接有自己的 HTTPS MCP 地址：Grok 和 Muse 可使用 URL 中的 token，dot 使用 OAuth。通知通过 Grok Routine webhook、dot Events 订阅或已配对的 Muse 设备连接发送。
 
 | Agent | 需要设置                                              |
 | ----- | ----------------------------------------------------- |
 | Grok  | MCP 连接、Routine webhook URL 和完整 Authorization 值 |
 | dot   | MCP 连接以及使用已授权回调地址的 Events 订阅          |
+| Muse  | MCP 连接与私有的已配对设备凭据目录                    |
 
 先将顶层 `publicUrl` 设为你的公开 HTTPS 地址，例如 `https://relay.example.com`，只需配置一次。使用账号中提供的连接器或 Routine 设置填写以下值。界面名称可能不同；这些步骤列出需要的地址和凭据。
 
@@ -64,7 +65,7 @@ Routine Authorization 变量保存 `Bearer <密钥>`，不包含 `Authorization:
 
 dot OAuth 要求公网 HTTPS `publicUrl`。Relanox 使用 PKCE S256，支持 ChatGPT OAuth 跳转地址 `https://chatgpt.com/connector_platform_oauth_redirect` 和 `https://chatgpt.com/connector/oauth/<id>`，它们与 Events 回调不同。access token 有效期一小时；refresh token 使用时轮换，授权总有效期为首次授权起 30 天。授权保存在配置的数据库中。重用旧 refresh token 会撤销对应授权；修改配置的口令并重启后，需要重新连接 dot。
 
-dot 使用 OAuth，`mcp.auth` 默认且只接受 `oauth`。Grok 支持 `bearer` 和 `path`，默认使用 `bearer`；Grok 的 `bearer` 模式填写不带 token 的 MCP URL，并发送 `Authorization: Bearer <token>`。
+dot 使用 OAuth，`mcp.auth` 默认且只接受 `oauth`。Grok 和 Muse 支持 `bearer` 和 `path`，默认使用 `bearer`；两者的 `bearer` 模式填写不带 token 的 MCP URL，并发送 `Authorization: Bearer <token>`。
 
 dot 通过 MCP 订阅时提供回调 URL。Relanox 固定接受原生的 `https://connectors.api.openai.com` 来源，并在投递前检查 DNS 解析结果为公网地址。配置文件中无需也不能填写 `callback`。
 
@@ -73,6 +74,34 @@ dot 通过 MCP 订阅时提供回调 URL。Relanox 固定接受原生的 `https:
 Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默认有效期为一天。请让 dot 在连接检查成功后创建订阅。自动续订尚未通过真实账号验证。`dot_no_active_subscription` 表示 Relanox 没有有效订阅，即使 OAuth 已成功也可能出现。请检查插件连接和运行日志；来信已耗尽重试次数时，按[部署与备份](../operations.md#查找并恢复卡住的消息)恢复。
 
 订阅归属于创建时的端点配置。即使复用端点 ID，旧配置下排队的来信也不会发送给新配置创建的订阅。升级前保存且未记录归属的订阅，在 dot 刷新或重建前视为无效；修改端点配置也需要重新订阅。配置不变的重启会保留当前订阅，包括同名环境变量引用下更换凭据值的情况。
+
+## 连接 Muse {#connect-muse}
+
+按[连接 Muse](../agents.md#connect-muse)完成独立设备配对、停止 SDK daemon，并准备可写的凭据目录。手动配置时，在 `relay.endpoints` 添加：
+
+```json
+{
+  "id": "agent-1",
+  "agent": "muse",
+  "config": {
+    "mcp": {
+      "auth": "path",
+      "token": { "env": "RELANOX_AGENT_1_MCP_TOKEN" }
+    },
+    "credentialsDirectory": { "env": "RELANOX_AGENT_1_CREDENTIALS_DIRECTORY" }
+  }
+}
+```
+
+将 `RELANOX_AGENT_1_CREDENTIALS_DIRECTORY` 设为包含配对文件 `identity.json`、`pairing.json` 和 `sdk_token` 的目录绝对路径。服务用户需要读取这三个文件，并对目录具有写权限以原子保存轮换后的 token。凭据保留在这些文件中；通知 JSON 与已保存的端点配置不包含 token 值。请保护并单独备份该目录，不要让其他运行中的部署、设备 daemon 或客户端使用同一份配对。
+
+将 `RELANOX_AGENT_1_MCP_TOKEN` 设为生成的原始 token。设置 `publicUrl: "https://relay.example.com"` 后，路径认证 MCP URL 为 `https://relay.example.com/agents/muse/mcp/agent-1/<URL编码后的RELANOX_AGENT_1_MCP_TOKEN>`。请 Muse 用完整 URL 创建自定义连接器，确认可以调用 `relanox_status`。将所需聊天绑定的 `endpointId` 设为 `agent-1`。
+
+可选的 `vmId` 指定原生 Muse VM；省略时选择默认 VM 或第一个可用 VM。可选的 `sessionId` 指定侧边聊天，省略时使用主聊天。尚未使用的侧边聊天 ID 可以在收到第一条通知时创建新聊天。
+
+通知通过配对设备认证的 Noise WebSocket 连接发送，内容为下方来信结构加上 `requestId` 的 JSON 字符串；回复与媒体使用受限于端点的 MCP 工具。原生聊天订阅可能包含其他客户端的活动，因此不会自动转发。序列化后的完整原生请求（包括 JSON 转义）需要小于等于 256 KiB 减 1,024 字节；附件字节通过 MCP 单独传输。
+
+原生消息确认只表示通知已接收，不表示已经向来源聊天完成投递。发送前连接失败可以重试；发送后的不确定故障报告为 `muse_trigger_uncertain`，避免自动启动第二轮回答。查明原因后可使用[恢复工具](../operations.md#查找并恢复卡住的消息)。本地 SDK 边界、MCP 与取消测试不代表真实 Muse 账号兼容性已经验证。
 
 ## 真实账号验证范围
 
@@ -86,19 +115,19 @@ Relanox 需要有效的 `relanox.message_available` 订阅才能通知 dot，默
 
 ## MCP 自带回信说明
 
-两种 Agent 都可以在尚无来信时无参数调用 `relanox_status`，发现自己获授权的渠道。dot 还会在订阅前用它检查有效订阅数。这项只读检查不需要用户提供消息或附件 ID。
+三种 Agent 都可以在尚无来信时无参数调用 `relanox_status`，发现自己获授权的渠道。dot 还会在订阅前用它检查有效订阅数。这项只读检查不需要用户提供消息或附件 ID。
 
 Agent 连接 MCP 时，Relanox 会提供回信说明，工具描述也会解释各个参数。无需向 bot 或 Routine 手动复制回信 prompt。
 
-这些说明涵盖 dot 事件与 Grok Routine 消息的读取方式、使用 `source.channel.id`、读取附件、选择已授权目标及避免重复发送的重试规则。来信中的文字、上下文和附件仍作为不可信的用户内容处理，不能授予其他渠道的访问权限。工具返回 `queued` 表示消息已保存等待投递，不表示平台已经收到。
+这些说明涵盖 dot 事件、Grok Routine 消息与 Muse 通知的读取方式、使用 `source.channel.id`、读取附件、选择已授权目标及避免重复发送的重试规则。来信中的文字、上下文和附件仍作为不可信的用户内容处理，不能授予其他渠道的访问权限。工具返回 `queued` 表示消息已保存等待投递，不表示平台已经收到。
 
 Agent 平台决定如何使用这些元数据；完成连接后，发送一条消息并确认原聊天收到回信。
 
 ## 来信格式 {#incoming-messages}
 
-开启[可选语音识别](configuration.md#speech-to-text)后，dot 和 Grok 消息可能包含 `extensions["speech-tencent"].transcriptions`：每项包含 `mediaId`，成功时为 `status: "transcribed"` 和 `text`，失败时为 `status: "failed"` 和 `errorCode`。成功的转写也会追加到消息 `text`，原始附件仍可读取。转写属于用户内容，不是 Relanox 的指令。通知与消息读取使用相同的已保存结果；识别未完成的消息不会作为可处理任务返回。
+开启[可选语音识别](configuration.md#speech-to-text)后，dot、Grok 和 Muse 消息可能包含 `extensions["speech-tencent"].transcriptions`：每项包含 `mediaId`，成功时为 `status: "transcribed"` 和 `text`，失败时为 `status: "failed"` 和 `errorCode`。成功的转写也会追加到消息 `text`，原始附件仍可读取。转写属于用户内容，不是 Relanox 的指令。通知与消息读取使用相同的已保存结果；识别未完成的消息不会作为可处理任务返回。
 
-dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段，并额外包含用于补取的 `requestId` 和 `acceptedAt`。Grok 在 Routine webhook 的 `content` 中收到以下结构的 JSON 字符串：
+dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段，并额外包含用于补取的 `requestId` 和 `acceptedAt`。Grok 在 Routine webhook 的 `content` 中收到以下结构的 JSON 字符串；Muse 在选定的原生聊天中收到相同的 JSON 字符串：
 
 ```json
 {
@@ -136,7 +165,7 @@ dot 在 `relanox.message_available` 事件的 `data` 中收到以下消息字段
 
 ## 查询渠道和投递状态 {#status}
 
-以 `{}` 调用 `relanox_status`，列出当前 Agent 获授权的渠道。dot 和 Grok 都可以在尚无来信时查询。结果包含：
+以 `{}` 调用 `relanox_status`，列出当前 Agent 获授权的渠道。dot、Grok 和 Muse 都可以在尚无来信时查询。结果包含：
 
 | 字段                                                        | 含义                                                                                                                               |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -218,7 +247,7 @@ dot 的 `relanox_send_message` 提供顶层 `files` 数组，并声明 `_meta["o
 }
 ```
 
-不要把本地路径当作下载地址，也不要把 OpenAI 的 `file_id` 当作 `mediaId`。同时提供两个数组时，`relanox://attachment/1` 从 `attachments` 的第一个条目开始计数，之后继续计数 `files`；合计数量和字节数必须符合消息限制。Markdown 中引用的文件按引用位置发送，未引用的文件按数组顺序放在内容之后。需要时长或封面参数的音视频应使用上传流程或 URL 附件参数。Grok 的发送工具不声明 OpenAI 文件参数。
+不要把本地路径当作下载地址，也不要把 OpenAI 的 `file_id` 当作 `mediaId`。同时提供两个数组时，`relanox://attachment/1` 从 `attachments` 的第一个条目开始计数，之后继续计数 `files`；合计数量和字节数必须符合消息限制。Markdown 中引用的文件按引用位置发送，未引用的文件按数组顺序放在内容之后。需要时长或封面参数的音视频应使用上传流程或 URL 附件参数。Grok 和 Muse 的发送工具不声明 OpenAI 文件参数。
 
 ## 上传本地文件
 
@@ -266,3 +295,5 @@ MCP 认证失败时核对 token 和 URL，检查 `publicUrl` 与公开地址一�
 dot 事件在完整消息之外包含 `requestId` 和 `acceptedAt`。如果宿主启动任务时没有提供事件内容，可用请求 ID 调用 `relanox_read_messages`，也可去掉事件 ID 的 `evt_` 前缀得到请求 ID。未提供 ID 时，工具按接收时间从新到旧返回最近保存的消息，默认 5 条，最多 20 条。批量补取时，使用 `pending: true` 并继续传入 `nextCursor`，可按从旧到新读取正文仍保留的未完成消息。检查每条消息的 `reply` 状态并复用已有投递；详见[消息状态与恢复](core.md)。回复前应匹配触发事件，最近消息可能已经处理过。
 
 补取读取配置的数据库，重启后仍可用，且只返回当前端点和频道绑定仍有权访问的消息。移除绑定、变更端点归属或清理正文后，旧内容不可用；数据保留期限仍然适用。读取不会领取、确认或重试消息，也不会加快宿主调度。不要轮询此工具等待新事件。
+
+Muse 也提供 `relanox_read_messages` 补取保留的任务。使用原生通知中的请求 ID；中断后可以通过 `pending: true` 和 `nextCursor` 分页读取。准备新的最终答案前检查每条请求的回复状态；读取不会领取或确认任务。

@@ -1,11 +1,12 @@
 # Agent configuration and protocol
 
-Connect your existing dot or Grok Bot to receive channel messages and send replies. Each Agent connection has an HTTPS MCP address: Grok uses a token in its URL, and dot uses OAuth. Relanox also needs a way to notify it: a Grok Routine webhook or a dot Events subscription.
+Connect your existing dot, Grok Bot or Muse to receive channel messages and send replies. Each Agent connection has an HTTPS MCP address: Grok and Muse can use a token in the URL, while dot uses OAuth. Notifications use a Grok Routine webhook, a dot Events subscription or a paired Muse device connection.
 
 | Agent | Setup                                                                      |
 | ----- | -------------------------------------------------------------------------- |
 | Grok  | MCP connection, Routine webhook URL and complete Authorization value       |
 | dot   | MCP connection and Events subscription with an authorized callback address |
+| Muse  | MCP connection and a private paired device credential directory            |
 
 Set top-level `publicUrl` to your public HTTPS address once, for example `https://relay.example.com`. Use the connector/Routine setup available in your account with the values below. Interface names can vary; these steps describe the required addresses and credentials.
 
@@ -64,7 +65,7 @@ The Routine Authorization variable holds `Bearer <key>`, without the `Authorizat
 
 dot OAuth requires a public HTTPS `publicUrl`. Relanox uses PKCE S256 and supports ChatGPT OAuth redirects `https://chatgpt.com/connector_platform_oauth_redirect` and `https://chatgpt.com/connector/oauth/<id>`. These redirects are separate from the Events callback below. Access tokens expire after one hour; refresh tokens rotate on use, with a 30-day lifetime from the initial authorization. Grants persist in your configured database. Reusing an old refresh token revokes its authorization; changing the configured password and restarting requires reconnecting dot.
 
-dot uses OAuth; `mcp.auth` defaults to `oauth` and rejects other values. Grok supports `bearer` and `path`, with `bearer` as its default. Grok's `bearer` mode uses the clean MCP URL and `Authorization: Bearer <token>`.
+dot uses OAuth; `mcp.auth` defaults to `oauth` and rejects other values. Grok and Muse support `bearer` and `path`, with `bearer` as their default. Their `bearer` mode uses the clean MCP URL and `Authorization: Bearer <token>`.
 
 dot provides its callback URL when it subscribes through MCP. Relanox accepts the native `https://connectors.api.openai.com` origin and checks that DNS resolves to public addresses before delivery. There is no `callback` configuration section.
 
@@ -73,6 +74,34 @@ Callback, MCP and Grok Routine requests have a fixed 10-second timeout; MCP and 
 Relanox requires an active `relanox.message_available` subscription to notify dot. The default lifetime is one day. Ask dot to create the subscription after its connection check. Automatic renewal has not been verified with a live account. `dot_no_active_subscription` means Relanox has no active subscription, even if OAuth succeeded. Inspect the plugin connection and runtime logs; if the request exhausted retries, use [Operations](../operations.md#find-and-recover-a-stalled-message) to recover it.
 
 Subscriptions belong to the endpoint configuration under which they were created. A queued message from an earlier configuration cannot be sent to a subscription created after that configuration changes, even if the endpoint ID is reused. Subscriptions saved before this ownership check are inactive until dot refreshes or recreates them; changing an endpoint configuration likewise requires a new subscription. Restarting with the same configuration, including a new credential value under the same environment variable reference, preserves current subscriptions.
+
+## Connect Muse {#connect-muse}
+
+Follow [Connect Muse](../agents.md#connect-muse) to pair a dedicated device, stop the SDK daemon and prepare a writable credential directory. For manual setup, add this entry to `relay.endpoints`:
+
+```json
+{
+  "id": "agent-1",
+  "agent": "muse",
+  "config": {
+    "mcp": {
+      "auth": "path",
+      "token": { "env": "RELANOX_AGENT_1_MCP_TOKEN" }
+    },
+    "credentialsDirectory": { "env": "RELANOX_AGENT_1_CREDENTIALS_DIRECTORY" }
+  }
+}
+```
+
+Set `RELANOX_AGENT_1_CREDENTIALS_DIRECTORY` to an absolute directory path containing the paired `identity.json`, `pairing.json` and `sdk_token`. The service user needs read access to all three and write access to the directory for atomic token refresh. Credentials remain in these files; notification JSON and stored endpoint configuration contain no token values. Keep the directory private and back it up separately. Do not share its pairing with another running deployment, device daemon or client.
+
+Set `RELANOX_AGENT_1_MCP_TOKEN` to your generated raw token. With `publicUrl: "https://relay.example.com"`, the path-authenticated MCP URL is `https://relay.example.com/agents/muse/mcp/agent-1/<URL-encoded-RELANOX_AGENT_1_MCP_TOKEN>`. Ask Muse to create a custom connector using that full URL and verify `relanox_status`. Set the desired conversation binding's `endpointId` to `agent-1`.
+
+Optional `vmId` selects a native Muse VM; otherwise the default VM or first available VM is used. Optional `sessionId` selects a side chat; omit it for the main chat. An unseen side-chat ID can start a new chat when its first notification is sent.
+
+Notifications travel over the paired device's authenticated Noise WebSocket connection. They contain the incoming payload below as a JSON string with `requestId`; replies and media use the scoped MCP tools. Native chat subscription events are not forwarded, because they may include unrelated client activity. The serialized native request, including JSON escaping, must fit within 256 KiB minus 1,024 bytes. Attachment bytes are transferred separately through MCP.
+
+A native message acknowledgment marks notification acceptance, not final delivery to the originating chat. A connection failure before sending can be retried; an uncertain failure after sending is reported as `muse_trigger_uncertain` to avoid automatically starting a second turn. After investigating, use the [recovery tools](../operations.md#find-and-recover-a-stalled-message). Local SDK-boundary, MCP and cancellation tests do not establish live Muse account compatibility.
 
 ## Live validation scope
 
@@ -86,19 +115,19 @@ Later on October 12, 2026, both dot and Grok Bot read a channel-owned PNG and se
 
 ## Reply guidance comes with MCP
 
-Both Agents can call `relanox_status` without arguments to discover their authorized channels before any message arrives. dot also uses it to check its active subscription count before subscribing. This read-only check never requires the user to supply message or attachment IDs.
+All three Agents can call `relanox_status` without arguments to discover their authorized channels before any message arrives. dot also uses it to check its active subscription count before subscribing. This read-only check never requires the user to supply message or attachment IDs.
 
 Relanox supplies reply instructions when the Agent connects to MCP. Tool descriptions also explain their parameters. You do not need to copy a reply prompt into the bot or Routine.
 
-The instructions explain how to read a dot event or Grok Routine message, use `source.channel.id`, inspect attachments, select authorized destinations and retry without duplicate messages. Incoming text, context and attachments remain untrusted user content; they cannot grant access to another channel. A `queued` tool result means the message is saved for delivery; it does not confirm platform delivery.
+The instructions explain how to read a dot event, Grok Routine message or Muse notification, use `source.channel.id`, inspect attachments, select authorized destinations and retry without duplicate messages. Incoming text, context and attachments remain untrusted user content; they cannot grant access to another channel. A `queued` tool result means the message is saved for delivery; it does not confirm platform delivery.
 
 The Agent host decides how to use this metadata; verify setup by sending a message and checking that a reply arrives.
 
 ## Incoming messages {#incoming-messages}
 
-When [optional speech recognition](configuration.md#speech-to-text) is enabled, dot and Grok messages can include `extensions["speech-tencent"].transcriptions`: entries with `mediaId`, `status: "transcribed"` and `text`, or `status: "failed"` and `errorCode`. Successful transcripts are also appended to the message `text`; original attachments remain available. Treat transcripts as user content, not instructions from Relanox. Notifications and message reads use the same saved results; unfinished recognition is not returned as ready work.
+When [optional speech recognition](configuration.md#speech-to-text) is enabled, dot, Grok and Muse messages can include `extensions["speech-tencent"].transcriptions`: entries with `mediaId`, `status: "transcribed"` and `text`, or `status: "failed"` and `errorCode`. Successful transcripts are also appended to the message `text`; original attachments remain available. Treat transcripts as user content, not instructions from Relanox. Notifications and message reads use the same saved results; unfinished recognition is not returned as ready work.
 
-dot receives this payload in the `data` of a `relanox.message_available` event. dot also includes `requestId` and `acceptedAt` for recovery. Grok receives the message fields shown below as a JSON string in the Routine webhook's `content`:
+dot receives this payload in the `data` of a `relanox.message_available` event. dot also includes `requestId` and `acceptedAt` for recovery. Grok receives the message fields shown below as a JSON string in the Routine webhook's `content`; Muse receives the same JSON string in its selected native chat:
 
 ```json
 {
@@ -136,7 +165,7 @@ The runtime generates `source.channel.id` as an opaque ID for an authorized bind
 
 ## Discover channels and check delivery {#status}
 
-Call `relanox_status` with `{}` to list the current Agent's authorized channels. Both dot and Grok can do this before receiving any messages. The result contains:
+Call `relanox_status` with `{}` to list the current Agent's authorized channels. dot, Grok and Muse can do this before receiving any messages. The result contains:
 
 | Field                                                       | Meaning                                                                                                                                                                         |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -218,7 +247,7 @@ dot's `relanox_send_message` exposes a top-level `files` array with `_meta["open
 }
 ```
 
-Do not substitute a local path or pass OpenAI's `file_id` as `mediaId`. When both arrays are present, positional references count `attachments` first, then `files`; their combined count and byte size must fit the message limits. Referenced files are sent at their Markdown position, and unreferenced files follow the content in array order. For audio/video that requires duration or cover metadata, use the upload flow or URL attachment parameters instead. Grok's send tool does not advertise OpenAI file parameters.
+Do not substitute a local path or pass OpenAI's `file_id` as `mediaId`. When both arrays are present, positional references count `attachments` first, then `files`; their combined count and byte size must fit the message limits. Referenced files are sent at their Markdown position, and unreferenced files follow the content in array order. For audio/video that requires duration or cover metadata, use the upload flow or URL attachment parameters instead. Grok and Muse send tools do not advertise OpenAI file parameters.
 
 ## Upload a local file
 
@@ -266,3 +295,5 @@ If MCP authentication fails, compare the token and URL, check `publicUrl` agains
 The dot event data includes `requestId` and `acceptedAt` alongside the full message. If the host omits the data when starting the task, call `relanox_read_messages` with that request ID, or remove `evt_` from the event ID. Without an ID, the tool returns recent persisted messages (default 5, maximum 20), newest first. For catch-up, use `pending: true` and follow `nextCursor` to read retained unfinished messages oldest first. Check each message's `reply` status and reuse existing deliveries; see [Message status and recovery](core.md). Match the event before replying: recent results can include already processed messages.
 
 Reads use the configured database, survive restarts, and expose only messages whose endpoint and channel binding are still authorized. Removed bindings, changed endpoint ownership and redacted messages are unavailable. Retention still applies. A read does not claim, acknowledge or retry a message and does not accelerate host scheduling. Do not poll this tool for new events.
+
+Muse also exposes `relanox_read_messages` for retained work. Use the request ID from the native notification, or `pending: true` with `nextCursor` after an interruption. Check each request’s reply status before preparing another final answer; reading does not claim or acknowledge it.

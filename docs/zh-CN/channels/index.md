@@ -10,6 +10,7 @@
 | [Discord](discord.md)                  | Discord 机器人和消息权限           |
 | [Slack](slack.md)                      | Slack 应用和工作区授权             |
 | [飞书 / Lark](feishu.md)               | 企业自建应用和事件订阅地址         |
+| [微信](wechat.md)                      | 扫码配对的 iLink 机器人凭据        |
 | [企业微信](wecom.md)                   | 智能机器人 ID；密钥或回调凭据      |
 | [钉钉](dingtalk.md)                    | 应用机器人及 Stream 接入凭据       |
 | [QQ](qq.md)                            | QQ 机器人 App ID 和密钥            |
@@ -26,7 +27,7 @@
 
 ## 连接后做什么
 
-在[配置](../configuration.md)中指定允许使用的用户、聊天或群组，并选择接收消息的 Agent。随后按[连接 Agent](../agents.md)完成 dot 或 Grok Bot 设置，在指定会话发一条消息确认回复。
+在[配置](../configuration.md)中指定允许使用的用户、聊天或群组，并选择接收消息的 Agent。随后按[连接 Agent](../agents.md)完成 dot、Grok Bot 或 Muse 设置，在指定会话发一条消息确认回复。
 
 需要向其他聊天发送时，先在配置中将该聊天分配给 Agent。部分平台需要先收到该聊天的消息，Agent 才能向它发送。企业微信 HTTP 模式只能回复来信，QQ 和 WhatsApp 还有回复时限。向其他已绑定会话发送前，请查看[目标可用条件](../reference/channels.md#destinations)。
 

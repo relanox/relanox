@@ -1,6 +1,6 @@
 # Connect an Agent
 
-Use the [connection configurator](connect.md) to connect an existing dot or Grok Bot to your conversations. Prepare your public HTTPS address, choose the Agent, and select it for each chat that should receive its replies.
+Use the [connection configurator](connect.md) to connect an existing dot, Grok Bot or Muse to your conversations. Prepare your public HTTPS address, choose the Agent, and select it for each chat that should receive its replies.
 
 Download the configuration and open **Your setup guide**. Keep the guide open while setting up: its addresses and passwords belong to your selected Agents. Save the generated passwords securely before closing or reloading the page.
 
@@ -31,13 +31,28 @@ Ask dot to check its Relanox connection. It can list the available chats and che
 
 After upgrading from a version that saved dot subscriptions without endpoint ownership, ask dot to refresh or recreate its `relanox.message_available` subscription. Until then, Relanox reports no active subscription and retries pending notifications. Changing an endpoint's configuration also requires a new subscription; rotating the password value under the same environment variable name does not.
 
+## Connect Muse {#connect-muse}
+
+Muse runs in its own cloud VM. Relanox sends incoming notifications through a paired Muse device connection; Muse uses your Relanox MCP connector to read attachments and reply to the original chat.
+
+1. Obtain a personal [Muse Gadget SDK token](https://gadgets.muse.ai/settings/sdk-tokens), then follow the [official Linux device pairing guide](https://github.com/facebookincubator/muse-gadget-sdk/tree/main/linux). In the phone app, enable **Settings → Devices → Developer mode** and add the device shown by the pairing process.
+2. After pairing, stop and disable the SDK daemon before Relanox uses that device's credentials. For a systemd installation, run `sudo systemctl disable --now musegadget`. Relanox does not need the daemon's local command service.
+3. Copy that pairing's `identity.json`, `pairing.json` and `sdk_token` into a private, persistent directory owned by the Relanox service user. The service must be able to update `pairing.json` when tokens rotate. Use a separate pairing and directory for each independently running Relanox deployment; never run another SDK daemon or client against the same credentials concurrently.
+4. In the configurator, add a Muse Agent and select it for the chat. Set the generated credentials-directory environment variable, normally `RELANOX_AGENT_1_CREDENTIALS_DIRECTORY`, to the absolute path of that directory. Save and set the separate generated MCP token. For containers, mount the directory writable and use its path inside the container.
+5. Start Relanox at your public HTTPS address. In Muse, ask it to create a custom connector using the complete generated Muse MCP URL and verify that it can call `relanox_status`. The [Muse connector guidelines](https://muse.ai/platform/docs) describe the platform's connector model.
+6. Send a short message from an allowed user in a bound chat. Confirm the answer arrives there. A notification appearing in Muse alone does not send a reply to the original conversation.
+
+The adapter uses text notifications containing the source channel, request ID and attachment metadata. Muse reads and sends media through the MCP tools; native voice/chat attachment uploading and automatic forwarding of Muse's own chat responses are unavailable. The default target is the account's default VM and main chat. Manual settings can select `vmId` and `sessionId`; see the [Muse configuration reference](reference/agents.md#connect-muse).
+
+Back up the credential directory separately from the Relanox database. Local SDK-boundary and MCP tests cover this adapter; a live Muse account roundtrip has not been verified.
+
 ## Check the connection
 
 You do not need to copy a separate reply prompt into the Bot or Routine.
 
-With either Agent, ask it to check Relanox's available chats. It can then send to an authorized chat when that platform's permissions and sending conditions allow it, even before Relanox receives a message there. Some platforms require a recent incoming message or an existing conversation; see [Destination availability](reference/channels.md#destinations). A queued message is saved for sending; check its delivery before requesting another copy.
+With any of the three Agents, ask it to check Relanox's available chats. It can then send to an authorized chat when that platform's permissions and sending conditions allow it, even before Relanox receives a message there. Some platforms require a recent incoming message or an existing conversation; see [Destination availability](reference/channels.md#destinations). A queued message is saved for sending; check its delivery before requesting another copy.
 
-If no reply arrives, first check that the chat uses the intended Agent and that the sender is allowed. Compare the connection address and password with the generated guide. For Grok, also compare the Routine URL and complete Authorization value; for dot, check the plugin connection and authorization. Use [message status and recovery](reference/core.md) to find where a message stopped.
+If no reply arrives, first check that the chat uses the intended Agent and that the sender is allowed. Compare the connection address and password with the generated guide. For Grok, also compare the Routine URL and complete Authorization value; for dot, check the plugin connection and authorization. For Muse, check the paired credential directory, exclusive access to it, and the custom connector. Use [message status and recovery](reference/core.md) to find where a message stopped.
 
 If the Agent cannot send messages after an upgrade, refresh or reconnect its MCP connection. If that does not help, create a connection with a new name. For Grok, select the new connection in the Routine, then send a test message.
 

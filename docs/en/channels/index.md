@@ -10,6 +10,7 @@ For a first installation, you can follow the Telegram example in the [quick star
 | [Discord](discord.md)                  | Discord bot and message permissions             |
 | [Slack](slack.md)                      | Slack app and workspace authorization           |
 | [Feishu / Lark](feishu.md)             | An internal app and an event subscription URL   |
+| [WeChat](wechat.md)                    | QR-paired iLink bot credentials                 |
 | [WeCom](wecom.md)                      | Intelligent robot ID; secret or callback keys   |
 | [DingTalk](dingtalk.md)                | App robot and Stream credentials                |
 | [QQ](qq.md)                            | QQ bot App ID and secret                        |
@@ -26,7 +27,7 @@ Replies use Markdown automatically. Ask for a heading, list, code block or forma
 
 ## After connecting a channel
 
-In your [settings](../configuration.md), choose the allowed users, conversations or groups and the Agent that receives their messages. Complete the [Agent setup](../agents.md) for dot or Grok Bot, then send a message in the chosen conversation and check its reply.
+In your [settings](../configuration.md), choose the allowed users, conversations or groups and the Agent that receives their messages. Complete the [Agent setup](../agents.md) for dot, Grok Bot or Muse, then send a message in the chosen conversation and check its reply.
 
 To send to another chat, assign it to the Agent first. Some platforms need a message in that chat before the Agent can send there. WeCom HTTP mode can only reply to an incoming message; QQ and WhatsApp limit how long replies can be sent. See [Destination availability](../reference/channels.md#destinations) before setting up sends to other bound conversations.
 

@@ -41,9 +41,9 @@ See [Quick start](../getting-started.md) to install, supply variables and start 
 
 The generated file omits default listener settings and monitoring switches. Without a `server` section, the business listener uses `127.0.0.1:8787` and management uses `127.0.0.1:8788`. Omitting `relay.observability` enables standard logs and metrics. Add overrides only when your deployment needs them; containers need `server.host: "0.0.0.0"`.
 
-Both dot and Grok need a publicly reachable HTTPS address for MCP, including with outbound channels. Set `publicUrl` to that address; it is preserved when switching channels.
+dot, Grok and Muse need a publicly reachable HTTPS address for MCP, including with outbound channels. Set `publicUrl` to that address; it is preserved when switching channels.
 
-The configurator generates a 32-byte hexadecimal MCP token in your browser when loaded. You can edit or regenerate it. Copy the exact generated values into your server environment; JSON keeps environment references. Relanox does not automatically load `.env` files. For dot, this value is the OAuth consent password; for Grok, it is the URL token. Manual setup can still use the random-token command in [Quick start](../getting-started.md).
+The configurator generates a 32-byte hexadecimal MCP token in your browser when loaded. You can edit or regenerate it. Copy the exact generated values into your server environment; JSON keeps environment references. Relanox does not automatically load `.env` files. For dot, this value is the OAuth consent password; for Grok and Muse, it is the URL token. Manual setup can still use the random-token command in [Quick start](../getting-started.md).
 
 ## Set your public address once
 
@@ -64,7 +64,7 @@ Use an HTTPS origin, optionally with a port, without credentials, a path, query 
 Three lists describe your connections:
 
 - An **account** (`accounts`) is the bot or service account on a messaging platform, such as a Telegram bot. Its `config` holds platform settings, and `allowedSenders` lists the people permitted to use it.
-- An **agent connection** (`endpoints`) is one connected dot or Grok agent. Its `config` holds MCP credentials and the settings for notifying it.
+- An **agent connection** (`endpoints`) is one connected dot, Grok or Muse agent. Its `config` holds MCP credentials and the settings for notifying it.
 - A **binding** (`bindings`) connects one conversation on an account to one agent. Messages go to that agent, and replies return to that conversation.
 
 For example, this binding sends Telegram chat `123456789` to Grok connection `agent-1`:
@@ -93,7 +93,7 @@ Add a binding for each conversation. Topics or threads need their exact `threadI
 
 Bindings match the exact chat and thread. Omitting `threadId` matches messages with no thread. Configure separate bindings for each topic. For ordinary Slack channel or DM messages, omit `threadId`. For replies inside a Slack thread, use that thread's real root message timestamp as `threadId` and configure an exact binding for it. Account `allowedSenders` is required and contains at least one person. An optional binding `allowedSenders` further restricts the conversation: a sender must appear in both lists. Follow [your channel's guide](../channels/index.md) for ID formats.
 
-[The complete example](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) contains fifteen channels and both agents. Copy the entries you need, then replace their IDs, credentials and bindings.
+[The complete example](https://github.com/relanox/relanox/blob/master/examples/relanox.all-channels.json) contains sixteen channels and three agents. Copy the entries you need, then replace their IDs, credentials and bindings.
 
 ## Store credentials in the environment
 
@@ -105,7 +105,7 @@ Credential fields refer to an environment variable:
 
 Supply it to the Relanox process. Shell-launched commands read the shell environment; Compose uses its `env_file`. For a source-run process, load values from any `.env` file into the environment first. Google Chat's service-account variable contains the complete service-account JSON.
 
-Use separate MCP tokens for separate agent connections. Keep the Routine's complete Authorization value as supplied, and protect its URL as a secret too. [Connect an agent](../agents.md) shows the dot and Grok settings.
+Use separate MCP tokens for separate agent connections. Keep the Routine's complete Authorization value as supplied, and protect its URL as a secret too. [Connect an agent](../agents.md) shows the dot, Grok and Muse settings.
 
 To rotate a token, update the service manager's environment and restart. Keep the original bot/account identity while replies remain queued. For a new Grok Routine, use a new variable name and agent connection: pending messages still reference their original settings.
 
@@ -117,7 +117,7 @@ Multiple registered plugins can be combined in the same array; order them as you
 
 ## Optional Tencent speech recognition {#speech-to-text}
 
-To transcribe incoming audio for **dot or Grok**, merge this fragment into your existing `relanox.json`. Keep `relay`, `publicUrl` and the other settings. `middleware` is an optional top-level list, empty by default; the configurator does not generate it:
+To transcribe incoming audio for **dot, Grok or Muse**, merge this fragment into your existing `relanox.json`. Keep `relay`, `publicUrl` and the other settings. `middleware` is an optional top-level list, empty by default; the configurator does not generate it:
 
 ```json
 {
@@ -283,7 +283,7 @@ See [Adding an integration](sdk.md) for the package manifest and factory contrac
 
 ## Use the CLI
 
-Run the built CLI from the repository root. Every command takes `--config <file>` (or `-c`):
+Run the built CLI from the repository root. Service commands take `--config <file>` (or `-c`):
 
 ```sh
 node apps/cli/dist/main.js validate --config relanox.json
@@ -302,6 +302,16 @@ node apps/cli/dist/main.js status --config relanox.json --limit 100
 | `cleanup`  | Remove eligible old content according to your retention policy                               |
 
 `plugins install <spec>` installs an exact npm package version or a local `.tgz` using only the configuration's plugin settings. See [Install and load native plugins](#install-and-load-native-plugins).
+
+`wechat-login` runs independently of `--config`, storage and Agent setup:
+
+```sh
+node apps/cli/dist/main.js wechat-login --output data/wechat.json
+```
+
+`--output` is required and must name a new file. The result contains `botId`, `botToken`, `apiBaseUrl` and `userId`; copy those values into the account configuration and environment as described in [WeChat](../channels/wechat.md). The command writes status JSON to stdout and the rendered QR code to stderr. The completion event excludes the token. It reserves the output with exclusive creation, requests private file permissions and deletes incomplete output on failure; it never updates the service configuration.
+
+Optional flags are `--api-base-url <url>` (default `https://ilinkai.weixin.qq.com`), `--verification-code-file <path>` and `--timeout <seconds>` (default 180, range 1–600). Verification files contain 4–12 digits. A rejected code produces `wechat_verification_code_rejected` and waits for changed file contents. Temporary network failures, timeouts, HTTP 429 and selected server errors allow up to two consecutive retries within the same deadline. Regional redirects stay on the selected origin or HTTPS WeChat hosts. Expired, blocked or already-bound QR results stop the attempt; an existing credential file remains untouched.
 
 `validate` checks configuration structure and required plugin contracts without opening connections. Use `doctor` for missing variables, then send a message to verify the platform connection. A fresh installation needs its first `run` before storage checks become healthy. The management URL for `doctor` is a local HTTP origin such as the example above.
 

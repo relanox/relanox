@@ -14,6 +14,7 @@
 | Discord            | 频道 ID，有消息串时还需消息串频道 ID；机器人需要访问和发送权限。                                     |
 | Slack              | 会话 ID；普通消息省略 `threadId`，消息串使用真实根消息的时间戳。                                     |
 | 飞书 / Lark        | 聊天 ID；消息串还需要该目标已验证事件中的真实消息锚点。                                              |
+| 微信               | 私人用户 ID，以及真实来信建立的会话上下文；不支持群聊和线程。                                        |
 | 企业微信 WebSocket | 成员 userid 或群聊 ID；可通过 `recipientTypes` 在来信前指定 `single` 或 `group`。                    |
 | 企业微信 HTTP      | 已验证的消息回调以及可用回复窗口；仅有聊天 ID 不足以发送。                                           |
 | 钉钉               | 员工 ID 或开放会话 ID；可通过 `recipientTypes` 指定 `single` 或 `group`，仍需独立发送消息 API 权限。 |
@@ -27,7 +28,7 @@
 | Signal             | `direct:` 接收方或 `group:` ID，使用配置的 signal-cli 账号。                                         |
 | IRC                | 配置服务器上的频道或 `dm:<folded-nick>`；机器人必须已连接并加入配置的频道。                          |
 
-`recipientTypes` 是可选的账号 `config` 映射，以绑定中的准确 `chatId` 为键。企业微信 WebSocket、钉钉和 QQ 支持此配置；省略时可使用已验证消息中取得的接收方类型。该映射不会绕过平台权限、回复窗口或额度。企业微信、钉钉、QQ、WhatsApp、LINE、Signal 和 IRC 不支持 `threadId`。
+`recipientTypes` 是可选的账号 `config` 映射，以绑定中的准确 `chatId` 为键。企业微信 WebSocket、钉钉和 QQ 支持此配置；省略时可使用已验证消息中取得的接收方类型。该映射不会绕过平台权限、回复窗口或额度。微信、企业微信、钉钉、QQ、WhatsApp、LINE、Signal 和 IRC 不支持 `threadId`。
 
 本地协议测试验证地址解析和生成请求，不能证明真实账号兼容性。请按各渠道指南在平台上验证配置的账号。
 
@@ -41,6 +42,7 @@ Agent 回复文字统一使用 Markdown，无需选择格式模式。Relanox 使
 | Discord         | 原生消息 Markdown。                                                        |
 | Slack           | 结构化富文本块，表达强调、代码和链接。                                     |
 | 飞书 / Lark     | 包含 Markdown 元素的富文本消息。                                           |
+| 微信            | 原生文字项，Markdown 作为文字发送。                                        |
 | 企业微信        | 原生 Markdown；回调模式合并发送最终文字和支持的图片。                      |
 | 钉钉            | `sampleMarkdown` 机器人消息。                                              |
 | QQ              | Markdown 消息（`msg_type: 2`）。                                           |
@@ -61,23 +63,59 @@ Agent 回复文字统一使用 Markdown，无需选择格式模式。Relanox 使
 
 通过[按 Markdown 顺序发送媒体](media.md#ordered-markdown-media)中的内部引用选择文件。`relanox_status.channels[].richText` 返回当前账号可用的布局：
 
-| 渠道                                           | 模式               | 投递方式                                                                    |
-| ---------------------------------------------- | ------------------ | --------------------------------------------------------------------------- |
-| 飞书 / Lark                                    | `native`           | 富文本消息按顺序包含 Markdown 和已上传图片元素。                            |
-| Discord                                        | `native`           | Components V2 按顺序包含文字显示组件和使用附件的媒体画廊。                  |
-| 钉钉                                           | `native`           | Markdown 使用原生上传的图片引用。                                           |
-| QQ                                             | `native`           | 私聊和群聊中的自定义 Markdown 按顺序包含文字和公开 HTTPS 图片 URL。         |
-| Slack                                          | `native`           | 通过原生文件上传，在消息块中按顺序放置文字和图片。                          |
-| Google Chat                                    | `native`           | 卡片中包含文字和图片，图片使用 Relanox 的公开 HTTPS 地址。                  |
-| Microsoft Teams                                | `native`           | 一条 activity 中包含 Markdown 文字和行内图片，图片使用公开 HTTPS 媒体 URL。 |
-| LINE                                           | `native`           | Flex 内容按顺序包含文字和图片组件，图片使用公开 HTTPS 媒体 URL。            |
-| Matrix                                         | `native`           | `formatted_body` 按顺序包含文字和已上传的 `mxc://` 图片引用。               |
-| Mattermost                                     | `native`           | 帖子按顺序包含 Markdown 图片，图片使用公开 HTTPS 媒体 URL。                 |
-| Telegram、企业微信 WebSocket、WhatsApp、Signal | `sequential`       | 按阅读顺序发送独立文字和媒体消息。                                          |
-| 企业微信 HTTP 回调                             | `text-then-images` | 一条最终回复，全部文字在前，支持的图片在后。                                |
-| IRC                                            | `text-only`        | 仅文字，附件被拒绝。                                                        |
+| 渠道                                                 | 模式               | 投递方式                                                                    |
+| ---------------------------------------------------- | ------------------ | --------------------------------------------------------------------------- |
+| 飞书 / Lark                                          | `native`           | 富文本消息按顺序包含 Markdown 和已上传图片元素。                            |
+| Discord                                              | `native`           | Components V2 按顺序包含文字显示组件和使用附件的媒体画廊。                  |
+| 钉钉                                                 | `native`           | Markdown 使用原生上传的图片引用。                                           |
+| QQ                                                   | `native`           | 私聊和群聊中的自定义 Markdown 按顺序包含文字和公开 HTTPS 图片 URL。         |
+| Slack                                                | `native`           | 通过原生文件上传，在消息块中按顺序放置文字和图片。                          |
+| Google Chat                                          | `native`           | 卡片中包含文字和图片，图片使用 Relanox 的公开 HTTPS 地址。                  |
+| Microsoft Teams                                      | `native`           | 一条 activity 中包含 Markdown 文字和行内图片，图片使用公开 HTTPS 媒体 URL。 |
+| LINE                                                 | `native`           | Flex 内容按顺序包含文字和图片组件，图片使用公开 HTTPS 媒体 URL。            |
+| Matrix                                               | `native`           | `formatted_body` 按顺序包含文字和已上传的 `mxc://` 图片引用。               |
+| Mattermost                                           | `native`           | 帖子按顺序包含 Markdown 图片，图片使用公开 HTTPS 媒体 URL。                 |
+| Telegram、微信、企业微信 WebSocket、WhatsApp、Signal | `sequential`       | 按阅读顺序发送独立文字和媒体消息。                                          |
+| 企业微信 HTTP 回调                                   | `text-then-images` | 一条最终回复，全部文字在前，支持的图片在后。                                |
+| IRC                                                  | `text-only`        | 仅文字，附件被拒绝。                                                        |
 
 原生布局包含图片，音频、视频和文件链接使用独立媒体发送。LINE、Google Chat、Teams、Mattermost 和 QQ 的这些布局需要公开 HTTPS 媒体地址，以当前状态返回的能力为准。原生分块限制通过 `richTextLimits` 返回，其中可包含行内 MIME 和字节限制。超出行内限制的图片在对应位置独立发送，只发送一次。渠道附件支持和单条消息限制仍适用。不同客户端的原生内容显示可能不同。这些布局经过本地协议测试，尚不代表真实账号验证。
+
+## 微信 {#wechat}
+
+用户操作：[接入微信](../channels/wechat.md)。扫码配对使用独立的 `wechat-login` 命令，不需要先完成 relay 配置。
+
+```json
+{
+  "accounts": [
+    {
+      "id": "wechat-main",
+      "channel": "wechat",
+      "allowedSenders": ["user-id@im.wechat"],
+      "config": {
+        "botId": "bot-id@im.bot",
+        "botToken": { "env": "WECHAT_BOT_TOKEN" },
+        "apiBaseUrl": "https://ilinkai.weixin.qq.com"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "accountId": "wechat-main",
+      "chatId": "user-id@im.wechat",
+      "endpointId": "agent-1"
+    }
+  ]
+}
+```
+
+使用配对返回的完整机器人 / 用户 ID 与 API 来源地址。`apiBaseUrl` 默认为 `https://ilinkai.weixin.qq.com`，`cdnBaseUrl` 默认为 `https://novac2c.cdn.weixin.qq.com/c2c`。原生 API 和 CDN 使用 HTTPS。`allowInsecureLoopback` 默认 `false`，仅允许本地协议开发对 loopback / localhost 使用 HTTP。不支持原生群聊或 `threadId`。
+
+Relanox 用 bot token 轮询 `getupdates`，保存已接受的来信和上下文后，再推进持久化游标。接受前的暂时故障会保留原游标以重放。原生 uint64 消息 ID 无损保留。目标解析需要真实来信的会话上下文；它按机器人标识与 API 来源地址持久化，重启后可以恢复。修改这些值不会复用其他身份的上下文。
+
+支持接收文字、图片、语音、视频和文件。平台提供的语音转写会一并传入；已知音频编码保留原生 MIME 类型，未知编码作为文件提供。文字回复按 4,000 个 Unicode 码点拆分；图片、视频和文件回复通过原生 CDN 上传，使用 AES-128-ECB 与 PKCS#7 填充。不支持发送音频或原生引用回复；显式的 `reply.requestId` 仍可将最终投递关联到对应来信。媒体与文字按顺序作为独立消息发送。
+
+发送遇到 HTTP 429 可以重试；超时和无法确认是否已接收的服务器故障标为 unknown。每次投递保留 `client_id`，但不假定服务端保证去重。原生会话过期响应会暂停轮询一小时，需要重新认证账号。本地协议与 SQLite 重启测试不代表真实账号兼容性已验证。原生约定见[腾讯 iLink 协议](https://github.com/Tencent/openclaw-weixin/blob/main/docs/protocol.md)。
 
 ## 钉钉应用机器人 {#dingtalk}
 

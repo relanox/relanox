@@ -16,7 +16,7 @@ Media is owned by an authorized channel. Read, upload and send calls must select
 
 dot can supply generated files through `relanox_send_message.files`, using the host's `openai/fileParams` file objects. Relanox downloads the supplied temporary URL and saves the bytes before sending. The OpenAI `file_id` is not a Relanox media ID.
 
-Grok Bot can call `relanox_create_upload`, PUT a file from its cloud computer to the returned signed URL, and use the successful response's `fileId` as `attachments[].mediaId`. This upload tool is also available to dot when it can use a terminal or HTTP tool. Uploads use the existing public address and database; no separate object-storage account is needed. See [Agent file tools](agents.md#upload-a-local-file) for the protocol and examples.
+Grok Bot and Muse can call `relanox_create_upload`, PUT a file from its cloud computer to the returned signed URL, and use the successful response's `fileId` as `attachments[].mediaId`. This upload tool is also available to dot when it can use a terminal or HTTP tool. Uploads use the existing public address and database; no separate object-storage account is needed. See [Agent file tools](agents.md#upload-a-local-file) for the protocol and examples.
 
 A direct public HTTPS URL is also accepted in `attachments`. It must return the file itself. Audio/video destinations may require `durationMs` and a cover image; use the upload tool or URL attachment parameters for this metadata. Check the [channel guide](../channels/index.md) before sending.
 
