@@ -196,24 +196,7 @@ func (c *Channel) multipart(ctx context.Context, endpoint string, payload native
 	if err != nil {
 		return err
 	}
-	token, err := c.token()
-	if err != nil {
-		return err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Authorization", "Bot "+token)
-	request.Header.Set("Content-Type", contentType)
-	raw, _, err := common.Do(c.http, request, common.MaxJSONBytes)
-	if err != nil {
-		return err
-	}
-	if json.Unmarshal(raw, output) != nil {
-		return errors.New("native_invalid_response")
-	}
-	return nil
+	return c.nativeRequest(ctx, http.MethodPost, endpoint, contentType, body, output)
 }
 
 func (c *Channel) message(input model.SendInput) (nativeSend, []*discordgo.File, error) {

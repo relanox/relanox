@@ -124,16 +124,16 @@ func (c *Channel) token() (string, error) {
 	return value, nil
 }
 
-// discordgo v0.29.0 restapi.go uses an uncancellable bucket wait, automatic
-// sleeping retries and unbounded ReadAll. Keep its native models while the
-// production shared transport enforces cancellation, response bounds and lets
-// Core alone decide whether an uncertain send may be retried.
 func (c *Channel) api(ctx context.Context, method, path string, input, output any) error {
-	token, err := c.token()
-	if err != nil {
-		return err
+	var body []byte
+	if input != nil {
+		var err error
+		body, err = json.Marshal(input)
+		if err != nil {
+			return err
+		}
 	}
-	return common.JSON(ctx, c.http, method, c.config.APIBaseURL+path, http.Header{"Authorization": []string{"Bot " + token}, "User-Agent": []string{"Relanox (https://github.com/relanox/relanox)"}}, input, output)
+	return c.nativeRequest(ctx, method, c.config.APIBaseURL+path, "application/json", body, output)
 }
 
 func (c *Channel) identify(ctx context.Context) (*identity, error) {
