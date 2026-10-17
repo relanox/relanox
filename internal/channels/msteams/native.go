@@ -33,6 +33,7 @@ type NativeClient struct {
 	inflight          chan struct{}
 	keysMu            sync.Mutex
 	keys              map[string]keyfunc.Keyfunc
+	keysLoading       map[string]chan struct{}
 	lifetime          context.Context
 	cancel            context.CancelFunc
 }
@@ -119,27 +120,53 @@ func (c *NativeClient) requestToken(ctx context.Context, secret string) (string,
 }
 
 func (c *NativeClient) keySet(ctx context.Context, endpoint string) (keyfunc.Keyfunc, error) {
-	c.keysMu.Lock()
-	defer c.keysMu.Unlock()
-	if c.keys == nil {
-		c.keys = make(map[string]keyfunc.Keyfunc)
+	for {
+		c.keysMu.Lock()
+		if c.keys == nil {
+			c.keys = make(map[string]keyfunc.Keyfunc)
+			c.keysLoading = make(map[string]chan struct{})
+		}
+		if c.keys[endpoint] != nil {
+			keys := c.keys[endpoint]
+			c.keysMu.Unlock()
+			return keys, nil
+		}
+		if c.lifetime == nil {
+			c.lifetime, c.cancel = context.WithCancel(context.Background())
+		}
+		if err := c.lifetime.Err(); err != nil {
+			c.keysMu.Unlock()
+			return nil, err
+		}
+		if pending := c.keysLoading[endpoint]; pending != nil {
+			c.keysMu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-pending:
+				continue
+			}
+		}
+		pending := make(chan struct{})
+		c.keysLoading[endpoint] = pending
+		lifetime := c.lifetime
+		c.keysMu.Unlock()
+		noFirstError := false
+		keys, err := keyfunc.NewDefaultOverrideCtx(lifetime, []string{endpoint}, keyfunc.Override{
+			Client: common.HTTPClient(c.HTTP), HTTPTimeout: 10 * time.Second, NoErrorReturnFirstHTTPReq: &noFirstError,
+			RefreshErrorHandlerFunc: func(string) func(context.Context, error) { return func(context.Context, error) {} },
+		})
+		c.keysMu.Lock()
+		delete(c.keysLoading, endpoint)
+		close(pending)
+		if err == nil && lifetime.Err() == nil {
+			c.keys[endpoint] = keys
+		} else if err == nil {
+			err = lifetime.Err()
+		}
+		c.keysMu.Unlock()
+		return keys, err
 	}
-	if c.keys[endpoint] != nil {
-		return c.keys[endpoint], nil
-	}
-	if c.lifetime == nil {
-		c.lifetime, c.cancel = context.WithCancel(context.Background())
-	}
-	noFirstError := false
-	keys, err := keyfunc.NewDefaultOverrideCtx(c.lifetime, []string{endpoint}, keyfunc.Override{
-		Client: common.HTTPClient(c.HTTP), HTTPTimeout: 10 * time.Second, NoErrorReturnFirstHTTPReq: &noFirstError,
-		RefreshErrorHandlerFunc: func(string) func(context.Context, error) { return func(context.Context, error) {} },
-	})
-	if err != nil {
-		return nil, err
-	}
-	c.keys[endpoint] = keys
-	return keys, nil
 }
 
 func (c *NativeClient) Authenticate(ctx context.Context, authorization, serviceURL string) error {
