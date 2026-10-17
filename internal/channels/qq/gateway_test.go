@@ -74,7 +74,7 @@ func (p *gatewayPeer) socket(w http.ResponseWriter, r *http.Request) {
 	p.connections++
 	connection := p.connections
 	p.mu.Unlock()
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if err = socket.Write(ctx, websocket.MessageText, []byte(`{"op":10,"d":{"heartbeat_interval":50}}`)); err != nil {
 		return
@@ -199,23 +199,33 @@ func TestNativeGatewayResumesPersistedSequenceAfterReopen(t *testing.T) {
 	client := redirectedClient(t, p)
 	file := filepath.Join(t.TempDir(), "state.db")
 	for run := 0; run < 2; run++ {
-		c, store, _ := openGateway(t, file, client)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		ready, err := c.session(ctx)
-		cancel()
-		var reconnect *gatewayFailure
-		if !ready || !errors.As(err, &reconnect) || reconnect.reset {
-			t.Fatalf("native session: %t %v", ready, err)
-		}
-		c.Close(context.Background())
-		if err = store.Close(); err != nil {
-			t.Fatal(err)
-		}
+		runGatewaySession(t, file, client)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.connections != 2 || fmt.Sprint(p.heartbeats) != "[42 44]" {
 		t.Fatalf("socket lifecycle: %d %v", p.connections, p.heartbeats)
+	}
+}
+
+// The bound covers real SQLite writes on shared CI runners; this checks recovery,
+// not five-second storage performance. Close the database even when a session
+// assertion fails, and before the next session reopens the same file.
+func runGatewaySession(t *testing.T, file string, client *http.Client) {
+	t.Helper()
+	c, store, _ := openGateway(t, file, client)
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	defer c.Close(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ready, err := c.session(ctx)
+	var reconnect *gatewayFailure
+	if !ready || !errors.As(err, &reconnect) || reconnect.reset {
+		t.Fatalf("native session: %t %v", ready, err)
 	}
 }
 
