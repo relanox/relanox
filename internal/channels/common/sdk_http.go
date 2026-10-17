@@ -26,8 +26,15 @@ type sdkTransport struct {
 	maximum int64
 }
 
+func (t sdkTransport) CloseIdleConnections() {
+	if closer, ok := t.base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
 func (t sdkTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if t.maximum <= 0 {
+		closeRequestBody(request)
 		return nil, errors.New("invalid_body_limit")
 	}
 	ctx, cancel := context.WithCancel(request.Context())
@@ -35,6 +42,7 @@ func (t sdkTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	stop := context.AfterFunc(t.ctx, cancel)
 	defer stop()
 	if err := t.ctx.Err(); err != nil {
+		closeRequestBody(request)
 		return nil, err
 	}
 	response, err := t.base.RoundTrip(request.Clone(ctx))
@@ -55,4 +63,10 @@ func (t sdkTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	}
 	response.Body = io.NopCloser(bytes.NewReader(body))
 	return response, nil
+}
+
+func closeRequestBody(request *http.Request) {
+	if request.Body != nil {
+		_ = request.Body.Close()
+	}
 }

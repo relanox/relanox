@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,5 +100,66 @@ func TestSDKHTTPCancellationReachesResponseRead(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("SDK response read ignored cancellation")
+	}
+}
+
+func TestSDKHTTPCloseIdleConnectionsReachesPeer(t *testing.T) {
+	// Wrapping a transport must preserve http.Client.CloseIdleConnections.
+	closed := make(chan struct{}, 1)
+	peer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	peer.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			select {
+			case closed <- struct{}{}:
+			default:
+			}
+		}
+	}
+	peer.Start()
+	defer peer.Close()
+	client := SDKHTTPClient(peer.Client(), t.Context(), 1024)
+	response, err := client.Get(peer.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	client.CloseIdleConnections()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SDK transport retained its idle connection")
+	}
+}
+
+func TestSDKHTTPRejectedRequestClosesBody(t *testing.T) {
+	// The RoundTripper contract requires closing request bodies even on errors.
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	request, err := http.NewRequest(http.MethodPost, "https://unused.example", reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	client := SDKHTTPClient(nil, ctx, 1024)
+	_, err = client.Transport.RoundTrip(request)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("preflight error = %v", err)
+	}
+	finished := make(chan error, 1)
+	go func() {
+		_, err := writer.Write([]byte("body"))
+		finished <- err
+	}()
+	select {
+	case err := <-finished:
+		if !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatalf("rejected request body stayed open: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("rejected SDK request did not close its body")
 	}
 }
