@@ -6,16 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 
 	"github.com/relanox/relanox/internal/agentmcp"
-	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/musewire"
 )
 
 type Config struct {
 	MCP                  agentmcp.Config `json:"mcp"`
-	CredentialsDirectory model.SecretRef `json:"credentialsDirectory"`
+	CredentialsDirectory string          `json:"credentialsDirectory"`
 	VMID                 string          `json:"vmId,omitempty"`
 	SessionID            string          `json:"sessionId,omitempty"`
 }
@@ -31,7 +31,10 @@ func Validate(raw json.RawMessage) (Config, error) {
 	if len(c.VMID) > 1024 || len(c.SessionID) > 1024 {
 		return c, errors.New("invalid_muse_identifier")
 	}
-	return c, config.ValidateSecretRef(c.CredentialsDirectory, "credentialsDirectory")
+	if strings.TrimSpace(c.CredentialsDirectory) == "" || strings.ContainsRune(c.CredentialsDirectory, 0) || len(c.CredentialsDirectory) > 32768 {
+		return c, errors.New("credentialsDirectory: invalid_path")
+	}
+	return c, nil
 }
 
 type Agent struct {
@@ -72,10 +75,7 @@ func (a *Agent) Dispatch(ctx context.Context, in model.DispatchInput) (model.Dis
 	if err != nil {
 		return model.DispatchResult{Status: model.Rejected, ErrorCode: "muse_config_invalid"}, nil
 	}
-	directory, err := a.deps.Secret(c.CredentialsDirectory)
-	if err != nil {
-		return model.DispatchResult{Status: model.Rejected, ErrorCode: "muse_credentials_invalid"}, nil
-	}
+	directory := c.CredentialsDirectory
 	if a.deps.ResolvePath != nil {
 		directory = a.deps.ResolvePath(directory)
 	} else {
