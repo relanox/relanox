@@ -237,3 +237,50 @@ func TestNewBindingGetsOneDurableHistoryStart(t *testing.T) {
 		t.Fatal("existing binding history start reset on restart")
 	}
 }
+
+// A successful reliable resume can bypass HTTP recovery entirely. Its retained
+// queue must consume old pre-binding events while accepting subsequent current
+// events; applying the binding start only to REST leaks prior-unbound history.
+// The previous test exercises a new hello/history path, so it cannot catch this.
+// Native socket traffic and real Core/SQLite expose the result without a seam.
+func TestReliableReplayAppliesNewBindingHistoryStart(t *testing.T) {
+	p := recoveryPeer(t)
+	peer := httptest.NewServer(p)
+	defer peer.Close()
+	path := filepath.Join(t.TempDir(), "resume-new-binding.db")
+	f := openFixture(t, path, peer)
+	receive(t, p.connections)
+	state := awaitCursor(t, f, 2)
+	receive(t, f.notifications)
+	state.StartedAtMS = time.Now().Add(-90 * 24 * time.Hour).UnixMilli()
+	state.Watermarks = nil
+	state.BoundStarts = nil
+	if err := common.SaveState(context.Background(), f.host.State(), "websocket-cursor", state, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.close(t)
+	p.replayBeforeStart.Store(true)
+	f = openFixture(t, path, peer)
+	query := receive(t, p.connections)
+	if query["connection_id"] != connectionID || query["sequence_number"] != "2" {
+		t.Fatalf("native reliable resume: %+v", query)
+	}
+	state = awaitCursor(t, f, 4)
+	if state.ConnectionID != connectionID {
+		t.Fatal("reliable session replaced")
+	}
+	if message := receive(t, f.notifications); message != "current bound input" {
+		t.Fatalf("pre-binding history dispatched: %q", message)
+	}
+	rows, err := f.store.ListInbound(context.Background(), model.ListInboundInput{StatusFilter: model.StatusFilter{Limit: 10}})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("unexpected accepted replay: %d %v", len(rows), err)
+	}
+	ids := map[string]bool{}
+	for _, row := range rows {
+		ids[row.Snapshot.Source.EventID] = true
+	}
+	if ids["oooooooooooooooooooooooooo"] || !ids["tttttttttttttttttttttttttt"] || !ids[postID] {
+		t.Fatalf("wrong native history accepted: %+v", ids)
+	}
+}

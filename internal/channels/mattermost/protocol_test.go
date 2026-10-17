@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -40,22 +41,23 @@ const (
 )
 
 type nativePeer struct {
-	t               *testing.T
-	connections     chan map[string]string
-	posts           chan *mm.Post
-	uploads         chan []byte
-	downloadStarted chan struct{}
-	blockDownload   atomic.Bool
-	blockPost       atomic.Bool
-	postStarted     chan struct{}
-	active          atomic.Int32
-	changedUser     atomic.Bool
-	resetConnection atomic.Bool
-	failHistory     atomic.Bool
-	cappedHistory   atomic.Bool
-	unboundPost     atomic.Bool
-	createdAt       atomic.Int64
-	historyRequests chan string
+	t                 *testing.T
+	connections       chan map[string]string
+	posts             chan *mm.Post
+	uploads           chan []byte
+	downloadStarted   chan struct{}
+	blockDownload     atomic.Bool
+	blockPost         atomic.Bool
+	postStarted       chan struct{}
+	active            atomic.Int32
+	changedUser       atomic.Bool
+	resetConnection   atomic.Bool
+	failHistory       atomic.Bool
+	cappedHistory     atomic.Bool
+	unboundPost       atomic.Bool
+	createdAt         atomic.Int64
+	replayBeforeStart atomic.Bool
+	historyRequests   chan string
 }
 
 // The peer serves only documented external native endpoints and socket frames.
@@ -131,26 +133,8 @@ func (p *nativePeer) socket(w http.ResponseWriter, r *http.Request) {
 	if wsjson.Write(ctx, connection, map[string]any{"status": "OK", "seq_reply": 1}) != nil {
 		return
 	}
-	if query.Get("connection_id") == "" || (p.resetConnection.Load() && query.Get("connection_id") != newConnectionID) {
-		id := connectionID
-		if p.resetConnection.Load() {
-			id = newConnectionID
-		}
-		if wsjson.Write(ctx, connection, map[string]any{"event": "hello", "seq": 0, "data": map[string]string{"connection_id": id}}) != nil {
-			return
-		}
-	}
-	// A retained reliable stream can resume directly with posted, without hello.
-	// The source event is not advanced when its preceding file download failed.
-	if query.Get("sequence_number") != "2" && !p.resetConnection.Load() {
-		p.createdAt.CompareAndSwap(0, time.Now().UnixMilli())
-		post := map[string]any{"id": postID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "native input", "type": "", "file_ids": []string{fileID}, "create_at": p.createdAt.Load()}
-		if p.unboundPost.Load() {
-			post["channel_id"] = "vvvvvvvvvvvvvvvvvvvvvvvvvv"
-		}
-		if wsjson.Write(ctx, connection, map[string]any{"event": "posted", "seq": 1, "data": map[string]string{"post": string(common.Data(post))}}) != nil {
-			return
-		}
+	if !p.sendEvents(ctx, connection, query) {
+		return
 	}
 	for {
 		var request json.RawMessage
@@ -516,4 +500,39 @@ func TestOfflineServerConfiguration(t *testing.T) {
 
 func textParts(value string) ([]string, error) {
 	return (&Channel{}).SplitText(value, model.ReplyTarget{})
+}
+
+func (p *nativePeer) sendEvents(ctx context.Context, connection *websocket.Conn, query url.Values) bool {
+	if query.Get("connection_id") == "" || (p.resetConnection.Load() && query.Get("connection_id") != newConnectionID) {
+		id := connectionID
+		if p.resetConnection.Load() {
+			id = newConnectionID
+		}
+		if wsjson.Write(ctx, connection, map[string]any{"event": "hello", "seq": 0, "data": map[string]string{"connection_id": id}}) != nil {
+			return false
+		}
+	}
+	// A retained reliable stream can resume directly with posted, without hello.
+	// The source event is not advanced when its preceding file download failed.
+	if p.replayBeforeStart.Load() && query.Get("sequence_number") == "2" {
+		for i, post := range []map[string]any{
+			{"id": "oooooooooooooooooooooooooo", "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "prior unbound history", "type": "", "create_at": time.Now().Add(-24 * time.Hour).UnixMilli()},
+			{"id": "tttttttttttttttttttttttttt", "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "current bound input", "type": "", "create_at": time.Now().UnixMilli()},
+		} {
+			if wsjson.Write(ctx, connection, map[string]any{"event": "posted", "seq": i + 2, "data": map[string]string{"post": string(common.Data(post))}}) != nil {
+				return false
+			}
+		}
+	}
+	if query.Get("sequence_number") != "2" && !p.resetConnection.Load() {
+		p.createdAt.CompareAndSwap(0, time.Now().UnixMilli())
+		post := map[string]any{"id": postID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "native input", "type": "", "file_ids": []string{fileID}, "create_at": p.createdAt.Load()}
+		if p.unboundPost.Load() {
+			post["channel_id"] = "vvvvvvvvvvvvvvvvvvvvvvvvvv"
+		}
+		if wsjson.Write(ctx, connection, map[string]any{"event": "posted", "seq": 1, "data": map[string]string{"post": string(common.Data(post))}}) != nil {
+			return false
+		}
+	}
+	return true
 }
