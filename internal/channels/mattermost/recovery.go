@@ -70,7 +70,9 @@ func (c *Channel) recoverHistory(ctx context.Context, saved *cursor) error {
 		saved.Watermarks = map[string]int64{}
 	}
 	for _, channel := range saved.Recovery.Channels {
-		saved.Watermarks[channel.ChannelID] = max(saved.Watermarks[channel.ChannelID], channel.HighWaterMS)
+		if common.Contains(c.host.BoundChatIDs(), channel.ChannelID) {
+			saved.Watermarks[channel.ChannelID] = max(saved.Watermarks[channel.ChannelID], channel.HighWaterMS)
+		}
 	}
 	saved.Recovery = nil
 	return nil

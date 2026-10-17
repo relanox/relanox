@@ -53,6 +53,7 @@ type nativePeer struct {
 	resetConnection atomic.Bool
 	failHistory     atomic.Bool
 	cappedHistory   atomic.Bool
+	unboundPost     atomic.Bool
 	history         map[string]json.RawMessage
 	historyRequests chan string
 }
@@ -143,6 +144,9 @@ func (p *nativePeer) socket(w http.ResponseWriter, r *http.Request) {
 	// The source event is not advanced when its preceding file download failed.
 	if query.Get("sequence_number") != "2" && !p.resetConnection.Load() {
 		post := map[string]any{"id": postID, "channel_id": roomID, "user_id": userID, "root_id": rootID, "message": "native input", "type": "", "file_ids": []string{fileID}, "create_at": 1792195200123}
+		if p.unboundPost.Load() {
+			post["channel_id"] = "vvvvvvvvvvvvvvvvvvvvvvvvvv"
+		}
 		if wsjson.Write(ctx, connection, map[string]any{"event": "posted", "seq": 1, "data": map[string]string{"post": string(common.Data(post))}}) != nil {
 			return
 		}
