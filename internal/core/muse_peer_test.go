@@ -213,7 +213,7 @@ func newMuseRelay(t *testing.T, peer *musePeer) (*core.Runtime, *storage.Store, 
 		}
 	}
 	account := model.AccountConfig{ID: "wechat", Channel: model.WeChat, AllowedSenders: []string{"alice"}, Config: common.Data(wechat.Config{BotID: "bot", BotToken: model.SecretRef{Env: "PUBLIC_WECHAT"}, APIBaseURL: native.URL, CDNBaseURL: native.URL + "/c2c", AllowInsecureLoopback: true})}
-	endpoint := model.EndpointConfig{ID: "muse", Agent: model.Muse, Config: common.Data(muse.Config{MCP: agentmcp.Config{Auth: "bearer", Token: model.SecretRef{Env: "PUBLIC_MCP"}}, CredentialsDirectory: model.SecretRef{Env: "PUBLIC_DIRECTORY"}, SessionID: "native-session"})}
+	endpoint := model.EndpointConfig{ID: "muse", Agent: model.Muse, Config: common.Data(muse.Config{MCP: agentmcp.Config{Auth: "bearer", Token: model.SecretRef{Env: "PUBLIC_MCP"}}, CredentialsDirectory: directory, SessionID: "native-session"})}
 	cfg := relayConfig(t, "http://127.0.0.1:8787", account, endpoint, filepath.Join(t.TempDir(), "muse.db"))
 	lifetime, cancel := context.WithCancel(context.Background())
 	store, err := storage.Open(lifetime, cfg.Storage, nil)
