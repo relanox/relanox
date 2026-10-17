@@ -2,8 +2,6 @@
 
 Use Go 1.27.2 and a separate branch/worktree under `.worktree/` for every implementation
 task. Read [architecture](architecture.md) and root [AGENTS.md](../../AGENTS.md).
-The old TypeScript implementation is archived under `ref/typescript`; its package
-manager, hooks and development rules do not apply to the Go runtime.
 
 ```sh
 git config core.hooksPath .githooks
@@ -51,8 +49,7 @@ go run ./tools/docs
 The documentation renderer uses the pinned Go Markdown dependency, validates local
 Markdown links and writes `docs/site`. Keep English and Chinese operator pages
 aligned with actual native options. Documentation changes must pass this build.
-Do not reuse archived Node.js commands as Go instructions. Deployment work must
-also read private `docs/local/deployment.md` from the primary checkout if present.
+Deployment work must also read private `docs/local/deployment.md` from the primary checkout if present.
 
 ## Ent schema and migrations
 

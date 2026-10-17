@@ -75,8 +75,7 @@ relanox validate -c relanox.json --json
 ```
 
 Native option files contain only the account's or endpoint's `config` object,
-including secret references. They are not legacy TypeScript configuration files.
-Interactive commands hide credential input on terminals. `--json` is for scripted
+including secret references. Interactive commands hide credential input on terminals. `--json` is for scripted
 use and requires all non-generated inputs; it never opens a prompt.
 
 ## Storage and limits

@@ -69,8 +69,7 @@ relanox bind -c relanox.json --account telegram --chat 123456789 --endpoint grok
 relanox validate -c relanox.json --json
 ```
 
-原生选项文件只包含账号或端点的 `config` 对象，包括凭据引用，不使用旧 TypeScript
-配置格式。终端交互隐藏凭据输入。`--json` 用于脚本，必须提供所有不能自动生成的输入，
+原生选项文件只包含账号或端点的 `config` 对象，包括凭据引用。终端交互隐藏凭据输入。`--json` 用于脚本，必须提供所有不能自动生成的输入，
 不会打开交互提示。
 
 ## Ent 存储与限制

@@ -1,4 +1,4 @@
-// Command docs renders the maintained Markdown documentation without Node.js.
+// Command docs renders Markdown documentation and validates local links.
 package main
 
 import (

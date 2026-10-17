@@ -18,8 +18,8 @@ const validConfig = `{
  "storage":{"driver":"sqlite","path":"state/relanox.db"}
 }`
 
-// These tests protect the new Go configuration boundary: cross-account binding
-// errors and leaked invalid credentials were not covered by archived TS tests.
+// These tests protect configuration boundaries: successful decoding alone misses
+// cross-account binding errors and credentials leaked in invalid-input errors.
 // They exercise only exported production parsing and reference resolution APIs.
 func TestDecodeRejectsInvalidRelationsWithoutLeakingInput(t *testing.T) {
 	tests := []struct{ name, input, field, code string }{
