@@ -1,0 +1,13 @@
+Muse wire protocol and Noise handshake adapted from:
+https://github.com/facebookincubator/muse-gadget-sdk
+Revision fa073045a5572a8e3367fae142c1b7a7c554f222
+Copyright (c) Meta Platforms, Inc. and affiliates.
+Licensed under the Apache License, Version 2.0.
+
+Adaptations: native Go transport, standard-library cryptography, bounded device
+API requests, paired credential-file persistence, cancellation-aware directory
+serialization and explicit uncertain-send classification.
+
+The existing muse-client 0.1.0 TypeScript package was inspected as an unofficial
+reference for Relanox's prior behavior. It is not a runtime dependency.
+Local protocol validation does not establish live Muse account compatibility.
