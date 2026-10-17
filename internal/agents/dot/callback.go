@@ -2,8 +2,6 @@ package dot
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/relanox/relanox/internal/agentmcp"
+	standardwebhooks "github.com/standard-webhooks/standard-webhooks/libraries/go"
 )
 
 func callbackURL(value string) (string, error) {
@@ -36,10 +35,15 @@ func webhookSignature(secret, eventID, timestamp string, body []byte) (string, e
 	if err != nil || len(key) < 24 || len(key) > 64 || base64.StdEncoding.EncodeToString(key) != encoded {
 		return "", errors.New("invalid_signing_secret")
 	}
-	h := hmac.New(sha256.New, key)
-	_, _ = h.Write([]byte(eventID + "." + timestamp + "."))
-	_, _ = h.Write(body)
-	return "v1," + base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
+	seconds, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return "", errors.New("invalid_signing_timestamp")
+	}
+	signer, err := standardwebhooks.NewWebhookRaw(key)
+	if err != nil {
+		return "", errors.New("invalid_signing_secret")
+	}
+	return signer.Sign(eventID, time.Unix(seconds, 0), body)
 }
 
 func signedHeaders(sub subscription, eventID string, body []byte) (http.Header, error) {
