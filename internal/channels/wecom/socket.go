@@ -186,7 +186,7 @@ func (c *Channel) socket(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	conn.SetReadLimit(1024 * 1024)
 	session := &socketSession{conn: conn, done: make(chan struct{}), pending: make(map[string]chan frame)}
 	callbacks := make(chan frame, 128)
@@ -226,7 +226,7 @@ func (c *Channel) socket(ctx context.Context) error {
 			}
 		}()
 	}
-	defer func() { cancel(); conn.CloseNow(); workers.Wait() }()
+	defer func() { cancel(); _ = conn.CloseNow(); workers.Wait() }()
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {

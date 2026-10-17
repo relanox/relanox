@@ -67,7 +67,7 @@ func (c *Channel) session(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer socket.CloseNow()
+	defer func() { _ = socket.CloseNow() }()
 	socket.SetReadLimit(common.MaxJSONBytes)
 	return c.consume(ctx, socket, bot)
 }
@@ -118,7 +118,7 @@ func (r *socketReader) ping(ctx context.Context, socket *websocket.Conn) {
 			err := socket.Ping(bounded)
 			cancel()
 			if err != nil {
-				socket.CloseNow()
+				_ = socket.CloseNow()
 				return
 			}
 		}
@@ -131,7 +131,7 @@ func (c *Channel) consume(parent context.Context, socket *websocket.Conn, bot *i
 	reader.workers.Add(2)
 	go reader.read(ctx, socket)
 	go reader.ping(ctx, socket)
-	defer func() { cancel(); socket.CloseNow(); reader.workers.Wait() }()
+	defer func() { cancel(); _ = socket.CloseNow(); reader.workers.Wait() }()
 	hello := false
 	for {
 		select {

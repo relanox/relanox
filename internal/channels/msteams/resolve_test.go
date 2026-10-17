@@ -21,7 +21,7 @@ func TestResolveDoesNotReplaceLearnedIdentityWithSavedInstallation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	host := &consentHost{state: store.State(model.StateNamespace{Component: "channel", OwnerID: "account"})}
 	c, err := New(host, model.AccountConfig{ID: "account", Channel: model.MSTeams, Config: common.Data(Config{AppID: "app", TenantID: "tenant", BotID: "current-bot", AppSecret: model.SecretRef{Env: "SECRET"}, TrustedServiceOrigins: []string{"https://smba.trafficmanager.net"}})}, common.Options{})
 	if err != nil {

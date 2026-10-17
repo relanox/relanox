@@ -189,7 +189,7 @@ func (c *Channel) uploadFile(ctx context.Context, key string, input model.SendIn
 			return &result, nil
 		}
 		_, readErr := common.ReadBounded(response.Body, common.MaxJSONBytes)
-		response.Body.Close()
+		_ = response.Body.Close()
 		if readErr != nil {
 			return nil, readErr
 		}

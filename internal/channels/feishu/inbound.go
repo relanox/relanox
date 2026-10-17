@@ -87,7 +87,8 @@ func (c *Channel) webhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"challenge": challenge.Challenge})
+		// The response may already be committed; write failures cannot be retried.
+		_ = json.NewEncoder(w).Encode(map[string]string{"challenge": challenge.Challenge})
 		return
 	}
 	if signature == "" {

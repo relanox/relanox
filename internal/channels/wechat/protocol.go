@@ -121,7 +121,7 @@ func (c *Client) httpClient() *http.Client {
 }
 
 func readJSON(response *http.Response, out any) error {
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return &APIError{Status: response.StatusCode}
 	}

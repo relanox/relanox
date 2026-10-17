@@ -138,7 +138,7 @@ func (c *Channel) session(ctx context.Context, bot *identity) error {
 	if err != nil {
 		return err
 	}
-	defer socket.CloseNow()
+	defer func() { _ = socket.CloseNow() }()
 	socket.SetReadLimit(common.MaxJSONBytes)
 	interval, err := gatewayHello(ctx, socket)
 	if err != nil {
@@ -261,11 +261,11 @@ func (r *gatewayReader) heartbeat(ctx context.Context, socket *websocket.Conn, i
 			return
 		case <-ticker.C:
 			if !r.ack.Swap(false) {
-				socket.CloseNow()
+				_ = socket.CloseNow()
 				return
 			}
 			if err := socket.Write(ctx, websocket.MessageText, r.heartbeatBody()); err != nil {
-				socket.CloseNow()
+				_ = socket.CloseNow()
 				return
 			}
 		}
@@ -283,7 +283,7 @@ func (c *Channel) consume(parent context.Context, socket *websocket.Conn, interv
 	reader.workers.Add(2)
 	go reader.read(ctx, socket)
 	go reader.heartbeat(ctx, socket, interval)
-	defer func() { cancel(); socket.CloseNow(); reader.workers.Wait() }()
+	defer func() { cancel(); _ = socket.CloseNow(); reader.workers.Wait() }()
 	for {
 		select {
 		case <-ctx.Done():

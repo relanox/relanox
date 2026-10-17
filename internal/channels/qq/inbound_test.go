@@ -37,7 +37,7 @@ func TestNativePartIdentityPreservesIndexAndSequence(t *testing.T) {
 
 func TestUnavailableNativeAttachmentsRetainFallbacksAndCancellation(t *testing.T) {
 	c, _ := New(testHost{}, model.AccountConfig{ID: "account", Channel: model.QQ, Config: common.Data(Config{AppID: "app", ClientSecret: model.SecretRef{Env: "SECRET"}})}, common.Options{})
-	defer c.Close(context.Background())
+	defer func() { _ = c.Close(context.Background()) }()
 	attachments := []nativeAttachment{{URL: "https://127.0.0.1/image.png", ContentType: "image/png", FileName: "image.png"}, {ContentType: "voice", FileName: "voice.amr", Recognition: "native transcript"}, {ContentType: "file", FileName: "report.pdf"}}
 	result, err := c.downloadAttachments(context.Background(), attachments)
 	if err != nil || len(result.uploads) != 0 || len(result.images) != 1 {

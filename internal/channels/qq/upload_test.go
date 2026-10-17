@@ -33,7 +33,7 @@ func (p *chunkPeer) native(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.URL.Path {
 	case "/app/getAppAccessToken":
-		fmt.Fprint(w, `{"access_token":"native","expires_in":7200}`)
+		writePeerResponse(p.t, w, `{"access_token":"native","expires_in":7200}`)
 	case "/v2/groups/group/upload_prepare":
 		p.prepare(w, r)
 	case "/v2/groups/group/upload_part_finish":
@@ -45,7 +45,7 @@ func (p *chunkPeer) native(w http.ResponseWriter, r *http.Request) {
 		if json.NewDecoder(r.Body).Decode(&body) != nil || body.ID != "upload-native" {
 			p.t.Error("completion upload ID lost")
 		}
-		fmt.Fprint(w, `{"file_uuid":"native","file_info":"uploaded-large","ttl":3600}`)
+		writePeerResponse(p.t, w, `{"file_uuid":"native","file_info":"uploaded-large","ttl":3600}`)
 	case "/v2/groups/group/messages":
 		var body nativeSend
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -54,7 +54,7 @@ func (p *chunkPeer) native(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
 		p.message = &body
 		p.mu.Unlock()
-		fmt.Fprint(w, `{"id":"sent"}`)
+		writePeerResponse(p.t, w, `{"id":"sent"}`)
 	default:
 		p.t.Errorf("unexpected native path: %s", r.URL.Path)
 		w.WriteHeader(404)
@@ -83,7 +83,7 @@ func (p *chunkPeer) prepare(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.prepared = true
 	p.mu.Unlock()
-	fmt.Fprintf(w, `{"upload_id":"upload-native","block_size":5242880,"parts":[{"index":1,"presigned_url":%q},{"index":2,"presigned_url":%q}]}`, p.cos+"/1?signature=public", p.cos+"/2?signature=public")
+	writePeerResponse(p.t, w, fmt.Sprintf(`{"upload_id":"upload-native","block_size":5242880,"parts":[{"index":1,"presigned_url":%q},{"index":2,"presigned_url":%q}]}`, p.cos+"/1?signature=public", p.cos+"/2?signature=public"))
 }
 
 func (p *chunkPeer) finish(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +109,7 @@ func (p *chunkPeer) finish(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.finished = append(p.finished, body.Index)
 	p.mu.Unlock()
-	fmt.Fprint(w, `{"code":0}`)
+	writePeerResponse(p.t, w, `{"code":0}`)
 }
 
 func (p *chunkPeer) upload(w http.ResponseWriter, r *http.Request) {
@@ -154,16 +154,18 @@ func chunkFixture(t *testing.T, trusted bool) (*Channel, *chunkPeer) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { c.Close(context.Background()) })
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
 	return c, p
 }
 
-func chunkInput(c *Channel, expires time.Time) model.SendInput {
+func chunkInput(t *testing.T, c *Channel, expires time.Time) model.SendInput {
 	input := sendInput(c, "group")
 	input.Target.ChatID = "group"
 	at := expires.Add(-5 * time.Minute).UnixMilli()
 	var target targetData
-	json.Unmarshal(input.Target.Data, &target)
+	if err := json.Unmarshal(input.Target.Data, &target); err != nil {
+		t.Error(err)
+	}
 	target.MessageAt = &at
 	input.Target.Data = common.Data(target)
 	ref := model.MediaReference{ID: "media", Kind: model.File, MIMEType: "application/octet-stream", FileName: "a/b.bin", Size: 6 * 1024 * 1024}
@@ -182,7 +184,7 @@ func TestNativeChunkedUploadRechecksPassiveWindow(t *testing.T) {
 	// https://github.com/tencent-connect/qqbot-nodejs
 	c, p := chunkFixture(t, true)
 	p.expires = time.Now().Add(time.Second)
-	result, err := c.Send(context.Background(), chunkInput(c, p.expires))
+	result, err := c.Send(context.Background(), chunkInput(t, c, p.expires))
 	if err != nil || result.Status != model.Sent {
 		t.Fatalf("chunked send: %+v %v", result, err)
 	}
@@ -202,7 +204,7 @@ func TestNativeChunkedUploadRechecksPassiveWindow(t *testing.T) {
 
 func TestPresignedUploadCannotGrantPrivateNetworkAccess(t *testing.T) {
 	c, p := chunkFixture(t, false)
-	result, err := c.Send(context.Background(), chunkInput(c, time.Now().Add(time.Hour)))
+	result, err := c.Send(context.Background(), chunkInput(t, c, time.Now().Add(time.Hour)))
 	if err != nil || result.Status != model.Rejected || result.ErrorCode != "invalid_upload_part_origin" {
 		t.Fatalf("private COS: %+v %v", result, err)
 	}
@@ -210,5 +212,13 @@ func TestPresignedUploadCannotGrantPrivateNetworkAccess(t *testing.T) {
 	defer p.mu.Unlock()
 	if !p.prepared || len(p.parts) != 0 || p.message != nil {
 		t.Fatal("native response granted private upload access")
+	}
+}
+
+// writePeerResponse fails the fixture when its native response cannot be delivered.
+func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Error(err)
 	}
 }

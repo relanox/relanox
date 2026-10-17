@@ -3,7 +3,7 @@ package feishu
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -34,9 +34,9 @@ func TestNativeTokenAndSelectedThreadReply(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/open-apis/auth/v3/tenant_access_token/internal":
-			fmt.Fprint(w, `{"code":0,"tenant_access_token":"public-token","expire":7200}`)
+			writePeerResponse(t, w, `{"code":0,"tenant_access_token":"public-token","expire":7200}`)
 		case "/open-apis/bot/v3/info":
-			fmt.Fprint(w, `{"code":0,"bot":{"open_id":"ou_bot"}}`)
+			writePeerResponse(t, w, `{"code":0,"bot":{"open_id":"ou_bot"}}`)
 		default:
 			paths = append(paths, r.URL.RequestURI())
 			if r.Header.Get("Authorization") != "Bearer public-token" {
@@ -64,7 +64,7 @@ func TestNativeTokenAndSelectedThreadReply(t *testing.T) {
 			if err := json.Unmarshal([]byte(body.Content), &post); err != nil || len(post.ZH.Rows) != 1 || post.ZH.Rows[0][0].Tag != "md" {
 				t.Error("native Markdown post missing")
 			}
-			fmt.Fprint(w, `{"code":0,"data":{"message_id":"om_sent"}}`)
+			writePeerResponse(t, w, `{"code":0,"data":{"message_id":"om_sent"}}`)
 		}
 	}))
 	defer peer.Close()
@@ -119,5 +119,13 @@ func TestNativePostNormalizationFormsAndMentions(t *testing.T) {
 	actual, _, err := normalizeContent(message, "ou_bot")
 	if err != nil || actual != "@Alice asks @Alice0" {
 		t.Fatalf("native mention order: %q %v", actual, err)
+	}
+}
+
+// writePeerResponse fails the fixture when its native response cannot be delivered.
+func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Error(err)
 	}
 }

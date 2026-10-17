@@ -52,9 +52,9 @@ func (p *gatewayPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.tokens++
 		count := p.tokens
 		p.mu.Unlock()
-		fmt.Fprintf(w, `{"access_token":"token-%d","expires_in":7200}`, count)
+		writePeerResponse(p.t, w, fmt.Sprintf(`{"access_token":"token-%d","expires_in":7200}`, count))
 	case "/gateway":
-		fmt.Fprint(w, `{"url":"wss://gateway.qq.example/socket"}`)
+		writePeerResponse(p.t, w, `{"url":"wss://gateway.qq.example/socket"}`)
 	case "/socket":
 		p.socket(w, r)
 	default:
@@ -69,7 +69,7 @@ func (p *gatewayPeer) socket(w http.ResponseWriter, r *http.Request) {
 		p.t.Error(err)
 		return
 	}
-	defer socket.CloseNow()
+	defer func() { _ = socket.CloseNow() }()
 	p.mu.Lock()
 	p.connections++
 	connection := p.connections
@@ -112,7 +112,7 @@ func (p *gatewayPeer) socket(w http.ResponseWriter, r *http.Request) {
 
 func (p *gatewayPeer) refreshSession(ctx context.Context, socket *websocket.Conn, connection int) {
 	if connection == 1 {
-		socket.Close(websocket.StatusCode(4004), "public auth failure")
+		_ = socket.Close(websocket.StatusCode(4004), "public auth failure")
 		return
 	}
 	if err := socket.Write(ctx, websocket.MessageText, []byte(`{"op":0,"t":"READY","s":1,"d":{"session_id":"new-session"}}`)); err != nil {
@@ -182,7 +182,7 @@ func openGateway(t *testing.T, file string, client *http.Client) (*Channel, *sto
 	host := &gatewayHost{state: store.State(model.StateNamespace{Component: "channel", OwnerID: "account"}), connected: make(chan struct{}, 1)}
 	c, err := New(host, model.AccountConfig{ID: "account", Channel: model.QQ, Config: common.Data(Config{AppID: "app", ClientSecret: model.SecretRef{Env: "SECRET"}})}, common.Options{HTTPClient: client, ResolveSecret: func(model.SecretRef) (string, error) { return "public-secret", nil }})
 	if err != nil {
-		store.Close()
+		_ = store.Close()
 		t.Fatal(err)
 	}
 	return c, store, host
@@ -219,7 +219,7 @@ func runGatewaySession(t *testing.T, file string, client *http.Client) {
 			t.Error(err)
 		}
 	}()
-	defer c.Close(context.Background())
+	defer func() { _ = c.Close(context.Background()) }()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	ready, err := c.session(ctx)
@@ -232,7 +232,7 @@ func runGatewaySession(t *testing.T, file string, client *http.Client) {
 func TestNativeAuthCloseRefreshesTokenBeforeReconnect(t *testing.T) {
 	p := &gatewayPeer{t: t, refresh: true}
 	c, store, host := openGateway(t, filepath.Join(t.TempDir(), "state.db"), redirectedClient(t, p))
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := c.Start(ctx); err != nil {

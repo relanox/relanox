@@ -36,7 +36,7 @@ func TestSDKHTTPPreservesNativeStatusAndRejectsRedirect(t *testing.T) {
 			t.Fatal(err)
 		}
 		body, err := io.ReadAll(response.Body)
-		response.Body.Close()
+		_ = response.Body.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,7 +59,7 @@ func TestSDKHTTPLimitsChunkedResponse(t *testing.T) {
 	defer peer.Close()
 	response, err := SDKHTTPClient(peer.Client(), t.Context(), 64).Get(peer.URL)
 	if response != nil {
-		response.Body.Close()
+		_ = response.Body.Close()
 	}
 	if err == nil || !strings.Contains(err.Error(), "media_too_large") {
 		t.Fatalf("unbounded SDK response: %v", err)
@@ -83,7 +83,7 @@ func TestSDKHTTPCancellationReachesResponseRead(t *testing.T) {
 	go func() {
 		response, err := SDKHTTPClient(peer.Client(), ctx, 1024).Get(peer.URL)
 		if response != nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 		}
 		finished <- err
 	}()
@@ -124,7 +124,7 @@ func TestSDKHTTPCloseIdleConnectionsReachesPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response.Body.Close()
+	_ = response.Body.Close()
 	client.CloseIdleConnections()
 	select {
 	case <-closed:
@@ -136,8 +136,8 @@ func TestSDKHTTPCloseIdleConnectionsReachesPeer(t *testing.T) {
 func TestSDKHTTPRejectedRequestClosesBody(t *testing.T) {
 	// The RoundTripper contract requires closing request bodies even on errors.
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
 	request, err := http.NewRequest(http.MethodPost, "https://unused.example", reader)
 	if err != nil {
 		t.Fatal(err)

@@ -239,7 +239,7 @@ func postEvent(t *testing.T, f *fixture, token, body string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	_, _ = io.Copy(io.Discard, response.Body)
 	return response.StatusCode
 }
@@ -306,7 +306,7 @@ func assertMediaCard(t *testing.T, f *fixture, p *googlePeer, input model.Inboun
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	raw, err := io.ReadAll(response.Body)
 	if err != nil || response.StatusCode != 200 || string(raw) != "OggS-native-audio" || button["text"] != "voice.ogg" {
 		t.Fatalf("published card asset: %d %q %v", response.StatusCode, raw, err)

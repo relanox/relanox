@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -105,7 +104,7 @@ func TestSSEAcceptanceCheckpointAndReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture = openFixture(t, filename, peer.URL, roots)
-	defer fixture.store.Close()
+	defer func() { _ = fixture.store.Close() }()
 	if err = fixture.channel.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +217,7 @@ func (p *signalPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		p.cursors <- r.Header.Get("Last-Event-ID")
 		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprint(w, "id: daemon-2\nevent: receive\ndata: "+nativeEvent+"\n\n")
+		writePeerResponse(p.t, w, "id: daemon-2\nevent: receive\ndata: "+nativeEvent+"\n\n")
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()
 	case "/api/v1/rpc":
@@ -251,17 +250,17 @@ func (p *signalPeer) rpc(w http.ResponseWriter, r *http.Request) {
 		if string(request.Params["id"]) != `"native-attachment"` || string(request.Params["groupId"]) != `"native-group=="` {
 			p.t.Error("attachment parameters")
 		}
-		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"result":{"data":"cG5n"}}`, request.ID)
+		writePeerResponse(p.t, w, fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"result":{"data":"cG5n"}}`, request.ID))
 	case "send":
 		assertSendParams(p.t, request.Params)
 		kind := "SUCCESS"
 		if p.partial.Load() {
 			kind = "NETWORK_FAILURE"
 		}
-		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%q,"result":{"timestamp":1700000001000,"results":[{"type":"SUCCESS"},{"type":%q}]}}`, request.ID, kind)
+		writePeerResponse(p.t, w, fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"result":{"timestamp":1700000001000,"results":[{"type":"SUCCESS"},{"type":%q}]}}`, request.ID, kind))
 	default:
 		p.t.Errorf("unexpected RPC method %s", request.Method)
-		io.WriteString(w, `{"error":{"code":-32601}}`)
+		writePeerResponse(p.t, w, `{"error":{"code":-32601}}`)
 	}
 }
 

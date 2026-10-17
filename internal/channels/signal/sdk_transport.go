@@ -29,7 +29,7 @@ func (t rpcTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	}
 	var input signalcli.RPCRequest
 	err = json.NewDecoder(body).Decode(&input)
-	body.Close()
+	_ = body.Close()
 	if err != nil || input.ID == "" {
 		return nil, errors.New("rpc_request_invalid")
 	}
@@ -41,7 +41,7 @@ func (t rpcTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	raw, err := io.ReadAll(response.Body) // Already bounded by SDKHTTPClient.
 	if err != nil {
 		return nil, err

@@ -43,7 +43,7 @@ func TestSDKCloudSendRetainsStatusAndRetryHeaders(t *testing.T) {
 				}
 				w.Header().Set("Retry-After", "8")
 				w.WriteHeader(fixture.status)
-				io.WriteString(w, fixture.body)
+				writePeerResponse(t, w, fixture.body)
 			}))
 			defer peer.Close()
 			base, _ := url.Parse(peer.URL)
@@ -52,7 +52,7 @@ func TestSDKCloudSendRetainsStatusAndRetryHeaders(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer store.Close()
+			defer func() { _ = store.Close() }()
 			host := &protocolHost{state: store.State(model.StateNamespace{Component: "channel", OwnerID: "wa"})}
 			cfg := Config{PhoneNumberID: "phone", BusinessAccountID: "business", AppSecret: model.SecretRef{Env: "APP"}, VerifyToken: model.SecretRef{Env: "VERIFY"}, AccessToken: model.SecretRef{Env: "ACCESS"}}
 			channel, err := New(host, model.AccountConfig{ID: "wa", Channel: model.WhatsApp, AllowedSenders: []string{"customer"}, Config: common.Data(cfg)}, common.Options{HTTPClient: &http.Client{Transport: rewriteTransport{base: base}}, ResolveSecret: func(model.SecretRef) (string, error) { return "public-fixture", nil }})
@@ -69,5 +69,13 @@ func TestSDKCloudSendRetainsStatusAndRetryHeaders(t *testing.T) {
 				t.Fatalf("send: %+v %v", result, err)
 			}
 		})
+	}
+}
+
+// writePeerResponse fails the fixture when its native response cannot be delivered.
+func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Error(err)
 	}
 }

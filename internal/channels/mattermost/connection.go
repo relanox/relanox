@@ -103,7 +103,7 @@ func (c *Channel) session(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer connection.CloseNow()
+	defer func() { _ = connection.CloseNow() }()
 	connection.SetReadLimit(4 << 20)
 	lifetime, cancel := context.WithCancel(ctx)
 	defer cancel()

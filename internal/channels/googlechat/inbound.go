@@ -137,7 +137,7 @@ func (c *Channel) downloadOne(ctx context.Context, space string, attachment *cha
 		c.invalidateToken(err)
 		return result, errors.New("media_download_failed")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.ContentLength > common.MediaLimit(c.host) {
 		return result, errors.New("media_too_large")
 	}

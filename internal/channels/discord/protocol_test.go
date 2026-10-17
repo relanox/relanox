@@ -207,7 +207,7 @@ func (p *nativePeer) gateway(w http.ResponseWriter, r *http.Request) {
 		p.t.Error(err)
 		return
 	}
-	defer socket.CloseNow()
+	defer func() { _ = socket.CloseNow() }()
 	ctx := r.Context()
 	if socket.Write(ctx, websocket.MessageText, []byte(`{"op":10,"d":{"heartbeat_interval":100}}`)) != nil {
 		return
@@ -290,7 +290,7 @@ func (p *nativePeer) send(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	data, _ := io.ReadAll(file)
 	if string(data) != "image" || header.Header.Get("Content-Type") != "image/png" {
 		p.t.Error("native attachment bytes or MIME changed")

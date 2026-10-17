@@ -49,7 +49,7 @@ func (t sdkTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	maximum := t.maximum
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		maximum = min(maximum, 64*1024)

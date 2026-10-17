@@ -27,26 +27,26 @@ func (p *mediaPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/open-apis/auth/v3/tenant_access_token/internal":
 		p.tokens++
-		fmt.Fprintf(w, `{"code":0,"tenant_access_token":"native-%d","expire":7200}`, p.tokens)
+		writePeerResponse(p.t, w, fmt.Sprintf(`{"code":0,"tenant_access_token":"native-%d","expire":7200}`, p.tokens))
 	case "/open-apis/bot/v3/info":
-		fmt.Fprint(w, `{"code":0,"bot":{"open_id":"ou_bot"}}`)
+		writePeerResponse(p.t, w, `{"code":0,"bot":{"open_id":"ou_bot"}}`)
 	case "/open-apis/im/v1/files":
 		if err := r.ParseMultipartForm(1024); err != nil {
 			p.t.Error(err)
 			return
 		}
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		p.types = append(p.types, r.FormValue("file_type"))
 		p.durations = append(p.durations, r.FormValue("duration"))
 		if len(r.MultipartForm.File["file"]) != 1 {
 			p.t.Error("native file field missing")
 		}
-		fmt.Fprint(w, `{"code":0,"data":{"file_key":"file_native"}}`)
+		writePeerResponse(p.t, w, `{"code":0,"data":{"file_key":"file_native"}}`)
 	case "/open-apis/im/v1/messages":
 		p.sends++
 		if p.rejectToken {
 			p.rejectToken = false
-			fmt.Fprint(w, `{"code":99991663}`)
+			writePeerResponse(p.t, w, `{"code":99991663}`)
 			return
 		}
 		var body struct {
@@ -65,12 +65,12 @@ func (p *mediaPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if body.Type != "post" && content["file_key"] != "file_native" {
 			p.t.Error("file key lost")
 		}
-		fmt.Fprint(w, `{"code":0,"data":{"message_id":"om_sent"}}`)
+		writePeerResponse(p.t, w, `{"code":0,"data":{"message_id":"om_sent"}}`)
 	case "/open-apis/im/v1/messages/om_source/resources/file_json":
 		if r.URL.Query().Get("type") != "file" || r.Header.Get("Authorization") == "" {
 			p.t.Error("native resource scope missing")
 		}
-		fmt.Fprint(w, `{"code":123,"payload":"file content"}`)
+		writePeerResponse(p.t, w, `{"code":123,"payload":"file content"}`)
 	default:
 		p.t.Errorf("unexpected native path: %s", r.URL.Path)
 		w.WriteHeader(404)

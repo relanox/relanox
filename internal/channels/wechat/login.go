@@ -299,9 +299,9 @@ func Login(ctx context.Context, options LoginOptions) error {
 	}
 	saved := false
 	defer func() {
-		file.Close()
+		_ = file.Close()
 		if !saved {
-			os.Remove(path)
+			_ = os.Remove(path)
 		}
 	}()
 	credentials, err := Authenticate(ctx, options)
@@ -314,6 +314,9 @@ func Login(ctx context.Context, options LoginOptions) error {
 		return err
 	}
 	if err = file.Sync(); err != nil {
+		return err
+	}
+	if err = file.Close(); err != nil {
 		return err
 	}
 	saved = true

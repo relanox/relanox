@@ -75,7 +75,7 @@ func (p *historyPeer) expiredGateway(w http.ResponseWriter, r *http.Request) {
 		p.t.Error(err)
 		return
 	}
-	defer socket.CloseNow()
+	defer func() { _ = socket.CloseNow() }()
 	ctx := r.Context()
 	if socket.Write(ctx, websocket.MessageText, []byte(`{"op":10,"d":{"heartbeat_interval":100}}`)) != nil {
 		return

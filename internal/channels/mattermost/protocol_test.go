@@ -116,7 +116,7 @@ func (p *nativePeer) socket(w http.ResponseWriter, r *http.Request) {
 		p.t.Error(err)
 		return
 	}
-	defer connection.CloseNow()
+	defer func() { _ = connection.CloseNow() }()
 	p.active.Add(1)
 	defer p.active.Add(-1)
 	ctx := r.Context()
@@ -184,14 +184,14 @@ func (p *nativePeer) upload(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
 	file, header, err := r.FormFile("files")
 	if err != nil {
 		p.t.Error(err)
 		w.WriteHeader(400)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	raw, err := io.ReadAll(file)
 	if err != nil || r.FormValue("channel_id") != roomID || header.Filename != "voice.ogg" || header.Header.Get("Content-Type") != "audio/ogg" {
 		p.t.Errorf("native upload metadata: %+v %v", header, err)
@@ -434,7 +434,7 @@ func assertRichPublication(t *testing.T, f *fixture, p *nativePeer, input model.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	raw, err := io.ReadAll(response.Body)
 	if err != nil || response.StatusCode != 200 || string(raw) != "public-native-image" {
 		t.Fatalf("native image publication: %d %q %v", response.StatusCode, raw, err)
