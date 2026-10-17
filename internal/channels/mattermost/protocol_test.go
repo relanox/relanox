@@ -3,6 +3,7 @@ package mattermost
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -58,6 +59,8 @@ type nativePeer struct {
 	createdAt         atomic.Int64
 	replayBeforeStart atomic.Bool
 	historyRequests   chan string
+	historyFailures   atomic.Int32
+	historySuccesses  atomic.Int32
 }
 
 // The peer serves only documented external native endpoints and socket frames.
@@ -148,6 +151,7 @@ func (p *nativePeer) historyPage(w http.ResponseWriter, r *http.Request) {
 	since := r.URL.Query().Get("since")
 	p.historyRequests <- since
 	if p.failHistory.Load() {
+		p.historyFailures.Add(1)
 		w.WriteHeader(503)
 		_, _ = io.WriteString(w, `{"id":"native_failure"}`)
 		return
@@ -166,6 +170,7 @@ func (p *nativePeer) historyPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = w.Write(raw)
+	p.historySuccesses.Add(1)
 }
 
 func (p *nativePeer) upload(w http.ResponseWriter, r *http.Request) {
@@ -214,10 +219,15 @@ type fixture struct {
 	server        *httptest.Server
 	cancel        context.CancelFunc
 	notifications chan string
+	peer          *nativePeer
 }
 
 func openFixture(t *testing.T, path string, peer *httptest.Server, recoveryEpoch ...string) *fixture {
 	t.Helper()
+	native, ok := peer.Config.Handler.(*nativePeer)
+	if !ok {
+		t.Fatal("fixture requires a native Mattermost peer")
+	}
 	notifications := make(chan string, 32)
 	routine := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var envelope struct {
@@ -249,11 +259,13 @@ func openFixture(t *testing.T, path string, peer *httptest.Server, recoveryEpoch
 		account.Config = common.Data(native)
 	}
 	endpoint := model.EndpointConfig{ID: "grok", Agent: model.Grok, Config: common.Data(grok.Config{MCP: agentmcp.Config{Auth: "bearer", Token: model.SecretRef{Env: "MCP"}}, RoutineURL: model.SecretRef{Env: "ROUTINE"}, RoutineAuthorization: model.SecretRef{Env: "ROUTINE_AUTH"}})}
-	cfg, err := config.Decode(common.Data(config.Config{Accounts: []model.AccountConfig{account}, Endpoints: []model.EndpointConfig{endpoint}, Bindings: []model.Binding{{AccountID: account.ID, ChatID: roomID, ThreadID: rootID, EndpointID: endpoint.ID}}, Storage: config.Storage{Driver: "sqlite", Path: path}, HTTP: config.HTTP{PublicURL: "http://" + server.Listener.Addr().String()}, Queue: config.Queue{Concurrency: 1, PollIntervalMS: 5}}))
+	// Keep the production idle-poll default: a 5ms override creates empty write
+	// transactions that compete with native checkpoints on SQLite's connection.
+	cfg, err := config.Decode(common.Data(config.Config{Accounts: []model.AccountConfig{account}, Endpoints: []model.EndpointConfig{endpoint}, Bindings: []model.Binding{{AccountID: account.ID, ChatID: roomID, ThreadID: rootID, EndpointID: endpoint.ID}}, Storage: config.Storage{Driver: "sqlite", Path: path}, HTTP: config.HTTP{PublicURL: "http://" + server.Listener.Addr().String()}, Queue: config.Queue{Concurrency: 1}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{server: server, notifications: notifications}
+	f := &fixture{server: server, notifications: notifications, peer: native}
 	f.store, err = storage.Open(context.Background(), cfg.Storage, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -332,19 +344,7 @@ func receive[T any](t *testing.T, channel <-chan T) T {
 
 func awaitCursor(t *testing.T, f *fixture, next int64) cursor {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		value, _, err := common.ReadState[cursor](context.Background(), f.host.State(), "websocket-cursor")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if value.NextSequence == next {
-			return value
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("durable native cursor not observed")
-	return cursor{}
+	return awaitNativeState(t, f, fmt.Sprintf("durable native cursor %d", next), func(value cursor) bool { return value.NextSequence == next })
 }
 
 // Protects native auth, string-encoded posted frames, file MIME parameters,

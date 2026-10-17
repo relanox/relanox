@@ -129,19 +129,7 @@ func assertOneSource(t *testing.T, f *fixture) {
 
 func awaitRecovery(t *testing.T, f *fixture) cursor {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		state, _, err := common.ReadState[cursor](context.Background(), f.host.State(), "websocket-cursor")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if state.Recovery != nil && len(state.Recovery.Channels) == 1 {
-			return state
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("history progress not retained")
-	return cursor{}
+	return awaitNativeState(t, f, "retained history plan", func(value cursor) bool { return value.Recovery != nil && len(value.Recovery.Channels) == 1 })
 }
 
 func historyFixtures(base int64) map[string]json.RawMessage {
