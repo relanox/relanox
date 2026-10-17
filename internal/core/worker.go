@@ -53,6 +53,8 @@ func (r *Runtime) processOne(ctx context.Context) (bool, error) {
 }
 
 func (r *Runtime) execute(ctx context.Context, work model.DueWork) (settlement model.Settlement) {
+	started := time.Now()
+	ctx, span := r.workSpan(ctx, work)
 	settlement = model.Settlement{Kind: work.Kind, Lease: work.Lease}
 	if work.Kind == model.SendWork {
 		settlement.ID = work.Outbound.DeliveryID
@@ -71,7 +73,9 @@ func (r *Runtime) execute(ctx context.Context, work model.DueWork) (settlement m
 		}
 		settlement.Now = time.Now().UTC()
 		settlement.NextDueAt = r.nextDue(settlement, work, settlement.Now)
-		r.recordWork(ctx, work, settlement)
+		outcome, _ := workOutcome(settlement)
+		span.End(outcome)
+		r.recordWork(ctx, work, settlement, time.Since(started))
 	}()
 	if work.Kind == model.PrepareWork {
 		settlement.Preparation = r.prepare(ctx, *work.Inbound)
@@ -85,6 +89,19 @@ func (r *Runtime) execute(ctx context.Context, work model.DueWork) (settlement m
 	outcome := r.send(ctx, *work.Outbound)
 	settlement.Send = &outcome
 	return settlement
+}
+
+func (r *Runtime) workSpan(ctx context.Context, work model.DueWork) (context.Context, model.Span) {
+	fields := model.LogFields{Component: "core", Operation: string(work.Kind)}
+	var parent *model.TraceContext
+	if work.Kind == model.SendWork {
+		fields.ChannelID, fields.DeliveryID = work.Outbound.ChannelID, work.Outbound.DeliveryID
+		parent = work.Outbound.Trace
+	} else {
+		fields.ChannelID, fields.RequestID = work.Inbound.Snapshot.Channel.ID, work.Inbound.Snapshot.RequestID
+		parent = work.Inbound.Snapshot.Trace
+	}
+	return r.observe.Span(ctx, string(work.Kind), fields, parent)
 }
 
 func (r *Runtime) dispatch(ctx context.Context, record model.InboundRecord) model.DispatchResult {
@@ -233,19 +250,30 @@ func (r *Runtime) nextDue(settlement model.Settlement, work model.DueWork, now t
 	return now.Add(max(time.Second, min(retry, 24*time.Hour)))
 }
 
-func (r *Runtime) recordWork(ctx context.Context, work model.DueWork, settlement model.Settlement) {
-	status, code := "prepared", ""
+func workOutcome(settlement model.Settlement) (string, string) {
+	if settlement.Dispatch != nil {
+		return string(settlement.Dispatch.Status), settlement.Dispatch.ErrorCode
+	}
+	if settlement.Send != nil {
+		return string(settlement.Send.Status), settlement.Send.ErrorCode
+	}
+	for _, result := range settlement.Preparation {
+		if result.Status == "failed" {
+			return "failed", result.ErrorCode
+		}
+	}
+	return "prepared", ""
+}
+
+func (r *Runtime) recordWork(ctx context.Context, work model.DueWork, settlement model.Settlement, elapsed time.Duration) {
+	status, code := workOutcome(settlement)
 	labels := model.MetricLabels{Component: "core", Operation: string(work.Kind)}
 	fields := model.LogFields{Component: "core", Operation: string(work.Kind)}
 	if settlement.Dispatch != nil {
-		status = string(settlement.Dispatch.Status)
-		code = settlement.Dispatch.ErrorCode
 		labels.Agent = work.Inbound.Snapshot.Endpoint.Agent
 		fields.RequestID = settlement.ID
 	}
 	if settlement.Send != nil {
-		status = string(settlement.Send.Status)
-		code = settlement.Send.ErrorCode
 		labels.Channel = work.Outbound.Target.Channel
 		fields.DeliveryID = settlement.ID
 		fields.ChannelID = work.Outbound.ChannelID
@@ -254,6 +282,8 @@ func (r *Runtime) recordWork(ctx context.Context, work model.DueWork, settlement
 	fields.Outcome = status
 	fields.ErrorCode = code
 	r.observe.Count("relanox_work_total", labels, 1)
+	metric := map[model.WorkKind]string{model.PrepareWork: "relanox_preparation_duration_seconds", model.DispatchWork: "relanox_dispatch_duration_seconds", model.SendWork: "relanox_send_duration_seconds"}[work.Kind]
+	r.observe.Record(metric, elapsed.Seconds(), labels)
 	r.observe.Log(ctx, "info", "work.completed", fields)
 }
 

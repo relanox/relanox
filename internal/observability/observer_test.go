@@ -29,6 +29,7 @@ func TestStructuredLogsAndMetricsRejectUntrustedFields(t *testing.T) {
 	observer.Log(context.Background(), "debug", "startup.completed", model.LogFields{Component: "cli"})
 	observer.Log(context.Background(), "info", "inbound.accepted", model.LogFields{Component: "core", RequestID: "00112233-4455-6677-8899-aabbccddeeff", Outcome: "accepted", Operation: "ingest"})
 	observer.Log(context.Background(), "warn", "private-token-event", model.LogFields{Component: "private-token-component", RequestID: "private-token-request", ChannelID: "private-token-channel", ErrorCode: "private-token-error", TraceID: "private-token-trace"})
+	observer.Log(context.Background(), "warn", "connection.changed", model.LogFields{Component: "channel:wechat", ErrorCode: "wechat_rate_limited"})
 	observer.Count("relanox_inbound_total", model.MetricLabels{Channel: model.WeChat, Component: "core", Operation: "ingest", Outcome: "accepted"}, 3)
 	observer.Count("relanox_inbound_total", model.MetricLabels{Component: "private-token-component"}, 100)
 	observer.Count("private-token-metric", model.MetricLabels{}, 100)
@@ -42,7 +43,7 @@ func TestStructuredLogsAndMetricsRejectUntrustedFields(t *testing.T) {
 		}
 		entries = append(entries, entry)
 	}
-	if len(entries) != 2 || entries[0]["requestId"] != "00112233-4455-6677-8899-aabbccddeeff" || entries[1]["event"] != "operation.failed" || entries[1]["errorCode"] != "unknown" || strings.Contains(logs.String(), "private-token") {
+	if len(entries) != 3 || entries[0]["requestId"] != "00112233-4455-6677-8899-aabbccddeeff" || entries[1]["event"] != "operation.failed" || entries[1]["errorCode"] != "unknown" || entries[2]["errorCode"] != "wechat_rate_limited" || strings.Contains(logs.String(), "private-token") {
 		t.Fatalf("unsafe structured logs: %s", logs.String())
 	}
 	metrics := scrape(t, observer)
@@ -67,15 +68,43 @@ func TestMetricsBoundSeriesAndRespectHTTPConfiguration(t *testing.T) {
 	defer closeObserver(t, observer)
 	channels := []model.ChannelKind{model.Telegram, model.Discord, model.Slack, model.Feishu, model.WeCom, model.WeChat, model.DingTalk, model.QQ, model.MSTeams, model.WhatsApp, model.Matrix, model.GoogleChat, model.LINE, model.Mattermost, model.Signal, model.IRC}
 	outcomes := []string{"accepted", "rejected", "unknown", "retryable", "sent"}
-	for _, outcome := range outcomes {
-		for _, channel := range channels {
-			observer.Count("relanox_work_total", model.MetricLabels{Channel: channel, Outcome: outcome}, 1)
+	recordSupportedWorkerMatrix(observer, channels)
+	metrics := scrape(t, observer)
+	if strings.Count(metrics, "\nrelanox_work_total{") != 94 || !strings.Contains(metrics, `relanox_telemetry_dropped_total{signal="metrics"} 0`) {
+		t.Fatalf("supported native work matrix was dropped: %s", metrics)
+	}
+	for _, operation := range []string{"ingest", "dispatch", "prepare", "send"} {
+		for _, outcome := range outcomes {
+			for _, channel := range channels {
+				observer.Count("relanox_inbound_total", model.MetricLabels{Channel: channel, Outcome: outcome, Operation: operation}, 1)
+			}
 		}
 	}
-	metrics := scrape(t, observer)
-	if strings.Count(metrics, "\nrelanox_work_total{") != 64 || !strings.Contains(metrics, `relanox_telemetry_dropped_total{signal="metrics"} 16`) {
+	metrics = scrape(t, observer)
+	if strings.Count(metrics, "\nrelanox_inbound_total{") != 256 || !strings.Contains(metrics, `relanox_telemetry_dropped_total{signal="metrics"} 64`) {
 		t.Fatalf("series limit not enforced: %s", metrics)
 	}
+	assertMetricsHTTPConfiguration(t, observer)
+}
+
+func recordSupportedWorkerMatrix(observer *observability.Observer, channels []model.ChannelKind) {
+	for _, outcome := range []string{"sent", "pending", "rejected", "retryable", "unknown"} {
+		for _, channel := range channels {
+			observer.Count("relanox_work_total", model.MetricLabels{Component: "core", Channel: channel, Operation: "send", Outcome: outcome}, 1)
+		}
+	}
+	for _, outcome := range []string{"accepted", "rejected", "retryable", "unknown"} {
+		for _, agent := range []model.AgentKind{model.Dot, model.Grok, model.Muse} {
+			observer.Count("relanox_work_total", model.MetricLabels{Component: "core", Agent: agent, Operation: "dispatch", Outcome: outcome}, 1)
+		}
+	}
+	for _, outcome := range []string{"prepared", "failed"} {
+		observer.Count("relanox_work_total", model.MetricLabels{Component: "core", Operation: "prepare", Outcome: outcome}, 1)
+	}
+}
+
+func assertMetricsHTTPConfiguration(t *testing.T, observer *observability.Observer) {
+	t.Helper()
 	server := httptest.NewServer(observer.Handler())
 	defer server.Close()
 	response, err := server.Client().Post(server.URL, "application/json", strings.NewReader("{}"))

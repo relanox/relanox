@@ -63,7 +63,9 @@ func (o *Observer) labels(name string, labels model.MetricLabels) ([]string, boo
 	if o.series[name] == nil {
 		o.series[name] = map[string]bool{}
 	}
-	if !o.series[name][key] && len(o.series[name]) >= 64 {
+	// Normal worker outcomes span 16 channels, three agents and preparation.
+	// Leave room for that supported matrix while bounding each metric's series.
+	if !o.series[name][key] && len(o.series[name]) >= 256 {
 		o.drop("metrics")
 		return nil, false
 	}
