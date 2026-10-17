@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -123,5 +124,67 @@ func TestNativeUploadChunksAndSingleReply(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
+	}
+}
+
+func TestQueuedSocketSendObservesCancellation(t *testing.T) {
+	// The native ACK is deliberately withheld after a real write. A later queued
+	// call must cancel without waiting for the unrelated request timeout. Upload
+	// happy-path coverage does not exercise serialized queue cancellation.
+	received := make(chan struct{})
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		if _, _, err = conn.Read(r.Context()); err != nil {
+			return
+		}
+		close(received)
+		for {
+			if _, _, err = conn.Read(r.Context()); err != nil {
+				return
+			}
+		}
+	}))
+	defer peer.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(peer.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	session := &socketSession{conn: conn, done: make(chan struct{}), pending: make(map[string]chan frame)}
+	go session.read(ctx, make(chan frame, 1))
+	firstDone := make(chan error, 1)
+	go func() { _, err := session.call(ctx, "aibot_send_msg", "held", map[string]any{}); firstDone <- err }()
+	select {
+	case <-received:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	waiting, stop := context.WithCancel(ctx)
+	stop()
+	queuedDone := make(chan error, 1)
+	go func() {
+		_, err := session.call(waiting, "aibot_send_msg", "cancelled", map[string]any{})
+		queuedDone <- err
+	}()
+	select {
+	case err := <-queuedDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled call: %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("cancelled send waited behind unrelated ACK")
+	}
+	cancel()
+	conn.CloseNow()
+	select {
+	case <-firstDone:
+	case <-time.After(time.Second):
+		t.Fatal("active request did not stop")
 	}
 }
