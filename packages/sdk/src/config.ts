@@ -6,6 +6,7 @@ export type ChannelId =
   | 'slack'
   | 'feishu'
   | 'wecom'
+  | 'wechat'
   | 'dingtalk'
   | 'qq'
   | 'msteams'
@@ -17,7 +18,7 @@ export type ChannelId =
   | 'signal'
   | 'irc'
 
-export type AgentId = 'dot' | 'grok'
+export type AgentId = 'dot' | 'grok' | 'muse'
 
 export type SecretRef = {
   readonly env: string

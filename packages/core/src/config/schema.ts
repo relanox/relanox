@@ -6,6 +6,7 @@ export const channels = [
   'slack',
   'feishu',
   'wecom',
+  'wechat',
   'dingtalk',
   'qq',
   'msteams',
@@ -32,7 +33,7 @@ const accountSchema = z.strictObject({
 
 const endpointSchema = z.strictObject({
   id: configIdSchema,
-  agent: z.enum(['dot', 'grok']),
+  agent: z.enum(['dot', 'grok', 'muse']),
   config: z.json()
 })
 
