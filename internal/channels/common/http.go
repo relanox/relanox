@@ -63,7 +63,7 @@ func Do(client *http.Client, request *http.Request, maximum int64) ([]byte, http
 	if err != nil {
 		return nil, nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	limit := maximum
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		limit = 64 * 1024

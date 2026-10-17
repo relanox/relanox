@@ -52,7 +52,7 @@ func (c telegramHTTP) Do(request *http.Request) (*http.Response, error) {
 	if err != nil || response.StatusCode >= 200 && response.StatusCode < 300 {
 		return response, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	// The SDK accepts an ok:true body even on HTTP 500. Keep HTTP failures
 	// observable while preserving the native envelope for retry_after below.
 	body, err := io.ReadAll(response.Body)

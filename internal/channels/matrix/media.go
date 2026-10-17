@@ -92,7 +92,7 @@ func (c *Channel) download(ctx context.Context, client *mautrix.Client, content 
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.ContentLength > maximum {
 		return nil, errors.New("media_too_large")
 	}

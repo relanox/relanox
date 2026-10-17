@@ -138,7 +138,7 @@ func (c *Channel) Close(ctx context.Context) error {
 	active := c.active
 	c.mu.Unlock()
 	if active != nil {
-		active.conn.CloseNow()
+		_ = active.conn.CloseNow()
 	}
 	err := c.lifecycle.Close(ctx)
 	c.host.Connection(model.Disconnected, "")
@@ -327,7 +327,8 @@ func (c *Channel) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write(plain)
+		// The response may already be committed; write failures cannot be retried.
+		_, _ = w.Write(plain)
 		return
 	}
 	var message nativeMessage
@@ -351,5 +352,6 @@ func (c *Channel) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	json.NewEncoder(w).Encode(map[string]string{"encrypt": ciphertext, "msgsignature": signature, "timestamp": timestamp, "nonce": nonce})
+	// The response may already be committed; write failures cannot be retried.
+	_ = json.NewEncoder(w).Encode(map[string]string{"encrypt": ciphertext, "msgsignature": signature, "timestamp": timestamp, "nonce": nonce})
 }

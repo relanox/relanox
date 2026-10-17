@@ -117,7 +117,7 @@ func (c *Channel) session(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer socket.CloseNow()
+	defer func() { _ = socket.CloseNow() }()
 	socket.SetReadLimit(1024 * 1024)
 	c.host.Connection(model.Connected, "")
 	// Each callback captures socket, so a late ACK cannot reach its replacement.

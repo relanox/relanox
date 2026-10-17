@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -48,7 +49,7 @@ func (p *nativePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if json.NewDecoder(r.Body).Decode(&credentials) != nil || credentials.AppKey != "app" || credentials.AppSecret != "public-secret" {
 			p.t.Error("wrong SDK OAuth envelope")
 		}
-		fmt.Fprint(w, `{"accessToken":"native-token","expireIn":7200}`)
+		writePeerResponse(p.t, w, `{"accessToken":"native-token","expireIn":7200}`)
 	case "/media/upload":
 		if r.URL.Query().Get("access_token") != "native-token" {
 			p.t.Error("missing upload token")
@@ -57,12 +58,12 @@ func (p *nativePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error(err)
 			return
 		}
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		if len(r.MultipartForm.File["media"]) != 1 {
 			p.t.Error("native media field missing")
 		}
 		p.uploads = append(p.uploads, r.URL.Query().Get("type"))
-		fmt.Fprintf(w, `{"errcode":0,"media_id":%q}`, fmt.Sprintf("@native-%d", len(p.uploads)))
+		writePeerResponse(p.t, w, fmt.Sprintf(`{"errcode":0,"media_id":%q}`, fmt.Sprintf("@native-%d", len(p.uploads))))
 	default:
 		if r.Header.Get("x-acs-dingtalk-access-token") != "native-token" {
 			p.t.Error("missing robot token")
@@ -74,7 +75,7 @@ func (p *nativePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		body.Path = r.URL.Path
 		p.sends = append(p.sends, body)
-		fmt.Fprint(w, p.response)
+		writePeerResponse(p.t, w, p.response)
 	}
 }
 
@@ -201,5 +202,13 @@ func TestNativeAudioVideoAndFileParameters(t *testing.T) {
 	}
 	if fmt.Sprint(p.uploads) != "[image voice video image file]" {
 		t.Fatalf("native media types: %v", p.uploads)
+	}
+}
+
+// writePeerResponse fails the fixture when its native response cannot be delivered.
+func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Error(err)
 	}
 }

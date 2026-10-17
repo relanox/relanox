@@ -34,9 +34,10 @@ func TestNativeUploadChunksAndSingleReply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	session := &socketSession{conn: conn, done: make(chan struct{}), pending: make(map[string]chan frame)}
-	go session.read(ctx, make(chan frame, 1))
+	// Reader termination is expected when the test cancels or closes the socket.
+	go func() { _ = session.read(ctx, make(chan frame, 1)) }()
 	mediaID, err := session.upload(ctx, model.StoredMedia{Reference: model.MediaReference{Kind: model.Audio, FileName: "voice.silk"}, Data: bytesWanted})
 	if err != nil || mediaID != "native-media" {
 		t.Fatalf("upload: %s %v", mediaID, err)
@@ -73,7 +74,7 @@ func TestQueuedSocketSendObservesCancellation(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		if _, _, err = conn.Read(r.Context()); err != nil {
 			return
 		}
@@ -91,9 +92,10 @@ func TestQueuedSocketSendObservesCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	session := &socketSession{conn: conn, done: make(chan struct{}), pending: make(map[string]chan frame)}
-	go session.read(ctx, make(chan frame, 1))
+	// Reader termination is expected when the test cancels or closes the socket.
+	go func() { _ = session.read(ctx, make(chan frame, 1)) }()
 	firstDone := make(chan error, 1)
 	go func() { _, err := session.call(ctx, "aibot_send_msg", "held", map[string]any{}); firstDone <- err }()
 	select {
@@ -117,9 +119,12 @@ func TestQueuedSocketSendObservesCancellation(t *testing.T) {
 		t.Fatal("cancelled send waited behind unrelated ACK")
 	}
 	cancel()
-	conn.CloseNow()
+	_ = conn.CloseNow()
 	select {
-	case <-firstDone:
+	case err := <-firstDone:
+		if err == nil {
+			t.Fatal("cancelled active request unexpectedly acknowledged")
+		}
 	case <-time.After(time.Second):
 		t.Fatal("active request did not stop")
 	}
@@ -132,7 +137,7 @@ func uploadPeer(t *testing.T, bytesWanted []byte, gotBytes chan<- []byte, gotRep
 			t.Error(err)
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		conn.SetReadLimit(1024 * 1024)
 		var content []byte
 		index := 0
@@ -154,7 +159,9 @@ func uploadPeer(t *testing.T, bytesWanted []byte, gotBytes chan<- []byte, gotRep
 					Size   int    `json:"total_size"`
 					Chunks int    `json:"total_chunks"`
 				}
-				json.Unmarshal(request.Body, &input)
+				if err := json.Unmarshal(request.Body, &input); err != nil {
+					t.Error(err)
+				}
 				if input.Type != "voice" || input.Size != len(bytesWanted) || input.Chunks != 2 {
 					t.Errorf("wrong init: %+v", input)
 				}
@@ -165,7 +172,9 @@ func uploadPeer(t *testing.T, bytesWanted []byte, gotBytes chan<- []byte, gotRep
 					Index int    `json:"chunk_index"`
 					Data  string `json:"base64_data"`
 				}
-				json.Unmarshal(request.Body, &input)
+				if err := json.Unmarshal(request.Body, &input); err != nil {
+					t.Error(err)
+				}
 				if input.ID != "native-upload" || input.Index != index {
 					t.Errorf("incorrect native index: %+v", input)
 				}
@@ -180,7 +189,9 @@ func uploadPeer(t *testing.T, bytesWanted []byte, gotBytes chan<- []byte, gotRep
 				gotBytes <- content
 			case "aibot_respond_msg":
 				var input map[string]any
-				json.Unmarshal(request.Body, &input)
+				if err := json.Unmarshal(request.Body, &input); err != nil {
+					t.Error(err)
+				}
 				gotReply <- input
 			default:
 				t.Errorf("unexpected command: %s", request.Command)

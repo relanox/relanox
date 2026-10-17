@@ -39,7 +39,7 @@ func (t boundedTransport) RoundTrip(request *http.Request) (*http.Response, erro
 	if strings.HasPrefix(request.URL.Path, "/v1/media/") && response.StatusCode >= 200 && response.StatusCode < 300 {
 		return response, nil
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	maximum := int64(1 << 20)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		maximum = 64 << 10

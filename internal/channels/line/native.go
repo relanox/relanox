@@ -19,7 +19,7 @@ func (c *Channel) nativeClient(ctx context.Context, headers http.Header) (*sdk.M
 
 func nativeError(response *http.Response, err error) error {
 	if err != nil && response != nil && response.StatusCode >= 300 {
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		body, _ := common.ReadBounded(response.Body, 64*1024)
 		return &common.HTTPError{Status: response.StatusCode, Header: response.Header, Body: body}
 	}

@@ -32,14 +32,14 @@ func (c *Channel) nativeContent(ctx context.Context, id string) (common.Download
 			return common.Downloaded{}, err
 		}
 		if response.StatusCode == 202 {
-			response.Body.Close()
+			_ = response.Body.Close()
 			if err = common.Delay(ctx, 500*time.Millisecond); err != nil {
 				return common.Downloaded{}, err
 			}
 			continue
 		}
 		result, err := c.readContent(response)
-		response.Body.Close()
+		_ = response.Body.Close()
 		return result, err
 	}
 	return common.Downloaded{}, errors.New("media_content_preparing")

@@ -3,8 +3,6 @@ package msteams
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,7 +39,7 @@ func TestOAuthRejectsInvalidLifetimeAndSanitizesErrors(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", "9")
 				w.WriteHeader(fixture.status)
-				io.WriteString(w, fixture.body)
+				writePeerResponse(t, w, fixture.body)
 			}))
 			defer peer.Close()
 			native := &NativeClient{AppID: "app", TokenURL: peer.URL, Secret: func() string { return "private-credential" }, HTTP: peer.Client()}
@@ -81,7 +79,7 @@ func TestOAuthCancellationReleasesInflightRequest(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"access_token":"recovered","expires_in":3600}`)
+		writePeerResponse(t, w, `{"access_token":"recovered","expires_in":3600}`)
 	}))
 	defer peer.Close()
 	native := &NativeClient{AppID: "app", TokenURL: peer.URL, Secret: func() string { return "private-credential" }, HTTP: peer.Client()}

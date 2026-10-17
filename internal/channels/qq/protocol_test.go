@@ -47,7 +47,7 @@ func testChannel(t *testing.T, client *http.Client) (*Channel, *string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { c.Close(context.Background()) })
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
 	return c, &secret
 }
 
@@ -79,7 +79,7 @@ func (p *messagePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error("native OAuth fields lost")
 		}
 		p.secret = body.Secret
-		fmt.Fprintf(w, `{"access_token":%q,"expires_in":"7200"}`, "token-"+body.Secret)
+		writePeerResponse(p.t, w, fmt.Sprintf(`{"access_token":%q,"expires_in":"7200"}`, "token-"+body.Secret))
 		return
 	}
 	p.sends++
@@ -96,9 +96,9 @@ func (p *messagePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(p.status)
 	}
 	if p.body != "" {
-		fmt.Fprint(w, p.body)
+		writePeerResponse(p.t, w, p.body)
 	} else {
-		fmt.Fprint(w, `{"id":"native-sent"}`)
+		writePeerResponse(p.t, w, `{"id":"native-sent"}`)
 	}
 }
 
@@ -126,7 +126,9 @@ func TestNativeSendIdentityWindowAndRotatingToken(t *testing.T) {
 	*secret = "public-rotated"
 	expired := time.Now().Add(-2 * time.Hour).UnixMilli()
 	var target targetData
-	json.Unmarshal(input.Target.Data, &target)
+	if err := json.Unmarshal(input.Target.Data, &target); err != nil {
+		t.Error(err)
+	}
 	target.MessageAt = &expired
 	input.Target.Data = common.Data(target)
 	result, err = c.Send(context.Background(), input)

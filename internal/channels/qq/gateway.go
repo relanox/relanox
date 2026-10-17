@@ -210,11 +210,11 @@ func (r *gatewayReader) heartbeat(ctx context.Context, socket *websocket.Conn, i
 			return
 		case <-ticker.C:
 			if !r.ack.Swap(false) {
-				socket.CloseNow()
+				_ = socket.CloseNow()
 				return
 			}
 			if err := socket.Write(ctx, websocket.MessageText, common.Data(map[string]any{"op": 1, "d": r.sequence()})); err != nil {
-				socket.CloseNow()
+				_ = socket.CloseNow()
 				return
 			}
 		}
@@ -240,7 +240,7 @@ func (c *Channel) session(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer socket.CloseNow()
+	defer func() { _ = socket.CloseNow() }()
 	socket.SetReadLimit(1024 * 1024)
 	interval, err := gatewayHello(ctx, socket)
 	if err != nil {
@@ -258,7 +258,7 @@ func (c *Channel) consumeSession(parent context.Context, socket *websocket.Conn,
 	reader.workers.Add(2)
 	go reader.read(ctx, socket)
 	go reader.heartbeat(ctx, socket, interval)
-	defer func() { cancel(); socket.CloseNow(); reader.workers.Wait() }()
+	defer func() { cancel(); _ = socket.CloseNow(); reader.workers.Wait() }()
 	ready := false
 	for {
 		select {

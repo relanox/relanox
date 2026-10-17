@@ -109,8 +109,8 @@ func (c *Channel) connect(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer socket.Close()
-	stop := context.AfterFunc(ctx, func() { socket.Close() })
+	defer func() { _ = socket.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = socket.Close() })
 	defer stop()
 	current := &connection{socket: socket, gate: make(chan struct{}, 1), state: sessionState{Nick: c.config.Nick, CaseMapping: "rfc1459", HostLength: 253}, offered: make(map[string]string)}
 	c.mu.Lock()

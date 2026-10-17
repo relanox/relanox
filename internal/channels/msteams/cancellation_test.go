@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
-	"encoding/json"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +35,7 @@ func TestAuthenticateCancelsInitialJWKSDownloadWithoutPoisoningCache(t *testing.
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]any{"kty": "RSA", "kid": "fixture", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
+		writePeerJSON(t, w, map[string]any{"keys": []any{map[string]any{"kty": "RSA", "kid": "fixture", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
 	}))
 	defer peer.Close()
 	base, _ := url.Parse(peer.URL)

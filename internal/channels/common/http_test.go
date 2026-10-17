@@ -26,7 +26,7 @@ func TestMultipartPreservesExplicitFileMIMEAndLegacyDefault(t *testing.T) {
 				w.WriteHeader(400)
 				return
 			}
-			defer r.MultipartForm.RemoveAll()
+			defer func() { _ = r.MultipartForm.RemoveAll() }()
 			files := r.MultipartForm.File["file"]
 			if len(files) != 1 {
 				t.Error("missing native file part")
@@ -42,12 +42,12 @@ func TestMultipartPreservesExplicitFileMIMEAndLegacyDefault(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			defer content.Close()
+			defer func() { _ = content.Close() }()
 			data, err := io.ReadAll(content)
 			if err != nil || string(data) != "native-bytes" {
 				t.Error("multipart file bytes changed")
 			}
-			w.Write([]byte(`{"id":"media"}`))
+			writePeerResponse(t, w, string([]byte(`{"id":"media"}`)))
 		}))
 		var err error
 		if explicit {
@@ -59,5 +59,13 @@ func TestMultipartPreservesExplicitFileMIMEAndLegacyDefault(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// writePeerResponse fails the fixture when its native response cannot be delivered.
+func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Error(err)
 	}
 }

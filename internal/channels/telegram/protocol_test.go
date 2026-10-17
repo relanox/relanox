@@ -137,19 +137,19 @@ func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error("getFile body")
 		}
 		if r.MultipartForm != nil {
-			defer r.MultipartForm.RemoveAll()
+			defer func() { _ = r.MultipartForm.RemoveAll() }()
 		}
-		io.WriteString(w, `{"ok":true,"result":{"file_path":"voice/file.oga","file_size":3}}`)
+		writePeerResponse(p.t, w, `{"ok":true,"result":{"file_path":"voice/file.oga","file_size":3}}`)
 	case "/file/bot123:public-fixture-token/voice/file.oga":
 		p.downloads++
 		w.Header().Set("Content-Type", "audio/ogg")
-		io.WriteString(w, "ogg")
+		writePeerResponse(p.t, w, "ogg")
 	case "/bot123:public-fixture-token/sendVoice":
 		if err := r.ParseMultipartForm(1024 * 1024); err != nil {
 			p.t.Error(err)
 			return
 		}
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		if r.FormValue("chat_id") != "-100123" || r.FormValue("message_thread_id") != "4" || r.FormValue("duration") != p.duration || r.FormValue("caption") != "voice" || !strings.Contains(r.FormValue("reply_parameters"), `"message_id":77`) {
 			p.t.Errorf("native voice fields: %+v", r.Form)
 		}
@@ -158,13 +158,13 @@ func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error(err)
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		raw, _ := io.ReadAll(file)
 		if header.Filename != "voice.oga" || header.Header.Get("Content-Type") != "application/octet-stream" || string(raw) != "ogg" {
 			p.t.Error("voice upload")
 		}
 		p.voice = true
-		io.WriteString(w, `{"ok":true,"result":{"message_id":1234}}`)
+		writePeerResponse(p.t, w, `{"ok":true,"result":{"message_id":1234}}`)
 	default:
 		p.t.Errorf("unexpected Telegram request %s", r.URL)
 		w.WriteHeader(404)
@@ -193,7 +193,7 @@ func TestNativeFailureMapping(t *testing.T) {
 		t.Run(fixture.name, func(t *testing.T) {
 			peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(fixture.status)
-				io.WriteString(w, fixture.body)
+				writePeerResponse(t, w, fixture.body)
 			}))
 			defer peer.Close()
 			host := &protocolHost{}
@@ -210,5 +210,13 @@ func TestNativeFailureMapping(t *testing.T) {
 				t.Fatalf("native failure: %+v %v", result, err)
 			}
 		})
+	}
+}
+
+// writePeerResponse fails the fixture when its native response cannot be delivered.
+func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Error(err)
 	}
 }

@@ -86,7 +86,7 @@ func (p *ircPeer) account(t *testing.T) (*Channel, *protocolHost) {
 // https://modern.ircdocs.horse/#rplisupport-005
 func TestTLSRegistrationAccountTagsAndReply(t *testing.T) {
 	peer := newPeer(t)
-	defer peer.listener.Close()
+	defer func() { _ = peer.listener.Close() }()
 	go peer.serve()
 	channel, host := peer.account(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,7 +192,7 @@ func (p *ircPeer) serve() {
 		p.t.Error(err)
 		return
 	}
-	defer socket.Close()
+	defer func() { _ = socket.Close() }()
 	_ = socket.SetDeadline(time.Now().Add(10 * time.Second))
 	reader := wire.NewReader(socket)
 	for i, command := range []string{"CAP", "NICK", "USER"} {
@@ -209,7 +209,9 @@ func (p *ircPeer) serve() {
 	if !p.authenticate(socket, reader) {
 		return
 	}
-	io.WriteString(socket, ":server 001 RelayBot :Welcome\r\n:server 005 RelayBot HOSTLEN=100 USERLEN=12 CASEMAPPING=rfc1459 :are supported by this server\r\n")
+	if _, err := io.WriteString(socket, ":server 001 RelayBot :Welcome\r\n:server 005 RelayBot HOSTLEN=100 USERLEN=12 CASEMAPPING=rfc1459 :are supported by this server\r\n"); err != nil {
+		p.t.Error(err)
+	}
 	request, err := reader.ReadMessage()
 	if err != nil || request.Command != "JOIN" || request.Trailing() != "#room" {
 		p.t.Errorf("bound JOIN %+v %v", request, err)
@@ -237,19 +239,25 @@ func (p *ircPeer) serve() {
 }
 
 func (p *ircPeer) authenticate(socket net.Conn, reader *wire.Reader) bool {
-	io.WriteString(socket, ":server CAP * LS :account-tag server-time message-tags sasl=PLAIN\r\n")
+	if _, err := io.WriteString(socket, ":server CAP * LS :account-tag server-time message-tags sasl=PLAIN\r\n"); err != nil {
+		p.t.Error(err)
+	}
 	request, err := reader.ReadMessage()
 	if err != nil || request.Command != "CAP" || !strings.Contains(request.Trailing(), "sasl") {
 		p.t.Errorf("CAP request %+v %v", request, err)
 		return false
 	}
-	io.WriteString(socket, ":server CAP RelayBot ACK :account-tag server-time message-tags sasl\r\n")
+	if _, err := io.WriteString(socket, ":server CAP RelayBot ACK :account-tag server-time message-tags sasl\r\n"); err != nil {
+		p.t.Error(err)
+	}
 	request, err = reader.ReadMessage()
 	if err != nil || request.Command != "AUTHENTICATE" || request.Trailing() != "PLAIN" {
 		p.t.Errorf("SASL mechanism: %+v %v", request, err)
 		return false
 	}
-	io.WriteString(socket, "AUTHENTICATE +\r\n")
+	if _, err := io.WriteString(socket, "AUTHENTICATE +\r\n"); err != nil {
+		p.t.Error(err)
+	}
 	request, err = reader.ReadMessage()
 	if err != nil {
 		p.t.Error(err)
@@ -264,7 +272,9 @@ func (p *ircPeer) authenticate(socket net.Conn, reader *wire.Reader) bool {
 		p.t.Errorf("missing 400-byte SASL terminator %+v %v", request, err)
 		return false
 	}
-	io.WriteString(socket, ":server 903 RelayBot :SASL successful\r\n")
+	if _, err := io.WriteString(socket, ":server 903 RelayBot :SASL successful\r\n"); err != nil {
+		p.t.Error(err)
+	}
 	request, err = reader.ReadMessage()
 	if err != nil || request.Command != "CAP" || request.Trailing() != "END" {
 		p.t.Error("CAP did not finish")
@@ -274,7 +284,9 @@ func (p *ircPeer) authenticate(socket net.Conn, reader *wire.Reader) bool {
 }
 
 func (p *ircPeer) sendInbound(socket net.Conn) {
-	io.WriteString(socket, ":NoAccount!u@host PRIVMSG #room :ignored\r\n@account=mallory :Sender!u@host PRIVMSG #room :ignored\r\n@account=alice;msgid=native-id;time=2026-10-17T00:00:00Z :Sender[!u@host PRIVMSG #room :original\r\n@account=alice;msgid=direct-id :Sender[!u@host PRIVMSG RelayBot :private\r\nPING :keepalive\r\n")
+	if _, err := io.WriteString(socket, ":NoAccount!u@host PRIVMSG #room :ignored\r\n@account=mallory :Sender!u@host PRIVMSG #room :ignored\r\n@account=alice;msgid=native-id;time=2026-10-17T00:00:00Z :Sender[!u@host PRIVMSG #room :original\r\n@account=alice;msgid=direct-id :Sender[!u@host PRIVMSG RelayBot :private\r\nPING :keepalive\r\n"); err != nil {
+		p.t.Error(err)
+	}
 }
 
 // Authentication capabilities are a registration gate: a TLS connection without
@@ -285,18 +297,20 @@ func TestMissingAccountTagDoesNotBecomeReady(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	go func() {
 		socket, err := listener.Accept()
 		if err != nil {
 			return
 		}
-		defer socket.Close()
+		defer func() { _ = socket.Close() }()
 		scanner := bufio.NewScanner(socket)
 		for i := 0; i < 3 && scanner.Scan(); i++ {
 		}
-		io.WriteString(socket, ":server CAP * LS :message-tags\r\n")
-		io.Copy(io.Discard, socket)
+		if _, err := io.WriteString(socket, ":server CAP * LS :message-tags\r\n"); err != nil {
+			t.Error(err)
+		}
+		_, _ = io.Copy(io.Discard, socket) // Drain until the client closes the connection.
 	}()
 	port, _ := strconv.Atoi(strings.Split(listener.Addr().String(), ":")[1])
 	disabled := false

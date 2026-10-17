@@ -99,7 +99,7 @@ func TestWindowRecoveryAndCloudProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	store, host, channel = open()
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	older := cloudBody(now - 3600)
 	invokeWebhook(t, host.handler, older, signature(older), 200)
 	second, err := channel.window(ctx, "customer")
@@ -195,7 +195,7 @@ func (p *cloudPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error(err)
 			return
 		}
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 		if r.FormValue("messaging_product") != "whatsapp" || r.FormValue("type") != "image/png" {
 			p.t.Error("upload metadata")
 		}
@@ -206,7 +206,7 @@ func (p *cloudPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error(err)
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		if header.Header.Get("Content-Type") != "image/png" {
 			p.t.Error("native upload file MIME")
 		}
@@ -215,7 +215,7 @@ func (p *cloudPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error("upload bytes")
 		}
 		p.uploaded = true
-		io.WriteString(w, `{"id":"native-media"}`)
+		writePeerResponse(p.t, w, `{"id":"native-media"}`)
 	case "/v25.0/phone/messages":
 		p.messages++
 		var body struct {
@@ -248,7 +248,7 @@ func (p *cloudPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			p.image = true
 		}
-		io.WriteString(w, `{"messaging_product":"whatsapp","messages":[{"id":"wamid.outbound"}]}`)
+		writePeerResponse(p.t, w, `{"messaging_product":"whatsapp","messages":[{"id":"wamid.outbound"}]}`)
 	default:
 		p.t.Errorf("unexpected Cloud request %s", r.URL)
 		w.WriteHeader(404)

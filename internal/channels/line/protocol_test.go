@@ -123,7 +123,7 @@ func TestNativeReceiveAndRetryRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture = openFixture(t, filename, client)
-	defer fixture.store.Close()
+	defer func() { _ = fixture.store.Close() }()
 	resolved, err := fixture.channel.Resolve(ctx, model.ChannelAddress{Platform: model.LINE, AccountID: "line", ChatID: "group"}, &quotedTarget)
 	if err != nil || !resolved.Available {
 		t.Fatalf("resolve: %+v %v", resolved, err)
@@ -172,14 +172,14 @@ func TestCanceledResolveDoesNotWaitForIdentity(t *testing.T) {
 		case <-r.Context().Done():
 			return
 		}
-		io.WriteString(w, `{"userId":"bot"}`)
+		writePeerResponse(t, w, `{"userId":"bot"}`)
 	}))
 	defer peer.Close()
 	defer close(release)
 	base, _ := url.Parse(peer.URL)
 	client := &http.Client{Transport: rewriteTransport{base: base}}
 	fixture := openFixture(t, filepath.Join(t.TempDir(), "cancel.db"), client)
-	defer fixture.store.Close()
+	defer func() { _ = fixture.store.Close() }()
 	address := model.ChannelAddress{Platform: model.LINE, AccountID: "line", ChatID: "group"}
 	firstCtx, cancelFirst := context.WithCancel(context.Background())
 	defer cancelFirst()
@@ -273,7 +273,7 @@ func (p *linePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.URL.Path {
 	case "/v2/bot/info":
-		io.WriteString(w, `{"userId":"bot","basicId":"@fixture","displayName":"Fixture"}`)
+		writePeerResponse(p.t, w, `{"userId":"bot","basicId":"@fixture","displayName":"Fixture"}`)
 	case "/v2/bot/message/native-message/content":
 		p.content++
 		if p.content == 1 {
@@ -281,7 +281,7 @@ func (p *linePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "audio/mp4")
-		io.WriteString(w, "m4a")
+		writePeerResponse(p.t, w, "m4a")
 	case "/v2/bot/message/push":
 		p.push(w, r)
 	default:
@@ -310,12 +310,12 @@ func (p *linePeer) push(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(p.keys) == 1 {
 			w.WriteHeader(503)
-			io.WriteString(w, `{"message":"temporary"}`)
+			writePeerResponse(p.t, w, `{"message":"temporary"}`)
 			return
 		}
 		w.Header().Set("X-Line-Accepted-Request-Id", "accepted-request")
 		w.WriteHeader(409)
-		io.WriteString(w, `{"message":"retry key accepted"}`)
+		writePeerResponse(p.t, w, `{"message":"retry key accepted"}`)
 		return
 	}
 	var flex struct {
@@ -331,5 +331,13 @@ func (p *linePeer) push(w http.ResponseWriter, r *http.Request) {
 		p.t.Error("LINE rich image")
 	}
 	p.rich = true
-	io.WriteString(w, `{"sentMessages":[{"id":"native-sent","quoteToken":"new-quote"}]}`)
+	writePeerResponse(p.t, w, `{"sentMessages":[{"id":"native-sent","quoteToken":"new-quote"}]}`)
+}
+
+// writePeerResponse fails the fixture when its native response cannot be delivered.
+func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Error(err)
+	}
 }

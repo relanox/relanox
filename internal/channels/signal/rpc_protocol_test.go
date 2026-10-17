@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,7 +44,7 @@ func TestRPCReceiptsRequireMatchingEnvelope(t *testing.T) {
 					request.ID = "another-call"
 				}
 				w.WriteHeader(fixture.status)
-				fmt.Fprintf(w, `{"jsonrpc":%q,"id":%q,"result":%s}`, fixture.version, request.ID, fixture.result)
+				writePeerResponse(t, w, fmt.Sprintf(`{"jsonrpc":%q,"id":%q,"result":%s}`, fixture.version, request.ID, fixture.result))
 			}))
 			defer peer.Close()
 			account := model.AccountConfig{ID: "signal", Channel: model.Signal, Config: common.Data(Config{ServiceURL: peer.URL, Account: "+12025550100", AllowInsecureLocalhost: true})}
@@ -60,5 +61,13 @@ func TestRPCReceiptsRequireMatchingEnvelope(t *testing.T) {
 				t.Fatalf("send: %+v %v", result, err)
 			}
 		})
+	}
+}
+
+// writePeerResponse fails the fixture when its native response cannot be delivered.
+func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Error(err)
 	}
 }

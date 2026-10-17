@@ -29,7 +29,7 @@ func TestResolveChecksLearnedIdentityBeforeRefreshingContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	host := resolveHost{state: store.State(model.StateNamespace{Component: "channel", OwnerID: "account"})}
 	c, err := New(host, model.AccountConfig{ID: "account", Channel: model.WeChat, Config: common.Data(Config{BotID: "current-bot", BotToken: model.SecretRef{Env: "TOKEN"}})}, common.Options{})
 	if err != nil {

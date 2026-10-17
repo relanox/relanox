@@ -278,7 +278,7 @@ func (p *nativePeer) socket(w http.ResponseWriter, r *http.Request) {
 		p.t.Error(err)
 		return
 	}
-	defer socket.CloseNow()
+	defer func() { _ = socket.CloseNow() }()
 	ctx := r.Context()
 	if socket.Write(ctx, websocket.MessageText, []byte(`{"type":"hello","connection_info":{"app_id":"A1"}}`)) != nil {
 		return
@@ -387,7 +387,7 @@ func signedRequest(t *testing.T, client *http.Client, endpoint, body string, tam
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { response.Body.Close() })
+	t.Cleanup(func() { _ = response.Body.Close() })
 	return response
 }
 
