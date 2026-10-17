@@ -1,36 +1,61 @@
-# How messages reach your agent
+# Architecture
 
-Relanox connects your messaging accounts to an existing dot, Grok Bot or Muse. Each bound conversation or thread is an authorized channel. Incoming messages identify their source channel, and the Agent sends messages to a channel it can access.
+Relanox is a Go service connecting native messaging accounts to cloud agents.
+The Go implementation is under construction; this document describes the contracts
+that implementations must preserve. `ref/typescript` is an archived reference,
+excluded from Go builds and runtime dependencies.
 
-## Follow a message
+The application constructs concrete channel, agent, storage, speech and observer
+components directly. Shared interfaces live in `internal/model`. There is no plugin
+registry, loader, install command or dynamic module discovery. Configuration lives
+in `internal/config`; standard HTTP transport lives in `internal/transport`.
 
-1. **You send a message.** The channel connection receives text and supported attachments from the platform.
-2. **Relanox checks who may use the agent.** The sender must be on the account's allowlist. The conversation must have a binding to an agent; a thread needs its own matching binding. An optional binding allowlist can narrow access further.
-3. **Relanox saves the message.** Text, attachments, the source channel and the receiving Agent are saved in SQLite or PostgreSQL before Core confirms acceptance. The same platform event arriving again is recognized as a duplicate.
-4. **Optional middleware prepares the message.** Configured middleware runs in order before forwarding. The speech plugin can append recognized text; original messages and attachments remain intact. Without middleware, this step does no work.
-5. **Your Agent is notified.** Relanox sends the message, its source channel and attachment information to dot, Grok or Muse. The Agent can read the attachments and prepare an answer in its own service.
-6. **The Agent sends to a channel.** It selects the source channel or another authorized channel from `relanox_status`, then submits text or supported media. Relanox saves an independent delivery, splits long text to fit the platform, then sends it and records the result.
+## Message flow
 
-The Agent can also send to an authorized channel before receiving a message, where the native platform permits it. `relanox_status` lists the available channels and explains missing native context or expired send windows. The Agent can send a progress update followed by a final answer where the channel permits multiple replies. WeCom HTTP callback permits one reply per incoming message, so send only the final answer in that mode. After receiving your question, it takes time to prepare a response and send it back to the conversation. See [Message status and recovery](reference/core.md) if a reply is delayed.
+An authenticated native input identifies an account, sender and exact conversation
+or thread. Account allowlists and a matching binding authorize acceptance; a binding
+can narrow allowed senders. The core commits immutable endpoint ownership, original
+content, media and any captured preparation plan atomically before returning an
+ingest receipt. The platform's event ID deduplicates repeated input.
 
-## What happens after a restart?
+Optional preparation, including Tencent speech, produces separately persisted
+results without changing routing or original media. The worker claims bounded,
+fairly scheduled work with a lease token and version. It notifies the captured
+agent, then records the outcome. A crash after a possible remote side effect yields
+an unknown result unless the native operation is safely idempotent. Cancellation
+before an effect and cancellation after transmission are distinct outcomes.
 
-Saved work stays in the configured database. When Relanox starts again, it resumes messages waiting for notification or delivery. Keep the SQLite file on persistent storage, or use a persistent PostgreSQL database.
+An authenticated agent receives a principal scoped to its current endpoints. Every
+status, message, media and send operation rechecks current channel ownership. Reads
+expose public message content, never private platform reply targets or credentials.
+History is bounded and filtered in storage before ordering and limiting. Pending
+requests are oldest first with a stable accepted-time/request-ID cursor.
 
-Keep Relanox running so it can receive new messages. After an interruption, check its connection status and resend any questions that still need an answer.
+Each accepted send has independent durable destination/endpoint ownership, ordered
+native chunks and an idempotency key. Progress replies do not complete requests.
+Only one final delivery can be associated with a request, and it completes only
+after every text/media chunk is confirmed sent. WeCom callback replies retain a
+pending outcome while awaiting platform retrieval. Expiring native capabilities are
+checked again at send time.
 
-## Where will an old message be sent?
+## Storage, media and security
 
-Received messages keep their selected Agent endpoint. Each queued delivery separately keeps its destination and endpoint. Changing a binding does not redirect those queued deliveries. New sends use the current bindings: removing or reassigning a channel removes the former Agent's access to it and its media.
+SQLite and PostgreSQL implementations use Ent schemas, typed queries/transactions
+and generated migrations. New Go schemas must detect and refuse incompatible old
+databases rather than discard data. Lease claims, settlements, state compare-and-set,
+media budgets, authorization and enqueue operations require atomic checks.
 
-Channel IDs are generated from the binding and Agent endpoint. Use the ID from current status or incoming `source.channel.id`; do not construct one from a message ID. Changing endpoint ownership or configuration can change the channel ID. After rotating a credential under the same bot identity, update its environment variable and restart the service; saved deliveries use the updated credential.
+Media is owned by the relay, scoped to a channel, identified by immutable metadata
+and a checksum, and committed atomically with the message that references it.
+Platform download URLs are transient inputs, never durable assets. Preview images
+must share channel ownership and count toward transactional budgets. Metadata may
+survive content retention to recover accepted idempotent sends. Native length units,
+rich image ordering and send/receive capability differences remain explicit.
 
-## What do I need to run?
-
-Prepare a computer or server to run Relanox and an available dot, Grok Bot or Muse. Start with SQLite to store data in a local file, or connect to PostgreSQL. Some channels need a public HTTPS address for webhooks or media downloads; others connect outward to the platform. Each [channel guide](channels/index.md) explains its requirements.
-
-All three cloud Agents need a publicly reachable HTTPS address for MCP, including with outbound channels.
-
-The service has a separate local management address for health checks and metrics. Keep that address private. Message contents and credentials are excluded from the standard operational logs; administrative commands can show message content only when you ask for it.
-
-Start with [Quick start](getting-started.md), then use [Configuration](configuration.md), [Media transfer](media.md) and [Operations](operations.md) for deployment details. If you are contributing an integration, see [Build an integration](reference/sdk.md).
+HTTP requests carry context cancellation, deadlines and bounded responses. Remote
+downloads reject private/reserved destinations and DNS rebinding. Explicit local
+bridges require a configured private-host allowlist. Redirects stay on the original
+origin. Public deployment URLs come only from validated configuration. Secrets are
+environment/file references resolved at use time, and normal logs accept only
+operational metadata. Public native/MCP HTTP endpoints and private management
+endpoints must remain separate.

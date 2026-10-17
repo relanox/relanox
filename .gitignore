@@ -17,3 +17,11 @@ docs/.vitepress/redirects/
 deploy/relanox.json
 .relanox/
 /docs/local/
+/bin/
+*.exe
+*.test
+*.out
+*.db
+*.db-shm
+*.db-wal
+/relanox.json

@@ -1,32 +1,30 @@
 # Relanox
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+Relanox connects native messaging channels to existing dot, Grok and Muse agents.
+This checkout is undergoing a complete Go rewrite. The earlier TypeScript source,
+tests, configuration and documentation are preserved under
+[`ref/typescript`](ref/typescript/README.md) for reference.
 
-Work with **dot, Grok Bot or Muse** from the chat apps you already use.
+The Go foundation currently defines typed channel, agent, storage, media and queue
+contracts, configuration loading and bounded HTTP transport. An interface is not a
+working integration. The executable and native implementations are being rebuilt;
+the archived TypeScript instructions do not describe the Go runtime.
 
-Run Relanox on your own computer or server, then connect a chat account and an Agent. Send a message in your chat and receive the Agent's reply in the same conversation. You can also share pictures and files, or ask the Agent to send back something it creates.
+The intended scope includes Telegram, Discord, Slack, Feishu, WeCom, WeChat,
+DingTalk, QQ, Microsoft Teams, WhatsApp, Matrix, Google Chat, LINE, Mattermost,
+Signal and IRC, with native text/media capabilities, SQLite/PostgreSQL, Tencent
+speech, MCP, reliable delivery and observability. Components are composed directly
+in Go; there is no plugin system. Streaming replies and local inference are outside
+the scope.
 
-## Get started
+Development requires Go 1.26. Run:
 
-Connect one chat account first. Once you receive your first reply, you can add more conversations.
+```sh
+git config core.hooksPath .githooks
+go run ./tools/check
+```
 
-1. Follow the [quick start](https://relanox.github.io/en/getting-started.html) to install and start Relanox.
-2. Choose a [messaging channel](https://relanox.github.io/en/channels/index.html) and prepare its bot account and permissions.
-3. [Connect dot, Grok Bot or Muse](https://relanox.github.io/en/agents.html), then send your first message.
-
-Channels include Telegram, Discord, Slack, Feishu, WeCom, WeChat, DingTalk, QQ, Microsoft Teams, WhatsApp Business Cloud, Google Chat, LINE, Matrix, Mattermost, Signal and IRC. Each guide explains account setup, configuration and how to send files.
-
-## Deployment
-
-Use Node.js or deploy with Docker Compose. SQLite is a straightforward starting point; you can also use PostgreSQL. Messages, attachments and delivery progress stay in the database you configure.
-
-- [Change settings and add conversations](https://relanox.github.io/en/configuration.html)
-- [Send pictures and files](https://relanox.github.io/en/media.html)
-- [Deploy, back up and manage Relanox](https://relanox.github.io/en/operations.html)
-- [Check logs and service status](https://relanox.github.io/en/reference/observability.html)
-
-Visit the [documentation](https://relanox.github.io/en/) for the full guide. Report issues on [GitHub](https://github.com/relanox/relanox/issues), or read the [contributing guide](https://relanox.github.io/en/development.html) to help with development.
-
-## License
-
-[MIT](LICENSE).
+Read the [architecture](docs/en/architecture.md) and
+[development guide](docs/en/development.md) before changing the runtime.
+Relanox is licensed under the [MIT License](LICENSE). Historical third-party
+notices are retained with the archived implementation.
