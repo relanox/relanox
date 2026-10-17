@@ -10,11 +10,16 @@ import type { MuseConfig } from './config.js'
 // Serialize the entire connection and send across endpoints sharing a directory.
 const activeDirectories = new Map<string, Promise<void>>()
 
+type ConnectionLifetime = {
+  settled: Promise<unknown>
+}
+
 async function connect(
   credentials: Awaited<ReturnType<typeof loadCredentials>>,
   config: MuseConfig,
   directory: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  lifetime: ConnectionLifetime
 ): Promise<MuseClient> {
   signal.throwIfAborted()
 
@@ -38,6 +43,10 @@ async function connect(
     return client
   })
 
+  // The SDK can still be saving rotated credentials after cancellation wins.
+  // Keep the directory reserved through that work, independently of the caller.
+  lifetime.settled = pending
+
   let abort = (): void => {}
 
   const cancelled = new Promise<never>((_resolve, reject) => {
@@ -60,7 +69,8 @@ async function connect(
 async function send(
   input: Parameters<AgentPlugin<MuseConfig>['dispatch']>[0],
   config: MuseConfig,
-  directory: string
+  directory: string,
+  lifetime: ConnectionLifetime
 ): Promise<DispatchResult> {
   const content = JSON.stringify({
     requestId: input.request.requestId,
@@ -86,7 +96,13 @@ async function send(
 
   let client: MuseClient
   try {
-    client = await connect(credentials, config, directory, input.signal)
+    client = await connect(
+      credentials,
+      config,
+      directory,
+      input.signal,
+      lifetime
+    )
   } catch {
     return { status: 'retryable', errorCode: 'muse_connect_failed' }
   }
@@ -122,6 +138,7 @@ export const dispatchMuse: AgentPlugin<MuseConfig>['dispatch'] = async (
   }
 
   const previous = activeDirectories.get(directory) ?? Promise.resolve()
+  const lifetime: ConnectionLifetime = { settled: previous }
   let release: () => void = () => {}
 
   const pending = new Promise<void>((resolve) => {
@@ -134,11 +151,15 @@ export const dispatchMuse: AgentPlugin<MuseConfig>['dispatch'] = async (
     if (input.signal.aborted) {
       return { status: 'retryable', errorCode: 'muse_dispatch_cancelled' }
     }
-    return await send(input, config, directory)
+    return await send(input, config, directory, lifetime)
   } finally {
-    release()
-    if (activeDirectories.get(directory) === pending) {
-      activeDirectories.delete(directory)
+    const releaseDirectory = (): void => {
+      release()
+      if (activeDirectories.get(directory) === pending) {
+        activeDirectories.delete(directory)
+      }
     }
+
+    void lifetime.settled.then(releaseDirectory, releaseDirectory)
   }
 }

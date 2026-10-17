@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { MuseClient } from 'muse-client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { fixture, mcp } from '../../agent-dot/tests/fixture.js'
@@ -199,4 +200,82 @@ it('cancels a pending connection without sending and closes a late socket', asyn
     expect(close).toHaveBeenCalledOnce()
   })
   expect(sendMessage).not.toHaveBeenCalled()
+})
+
+// Protect refresh-token persistence across cancellation. The SDK can finish its
+// OnCredentials callback after the caller aborts; the existing late-socket test
+// Does not issue another request against the same real pairing directory.
+// Only the SDK connection boundary is controlled; production loads/saves files.
+it('keeps the pairing directory reserved until a cancelled connection saves rotated credentials', async () => {
+  const { fx, plugin } = await setup()
+
+  const firstReceipt = await fx.ingest(
+    0,
+    'cancel during refresh',
+    'muse-rotate-1'
+  )
+
+  const secondReceipt = await fx.ingest(
+    1,
+    'use successor token',
+    'muse-rotate-2'
+  )
+
+  const first = await fx.storage.getInbound(firstReceipt.requestId)
+  const second = await fx.storage.getInbound(secondReceipt.requestId)
+  if (first === undefined || second === undefined) {
+    throw new Error('missing_inbound')
+  }
+
+  const started = Promise.withResolvers<void>()
+  const persist = Promise.withResolvers<void>()
+  const lateClose = vi.fn()
+  const sendMessage = vi.fn().mockResolvedValue({ messageId: 'next', raw: {} })
+  const connect = vi.spyOn(MuseClient, 'connect')
+  connect.mockImplementationOnce(async (options) => {
+    started.resolve()
+    await persist.promise
+    await options.onCredentials?.({
+      ...options.credentials,
+      accessToken: 'rotated-access',
+      refreshToken: 'rotated-refresh'
+    })
+    return { close: lateClose, sendMessage } as unknown as MuseClient
+  })
+  connect.mockImplementationOnce(async (options) => {
+    expect(options.credentials.accessToken).toBe('rotated-access')
+    expect(options.credentials.refreshToken).toBe('rotated-refresh')
+    return { close: vi.fn(), sendMessage } as unknown as MuseClient
+  })
+  const controller = new AbortController()
+
+  const cancelled = plugin.dispatch({
+    request: first.snapshot,
+    signal: controller.signal
+  })
+
+  await started.promise
+  controller.abort()
+  expect(await cancelled).toEqual({
+    status: 'retryable',
+    errorCode: 'muse_connect_failed'
+  })
+
+  const next = plugin.dispatch({
+    request: second.snapshot,
+    signal: new AbortController().signal
+  })
+
+  // Allow an incorrectly unlocked request to read the real pairing files.
+  // The first connection stays blocked until this assertion has run.
+  try {
+    await delay(100)
+    expect(connect).toHaveBeenCalledOnce()
+  } finally {
+    persist.resolve()
+    await next
+  }
+  expect(await next).toEqual({ status: 'accepted' })
+  expect(lateClose).toHaveBeenCalledOnce()
+  expect(sendMessage).toHaveBeenCalledOnce()
 })
