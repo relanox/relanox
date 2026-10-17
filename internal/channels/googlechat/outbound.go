@@ -15,6 +15,12 @@ import (
 	"google.golang.org/api/googleapi"
 )
 
+type invalidPayload struct{ code string }
+
+func (e *invalidPayload) Error() string { return e.code }
+
+func rejectPayload(code string) error { return &invalidPayload{code: code} }
+
 func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendResult, error) {
 	data, code := c.sendTarget(input)
 	if code != "" {
@@ -28,11 +34,11 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	}
 	cards, err := c.cards(ctx, input)
 	if err != nil {
-		return common.Failure(err, true), nil
-	}
-	token, err := c.accessToken(ctx)
-	if err != nil {
-		return common.Retry("oauth_unavailable", 0), nil
+		var invalid *invalidPayload
+		if errors.As(err, &invalid) {
+			return common.Reject(invalid.code), nil
+		}
+		return common.Retry("media_preparation_unavailable", time.Second), nil
 	}
 	message := &chat.Message{Text: input.Chunk.Text, CardsV2: cards}
 	if message.Text != "" {
@@ -43,6 +49,13 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	}
 	if input.Reply != nil {
 		message.QuotedMessageMetadata = data.Quote
+	}
+	if len(common.Data(message)) > 32000 {
+		return common.Reject("native_message_too_large"), nil
+	}
+	token, err := c.accessToken(ctx)
+	if err != nil {
+		return common.Retry("oauth_unavailable", 0), nil
 	}
 	// Native requestId provides server-side replay of the first successful create.
 	// https://developers.google.com/workspace/chat/api/reference/rest/v1/spaces.messages/create
@@ -102,12 +115,12 @@ func (c *Channel) cards(ctx context.Context, input model.SendInput) ([]*chat.Car
 		return nil, nil
 	}
 	if c.host.Media() == nil {
-		return nil, errors.New("media_publication_unavailable")
+		return nil, rejectPayload("media_publication_unavailable")
 	}
 	widgets := []*chat.GoogleAppsCardV1Widget{}
 	if len(input.Chunk.RichText) > 0 {
 		if code := common.ValidateRich(input, *c.Capabilities().RichText, model.UTF8, common.MediaLimit(c.host)); code != "" {
-			return nil, errors.New(code)
+			return nil, rejectPayload(code)
 		}
 		for _, part := range input.Chunk.RichText {
 			widget, err := c.richWidget(ctx, input.ChannelID, part)
@@ -118,7 +131,7 @@ func (c *Channel) cards(ctx context.Context, input model.SendInput) ([]*chat.Car
 		}
 	} else {
 		if input.Media == nil || input.Media.Reference.ID != input.Chunk.Media.ID {
-			return nil, errors.New("invalid_media")
+			return nil, rejectPayload("invalid_media")
 		}
 		value, err := c.host.Media().Publish(ctx, input.ChannelID, input.Media.Reference.ID, 24*time.Hour)
 		if err != nil {
@@ -132,7 +145,7 @@ func (c *Channel) cards(ctx context.Context, input model.SendInput) ([]*chat.Car
 	}
 	cards := []*chat.CardWithId{{CardId: input.Chunk.IdempotencyKey, Card: &chat.GoogleAppsCardV1Card{Sections: []*chat.GoogleAppsCardV1Section{{Widgets: widgets}}}}}
 	if len(common.Data(cards)) > 24000 {
-		return nil, errors.New("rich_text_limit_exceeded")
+		return nil, rejectPayload("rich_text_limit_exceeded")
 	}
 	return cards, nil
 }
