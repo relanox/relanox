@@ -1,0 +1,15 @@
+services:
+  relanox:
+    build: .
+    image: relanox:local
+    restart: unless-stopped
+    user: "${RELANOX_UID:-10001}:${RELANOX_GID:-10001}"
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - "./config:/config"
+      - relanox-data:/data
+    stop_grace_period: 40s
+
+volumes:
+  relanox-data:

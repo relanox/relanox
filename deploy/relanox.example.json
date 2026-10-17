@@ -1,0 +1,11 @@
+{
+  "storage": { "driver": "sqlite", "path": "/data/relanox.db" },
+  "http": {
+    "listen": "0.0.0.0:8787",
+    "managementListen": "127.0.0.1:8788"
+  },
+  "accounts": [],
+  "endpoints": [],
+  "bindings": [],
+  "observability": { "level": "info", "metrics": true }
+}
