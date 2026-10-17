@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/storage"
@@ -172,7 +172,7 @@ func TestCanceledResolveDoesNotWaitForIdentity(t *testing.T) {
 		case <-r.Context().Done():
 			return
 		}
-		writePeerResponse(t, w, `{"userId":"bot"}`)
+		channeltest.WriteResponse(t, w, `{"userId":"bot"}`)
 	}))
 	defer peer.Close()
 	defer close(release)
@@ -273,7 +273,7 @@ func (p *linePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.URL.Path {
 	case "/v2/bot/info":
-		writePeerResponse(p.t, w, `{"userId":"bot","basicId":"@fixture","displayName":"Fixture"}`)
+		channeltest.WriteResponse(p.t, w, `{"userId":"bot","basicId":"@fixture","displayName":"Fixture"}`)
 	case "/v2/bot/message/native-message/content":
 		p.content++
 		if p.content == 1 {
@@ -281,7 +281,7 @@ func (p *linePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "audio/mp4")
-		writePeerResponse(p.t, w, "m4a")
+		channeltest.WriteResponse(p.t, w, "m4a")
 	case "/v2/bot/message/push":
 		p.push(w, r)
 	default:
@@ -310,12 +310,12 @@ func (p *linePeer) push(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(p.keys) == 1 {
 			w.WriteHeader(503)
-			writePeerResponse(p.t, w, `{"message":"temporary"}`)
+			channeltest.WriteResponse(p.t, w, `{"message":"temporary"}`)
 			return
 		}
 		w.Header().Set("X-Line-Accepted-Request-Id", "accepted-request")
 		w.WriteHeader(409)
-		writePeerResponse(p.t, w, `{"message":"retry key accepted"}`)
+		channeltest.WriteResponse(p.t, w, `{"message":"retry key accepted"}`)
 		return
 	}
 	var flex struct {
@@ -331,13 +331,5 @@ func (p *linePeer) push(w http.ResponseWriter, r *http.Request) {
 		p.t.Error("LINE rich image")
 	}
 	p.rich = true
-	writePeerResponse(p.t, w, `{"sentMessages":[{"id":"native-sent","quoteToken":"new-quote"}]}`)
-}
-
-// writePeerResponse fails the fixture when its native response cannot be delivered.
-func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
-	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
-		t.Error(err)
-	}
+	channeltest.WriteResponse(p.t, w, `{"sentMessages":[{"id":"native-sent","quoteToken":"new-quote"}]}`)
 }

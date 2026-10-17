@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/storage"
@@ -217,7 +218,7 @@ func (p *signalPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		p.cursors <- r.Header.Get("Last-Event-ID")
 		w.Header().Set("Content-Type", "text/event-stream")
-		writePeerResponse(p.t, w, "id: daemon-2\nevent: receive\ndata: "+nativeEvent+"\n\n")
+		channeltest.WriteResponse(p.t, w, "id: daemon-2\nevent: receive\ndata: "+nativeEvent+"\n\n")
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()
 	case "/api/v1/rpc":
@@ -250,17 +251,17 @@ func (p *signalPeer) rpc(w http.ResponseWriter, r *http.Request) {
 		if string(request.Params["id"]) != `"native-attachment"` || string(request.Params["groupId"]) != `"native-group=="` {
 			p.t.Error("attachment parameters")
 		}
-		writePeerResponse(p.t, w, fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"result":{"data":"cG5n"}}`, request.ID))
+		channeltest.WriteResponse(p.t, w, fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"result":{"data":"cG5n"}}`, request.ID))
 	case "send":
 		assertSendParams(p.t, request.Params)
 		kind := "SUCCESS"
 		if p.partial.Load() {
 			kind = "NETWORK_FAILURE"
 		}
-		writePeerResponse(p.t, w, fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"result":{"timestamp":1700000001000,"results":[{"type":"SUCCESS"},{"type":%q}]}}`, request.ID, kind))
+		channeltest.WriteResponse(p.t, w, fmt.Sprintf(`{"jsonrpc":"2.0","id":%q,"result":{"timestamp":1700000001000,"results":[{"type":"SUCCESS"},{"type":%q}]}}`, request.ID, kind))
 	default:
 		p.t.Errorf("unexpected RPC method %s", request.Method)
-		writePeerResponse(p.t, w, `{"error":{"code":-32601}}`)
+		channeltest.WriteResponse(p.t, w, `{"error":{"code":-32601}}`)
 	}
 }
 

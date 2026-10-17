@@ -2,12 +2,12 @@ package wechat
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/model"
 )
 
@@ -34,7 +34,7 @@ func TestSDKSendPreservesNativeRejections(t *testing.T) {
 					t.Error("native request scope")
 				}
 				w.WriteHeader(fixture.status)
-				writePeerResponse(t, w, fixture.body)
+				channeltest.WriteResponse(t, w, fixture.body)
 			}))
 			defer peer.Close()
 			cfg := Config{BotID: "bot", BotToken: model.SecretRef{Env: "PUBLIC_FIXTURE"}, APIBaseURL: peer.URL, CDNBaseURL: peer.URL + "/c2c", AllowInsecureLoopback: true}
@@ -48,13 +48,5 @@ func TestSDKSendPreservesNativeRejections(t *testing.T) {
 				t.Fatalf("send: %+v %v", result, err)
 			}
 		})
-	}
-}
-
-// writePeerResponse fails the fixture when its native response cannot be delivered.
-func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
-	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
-		t.Error(err)
 	}
 }

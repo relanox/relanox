@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 )
 
 // The SDK accepts absent expiry and narrows JSON expires_in through int32.
@@ -39,7 +40,7 @@ func TestOAuthRejectsInvalidLifetimeAndSanitizesErrors(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", "9")
 				w.WriteHeader(fixture.status)
-				writePeerResponse(t, w, fixture.body)
+				channeltest.WriteResponse(t, w, fixture.body)
 			}))
 			defer peer.Close()
 			native := &NativeClient{AppID: "app", TokenURL: peer.URL, Secret: func() string { return "private-credential" }, HTTP: peer.Client()}
@@ -79,7 +80,7 @@ func TestOAuthCancellationReleasesInflightRequest(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		writePeerResponse(t, w, `{"access_token":"recovered","expires_in":3600}`)
+		channeltest.WriteResponse(t, w, `{"access_token":"recovered","expires_in":3600}`)
 	}))
 	defer peer.Close()
 	native := &NativeClient{AppID: "app", TokenURL: peer.URL, Secret: func() string { return "private-credential" }, HTTP: peer.Client()}

@@ -3,7 +3,6 @@ package whatsapp
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/storage"
@@ -43,7 +43,7 @@ func TestSDKCloudSendRetainsStatusAndRetryHeaders(t *testing.T) {
 				}
 				w.Header().Set("Retry-After", "8")
 				w.WriteHeader(fixture.status)
-				writePeerResponse(t, w, fixture.body)
+				channeltest.WriteResponse(t, w, fixture.body)
 			}))
 			defer peer.Close()
 			base, _ := url.Parse(peer.URL)
@@ -69,13 +69,5 @@ func TestSDKCloudSendRetainsStatusAndRetryHeaders(t *testing.T) {
 				t.Fatalf("send: %+v %v", result, err)
 			}
 		})
-	}
-}
-
-// writePeerResponse fails the fixture when its native response cannot be delivered.
-func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
-	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
-		t.Error(err)
 	}
 }

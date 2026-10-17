@@ -11,6 +11,7 @@ import (
 
 	larktypes "github.com/larksuite/oapi-sdk-go/v3/channel/types"
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/model"
 )
 
@@ -27,9 +28,9 @@ func (p *mediaPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/open-apis/auth/v3/tenant_access_token/internal":
 		p.tokens++
-		writePeerResponse(p.t, w, fmt.Sprintf(`{"code":0,"tenant_access_token":"native-%d","expire":7200}`, p.tokens))
+		channeltest.WriteResponse(p.t, w, fmt.Sprintf(`{"code":0,"tenant_access_token":"native-%d","expire":7200}`, p.tokens))
 	case "/open-apis/bot/v3/info":
-		writePeerResponse(p.t, w, `{"code":0,"bot":{"open_id":"ou_bot"}}`)
+		channeltest.WriteResponse(p.t, w, `{"code":0,"bot":{"open_id":"ou_bot"}}`)
 	case "/open-apis/im/v1/files":
 		if err := r.ParseMultipartForm(1024); err != nil {
 			p.t.Error(err)
@@ -41,12 +42,12 @@ func (p *mediaPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if len(r.MultipartForm.File["file"]) != 1 {
 			p.t.Error("native file field missing")
 		}
-		writePeerResponse(p.t, w, `{"code":0,"data":{"file_key":"file_native"}}`)
+		channeltest.WriteResponse(p.t, w, `{"code":0,"data":{"file_key":"file_native"}}`)
 	case "/open-apis/im/v1/messages":
 		p.sends++
 		if p.rejectToken {
 			p.rejectToken = false
-			writePeerResponse(p.t, w, `{"code":99991663}`)
+			channeltest.WriteResponse(p.t, w, `{"code":99991663}`)
 			return
 		}
 		var body struct {
@@ -65,12 +66,12 @@ func (p *mediaPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if body.Type != "post" && content["file_key"] != "file_native" {
 			p.t.Error("file key lost")
 		}
-		writePeerResponse(p.t, w, `{"code":0,"data":{"message_id":"om_sent"}}`)
+		channeltest.WriteResponse(p.t, w, `{"code":0,"data":{"message_id":"om_sent"}}`)
 	case "/open-apis/im/v1/messages/om_source/resources/file_json":
 		if r.URL.Query().Get("type") != "file" || r.Header.Get("Authorization") == "" {
 			p.t.Error("native resource scope missing")
 		}
-		writePeerResponse(p.t, w, `{"code":123,"payload":"file content"}`)
+		channeltest.WriteResponse(p.t, w, `{"code":123,"payload":"file content"}`)
 	default:
 		p.t.Errorf("unexpected native path: %s", r.URL.Path)
 		w.WriteHeader(404)

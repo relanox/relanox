@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/storage"
@@ -52,9 +53,9 @@ func (p *gatewayPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.tokens++
 		count := p.tokens
 		p.mu.Unlock()
-		writePeerResponse(p.t, w, fmt.Sprintf(`{"access_token":"token-%d","expires_in":7200}`, count))
+		channeltest.WriteResponse(p.t, w, fmt.Sprintf(`{"access_token":"token-%d","expires_in":7200}`, count))
 	case "/gateway":
-		writePeerResponse(p.t, w, `{"url":"wss://gateway.qq.example/socket"}`)
+		channeltest.WriteResponse(p.t, w, `{"url":"wss://gateway.qq.example/socket"}`)
 	case "/socket":
 		p.socket(w, r)
 	default:

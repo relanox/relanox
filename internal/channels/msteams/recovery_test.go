@@ -19,6 +19,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/storage"
@@ -52,9 +53,9 @@ func TestFileConsentAndUploadResumeAfterReopen(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/.well-known/keys":
-			writePeerJSON(t, w, map[string]any{"keys": []any{map[string]any{"kty": "RSA", "kid": "fixture", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
+			channeltest.WriteJSON(t, w, map[string]any{"keys": []any{map[string]any{"kty": "RSA", "kid": "fixture", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
 		case "/botframework.com/oauth2/v2.0/token":
-			writePeerResponse(t, w, `{"access_token":"native-token","expires_in":3600}`)
+			channeltest.WriteResponse(t, w, `{"access_token":"native-token","expires_in":3600}`)
 		case "/amer/v3/conversations/chat/activities":
 			var body activity
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -66,7 +67,7 @@ func TestFileConsentAndUploadResumeAfterReopen(t *testing.T) {
 				return
 			}
 			cards = append(cards, body.Attachments[0].ContentType)
-			writePeerResponse(t, w, `{"id":"sent"}`)
+			channeltest.WriteResponse(t, w, `{"id":"sent"}`)
 		case "/upload":
 			ranges = append(ranges, r.Header.Get("Content-Range"))
 			if _, err := io.Copy(io.Discard, r.Body); err != nil {
@@ -78,10 +79,10 @@ func TestFileConsentAndUploadResumeAfterReopen(t *testing.T) {
 			}
 			if len(ranges) == 1 {
 				w.WriteHeader(202)
-				writePeerResponse(t, w, `{"nextExpectedRanges":["10485760-"]}`)
+				channeltest.WriteResponse(t, w, `{"nextExpectedRanges":["10485760-"]}`)
 				return
 			}
-			writePeerResponse(t, w, `{"id":"file"}`)
+			channeltest.WriteResponse(t, w, `{"id":"file"}`)
 		default:
 			t.Errorf("unexpected native request %s", r.URL.Path)
 			w.WriteHeader(404)
@@ -155,21 +156,6 @@ func TestFileConsentAndUploadResumeAfterReopen(t *testing.T) {
 	}
 	if !reflect.DeepEqual(ranges, []string{"bytes 0-10485759/11534336", "bytes 10485760-11534335/11534336", "bytes 10485760-11534335/11534336"}) {
 		t.Fatalf("upload resumed incorrectly: %v", ranges)
-	}
-}
-
-// writePeerResponse fails the fixture when its native response cannot be delivered.
-func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
-	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
-		t.Error(err)
-	}
-}
-
-func writePeerJSON(t *testing.T, w http.ResponseWriter, body any) {
-	t.Helper()
-	if err := json.NewEncoder(w).Encode(body); err != nil {
-		t.Error(err)
 	}
 }
 

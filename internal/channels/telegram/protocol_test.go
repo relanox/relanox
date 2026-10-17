@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/model"
 )
 
@@ -139,11 +140,11 @@ func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.MultipartForm != nil {
 			defer func() { _ = r.MultipartForm.RemoveAll() }()
 		}
-		writePeerResponse(p.t, w, `{"ok":true,"result":{"file_path":"voice/file.oga","file_size":3}}`)
+		channeltest.WriteResponse(p.t, w, `{"ok":true,"result":{"file_path":"voice/file.oga","file_size":3}}`)
 	case "/file/bot123:public-fixture-token/voice/file.oga":
 		p.downloads++
 		w.Header().Set("Content-Type", "audio/ogg")
-		writePeerResponse(p.t, w, "ogg")
+		channeltest.WriteResponse(p.t, w, "ogg")
 	case "/bot123:public-fixture-token/sendVoice":
 		if err := r.ParseMultipartForm(1024 * 1024); err != nil {
 			p.t.Error(err)
@@ -164,7 +165,7 @@ func (p *telegramPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error("voice upload")
 		}
 		p.voice = true
-		writePeerResponse(p.t, w, `{"ok":true,"result":{"message_id":1234}}`)
+		channeltest.WriteResponse(p.t, w, `{"ok":true,"result":{"message_id":1234}}`)
 	default:
 		p.t.Errorf("unexpected Telegram request %s", r.URL)
 		w.WriteHeader(404)
@@ -193,7 +194,7 @@ func TestNativeFailureMapping(t *testing.T) {
 		t.Run(fixture.name, func(t *testing.T) {
 			peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(fixture.status)
-				writePeerResponse(t, w, fixture.body)
+				channeltest.WriteResponse(t, w, fixture.body)
 			}))
 			defer peer.Close()
 			host := &protocolHost{}
@@ -210,13 +211,5 @@ func TestNativeFailureMapping(t *testing.T) {
 				t.Fatalf("native failure: %+v %v", result, err)
 			}
 		})
-	}
-}
-
-// writePeerResponse fails the fixture when its native response cannot be delivered.
-func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
-	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
-		t.Error(err)
 	}
 }

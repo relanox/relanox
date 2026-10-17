@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/model"
 )
 
@@ -33,7 +34,7 @@ func (p *chunkPeer) native(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.URL.Path {
 	case "/app/getAppAccessToken":
-		writePeerResponse(p.t, w, `{"access_token":"native","expires_in":7200}`)
+		channeltest.WriteResponse(p.t, w, `{"access_token":"native","expires_in":7200}`)
 	case "/v2/groups/group/upload_prepare":
 		p.prepare(w, r)
 	case "/v2/groups/group/upload_part_finish":
@@ -45,7 +46,7 @@ func (p *chunkPeer) native(w http.ResponseWriter, r *http.Request) {
 		if json.NewDecoder(r.Body).Decode(&body) != nil || body.ID != "upload-native" {
 			p.t.Error("completion upload ID lost")
 		}
-		writePeerResponse(p.t, w, `{"file_uuid":"native","file_info":"uploaded-large","ttl":3600}`)
+		channeltest.WriteResponse(p.t, w, `{"file_uuid":"native","file_info":"uploaded-large","ttl":3600}`)
 	case "/v2/groups/group/messages":
 		var body nativeSend
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -54,7 +55,7 @@ func (p *chunkPeer) native(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
 		p.message = &body
 		p.mu.Unlock()
-		writePeerResponse(p.t, w, `{"id":"sent"}`)
+		channeltest.WriteResponse(p.t, w, `{"id":"sent"}`)
 	default:
 		p.t.Errorf("unexpected native path: %s", r.URL.Path)
 		w.WriteHeader(404)
@@ -83,7 +84,7 @@ func (p *chunkPeer) prepare(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.prepared = true
 	p.mu.Unlock()
-	writePeerResponse(p.t, w, fmt.Sprintf(`{"upload_id":"upload-native","block_size":5242880,"parts":[{"index":1,"presigned_url":%q},{"index":2,"presigned_url":%q}]}`, p.cos+"/1?signature=public", p.cos+"/2?signature=public"))
+	channeltest.WriteResponse(p.t, w, fmt.Sprintf(`{"upload_id":"upload-native","block_size":5242880,"parts":[{"index":1,"presigned_url":%q},{"index":2,"presigned_url":%q}]}`, p.cos+"/1?signature=public", p.cos+"/2?signature=public"))
 }
 
 func (p *chunkPeer) finish(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +110,7 @@ func (p *chunkPeer) finish(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.finished = append(p.finished, body.Index)
 	p.mu.Unlock()
-	writePeerResponse(p.t, w, `{"code":0}`)
+	channeltest.WriteResponse(p.t, w, `{"code":0}`)
 }
 
 func (p *chunkPeer) upload(w http.ResponseWriter, r *http.Request) {
@@ -212,13 +213,5 @@ func TestPresignedUploadCannotGrantPrivateNetworkAccess(t *testing.T) {
 	defer p.mu.Unlock()
 	if !p.prepared || len(p.parts) != 0 || p.message != nil {
 		t.Fatal("native response granted private upload access")
-	}
-}
-
-// writePeerResponse fails the fixture when its native response cannot be delivered.
-func writePeerResponse(t *testing.T, w http.ResponseWriter, body string) {
-	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
-		t.Error(err)
 	}
 }

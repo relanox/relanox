@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/model"
 )
 
@@ -20,7 +21,7 @@ type smallPeer struct {
 func (p *smallPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.URL.Path == "/app/getAppAccessToken" {
-		writePeerResponse(p.t, w, `{"access_token":"native","expires_in":7200}`)
+		channeltest.WriteResponse(p.t, w, `{"access_token":"native","expires_in":7200}`)
 		return
 	}
 	if strings.HasSuffix(r.URL.Path, "/files") {
@@ -35,7 +36,7 @@ func (p *smallPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.t.Errorf("native media envelope: %+v", body)
 	}
 	p.messages++
-	writePeerResponse(p.t, w, `{"id":"sent"}`)
+	channeltest.WriteResponse(p.t, w, `{"id":"sent"}`)
 }
 
 func (p *smallPeer) upload(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +59,7 @@ func (p *smallPeer) upload(w http.ResponseWriter, r *http.Request) {
 		p.t.Error("filename belongs only to native file uploads")
 	}
 	p.types = append(p.types, body.Type)
-	writePeerResponse(p.t, w, `{"file_uuid":"native","file_info":"native-file","ttl":0}`)
+	channeltest.WriteResponse(p.t, w, `{"file_uuid":"native","file_info":"native-file","ttl":0}`)
 }
 
 // Small uploads have their own native numbering and must not use srv_send_msg,

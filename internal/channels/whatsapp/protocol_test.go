@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/channels/internal/channeltest"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/storage"
@@ -215,7 +216,7 @@ func (p *cloudPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error("upload bytes")
 		}
 		p.uploaded = true
-		writePeerResponse(p.t, w, `{"id":"native-media"}`)
+		channeltest.WriteResponse(p.t, w, `{"id":"native-media"}`)
 	case "/v25.0/phone/messages":
 		p.messages++
 		var body struct {
@@ -248,7 +249,7 @@ func (p *cloudPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			p.image = true
 		}
-		writePeerResponse(p.t, w, `{"messaging_product":"whatsapp","messages":[{"id":"wamid.outbound"}]}`)
+		channeltest.WriteResponse(p.t, w, `{"messaging_product":"whatsapp","messages":[{"id":"wamid.outbound"}]}`)
 	default:
 		p.t.Errorf("unexpected Cloud request %s", r.URL)
 		w.WriteHeader(404)
