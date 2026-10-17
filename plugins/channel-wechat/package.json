@@ -1,0 +1,32 @@
+{
+  "name": "@relanox/channel-wechat",
+  "version": "0.1.0",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json"
+  },
+  "dependencies": {
+    "@relanox/sdk": "workspace:*",
+    "@relanox/channel-media": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "engines": {
+    "node": ">=26 <27"
+  },
+  "relanox": {
+    "kind": "channel",
+    "id": "wechat",
+    "sdkMajor": 1,
+    "entry": "./dist/plugin.js"
+  }
+}
