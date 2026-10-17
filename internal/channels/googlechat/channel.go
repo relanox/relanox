@@ -94,7 +94,9 @@ func (c *Channel) Capabilities() model.ChannelCapabilities {
 }
 
 func (c *Channel) SplitText(value string, _ model.ReplyTarget) ([]string, error) {
-	return text.SplitMarkdown(value, 30000, model.UTF8)
+	return text.SplitByRendered(value, 30000, model.UTF8, func(fragment string) string {
+		return string(common.Data(&chat.Message{Text: fragment, MarkupSyntax: "MARKUP_SYNTAX_MARKDOWN"}))
+	})
 }
 
 func (c *Channel) Start(ctx context.Context) error {
