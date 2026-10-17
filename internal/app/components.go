@@ -20,6 +20,7 @@ import (
 	"github.com/relanox/relanox/internal/channels/msteams"
 	"github.com/relanox/relanox/internal/channels/qq"
 	"github.com/relanox/relanox/internal/channels/signal"
+	"github.com/relanox/relanox/internal/channels/slack"
 	"github.com/relanox/relanox/internal/channels/telegram"
 	"github.com/relanox/relanox/internal/channels/wechat"
 	"github.com/relanox/relanox/internal/channels/wecom"
@@ -62,6 +63,8 @@ func ValidateAccount(account model.AccountConfig) error {
 		err = discord.ValidateConfig(account.Config)
 	case model.GoogleChat:
 		err = googlechat.ValidateConfig(account.Config)
+	case model.Slack:
+		err = slack.ValidateConfig(account.Config)
 	default:
 		return invalid("channel", "component_unavailable")
 	}
@@ -119,6 +122,8 @@ func nativeChannel(host model.ChannelHost, account model.AccountConfig, options 
 		return discord.New(host, account, options)
 	case model.GoogleChat:
 		return googlechat.New(host, account, options)
+	case model.Slack:
+		return slack.New(host, account, options)
 	}
 	return nil, invalid("channel", "component_unavailable")
 }

@@ -201,6 +201,14 @@ func callbackPath(account model.AccountConfig) string {
 		return "/webhook"
 	case model.MSTeams:
 		return "/activities"
+	case model.Slack:
+		var options struct {
+			SigningSecret *model.SecretRef `json:"signingSecret"`
+		}
+		_ = json.Unmarshal(account.Config, &options)
+		if options.SigningSecret != nil {
+			return "/events"
+		}
 	case model.WeCom:
 		var options struct {
 			Mode string `json:"mode"`

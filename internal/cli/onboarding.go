@@ -293,6 +293,9 @@ func (c *command) accountForm(d *document, id string, kind model.ChannelKind) (j
 	if kind == model.GoogleChat {
 		return c.googleChatForm(d, id)
 	}
+	if kind == model.Slack {
+		return c.slackForm(d, id)
+	}
 	spec := accountFields(kind)
 	if spec == nil {
 		return nil, problem("native_config_file_required_for_channel")
@@ -318,6 +321,34 @@ func (c *command) accountForm(d *document, id string, kind model.ChannelKind) (j
 		}
 	}
 	return json.Marshal(fields)
+}
+
+func (c *command) slackForm(d *document, id string) (json.RawMessage, error) {
+	appID, err := c.prompt("Slack appId", "", false)
+	if err != nil {
+		return nil, err
+	}
+	token, err := c.secretPrompt(d, id, "botToken", false)
+	if err != nil {
+		return nil, err
+	}
+	mode, err := c.prompt("Slack transport (socket or events)", "socket", false)
+	if err != nil {
+		return nil, err
+	}
+	field := "appToken"
+	switch mode {
+	case "socket":
+	case "events":
+		field = "signingSecret"
+	default:
+		return nil, problem("invalid_slack_transport")
+	}
+	secret, err := c.secretPrompt(d, id, field, false)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]any{"appId": appID, "botToken": token, field: secret})
 }
 
 func (c *command) googleChatForm(d *document, id string) (json.RawMessage, error) {
