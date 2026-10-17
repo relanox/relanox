@@ -46,7 +46,10 @@ func apiCall(ctx context.Context, client *http.Client, creds credentials, path, 
 	}
 	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(bounded, method, root.ResolveReference(&url.URL{Path: path}).String(), bytes.NewReader(data))
+	// Official api_root() preserves api_url_v2's prefix, unlike the old TS SDK.
+	root.Path = strings.TrimRight(root.Path, "/") + path
+	root.RawPath = ""
+	req, err := http.NewRequestWithContext(bounded, method, root.String(), bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -76,6 +79,9 @@ func apiCall(ctx context.Context, client *http.Client, creds credentials, path, 
 }
 
 func refresh(ctx context.Context, client *http.Client, directory string, creds *credentials) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	parts := strings.Split(creds.RefreshToken, ":")
 	raw := parts[len(parts)-1]
 	if raw == "" {
@@ -93,7 +99,9 @@ func refresh(ctx context.Context, client *http.Client, directory string, creds *
 			Refresh string `json:"refresh_token"`
 		} `json:"payload"`
 	}
-	if err := apiCall(ctx, client, *creds, "/device_token/refresh", "hatch_refresh:"+raw, body, &result); err != nil {
+	// Rotation consumes its predecessor. Complete this bounded exchange and save
+	// the successor even when the requesting dispatch is cancelled meanwhile.
+	if err := apiCall(context.WithoutCancel(ctx), client, *creds, "/device_token/refresh", "hatch_refresh:"+raw, body, &result); err != nil {
 		return err
 	}
 	if result.Payload != nil {

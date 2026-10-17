@@ -121,6 +121,82 @@ func TestCancellationWhileDirectoryQueuedReturnsWithoutNetwork(t *testing.T) {
 	}
 }
 
+// Official muse_api.py appends paths to api_url_v2 and rotates refresh tokens.
+// Cancelling a request after refresh has started must retain the directory lock
+// until the successor reaches disk. The old TS client permitted cancellation to
+// interrupt that response. This test uses real files and a real TLS exchange.
+func TestRefreshSettlesBeforeCancellationReleasesDirectory(t *testing.T) {
+	started := make(chan struct{})
+	finish := make(chan struct{})
+	var refreshCancelled atomic.Bool
+	var fetches atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/tenant/v2/fetch_vms":
+			fetches.Add(1)
+			if r.Header.Get("Authorization") == "Bearer old-access" {
+				w.WriteHeader(401)
+				return
+			}
+			w.WriteHeader(503)
+		case "/tenant/v2/device_token/refresh":
+			close(started)
+			select {
+			case <-finish:
+			case <-r.Context().Done():
+				refreshCancelled.Store(true)
+				return
+			}
+			_, _ = io.WriteString(w, `{"access_token":"new-access","refresh_token":"new-refresh"}`)
+		default:
+			t.Errorf("API prefix lost: %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer server.Close()
+	directory := pairedDirectory(t, server.URL+"/tenant/v2/")
+	options := Options{CredentialsDirectory: directory, HTTPClient: server.Client()}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := SendMessage(ctx, options, "payload"); done <- err }()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh was not reached")
+	}
+	cancel()
+	// A cancelled second dispatch must leave the leased directory immediately.
+	waitCtx, waitCancel := context.WithCancel(context.Background())
+	waitCancel()
+	_, err := SendMessage(waitCtx, options, "other")
+	assertDispatchError(t, err, false, "queue")
+	select {
+	case err = <-done:
+		t.Fatalf("refresh returned before saving successor: %v", err)
+	default:
+	}
+	close(finish)
+	select {
+	case err = <-done:
+		assertDispatchError(t, err, false, "account")
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh did not settle")
+	}
+	if refreshCancelled.Load() {
+		t.Fatal("caller cancelled rotating refresh exchange")
+	}
+	creds, err := loadCredentials(directory)
+	if err != nil || creds.RefreshToken != "new-refresh" {
+		t.Fatal("lost successor", err)
+	}
+	_, err = SendMessage(context.Background(), options, "later")
+	assertDispatchError(t, err, false, "account")
+	if fetches.Load() != 2 {
+		t.Fatalf("unexpected fetch count: %d", fetches.Load())
+	}
+}
+
 func TestCancellationBeforeAndAfterChatWrite(t *testing.T) {
 	for _, stage := range []string{"account", "connect", "acknowledgement"} {
 		t.Run(stage, func(t *testing.T) {
