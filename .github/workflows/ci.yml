@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Go checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: ${{ matrix.os == 'ubuntu-latest' && 'postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c' || '' }}
+        env:
+          POSTGRES_USER: relanox
+          POSTGRES_PASSWORD: relanox-test
+          POSTGRES_DB: relanox_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U relanox -d relanox_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      RELANOX_TEST_POSTGRES_URL: ${{ matrix.os == 'ubuntu-latest' && 'postgresql://relanox:relanox-test@127.0.0.1:5432/relanox_test' || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod verify
+      - run: go mod tidy -diff
+      - run: go run ./tools/check
+      - run: go generate ./internal/storage/...
+      - run: git diff --exit-code -- internal/storage/ent
+      - run: go run ./tools/docs
+      - if: runner.os == 'Linux'
+        run: go test -race ./...
+      - if: runner.os == 'Linux'
+        run: go run ./tools/licenses -check
+
+  binaries:
+    name: Binary (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go run ./tools/dist -os ${{ matrix.goos }} -arch ${{ matrix.goarch }} -version "$VERSION"
+        env:
+          VERSION: ${{ inputs.version || github.sha }}
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: relanox-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+      - run: go run ./tools/docs
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: documentation
+          path: docs/site
+          include-hidden-files: true
+          if-no-files-found: error
+
+  container:
+    name: Production container
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: docker compose config --quiet
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
+        with:
+          context: .
+          load: true
+          tags: relanox:test
+          cache-from: type=gha,scope=relanox-go
+          cache-to: type=gha,mode=max,scope=relanox-go
+      - run: go test -count=1 ./tests/deployment
+        env:
+          RELANOX_TEST_CONTAINER_IMAGE: relanox:test
