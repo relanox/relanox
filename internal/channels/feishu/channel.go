@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/url"
 	"regexp"
 	"sync"
 	"time"
@@ -215,5 +214,3 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 func (c *Channel) sendTarget(target model.ReplyTarget, botID string, data *targetData) bool {
 	return target.Channel == model.Feishu && target.AccountID == c.account.ID && nativeID.MatchString(target.ChatID) && (target.ReplyToID == "" || nativeID.MatchString(target.ReplyToID)) && json.Unmarshal(target.Data, data) == nil && c.valid(*data, botID)
 }
-
-func escapedID(value string) string { return url.PathEscape(value) }

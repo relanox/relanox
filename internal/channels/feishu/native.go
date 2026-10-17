@@ -13,9 +13,8 @@ import (
 	"github.com/relanox/relanox/internal/model"
 )
 
-// The official Go SDK's core token envelope is top-level; its generated auth/v3
-// envelope incorrectly nests data. Keep the verified core contract and typed
-// IM request/response structs, with one context-aware HTTP attempt per send.
+// The generated auth/v3 response incorrectly nests the token under data.
+// Use the SDK core request client with its verified top-level token envelope.
 // github.com/larksuite/oapi-sdk-go/v3 v3.12.2 core/tokenmanager.go (MIT).
 func (c *Channel) token(ctx context.Context) (string, error) {
 	secret, err := c.options.Secret(c.config.AppSecret)
@@ -23,10 +22,16 @@ func (c *Channel) token(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return c.tokens.Get(ctx, c.config.AppID+"\x00"+secret, func(ctx context.Context) (string, time.Time, error) {
-		var response larkcore.TenantAccessTokenResp
-		request := larkcore.SelfBuiltTenantAccessTokenReq{AppID: c.config.AppID, AppSecret: secret}
-		if err := common.JSON(ctx, c.options.HTTPClient, http.MethodPost, c.base()+"/open-apis/auth/v3/tenant_access_token/internal", nil, request, &response); err != nil {
+		config := c.sdkConfig(ctx, common.MaxJSONBytes)
+		config.AppSecret = secret
+		request := &larkcore.ApiReq{HttpMethod: http.MethodPost, ApiPath: "/open-apis/auth/v3/tenant_access_token/internal", Body: larkcore.SelfBuiltTenantAccessTokenReq{AppID: c.config.AppID, AppSecret: secret}}
+		raw, err := larkcore.Request(ctx, request, config)
+		if err := nativeError(raw, err); err != nil {
 			return "", time.Time{}, err
+		}
+		var response larkcore.TenantAccessTokenResp
+		if json.Unmarshal(raw.RawBody, &response) != nil {
+			return "", time.Time{}, errors.New("native_invalid_response")
 		}
 		if response.Code != 0 {
 			return "", time.Time{}, &apiError{code: response.Code}
@@ -94,8 +99,12 @@ func (c *Channel) ensureIdentity(ctx context.Context) (string, error) {
 			OpenID string `json:"open_id"`
 		} `json:"bot"`
 	}
-	if err = common.JSON(ctx, c.options.HTTPClient, http.MethodGet, c.base()+"/open-apis/bot/v3/info", http.Header{"Authorization": {"Bearer " + token}}, nil, &response); err != nil {
+	raw, err := larkcore.Request(ctx, &larkcore.ApiReq{HttpMethod: http.MethodGet, ApiPath: "/open-apis/bot/v3/info", SupportedAccessTokenTypes: []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant}}, c.sdkConfig(ctx, common.MaxJSONBytes), larkcore.WithTenantAccessToken(token))
+	if err := nativeError(raw, err); err != nil {
 		return "", err
+	}
+	if json.Unmarshal(raw.RawBody, &response) != nil {
+		return "", errors.New("native_invalid_response")
 	}
 	if response.Code != 0 {
 		return "", &apiError{code: response.Code}
@@ -114,24 +123,47 @@ func (c *Channel) sendMessage(ctx context.Context, input model.SendInput, conten
 	if err != nil {
 		return "", err
 	}
-	var request any
-	endpoint := c.base() + "/open-apis/im/v1/messages?receive_id_type=chat_id"
+	client := c.imClient(ctx, common.MaxJSONBytes)
 	if replyID != "" {
 		inThread := input.Target.ThreadID != ""
-		request = larkim.ReplyMessageReqBody{Content: &content, MsgType: &kind, ReplyInThread: &inThread}
-		endpoint = c.base() + "/open-apis/im/v1/messages/" + escapedID(replyID) + "/reply"
-	} else {
-		request = larkim.CreateMessageReqBody{ReceiveId: &input.Target.ChatID, Content: &content, MsgType: &kind}
+		body := &larkim.ReplyMessageReqBody{Content: &content, MsgType: &kind, ReplyInThread: &inThread}
+		request := larkim.NewReplyMessageReqBuilder().MessageId(replyID).Body(body).Build()
+		response, err := client.Message.Reply(ctx, request, larkcore.WithTenantAccessToken(token))
+		if err != nil {
+			return "", err
+		}
+		if err := nativeError(response.ApiResp, nil); err != nil {
+			return "", err
+		}
+		if response.Code != 0 {
+			return "", &apiError{code: response.Code}
+		}
+		if response.Data == nil {
+			return "", errors.New("missing_message_receipt")
+		}
+		return messageReceipt(response.Data.MessageId)
 	}
-	var response larkim.CreateMessageResp
-	if err = common.JSON(ctx, c.options.HTTPClient, http.MethodPost, endpoint, http.Header{"Authorization": {"Bearer " + token}}, request, &response); err != nil {
+	body := &larkim.CreateMessageReqBody{ReceiveId: &input.Target.ChatID, Content: &content, MsgType: &kind}
+	request := larkim.NewCreateMessageReqBuilder().ReceiveIdType("chat_id").Body(body).Build()
+	response, err := client.Message.Create(ctx, request, larkcore.WithTenantAccessToken(token))
+	if err != nil {
+		return "", err
+	}
+	if err := nativeError(response.ApiResp, nil); err != nil {
 		return "", err
 	}
 	if response.Code != 0 {
 		return "", &apiError{code: response.Code}
 	}
-	if response.Data == nil || response.Data.MessageId == nil || *response.Data.MessageId == "" {
+	if response.Data == nil {
 		return "", errors.New("missing_message_receipt")
 	}
-	return *response.Data.MessageId, nil
+	return messageReceipt(response.Data.MessageId)
+}
+
+func messageReceipt(id *string) (string, error) {
+	if id == nil || *id == "" {
+		return "", errors.New("missing_message_receipt")
+	}
+	return *id, nil
 }
