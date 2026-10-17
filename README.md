@@ -1,30 +1,55 @@
 # Relanox
 
+[简体中文](README.zh-CN.md)
+
 Relanox connects native messaging channels to existing dot, Grok and Muse agents.
-This checkout is undergoing a complete Go rewrite. The earlier TypeScript source,
-tests, configuration and documentation are preserved under
-[`ref/typescript`](ref/typescript/README.md) for reference.
+The Go service stores accepted messages, media and outbound work in SQLite or
+PostgreSQL using [Ent](https://entgo.io/). It preserves native reply context,
+conversation ownership and unknown delivery outcomes across restarts.
 
-The Go foundation currently defines typed channel, agent, storage, media and queue
-contracts, configuration loading and bounded HTTP transport. An interface is not a
-working integration. The executable and native implementations are being rebuilt;
-the archived TypeScript instructions do not describe the Go runtime.
+Native accounts are composed directly in Go. There is no plugin loader or install
+step. Tencent speech recognition, authenticated MCP tools, scoped media, structured
+logs, Prometheus metrics and OTLP traces are built into the service. Streaming
+replies, local inference and Serverless execution are outside the supported scope.
 
-The intended scope includes Telegram, Discord, Slack, Feishu, WeCom, WeChat,
-DingTalk, QQ, Microsoft Teams, WhatsApp, Matrix, Google Chat, LINE, Mattermost,
-Signal and IRC, with native text/media capabilities, SQLite/PostgreSQL, Tencent
-speech, MCP, reliable delivery and observability. Components are composed directly
-in Go; there is no plugin system. Streaming replies and local inference are outside
-the scope.
+## Start from source
 
-Development requires Go 1.26. Run:
+Use Go 1.26:
+
+```sh
+go build -trimpath -o bin/relanox ./cmd/relanox
+bin/relanox init --config relanox.json --public-url https://relay.example.com
+bin/relanox setup --config relanox.json
+bin/relanox validate --config relanox.json
+bin/relanox run --config relanox.json
+```
+
+On Windows, build `bin/relanox.exe`. The wizard writes private credential files,
+creates configuration backups and prints the native callback and MCP URLs.
+WeChat pairing saves the confirmed bot and user automatically. Muse uses an
+existing paired device directory. Finish the external application's callback,
+permission and Agent connection settings before sending a message.
+
+Read [Quickstart](docs/en/quickstart.md), [Configuration](docs/en/configuration.md),
+[Native channels](docs/en/channels.md), [Agents](docs/en/agents.md),
+[Operations](docs/en/operations.md) and [Deployment](docs/en/deployment.md).
+Local protocol/integration tests do not establish live-account compatibility.
+Existing Releases may predate the Go rewrite; current source builds and current
+CI Go artifacts are the appropriate installation paths until a Go version is released.
+
+## Development
 
 ```sh
 git config core.hooksPath .githooks
 go run ./tools/check
+go run ./tools/docs
 ```
 
-Read the [architecture](docs/en/architecture.md) and
-[development guide](docs/en/development.md) before changing the runtime.
-Relanox is licensed under the [MIT License](LICENSE). Historical third-party
-notices are retained with the archived implementation.
+The gate checks gofmt, complexity/nesting, vet and Go tests. The documentation
+renderer writes `docs/site` without Node.js. Read [Architecture](docs/en/architecture.md)
+and [Development](docs/en/development.md) before implementation. The earlier
+TypeScript source and documentation are retained in `ref/typescript`, excluded
+from Go builds and runtime dependencies.
+
+Relanox is licensed under the [MIT License](LICENSE). Third-party notices and
+distributed dependency licenses are described in [Licenses](licenses/README.md).
