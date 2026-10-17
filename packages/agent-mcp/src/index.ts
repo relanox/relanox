@@ -10,3 +10,4 @@ export type { AgentRequestPayload } from './request-payload.js'
 export { equalSecret, resolveAgentSecret } from './secrets.js'
 
 export { replyStatusSchema } from './status.js'
+export { incomingMessageSchema, registerReadMessages } from './read-messages.js'
