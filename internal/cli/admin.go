@@ -240,7 +240,7 @@ func (c *command) cleanupCommand() *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{Use: "cleanup", Short: "Remove expired completed records within a bounded batch", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		cutoff, err := parseCutoff(before)
-		if err != nil || limit < 1 || limit > 10000 {
+		if err != nil || limit < 1 || limit > 1000 {
 			return problem("invalid_cleanup_bounds")
 		}
 		cfg, err := c.load()
@@ -259,7 +259,7 @@ func (c *command) cleanupCommand() *cobra.Command {
 		return c.output(map[string]any{"removed": removed}, fmt.Sprintf("Removed %d completed records", removed))
 	}}
 	cmd.Flags().StringVar(&before, "before", "", "RFC3339 timestamp or Unix milliseconds")
-	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum records to remove (1-10000)")
+	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum records per storage cleanup category (1-1000)")
 	return cmd
 }
 
