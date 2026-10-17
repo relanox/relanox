@@ -14,6 +14,7 @@ import (
 	"github.com/relanox/relanox/internal/channels/feishu"
 	"github.com/relanox/relanox/internal/channels/irc"
 	"github.com/relanox/relanox/internal/channels/line"
+	"github.com/relanox/relanox/internal/channels/matrix"
 	"github.com/relanox/relanox/internal/channels/msteams"
 	"github.com/relanox/relanox/internal/channels/qq"
 	"github.com/relanox/relanox/internal/channels/signal"
@@ -53,6 +54,8 @@ func ValidateAccount(account model.AccountConfig) error {
 		err = signal.ValidateConfig(account.Config)
 	case model.IRC:
 		err = irc.ValidateConfig(account.Config)
+	case model.Matrix:
+		err = matrix.ValidateConfig(account.Config)
 	default:
 		return invalid("channel", "component_unavailable")
 	}
@@ -104,6 +107,8 @@ func nativeChannel(host model.ChannelHost, account model.AccountConfig, options 
 		return signal.New(host, account, options)
 	case model.IRC:
 		return irc.New(host, account, options)
+	case model.Matrix:
+		return matrix.New(host, account, options)
 	}
 	return nil, invalid("channel", "component_unavailable")
 }

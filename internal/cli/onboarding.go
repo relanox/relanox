@@ -280,6 +280,8 @@ func accountFields(kind model.ChannelKind) []formField {
 		return []formField{{name: "serviceUrl"}, {name: "account"}}
 	case model.IRC:
 		return []formField{{name: "server"}, {name: "nick"}}
+	case model.Matrix:
+		return []formField{{name: "homeserver"}, {name: "accessToken", secret: true}}
 	default:
 		return nil
 	}
