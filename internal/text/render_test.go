@@ -69,3 +69,26 @@ func TestCodeSpanSourceTextSurvivesNativeRendering(t *testing.T) {
 		t.Fatalf("native formatting: %+v", got.Entities)
 	}
 }
+
+// Native text must retain literal HTML, checklist state and useful labels for
+// empty links. The TypeScript renderer retained these; previous Go coverage
+// tests only inline HTML and nonempty links. These public renderers need no seam.
+// HTML closures: https://spec.commonmark.org/0.31.2/#html-blocks
+// Task items: https://github.github.com/gfm/#task-list-items-extension-
+func TestNativeRenderingPreservesVisibleContent(t *testing.T) {
+	for _, fixture := range []struct {
+		name, source, want string
+	}{
+		{"html_closure", "<script>\nliteral\n</script>", "<script>\nliteral\n</script>"},
+		{"comment_closure", "<!--\nliteral\n-->", "<!--\nliteral\n-->"},
+		{"task_state", "- [x] done\n- [ ] pending", "• [x] done\n• [ ] pending"},
+		{"empty_link", "[](https://example.com/path)", "https://example.com/path"},
+		{"empty_image", "![](https://example.com/image.png)", "Image"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			if got := Plain(fixture.source); got != fixture.want {
+				t.Fatalf("visible text = %q, want %q", got, fixture.want)
+			}
+		})
+	}
+}
