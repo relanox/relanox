@@ -143,6 +143,9 @@ func (c *NativeClient) keySet(ctx context.Context, endpoint string) (keyfunc.Key
 }
 
 func (c *NativeClient) Authenticate(ctx context.Context, authorization, serviceURL string) error {
+	if !strings.HasPrefix(authorization, "Bearer ") {
+		return errors.New("unauthorized_activity")
+	}
 	raw := strings.TrimPrefix(authorization, "Bearer ")
 	if raw == "" {
 		return errors.New("unauthorized_activity")

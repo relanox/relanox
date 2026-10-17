@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/relanox/relanox/internal/transport"
 )
 
 // Pairing is a directly linked native client. It needs no channel registry,
@@ -88,7 +90,7 @@ func BeginLogin(ctx context.Context, options LoginOptions) (QRCode, error) {
 	if err = headers(request, false, ""); err != nil {
 		return result, err
 	}
-	response, err := (&Client{HTTP: options.HTTP}).httpClient().Do(request)
+	response, err := loginHTTP(options).Do(request)
 	if err != nil {
 		return result, err
 	}
@@ -119,7 +121,7 @@ func PollLogin(ctx context.Context, options LoginOptions, code, verification str
 	}
 	request.Header.Set("iLink-App-Id", "bot")
 	request.Header.Set("iLink-App-ClientVersion", "256")
-	response, err := (&Client{HTTP: options.HTTP}).httpClient().Do(request)
+	response, err := loginHTTP(options).Do(request)
 	if err != nil {
 		return result, err
 	}
@@ -136,6 +138,20 @@ func PollLogin(ctx context.Context, options LoginOptions, code, verification str
 		return result, errors.New("wechat_invalid_login_status")
 	}
 	return result, nil
+}
+
+func loginHTTP(options LoginOptions) *http.Client {
+	if options.HTTP != nil {
+		return (&Client{HTTP: options.HTTP}).httpClient()
+	}
+	base, _ := loginBase(options)
+	policy := transport.Options{Timeout: time.Minute}
+	if options.AllowInsecureLoopback {
+		if parsed, err := url.Parse(base); err == nil {
+			policy.AllowPrivateHosts = []string{parsed.Hostname()}
+		}
+	}
+	return (&Client{HTTP: transport.NewClient(policy)}).httpClient()
 }
 
 func delay(ctx context.Context, duration time.Duration) error {
@@ -188,7 +204,7 @@ func retryPoll(ctx context.Context, options LoginOptions, code, verification str
 	}
 }
 
-func authenticate(ctx context.Context, options LoginOptions) (Credentials, error) {
+func Authenticate(ctx context.Context, options LoginOptions) (Credentials, error) {
 	var credentials Credentials
 	initial, err := loginBase(options)
 	if err != nil {
@@ -287,7 +303,7 @@ func Login(ctx context.Context, options LoginOptions) error {
 			os.Remove(path)
 		}
 	}()
-	credentials, err := authenticate(ctx, options)
+	credentials, err := Authenticate(ctx, options)
 	if err != nil {
 		return err
 	}
