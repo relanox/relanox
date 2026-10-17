@@ -70,7 +70,8 @@ func startMatrixRelay(t *testing.T, peer *httptest.Server, path string, fail boo
 	f.cancel = cancel
 	f.routine = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
-		w.WriteHeader(http.StatusNoContent)
+		// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+		w.WriteHeader(http.StatusOK)
 	}))
 	account := model.AccountConfig{ID: "matrix", Channel: model.Matrix, AllowedSenders: []string{"@alice:example.org"}, Config: common.Data(Config{Homeserver: peer.URL, AccessToken: model.SecretRef{Env: "MATRIX_TOKEN"}})}
 	endpoint := model.EndpointConfig{ID: "grok", Agent: model.Grok, Config: common.Data(grok.Config{MCP: agentmcp.Config{Auth: "bearer", Token: model.SecretRef{Env: "MCP_TOKEN"}}, RoutineURL: model.SecretRef{Env: "ROUTINE"}, RoutineAuthorization: model.SecretRef{Env: "ROUTINE_AUTH"}})}

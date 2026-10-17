@@ -83,7 +83,8 @@ func newRelayFixture(t *testing.T, options core.Options) *relayFixture {
 		case <-r.Context().Done():
 			return
 		}
-		w.WriteHeader(204)
+		// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+		w.WriteHeader(http.StatusOK)
 	}))
 	f.relay = httptest.NewUnstartedServer(nil)
 	origin := "http://" + f.relay.Listener.Addr().String()

@@ -79,7 +79,11 @@ func startDiscordRelay(t *testing.T, peer *httptest.Server, path string, fail bo
 	ctx, cancel := context.WithCancel(context.Background())
 	f.cancel = cancel
 	t.Cleanup(func() { f.close(t) })
-	f.routine = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.Copy(io.Discard, r.Body); w.WriteHeader(204) }))
+	f.routine = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+		w.WriteHeader(http.StatusOK)
+	}))
 	nativeConfig := Config{BotToken: model.SecretRef{Env: "DISCORD_TOKEN"}, APIBaseURL: peer.URL}
 	if len(options) > 0 {
 		nativeConfig.RecoveryEpoch = options[0].Epoch

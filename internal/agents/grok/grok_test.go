@@ -41,11 +41,16 @@ func TestRoutineDispatchProjectsExactRequestAndRotatesReferences(t *testing.T) {
 	}
 }
 
+// Official contract: only 200 means a run started; other responses did not.
+// https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+// Regression: treating 202/204 as accepted falsely reports a started run. Existing
+// coverage incorrectly accepted 202. The TLS peer emits real HTTP receipts;
+// transport loss after upload remains unknown and cancellation still reaches I/O.
 func TestRoutineReceiptAndUncertainTransportOutcomes(t *testing.T) {
 	for _, row := range []struct {
 		status int
 		want   model.Outcome
-	}{{202, model.Accepted}, {408, model.Unknown}, {429, model.Retryable}, {503, model.Retryable}, {302, model.Rejected}, {401, model.Rejected}} {
+	}{{200, model.Accepted}, {201, model.Rejected}, {202, model.Rejected}, {204, model.Rejected}, {408, model.Unknown}, {429, model.Retryable}, {503, model.Retryable}, {302, model.Rejected}, {401, model.Rejected}} {
 		t.Run(http.StatusText(row.status), func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Retry-After", "7200")
@@ -146,6 +151,6 @@ func routineProjectionPeer(t *testing.T, calls *atomic.Int32) http.Handler {
 		if len(attachments) != 1 || attachments[0]["id"] != "media-native" || attachments[0]["data"] != nil {
 			t.Error("invalid media projection")
 		}
-		w.WriteHeader(202)
+		w.WriteHeader(http.StatusOK)
 	})
 }

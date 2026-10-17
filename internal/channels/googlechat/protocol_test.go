@@ -127,7 +127,11 @@ type fixture struct {
 
 func newFixture(t *testing.T, p *googlePeer, path string, client *http.Client) *fixture {
 	t.Helper()
-	routine := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.Copy(io.Discard, r.Body); w.WriteHeader(204) }))
+	routine := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+		w.WriteHeader(http.StatusOK)
+	}))
 	t.Cleanup(routine.Close)
 	server := httptest.NewUnstartedServer(nil)
 	account := model.AccountConfig{ID: "google", Channel: model.GoogleChat, AllowedSenders: []string{"users/alice"}, Config: common.Data(Config{ServiceAccount: model.SecretRef{Env: "SERVICE_ACCOUNT"}})}

@@ -158,7 +158,8 @@ func newPreparationPeers(t *testing.T) *preparationPeers {
 			return
 		}
 		p.notifications <- envelope.Content
-		w.WriteHeader(204)
+		// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(p.wechat.Close)
 	t.Cleanup(p.routine.Close)

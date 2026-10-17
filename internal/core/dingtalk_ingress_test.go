@@ -52,7 +52,8 @@ func (p *dingPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"accessToken":"native-access-token","expireIn":7200}`)
 	case "/routine":
 		_, _ = io.Copy(io.Discard, r.Body)
-		w.WriteHeader(204)
+		// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+		w.WriteHeader(http.StatusOK)
 	case "/events":
 		p.socket(w, r)
 	default:
