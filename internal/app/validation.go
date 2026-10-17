@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/relanox/relanox/internal/config"
+	"github.com/relanox/relanox/internal/model"
 )
 
 func invalid(field, code string) error { return &config.FieldError{Field: field, Code: code} }
@@ -52,11 +53,17 @@ func Validate(cfg config.Config) error {
 		return invalid("http.publicUrl", "required_for_agents")
 	}
 	for i, account := range cfg.Accounts {
+		if account.Channel == model.GoogleChat && cfg.HTTP.PublicURL == "" {
+			return invalid("http.publicUrl", "required_for_googlechat")
+		}
 		if err := ValidateAccount(account); err != nil {
 			return componentField(fmt.Sprintf("accounts[%d]", i), err)
 		}
 	}
 	for i, endpoint := range cfg.Endpoints {
+		if endpoint.Agent == model.Dot && !strings.HasPrefix(cfg.HTTP.PublicURL, "https://") {
+			return invalid("http.publicUrl", "https_required_for_dot")
+		}
 		if err := ValidateEndpoint(endpoint); err != nil {
 			return componentField(fmt.Sprintf("endpoints[%d]", i), err)
 		}

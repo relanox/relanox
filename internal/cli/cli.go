@@ -53,7 +53,7 @@ func Run(ctx context.Context, args []string, options Options) error {
 	root.SetIn(options.In)
 	root.SetOut(options.Out)
 	root.SetErr(options.Err)
-	root.PersistentFlags().StringVar(&c.path, "config", "", "Configuration path (or RELANOX_CONFIG)")
+	root.PersistentFlags().StringVarP(&c.path, "config", "c", "", "Configuration path (or RELANOX_CONFIG)")
 	root.PersistentFlags().BoolVar(&c.json, "json", false, "Write structured JSON")
 	root.AddCommand(c.validateCommand(), c.initCommand(), c.setupCommand(), c.accountCommand(), c.agentCommand(), c.bindCommand(), c.loginCommand(), c.discoverCommand(), c.statusCommand(), c.requeueCommand(), c.cleanupCommand(), c.doctorCommand(), c.runCommand())
 	root.SetArgs(args)
@@ -197,7 +197,7 @@ func connectionInstructions(cfg config.Config) []string {
 
 func callbackPath(account model.AccountConfig) string {
 	switch account.Channel {
-	case model.Telegram, model.Feishu, model.WhatsApp, model.LINE:
+	case model.Telegram, model.Feishu, model.WhatsApp, model.LINE, model.GoogleChat:
 		return "/webhook"
 	case model.MSTeams:
 		return "/activities"
