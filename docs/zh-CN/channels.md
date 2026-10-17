@@ -10,22 +10,22 @@
 
 | 通道 | 必需原生选项 | 连接及限制 |
 | --- | --- | --- |
-| Telegram | `botToken`、`webhookSecret` | 原生 webhook / Bot API；向 Telegram 登记回调与 `secret_token`。话题保留线程 ID。 |
-| Discord | `botToken` | Gateway / REST；需要相应 intents 和频道权限。短期 nonce 不能提供持久重试保证。 |
-| Slack | `botToken`、`appId`，以及 `appToken` / `signingSecret` 之一 | Socket Mode 使用 app token，签名 Events API 使用 signing secret；安装的原生 team、bot、app 身份必须匹配。 |
-| 飞书 / Lark | `appId`、`tenantKey`、`appSecret`、`verificationToken`、`encryptKey` | 签名、加密回调和 IM API；Lark 设置 `domain: "lark"`。 |
-| 企业微信 | 两种模式都需要 `botId`；websocket 模式另需 `secret` | webhook 模式使用 `mode: "webhook"`、`token`、`encodingAESKey`，不能配置 `secret` 或 `recipientTypes`；在平台回调窗口内被动完成最终回复。 |
-| 微信 | `wechat-login` 自动保存 | 原生扫码与私聊轮询。发送需要从已接受的入站消息中学习上下文令牌；仅添加 binding 不会建立可发送目标。 |
-| 钉钉 | `clientId`、`clientSecret`、`robotCode` | Stream 回调与机器人 REST；群消息需要提及机器人。 |
-| QQ | `appId`、`clientSecret` | Gateway 和 v2 消息；可设置 `environment: "sandbox"`。上传后重新检查被动回复权限。 |
-| Microsoft Teams | `appId`、`botId`、`tenantId`、`appSecret`、`trustedServiceOrigins` | 认证的 Bot Framework 活动，检查租户、bot 和受信原生服务地址；个人文件需要原生 consent。 |
-| WhatsApp | `phoneNumberId`、`businessAccountId`、`appSecret`、`verifyToken`、`accessToken` | 签名 Cloud API webhook，仍受客户服务窗口限制。 |
-| Matrix | `homeserver`、`accessToken` | mautrix 原生 `/sync`、媒体和事务 API；不支持端到端加密房间：不转发其入站消息，出站发送会被拒绝。 |
-| Mattermost | `serverUrl`、`token` | 原生 v4 REST / WebSocket，使用实例 HTTPS 地址和 bot / 用户访问 token。 |
-| Google Chat | `serviceAccount` | 原生认证交互事件与 Chat REST；在应用中配置打印出的 webhook URL 与 audience。 |
-| LINE | `channelSecret`、`accessToken` | 签名 Messaging API webhook，通过 SDK push 消息发送，保留原生引用令牌和持久化重试键。 |
-| Signal | `serviceUrl`、`account` | 已有 signal-cli daemon：`/api/v1/rpc` JSON-RPC 与 `/api/v1/events` SSE 事件，可配置 `selfUuid` 与认证引用。 |
-| IRC | `server`、`nick` | TLS IRC/IRCv3，可选 server password 和 SASL；仅文本。 |
+| <span id="telegram">Telegram</span> | `botToken`、`webhookSecret` | 原生 webhook / Bot API；向 Telegram 登记回调与 `secret_token`。话题保留线程 ID。 |
+| <span id="discord">Discord</span> | `botToken` | Gateway / REST；需要相应 intents 和频道权限。短期 nonce 不能提供持久重试保证。 |
+| <span id="slack">Slack</span> | `botToken`、`appId`，以及 `appToken` / `signingSecret` 之一 | Socket Mode 使用 app token，签名 Events API 使用 signing secret；安装的原生 team、bot、app 身份必须匹配。 |
+| <span id="feishu">飞书 / Lark</span> | `appId`、`tenantKey`、`appSecret`、`verificationToken`、`encryptKey` | 签名、加密回调和 IM API；Lark 设置 `domain: "lark"`。 |
+| <span id="wecom">企业微信</span> | 两种模式都需要 `botId`；websocket 模式另需 `secret` | webhook 模式使用 `mode: "webhook"`、`token`、`encodingAESKey`，不能配置 `secret` 或 `recipientTypes`；在平台回调窗口内被动完成最终回复。 |
+| <span id="wechat">微信</span> | `wechat-login` 自动保存 | 原生扫码与私聊轮询。发送需要从已接受的入站消息中学习上下文令牌；仅添加 binding 不会建立可发送目标。 |
+| <span id="dingtalk">钉钉</span> | `clientId`、`clientSecret`、`robotCode` | Stream 回调与机器人 REST；群消息需要提及机器人。 |
+| <span id="qq">QQ</span> | `appId`、`clientSecret` | Gateway 和 v2 消息；可设置 `environment: "sandbox"`。上传后重新检查被动回复权限。 |
+| <span id="msteams">Microsoft Teams</span> | `appId`、`botId`、`tenantId`、`appSecret`、`trustedServiceOrigins` | 认证的 Bot Framework 活动，检查租户、bot 和受信原生服务地址；个人文件需要原生 consent。 |
+| <span id="whatsapp">WhatsApp</span> | `phoneNumberId`、`businessAccountId`、`appSecret`、`verifyToken`、`accessToken` | 签名 Cloud API webhook，仍受客户服务窗口限制。 |
+| <span id="matrix">Matrix</span> | `homeserver`、`accessToken` | mautrix 原生 `/sync`、媒体和事务 API；不支持端到端加密房间：不转发其入站消息，出站发送会被拒绝。 |
+| <span id="mattermost">Mattermost</span> | `serverUrl`、`token` | 原生 v4 REST / WebSocket，使用实例 HTTPS 地址和 bot / 用户访问 token。 |
+| <span id="googlechat">Google Chat</span> | `serviceAccount` | 原生认证交互事件与 Chat REST；在应用中配置打印出的 webhook URL 与 audience。 |
+| <span id="line">LINE</span> | `channelSecret`、`accessToken` | 签名 Messaging API webhook，通过 SDK push 消息发送，保留原生引用令牌和持久化重试键。 |
+| <span id="signal">Signal</span> | `serviceUrl`、`account` | 已有 signal-cli daemon：`/api/v1/rpc` JSON-RPC 与 `/api/v1/events` SSE 事件，可配置 `selfUuid` 与认证引用。 |
+| <span id="irc">IRC</span> | `server`、`nick` | TLS IRC/IRCv3，可选 server password 和 SASL；仅文本。 |
 
 企业微信 WebSocket 模式、钉钉和 QQ 的 `recipientTypes` 可以声明尚未接收消息时主动发送所需的原生
 接收者类型；配置必须与已学到的原生身份一致。测试或桥接端点的本地 HTTP 许可需要

@@ -23,7 +23,7 @@ The application defaults to `127.0.0.1:8787` and management to
 proxy. Preserve the original Host header, including for OAuth discovery paths.
 For example:
 
-```caddy
+```text
 relay.example.com {
     reverse_proxy 127.0.0.1:8787
 }

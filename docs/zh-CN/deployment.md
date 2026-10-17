@@ -18,7 +18,7 @@
 应用默认监听 `127.0.0.1:8787`，管理默认 `127.0.0.1:8788`。通过 HTTPS 反向代理只
 发布应用监听，保留原始 Host，包括 OAuth 发现路径。例如 Caddy：
 
-```caddy
+```text
 relay.example.com {
     reverse_proxy 127.0.0.1:8787
 }

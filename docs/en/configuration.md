@@ -5,6 +5,9 @@ Relanox reads a strict JSON document. Path selection is `--config`/`-c`, then
 the user's configuration directory under `relanox/relanox.json`. Relative storage,
 credential and Muse directory paths resolve beside the selected JSON file.
 
+The [connection configurator](connect.md) generates this JSON format and keeps
+credentials as environment-variable or file references.
+
 ## Native account, endpoint and binding
 
 ```json

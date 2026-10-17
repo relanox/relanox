@@ -1,7 +1,7 @@
 # Development
 
 Use Go 1.27.2 and a separate branch/worktree under `.worktree/` for every implementation
-task. Read [architecture](architecture.md) and root [AGENTS.md](../../AGENTS.md).
+task. Read [architecture](architecture.md) and root [AGENTS.md](https://github.com/relanox/relanox/blob/master/AGENTS.md).
 
 ```sh
 git config core.hooksPath .githooks
@@ -55,12 +55,24 @@ protocol checks do not establish compatibility with a real account.
 
 ```sh
 go build -trimpath -o bin/relanox ./cmd/relanox
-go run ./tools/docs
 ```
 
-The documentation renderer uses the pinned Go Markdown dependency, validates local
-Markdown links and writes `docs/site`. Keep English and Chinese operator pages
-aligned with actual native options. Documentation changes must pass this build.
+Documentation uses VitePress with the existing bilingual theme, local search,
+dark mode and connection configurator. Node.js and pnpm are documentation tools;
+the Go service does not depend on them. Use Node.js 24.14.1 and the pnpm version
+pinned in `package.json`:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm docs:check
+pnpm docs:build
+pnpm docs:dev
+```
+
+The build checks Vue/TypeScript and local Markdown links, writes
+`docs/.vitepress/dist`, and generates redirects for published legacy paths.
+Private `docs/local/` files are excluded. Keep English and Chinese operator
+pages aligned with actual native options. Documentation changes must pass this build.
 
 The [published documentation](https://relanox.github.io/) is built by this
 repository's `Documentation` workflow on documentation changes to `master`, or

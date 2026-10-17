@@ -61,7 +61,6 @@ jobs:
           GOFLAGS: ${{ runner.os == 'Windows' && '-p=1' || '' }}
       - run: go generate ./internal/storage/...
       - run: git diff --exit-code -- internal/storage/ent
-      - run: go run ./tools/docs
       - if: runner.os == 'Linux'
         run: go test -race ./...
       - if: runner.os == 'Linux'
@@ -104,11 +103,17 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
-      - run: go run ./tools/docs
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.14.1'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm docs:build
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: documentation
-          path: docs/site
+          path: docs/.vitepress/dist
           include-hidden-files: true
           if-no-files-found: error
 

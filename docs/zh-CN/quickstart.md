@@ -15,6 +15,9 @@ Windows 使用 `-o bin/relanox.exe`。预编译二进制产物与容器命令见
 
 ## 创建配置
 
+可以使用[连接配置器](connect.md)选择账号、Agent 和会话绑定，并下载 `relanox.json`。
+下面的 CLI 示例也可以直接创建相同的原生配置。
+
 准备一个公网 HTTPS 地址，例如 `https://relay.example.com`。反向代理负责 TLS，
 并向应用监听保留原始 Host。
 

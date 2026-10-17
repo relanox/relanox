@@ -1,7 +1,14 @@
+---
+layout: page
+title: Relanox documentation
+description: Choose your documentation language.
+search: false
+---
+
 # Relanox
 
-Connect native messaging channels to dot, Grok and Muse through a durable Go service.
+[English](/en/) · [简体中文](/zh-CN/)
 
-- [English documentation](en/quickstart.md)
-- [简体中文文档](zh-CN/quickstart.md)
-- [Source code](https://github.com/relanox/relanox)
+Choose a language if you are not redirected automatically.
+
+若未自动跳转，请选择语言。
