@@ -136,9 +136,9 @@ type AgentHost interface {
 }
 
 type DiscoveredConversation struct {
-	ChatID   string
-	SenderID string
-	ThreadID string
+	ChatID   string `json:"chatId"`
+	SenderID string `json:"senderId"`
+	ThreadID string `json:"threadId,omitempty"`
 }
 
 // ChannelHost is scoped by its constructor to one configured account. The
@@ -254,6 +254,7 @@ type PreparationInput struct {
 }
 
 type Preparer interface {
+	ID() string
 	Plan(AgentMessage) (*PreparationPlan, error)
 	Process(context.Context, PreparationInput) (PreparationOutput, error)
 }

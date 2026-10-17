@@ -16,6 +16,8 @@ const (
 	NotFound            Outcome = "not_found"
 	Unauthorized        Outcome = "unauthorized"
 	Conflict            Outcome = "conflict"
+	AwaitingFinal       Outcome = "awaiting_final"
+	Expired             Outcome = "expired"
 	InvalidMediaPreview Outcome = "invalid_media_preview"
 	MediaTooLarge       Outcome = "media_too_large"
 	TooManyAttachments  Outcome = "too_many_attachments"
