@@ -241,6 +241,7 @@ it('persists the poll cursor and context, and deduplicates replay after reopenin
 it.each([
   [{}, 'unknown'],
   [{ ret: -14 }, 'rejected'],
+  [{ ret: -1, errcode: -14 }, 'rejected'],
   [{ ret: 0 }, 'sent']
 ] as const)('classifies send outcome %j as %s', async (result, status) => {
   const peer = await httpPeer((_request, response) => {
@@ -259,7 +260,14 @@ it.each([
     ['alice@im.wechat'],
     `${peer.base}/dispatch`
   )
-  expect((await plugin.send(input(peer.base))).status).toBe(status)
+  const outcome = await plugin.send(input(peer.base))
+  expect(outcome.status).toBe(status)
+  // Both application fields carry session expiration in the official monitor.
+  // https://github.com/Tencent/openclaw-weixin/blob/main/src/monitor/monitor.ts
+  // A generic ret must not hide a precise authentication error in errcode.
+  if ('errcode' in result) {
+    expect(outcome).toMatchObject({ errorCode: 'wechat_session_expired' })
+  }
 })
 
 it('encrypts uploaded files and preserves native file length and CDN media references', async () => {
