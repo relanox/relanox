@@ -99,9 +99,4 @@ func (a *Agent) configureEvents(server *mcp.Server) error {
 	})
 }
 
-func incomingSchema() map[string]any {
-	text := map[string]any{"type": "string"}
-	channel := map[string]any{"type": "object", "properties": map[string]any{"id": text, "platform": map[string]any{"enum": []string{"telegram", "discord", "slack", "feishu", "wecom", "wechat", "dingtalk", "qq", "msteams", "whatsapp", "matrix", "googlechat", "line", "mattermost", "signal", "irc"}}, "accountId": text, "chatId": text, "threadId": text}, "required": []string{"id", "platform", "accountId", "chatId"}, "additionalProperties": false}
-	attachment := map[string]any{"type": "object", "properties": map[string]any{"id": text, "kind": map[string]any{"enum": []string{"image", "audio", "video", "file"}}, "mimeType": text, "fileName": text, "size": map[string]any{"type": "integer", "minimum": 0}, "sha256": text, "durationMs": map[string]any{"type": "integer", "minimum": 1}, "previewMediaId": text}, "required": []string{"id", "kind", "mimeType", "fileName", "size", "sha256"}, "additionalProperties": false}
-	return map[string]any{"type": "object", "properties": map[string]any{"requestId": text, "acceptedAt": map[string]any{"type": "integer", "minimum": 0}, "text": text, "context": map[string]any{}, "extensions": map[string]any{"type": "object"}, "attachments": map[string]any{"type": "array", "items": attachment}, "source": map[string]any{"type": "object", "properties": map[string]any{"channel": channel, "senderId": text}, "required": []string{"channel", "senderId"}, "additionalProperties": false}}, "required": []string{"requestId", "acceptedAt", "text", "context", "source"}, "additionalProperties": false}
-}
+func incomingSchema() map[string]any { return agentmcp.IncomingSchema(false) }
