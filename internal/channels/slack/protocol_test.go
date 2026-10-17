@@ -228,7 +228,9 @@ func (p *nativePeer) webAPI(w http.ResponseWriter, r *http.Request) {
 		if r.Form.Get("file") != "F1" {
 			p.t.Error("native compact file ID changed")
 		}
-		_, _ = io.WriteString(w, `{"ok":true,"file":{"id":"F1","name":"photo.png","mimetype":"image/png","size":5,"url_private_download":"`+p.origin+`/private/image.png"}}`)
+		// The SDK File model permits missing MIME metadata. Download response
+		// headers must still classify the persisted attachment as an image.
+		_, _ = io.WriteString(w, `{"ok":true,"file":{"id":"F1","name":"photo.png","size":5,"url_private_download":"`+p.origin+`/private/image.png"}}`)
 	case "/files.getUploadURLExternal":
 		n := p.uploads.Add(1)
 		_, _ = fmt.Fprintf(w, `{"ok":true,"file_id":"FUPLOAD%d","upload_url":"%s/upload/v1/%d"}`, n, p.origin, n)
@@ -334,7 +336,7 @@ func TestSocketAcknowledgesOnlyAfterCoreAcceptanceAndSQLiteReopen(t *testing.T) 
 		t.Fatalf("native message or compact media recovery: %+v", in)
 	}
 	media, err := last.store.GetMedia(context.Background(), in.Channel.ID, in.Attachments[0].ID)
-	if err != nil || media == nil || string(media.Data) != "image" {
+	if err != nil || media == nil || string(media.Data) != "image" || media.Reference.MIMEType != "image/png" || media.Reference.Kind != model.Image {
 		t.Fatalf("native media was not persisted: %+v %v", media, err)
 	}
 	assertRichSend(t, last, p)

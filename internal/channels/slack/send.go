@@ -135,8 +135,11 @@ func (c *Channel) upload(ctx context.Context, client *slackapi.Client, media mod
 		return slackapi.FileSummary{}, err
 	}
 	request.Header.Set("Content-Type", "application/octet-stream")
-	// The signed transfer URL authenticates this raw-byte upload. Never forward
-	// a bot token to an upload URL; only SDK Web API calls carry credentials.
+	// The SDK UploadToURL helper leaves its private multipart writer blocked on
+	// an unbuffered error channel after cancellation (v0.30.1 misc.go:421).
+	// Keep this one bounded raw-byte transfer until the SDK can join its writer.
+	// The signed URL authenticates the upload; bot credentials are not forwarded.
+	// https://github.com/slack-go/slack/blob/v0.30.1/misc.go
 	if _, _, err = common.Do(c.http, request, 64*1024); err != nil {
 		return slackapi.FileSummary{}, err
 	}

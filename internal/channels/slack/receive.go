@@ -205,12 +205,7 @@ func (c *Channel) attachment(ctx context.Context, file slackapi.File, token stri
 	if err != nil || u.Scheme != "https" || u.User != nil || u.Fragment != "" || (common.Origin(value) != "https://files.slack.com" && common.Origin(value) != common.Origin(c.config.APIBaseURL)) {
 		return model.MediaUpload{}, errors.New("invalid_attachment_url")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, value, nil)
-	if err != nil {
-		return model.MediaUpload{}, err
-	}
-	request.Header.Set("Authorization", "Bearer "+token)
-	data, headers, err := common.Do(c.http, request, common.MediaLimit(c.host))
+	data, headers, err := c.downloadFile(ctx, value, token)
 	if err != nil {
 		return model.MediaUpload{}, err
 	}
