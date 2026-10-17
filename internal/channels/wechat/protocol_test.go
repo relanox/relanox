@@ -33,36 +33,8 @@ func TestNativeIDsAndPairingHTTP(t *testing.T) {
 	if updates.Messages[0].ID != "18446744073709551615" || updates.Messages[0].Items[0].Type != 3 {
 		t.Fatalf("native IDs or numbering changed: %+v", updates)
 	}
-	var gotBegin, gotStatus, gotUpdates bool
-	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.Header.Get("iLink-App-Id") != "bot" {
-			t.Error("missing native app header")
-		}
-		switch r.URL.Path {
-		case "/ilink/bot/get_bot_qrcode":
-			gotBegin = true
-			if r.Method != http.MethodPost || r.URL.Query().Get("bot_type") != "3" || r.Header.Get("Authorization") != "" {
-				t.Error("incorrect QR boundary")
-			}
-			fmt.Fprint(w, `{"qrcode":"public-qr","qrcode_img_content":"https://weixin.qq.com/fixture"}`)
-		case "/ilink/bot/get_qrcode_status":
-			gotStatus = true
-			if r.Method != http.MethodGet || r.URL.Query().Get("verify_code") != "123456" || r.Header.Get("Authorization") != "" || r.Header.Get("X-WECHAT-UIN") != "" {
-				t.Error("poll leaked authenticated headers or lost verification")
-			}
-			fmt.Fprint(w, `{"status":"need_verifycode"}`)
-		case "/ilink/bot/getupdates":
-			gotUpdates = true
-			if r.Header.Get("Authorization") != "Bearer public-fixture-token" || r.Header.Get("AuthorizationType") != "ilink_bot_token" || r.Header.Get("X-WECHAT-UIN") == "" {
-				t.Error("missing native API credentials")
-			}
-			fmt.Fprint(w, `{"ret":0,"msgs":[],"get_updates_buf":"committed"}`)
-		default:
-			t.Errorf("unexpected request %s", r.URL.Path)
-			w.WriteHeader(404)
-		}
-	}))
+	fixture := &pairingPeer{t: t}
+	peer := httptest.NewServer(fixture)
 	defer peer.Close()
 	options := LoginOptions{APIBase: peer.URL, AllowInsecureLoopback: true, HTTP: peer.Client()}
 	qr, err := BeginLogin(context.Background(), options)
@@ -77,7 +49,7 @@ func TestNativeIDsAndPairingHTTP(t *testing.T) {
 	if err = client.Post(context.Background(), "getupdates", map[string]any{"get_updates_buf": "prior"}, &updates, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if !gotBegin || !gotStatus || !gotUpdates || updates.Cursor != "committed" {
+	if !fixture.gotBegin || !fixture.gotStatus || !fixture.gotUpdates || updates.Cursor != "committed" {
 		t.Fatal("native requests did not complete")
 	}
 }
@@ -98,56 +70,8 @@ func TestSessionExpirationPrecedesGenericResult(t *testing.T) {
 // implementations of the same cipher. A wrong media_type or numeric len changes
 // the real HTTP request. Prior pairing coverage never uploads bytes. No new seam.
 func TestNativeFileUploadThroughSend(t *testing.T) {
-	var key, ciphertext []byte
-	var gotUpload, gotSend bool
-	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/ilink/bot/getuploadurl":
-			var body struct {
-				AESKey    string `json:"aeskey"`
-				MediaType int    `json:"media_type"`
-				RawSize   int    `json:"rawsize"`
-				RawMD5    string `json:"rawfilemd5"`
-				FileSize  int    `json:"filesize"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Error(err)
-			}
-			if body.MediaType != 3 || body.RawSize != 3 || body.FileSize != 16 || body.RawMD5 != "900150983cd24fb0d6963f7d28e17f72" {
-				t.Errorf("incorrect native upload: %+v", body)
-			}
-			key, _ = hex.DecodeString(body.AESKey)
-			fmt.Fprint(w, `{"upload_param":"public-upload-ticket"}`)
-		case "/c2c/upload":
-			gotUpload = true
-			ciphertext, _ = io.ReadAll(r.Body)
-			if r.URL.Query().Get("encrypted_query_param") != "public-upload-ticket" || r.Header.Get("Authorization") != "" {
-				t.Error("incorrect CDN upload boundary")
-			}
-			w.Header().Set("x-encrypted-param", "public-download-ticket")
-		case "/ilink/bot/sendmessage":
-			gotSend = true
-			var body struct {
-				Message Message `json:"msg"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Error(err)
-			}
-			if len(body.Message.Items) != 1 || body.Message.Items[0].Type != 4 || body.Message.Items[0].File == nil {
-				t.Error("missing native file item")
-				return
-			}
-			file := body.Message.Items[0].File
-			if file.Length != "3" || file.FileName != "opaque file.bin" || file.Media.Query != "public-download-ticket" {
-				t.Errorf("file identifiers/length changed: %+v", file)
-			}
-			fmt.Fprint(w, `{"ret":0}`)
-		default:
-			t.Errorf("unexpected request: %s", r.URL.Path)
-			w.WriteHeader(404)
-		}
-	}))
+	fixture := &fileUploadPeer{t: t}
+	peer := httptest.NewServer(fixture)
 	defer peer.Close()
 	cfg := Config{BotID: "bot", BotToken: model.SecretRef{Env: "PUBLIC_FIXTURE"}, APIBaseURL: peer.URL, CDNBaseURL: peer.URL + "/c2c", AllowInsecureLoopback: true}
 	channel, err := New(nil, model.AccountConfig{ID: "wechat", Channel: model.WeChat, Config: common.Data(cfg)}, common.Options{HTTPClient: peer.Client(), ResolveSecret: func(model.SecretRef) (string, error) { return "public-token", nil }})
@@ -159,15 +83,15 @@ func TestNativeFileUploadThroughSend(t *testing.T) {
 	if err != nil || result.Status != model.Sent {
 		t.Fatalf("send: %+v %v", result, err)
 	}
-	if !gotUpload || !gotSend || len(ciphertext) != 16 || len(key) != 16 {
+	if !fixture.gotUpload || !fixture.gotSend || len(fixture.ciphertext) != 16 || len(fixture.key) != 16 {
 		t.Fatal("native media transfer missing")
 	}
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(fixture.key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	plain := make([]byte, 16)
-	block.Decrypt(plain, ciphertext)
+	block.Decrypt(plain, fixture.ciphertext)
 	if string(plain[:3]) != "abc" || plain[15] != 13 {
 		t.Fatalf("incorrect native AES ECB envelope: %x", plain)
 	}
@@ -196,5 +120,95 @@ func TestLoginExplicitLoopbackAndExistingCredential(t *testing.T) {
 	raw, err := os.ReadFile(filename)
 	if err != nil || string(raw) != "preserved" {
 		t.Fatal("existing credentials changed")
+	}
+}
+
+type pairingPeer struct {
+	t                               *testing.T
+	gotBegin, gotStatus, gotUpdates bool
+}
+
+func (p *pairingPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Header.Get("iLink-App-Id") != "bot" {
+		p.t.Error("missing native app header")
+	}
+	switch r.URL.Path {
+	case "/ilink/bot/get_bot_qrcode":
+		p.gotBegin = true
+		if r.Method != http.MethodPost || r.URL.Query().Get("bot_type") != "3" || r.Header.Get("Authorization") != "" {
+			p.t.Error("incorrect QR boundary")
+		}
+		fmt.Fprint(w, `{"qrcode":"public-qr","qrcode_img_content":"https://weixin.qq.com/fixture"}`)
+	case "/ilink/bot/get_qrcode_status":
+		p.gotStatus = true
+		if r.Method != http.MethodGet || r.URL.Query().Get("verify_code") != "123456" || r.Header.Get("Authorization") != "" || r.Header.Get("X-WECHAT-UIN") != "" {
+			p.t.Error("poll leaked authenticated headers or lost verification")
+		}
+		fmt.Fprint(w, `{"status":"need_verifycode"}`)
+	case "/ilink/bot/getupdates":
+		p.gotUpdates = true
+		if r.Header.Get("Authorization") != "Bearer public-fixture-token" || r.Header.Get("AuthorizationType") != "ilink_bot_token" || r.Header.Get("X-WECHAT-UIN") == "" {
+			p.t.Error("missing native API credentials")
+		}
+		fmt.Fprint(w, `{"ret":0,"msgs":[],"get_updates_buf":"committed"}`)
+	default:
+		p.t.Errorf("unexpected request %s", r.URL.Path)
+		w.WriteHeader(404)
+	}
+}
+
+type fileUploadPeer struct {
+	t                  *testing.T
+	key, ciphertext    []byte
+	gotUpload, gotSend bool
+}
+
+func (p *fileUploadPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	switch r.URL.Path {
+	case "/ilink/bot/getuploadurl":
+		var body struct {
+			AESKey    string `json:"aeskey"`
+			MediaType int    `json:"media_type"`
+			RawSize   int    `json:"rawsize"`
+			RawMD5    string `json:"rawfilemd5"`
+			FileSize  int    `json:"filesize"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			p.t.Error(err)
+		}
+		if body.MediaType != 3 || body.RawSize != 3 || body.FileSize != 16 || body.RawMD5 != "900150983cd24fb0d6963f7d28e17f72" {
+			p.t.Errorf("incorrect native upload: %+v", body)
+		}
+		p.key, _ = hex.DecodeString(body.AESKey)
+		fmt.Fprint(w, `{"upload_param":"public-upload-ticket"}`)
+	case "/c2c/upload":
+		p.gotUpload = true
+		p.ciphertext, _ = io.ReadAll(r.Body)
+		if r.URL.Query().Get("encrypted_query_param") != "public-upload-ticket" || r.Header.Get("Authorization") != "" {
+			p.t.Error("incorrect CDN upload boundary")
+		}
+		w.Header().Set("x-encrypted-param", "public-download-ticket")
+	case "/ilink/bot/sendmessage":
+		p.gotSend = true
+		var body struct {
+			Message Message `json:"msg"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			p.t.Error(err)
+		}
+		if len(body.Message.Items) != 1 || body.Message.Items[0].Type != 4 || body.Message.Items[0].File == nil {
+			p.t.Error("missing native file item")
+			return
+		}
+		file := body.Message.Items[0].File
+		if file.Length != "3" || file.FileName != "opaque file.bin" || file.Media.Query != "public-download-ticket" {
+			p.t.Errorf("file identifiers/length changed: %+v", file)
+		}
+		fmt.Fprint(w, `{"ret":0}`)
+	default:
+		p.t.Errorf("unexpected request: %s", r.URL.Path)
+		w.WriteHeader(404)
 	}
 }

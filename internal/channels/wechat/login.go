@@ -225,14 +225,12 @@ func Authenticate(ctx context.Context, options LoginOptions) (Credentials, error
 	for ctx.Err() == nil {
 		verification := ""
 		if needsCode {
-			verification, err = readVerification(options.VerificationCodeFile)
+			var ready bool
+			verification, ready, err = nextVerification(ctx, options.VerificationCodeFile, submitted)
 			if err != nil {
 				return credentials, err
 			}
-			if verification == "" || verification == submitted {
-				if err = delay(ctx, time.Second); err != nil {
-					return credentials, err
-				}
+			if !ready {
 				continue
 			}
 			submitted = verification
@@ -271,6 +269,17 @@ func Authenticate(ctx context.Context, options LoginOptions) (Credentials, error
 		}
 	}
 	return credentials, ctx.Err()
+}
+
+func nextVerification(ctx context.Context, path, submitted string) (string, bool, error) {
+	verification, err := readVerification(path)
+	if err != nil {
+		return "", false, err
+	}
+	if verification == "" || verification == submitted {
+		return "", false, delay(ctx, time.Second)
+	}
+	return verification, true, nil
 }
 
 // Login reserves a private file before pairing. Existing credentials are never

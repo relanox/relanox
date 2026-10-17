@@ -38,26 +38,7 @@ func TestAuthenticatedActivityAndRotatingOAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	var oauthRequests atomic.Int64
-	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/v1/.well-known/keys" {
-			json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]any{"kty": "RSA", "use": "sig", "alg": "RS256", "kid": "public-fixture", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
-			return
-		}
-		if r.URL.Path == "/botframework.com/oauth2/v2.0/token" {
-			oauthRequests.Add(1)
-			if err := r.ParseForm(); err != nil {
-				t.Error(err)
-			}
-			if r.Form.Get("client_id") != "app" || r.Form.Get("scope") != "https://api.botframework.com/.default" {
-				t.Error("incorrect OAuth identity/scope")
-			}
-			fmt.Fprintf(w, `{"access_token":%q,"expires_in":3600}`, "issued-"+r.Form.Get("client_secret"))
-			return
-		}
-		t.Errorf("unexpected native path: %s", r.URL.Path)
-		w.WriteHeader(404)
-	}))
+	peer := httptest.NewServer(authenticationPeer(t, key, &oauthRequests))
 	defer peer.Close()
 	base, _ := url.Parse(peer.URL)
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -111,4 +92,27 @@ func TestAuthenticatedActivityAndRotatingOAuth(t *testing.T) {
 	if _, err = native.AccessToken(context.Background()); err != nil || oauthRequests.Load() != 3 {
 		t.Fatal("rejected token retained")
 	}
+}
+
+func authenticationPeer(t *testing.T, key *rsa.PrivateKey, oauthRequests *atomic.Int64) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/.well-known/keys" {
+			json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]any{"kty": "RSA", "use": "sig", "alg": "RS256", "kid": "public-fixture", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
+			return
+		}
+		if r.URL.Path == "/botframework.com/oauth2/v2.0/token" {
+			oauthRequests.Add(1)
+			if err := r.ParseForm(); err != nil {
+				t.Error(err)
+			}
+			if r.Form.Get("client_id") != "app" || r.Form.Get("scope") != "https://api.botframework.com/.default" {
+				t.Error("incorrect OAuth identity/scope")
+			}
+			fmt.Fprintf(w, `{"access_token":%q,"expires_in":3600}`, "issued-"+r.Form.Get("client_secret"))
+			return
+		}
+		t.Errorf("unexpected native path: %s", r.URL.Path)
+		w.WriteHeader(404)
+	})
 }
