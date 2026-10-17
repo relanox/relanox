@@ -10,9 +10,9 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
+	sdk "github.com/line/line-bot-sdk-go/v8/linebot/messaging_api"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
@@ -47,15 +47,15 @@ func parseConfig(raw json.RawMessage) (Config, error) {
 func ValidateConfig(raw json.RawMessage) error { _, err := parseConfig(raw); return err }
 
 type Channel struct {
-	host       model.ChannelHost
-	account    model.AccountConfig
-	config     Config
-	options    common.Options
-	client     *http.Client
-	lifecycle  common.Lifecycle
-	identityMu sync.Mutex
-	credential [32]byte
-	botID      string
+	host         model.ChannelHost
+	account      model.AccountConfig
+	config       Config
+	options      common.Options
+	client       *http.Client
+	lifecycle    common.Lifecycle
+	identityGate chan struct{}
+	credential   [32]byte
+	botID        string
 }
 
 func New(host model.ChannelHost, account model.AccountConfig, options common.Options) (*Channel, error) {
@@ -66,7 +66,7 @@ func New(host model.ChannelHost, account model.AccountConfig, options common.Opt
 	if account.Channel != model.LINE || account.ID == "" {
 		return nil, errors.New("invalid_channel_account")
 	}
-	c := &Channel{host: host, account: account, config: cfg, options: options, client: common.HTTPClient(options.HTTPClient)}
+	c := &Channel{host: host, account: account, config: cfg, options: options, client: common.HTTPClient(options.HTTPClient), identityGate: make(chan struct{}, 1)}
 	if err = host.MountHTTP(model.HTTPRoute{Pattern: "/webhook", Handler: http.HandlerFunc(c.webhook), MaxBodyBytes: 2 * 1024 * 1024}); err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func (c *Channel) Kind() model.ChannelKind { return model.LINE }
 var richLimits = model.RichTextLimits{MaxParts: 20, MaxTextLength: 2000, ImageMIMETypes: []string{"image/jpeg", "image/png"}, MaxImageBytes: 10 * 1024 * 1024}
 
 func (c *Channel) Capabilities() model.ChannelCapabilities {
-	capabilities := model.ChannelCapabilities{Transport: model.HTTPTransport, MaxTextLength: 5000, LengthUnit: model.UTF16, Media: model.MediaCapabilities{Receive: common.AllMedia(), Send: []model.MediaKind{model.Image, model.Audio, model.Video}}}
+	capabilities := model.ChannelCapabilities{Transport: model.HTTPTransport, MaxTextLength: 5000, LengthUnit: model.UTF16, IdempotentSend: true, Media: model.MediaCapabilities{Receive: common.AllMedia(), Send: []model.MediaKind{model.Image, model.Audio, model.Video}}}
 	if strings.HasPrefix(c.host.PublicURL(), "https://") && c.host.Media() != nil {
 		limits := richLimits
 		capabilities.RichText = &limits
@@ -136,21 +136,26 @@ func (c *Channel) identity(ctx context.Context) (string, error) {
 
 func (c *Channel) identityFor(ctx context.Context, headers http.Header) (string, error) {
 	credential := sha256.Sum256([]byte(headers.Get("Authorization")))
-	c.identityMu.Lock()
-	defer c.identityMu.Unlock()
+	select {
+	case c.identityGate <- struct{}{}:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	defer func() { <-c.identityGate }()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if c.botID != "" && c.credential == credential {
 		return c.botID, nil
 	}
-	var identity struct {
-		UserID string `json:"userId"`
-	}
+	var identity sdk.BotInfoResponse
 	if err := common.JSON(ctx, c.client, http.MethodGet, apiBase+"/v2/bot/info", headers, nil, &identity); err != nil {
 		return "", err
 	}
-	if !platformID(identity.UserID) {
+	if !platformID(identity.UserId) {
 		return "", errors.New("invalid_bot_identity")
 	}
-	c.botID = identity.UserID
+	c.botID = identity.UserId
 	c.credential = credential
 	return c.botID, nil
 }

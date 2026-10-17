@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -130,6 +131,74 @@ func TestNativeReceiveAndRetryRecovery(t *testing.T) {
 		t.Fatalf("native retry UUID: %v", err)
 	}
 	assertRichAndIdentity(t, fixture.channel, inbound.Target, peerState)
+	assertExpiredRetry(t, fixture, input, peerState)
+}
+
+func assertExpiredRetry(t *testing.T, fixture fixture, input model.SendInput, peer *linePeer) {
+	t.Helper()
+	ctx := context.Background()
+	count := len(peer.keys)
+	if !fixture.channel.Capabilities().IdempotentSend {
+		t.Fatal("native retry capability hidden")
+	}
+	if err := common.SaveState(ctx, fixture.host.State(), "push:"+input.Chunk.IdempotencyKey, retryIdentity{Key: uuid.NewString(), StartedAt: time.Now().Add(-25 * time.Hour).UnixMilli()}, nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := fixture.channel.Send(ctx, input)
+	if err != nil || result.Status != model.Unknown || result.ErrorCode != "retry_key_expired" || len(peer.keys) != count {
+		t.Fatalf("expired retry retransmitted: %+v %v", result, err)
+	}
+}
+
+// A slow bot-info HTTP request must not trap a canceled concurrent Resolve on
+// an ordinary mutex. Existing retry checks are serial and cannot catch this
+// lifecycle regression. Uses only real HTTP blocking and production cancellation.
+func TestCanceledResolveDoesNotWaitForIdentity(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		io.WriteString(w, `{"userId":"bot"}`)
+	}))
+	defer peer.Close()
+	defer close(release)
+	base, _ := url.Parse(peer.URL)
+	client := &http.Client{Transport: rewriteTransport{base: base}}
+	fixture := openFixture(t, filepath.Join(t.TempDir(), "cancel.db"), client)
+	defer fixture.store.Close()
+	address := model.ChannelAddress{Platform: model.LINE, AccountID: "line", ChatID: "group"}
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	defer cancelFirst()
+	firstDone := make(chan struct{})
+	go func() { defer close(firstDone); _, _ = fixture.channel.Resolve(firstCtx, address, nil) }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("identity request did not start")
+	}
+	secondCtx, cancelSecond := context.WithCancel(context.Background())
+	cancelSecond()
+	secondDone := make(chan error, 1)
+	go func() { _, err := fixture.channel.Resolve(secondCtx, address, nil); secondDone <- err }()
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Resolve cancellation: %v", err)
+		}
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("canceled Resolve waited for unrelated HTTP")
+	}
+	cancelFirst()
+	select {
+	case <-firstDone:
+	case <-time.After(time.Second):
+		t.Fatal("identity HTTP did not cancel")
+	}
 }
 
 func assertInbound(t *testing.T, input model.IngestInput) {
