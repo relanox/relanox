@@ -1,0 +1,172 @@
+Supplemental native channel SDK license declarations
+
+The exact published npm versions below omit standalone license files. This file
+records their published declarations and the sources of supplemental texts. It is
+not an upstream NOTICE or a new grant of rights. It does not infer copyright
+holders or resolve conflicting declarations.
+
+Verbatim upstream texts
+=======================
+
+@microsoft/teams.api, @microsoft/teams.apps, @microsoft/teams.cards,
+@microsoft/teams.common and @microsoft/teams.graph, each version 2.1.0:
+  Declared license: MIT (each exact published package's package.json).
+  Exact published metadata:
+    https://registry.npmjs.org/%40microsoft%2Fteams.api/2.1.0
+    https://registry.npmjs.org/%40microsoft%2Fteams.apps/2.1.0
+    https://registry.npmjs.org/%40microsoft%2Fteams.cards/2.1.0
+    https://registry.npmjs.org/%40microsoft%2Fteams.common/2.1.0
+    https://registry.npmjs.org/%40microsoft%2Fteams.graph/2.1.0
+  Supplemental file: microsoft-teams.LICENSE
+  Source: https://github.com/microsoft/teams.ts/blob/v2.1.0/LICENSE
+
+@googleapis/chat 51.2.0:
+  Declared license: Apache-2.0.
+  Exact published metadata: https://registry.npmjs.org/%40googleapis%2Fchat/51.2.0
+  Supplemental file: googleapis-chat.LICENSE
+  Release: https://github.com/googleapis/google-api-nodejs-client/tree/chat-v51.2.0
+  Source: https://github.com/googleapis/google-api-nodejs-client/blob/01de2bd4b6ce1c0c237756e13cb0320c68577293/LICENSE
+
+@mattermost/client and @mattermost/types, each version 11.9.0:
+  Declared license: MIT (each exact published package's package.json).
+  Exact published metadata:
+    https://registry.npmjs.org/%40mattermost%2Fclient/11.9.0
+    https://registry.npmjs.org/%40mattermost%2Ftypes/11.9.0
+  Published gitHead: 583461af10fc9b2aef2871c722fc4376db695832
+  Supplemental files: mattermost-compiled.LICENSE, mattermost-source.LICENSE
+  Compiled-package source: https://github.com/mattermost/mattermost/blob/583461af10fc9b2aef2871c722fc4376db695832/server/build/MIT-COMPILED-LICENSE.md
+  Source policy: https://github.com/mattermost/mattermost/blob/583461af10fc9b2aef2871c722fc4376db695832/LICENSE.txt
+  The upstream policy licenses official compiled distributions under MIT and
+  webapp source under Apache-2.0. Both original texts are retained; the repository's
+  other source-code licenses do not describe these npm packages' MIT declaration.
+
+Standard texts supplementing published declarations
+==================================================
+
+Some upstream releases supply only a license name or link, without a full text.
+The files below supply the referenced standard texts, not purported copies of
+missing upstream files. MIT retains its unfilled copyright template fields.
+ISC retains the standard text's original ISC attribution, which is not an
+attribution for these SDK packages. No package-specific copyright is inferred.
+Any copyright statement found in a published README is recorded below.
+
+  MIT: sdk-MIT.LICENSE
+  Source: https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT.txt
+  ISC: sdk-ISC.LICENSE
+  Source: https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/ISC.txt
+  Apache-2.0: sdk-Apache-2.0.LICENSE
+  Source: https://www.apache.org/licenses/LICENSE-2.0.txt
+
+@alicloud/endpoint-util 0.0.2
+  Published package.json license: Apache-2.0
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Fendpoint-util/0.0.2
+  Published archive README (README.md), license section:
+    ## License
+    [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+    Copyright (c) 2009-present, Alibaba Cloud All rights reserved.
+
+@alicloud/gateway-dingtalk 1.0.2
+  Published package.json license: ISC
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Fgateway-dingtalk/1.0.2
+
+@alicloud/gateway-spi 0.0.8
+  Published package.json license: ISC
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Fgateway-spi/0.0.8
+
+@alicloud/openapi-client 0.4.15
+  Published package.json license: ISC
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Fopenapi-client/0.4.15
+  Published archive README (README.md), license section:
+    ## License
+
+    [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+    Copyright (c) 2009-present, Alibaba Cloud All rights reserved.
+  Conflicting declarations: package.json says ISC; README says Apache-2.0. Both
+  corresponding standard texts are supplied. This notice does not establish
+  dual licensing or resolve the inconsistency.
+
+@alicloud/openapi-util 0.3.3
+  Published package.json license: ISC
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Fopenapi-util/0.3.3
+
+@alicloud/tea-typescript 1.8.0
+  Published package.json license: ISC
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Ftea-typescript/1.8.0
+  Published archive README (README.md), license section:
+    ## License
+    The MIT license
+  Conflicting declarations: package.json says ISC; README says MIT. Both
+  corresponding standard texts are supplied. This notice does not establish
+  dual licensing or resolve the inconsistency.
+
+@alicloud/tea-util 1.4.11
+  Published package.json license: Apache-2.0
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Ftea-util/1.4.11
+  Published archive README (README.md), license section:
+    ## License
+    [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+    Copyright (c) 2009-present, Alibaba Cloud All rights reserved.
+
+@alicloud/tea-util 1.4.9
+  Published package.json license: Apache-2.0
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Ftea-util/1.4.9
+  Published archive README (README.md), license section:
+    ## License
+    [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+    Copyright (c) 2009-present, Alibaba Cloud All rights reserved.
+
+@alicloud/tea-xml 0.0.3
+  Published package.json license: Apache-2.0
+  Exact published metadata: https://registry.npmjs.org/%40alicloud%2Ftea-xml/0.0.3
+  Published archive README (README.md), license section:
+    ## License
+    [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0)
+
+    Copyright (c) 2009-present, Alibaba Cloud All rights reserved.
+
+@darabonba/typescript 1.0.5
+  Published package.json license: Apache License 2.0
+  Exact published metadata: https://registry.npmjs.org/%40darabonba%2Ftypescript/1.0.5
+  Published archive README (README.md), license section:
+    ## License
+    The Apache License 2.0.
+
+@wecom/aibot-node-sdk 1.0.7
+  Published package.json license: MIT
+  Exact published metadata: https://registry.npmjs.org/%40wecom%2Faibot-node-sdk/1.0.7
+  Published archive README (README.md), license section:
+    ## 📄 License
+
+    MIT
+
+httpx 2.3.3
+  Published package.json license: MIT
+  Exact published metadata: https://registry.npmjs.org/httpx/2.3.3
+  Published archive README (README.md), license section:
+    ## License
+
+    The MIT license
+
+sm3 1.0.3
+  Published package.json license: MIT
+  Exact published metadata: https://registry.npmjs.org/sm3/1.0.3
+  Published archive README (README.md), license section:
+    ## License
+    [MIT license](http://www.opensource.org/licenses/MIT).
+
+Packages retaining their license text in README
+=============================================
+
+http-proxy-agent 5.0.0 and socks-proxy-agent 6.2.1 include the full MIT
+permission and copyright notice in their published README.md files.
+@tokenizer/token 0.3.0 likewise retains its complete MIT notice in README.md.
+
+Additional shipped license
+==========================
+
+sax 1.6.1 includes the complete Blue Oak Model License 1.0.0 in LICENSE.md
+in its published npm package. No supplemental copy is needed.

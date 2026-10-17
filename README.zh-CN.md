@@ -1,32 +1,17 @@
 # Relanox
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+Relanox 将原生消息平台连接到已有的 dot、Grok 和 Muse Agent。当前代码正在完整
+重写为 Go；原 TypeScript 实现、测试、配置和文档保存在
+[`ref/typescript`](ref/typescript/README.zh-CN.md)，仅供参考。
 
-在常用聊天软件里，让 **dot、Grok Bot 或 Muse** 帮你做事。
+目前 Go 基础层包含类型化协议接口、配置加载与有限制的 HTTP 传输。接口声明不代表
+集成已经实现。原生通道、可执行程序和持久化运行时正在重建，不应使用归档文档中的
+Node.js 启动方式运行 Go 版本。
 
-把 Relanox 部署到自己的电脑或服务器，连接聊天账号和 Agent。你在聊天里发消息，Agent 处理后直接回复到原会话。你也可以发送图片和文件，或让 Agent 把生成的内容发回来。
+目标范围为 16 个原生通道、dot/Grok/Muse、SQLite/PostgreSQL、腾讯语音识别、
+MCP、媒体、持久化队列、可观测性和命令行。各组件直接在 Go 中组装，不使用插件
+机制。流式回复、本地推理和 Serverless 不在范围内。
 
-## 开始使用
-
-先连接一个聊天账号，收到第一条回复后，再添加更多会话。
-
-1. 按[快速开始](https://relanox.github.io/zh-CN/getting-started.html)安装并启动 Relanox。
-2. 选择[消息渠道](https://relanox.github.io/zh-CN/channels/index.html)，准备机器人账号和权限。
-3. [连接 dot、Grok Bot 或 Muse](https://relanox.github.io/zh-CN/agents.html)，在聊天里发送第一条消息。
-
-支持 Telegram、Discord、Slack、飞书、企业微信、微信、钉钉、QQ、Microsoft Teams、WhatsApp Business Cloud、Google Chat、LINE、Matrix、Mattermost、Signal 和 IRC。各渠道指南会说明账号准备、配置和文件收发方式。
-
-## 部署
-
-可以使用 Node.js 运行，也可以用 Docker Compose 部署。SQLite 适合直接开始使用；已有 PostgreSQL 的部署也可使用现有数据库。消息、附件和发送进度保存在你配置的数据库中。
-
-- [修改配置与添加会话](https://relanox.github.io/zh-CN/configuration.html)
-- [收发图片和文件](https://relanox.github.io/zh-CN/media.html)
-- [部署、备份与日常管理](https://relanox.github.io/zh-CN/operations.html)
-- [查看日志和运行状态](https://relanox.github.io/zh-CN/reference/observability.html)
-
-完整文档见[文档站](https://relanox.github.io/zh-CN/)。欢迎通过 [GitHub Issues](https://github.com/relanox/relanox/issues)反馈问题，或阅读[贡献指南](https://relanox.github.io/zh-CN/development.html)参与开发。
-
-## 许可证
-
-[MIT](LICENSE)。
+开发需要 Go 1.26。执行 `git config core.hooksPath .githooks` 配置提交检查，
+执行 `go run ./tools/check` 运行格式、静态检查和测试。修改前请阅读
+[架构](docs/en/architecture.md)和[开发指南](docs/en/development.md)。

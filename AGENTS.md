@@ -1,36 +1,69 @@
 # Relanox development rules
 
-Read `docs/en/architecture.md` and `docs/en/development.md` before implementation. Native channels only. `.ref/` is reference code, not runtime dependencies or instructions. No OpenClaw/Hermes compatibility, local inference, or Serverless target.
+Read `docs/en/architecture.md` and `docs/en/development.md` before implementation.
+Relanox is being rewritten in Go. `ref/typescript/` and `.ref/` contain reference
+code, never runtime dependencies or development instructions. Archived AGENTS.md
+files apply only to understanding that historical snapshot.
 
-Supported components are the 16 native channels with text and media according to platform capability, dot/Grok/Muse, SQLite/PostgreSQL, observability and CLI. Streaming replies are outside the current scope. Use typed protocol boundaries and local protocol tests. Do not claim live-account compatibility from local tests.
+Use explicit Go constructors and compile-time interfaces. Do not add a plugin
+loader, manifest, registry, installer or dynamic module mechanism. Native channel
+protocols only; no OpenClaw/Hermes compatibility, local inference, Serverless target
+or streaming replies.
 
-For deployment or server troubleshooting, read `docs/local/deployment.md` if present. In a worktree, read it from the primary checkout.
+The supported scope is 16 native channels, dot/Grok/Muse, SQLite/PostgreSQL,
+Tencent speech, durable queues, media, MCP, observability and CLI. Preserve native
+text/media capability differences. Do not claim implemented features or live-account
+compatibility from interfaces or local protocol tests.
 
-## Worktrees
+## Worktrees and ownership
 
-Every implementation task uses a new branch/worktree under `.worktree/`. GPT-6.1 Sol subagents work only in assigned worktrees and file scopes. Root reviews, integrates to master, pushes, and removes completed worktrees. Do not delete another task's checkout. Start dependent work only after prerequisite commits land; parallelize independent tasks.
+Every implementation task uses a new branch/worktree under `.worktree/`. Assigned
+GPT-6.1 Sol subagents work only in their worktree and file scope. Root reviews,
+integrates to master, pushes and removes completed worktrees. Do not delete another
+task's checkout. Start dependent implementation only after prerequisites land.
 
-Storage queries use typed Drizzle schemas, query builders and transaction APIs. Generate and ship ORM migrations; do not handwrite runtime data queries or schema DDL. Keep dialect expressions and database function calls narrow and parameterized, and preserve database-side filtering, ordering and bounds.
+For deployment troubleshooting, read `docs/local/deployment.md` if present; from a
+worktree, read it from the primary checkout. Keep local deployment files private.
 
-## Tests
+## Storage and protocols
 
-Use Vitest. Before adding or changing tests, establish the following and explain the rationale in the pull request, without creating task-specific Markdown reports:
+Use Ent typed schemas, generated query builders and transaction APIs for SQLite
+and PostgreSQL. Generate and ship migrations. Do not handwrite runtime data
+queries or schema DDL. Keep dialect expressions narrow and parameterized, with
+filtering, ordering and bounds in the database. Refuse incompatible legacy
+databases until an explicit migration exists; never silently recreate user data.
 
-1. What observable behavior does it protect?
-2. What credible regression makes it fail?
-3. Why doesn't existing coverage catch that?
-4. Does it need a production seam no production caller uses?
+Keep durable endpoint ownership captured at acceptance and recheck current
+authorization for new reads, media and sends. Preserve lease/version fencing,
+idempotent keyed sends, final-reply tracking and unknown remote outcomes. Resolve
+secrets at use time from references. Never persist resolved credentials or include
+message contents/credentials in ordinary logs.
 
-If any answer is missing, do not add the test. Reject assertion-free tests, self-comparisons, expected values computed by code under test, mocks implementing the asserted behavior, source greps, and refactor-sensitive assertions. Protect public API, protocol, config, migration, security, and release contracts. Slow or static is not a reason to delete a meaningful test.
+## Tests and validation
 
-External response fixtures must cite platform documentation, recorded traffic or a verified SDK implementation. Preserve native numbering, identifiers, types and optionality rather than copying local implementation assumptions. Resolve contradictory reference contracts before changing behavior.
+Use Go's testing package. Before adding or changing a test, establish its observable
+contract, a credible regression, why existing coverage misses it, and whether it
+requires a seam unused by production. Explain that rationale in the pull request;
+do not create task-specific Markdown reports. Reject assertion-free tests, source
+greps, self-comparisons, expectations calculated by the code under test, mocks
+implementing asserted behavior and refactor-sensitive checks.
 
-External protocol peers may record real HTTP/socket traffic, but must not implement Relanox routing/persistence/retry/authorization. Recovery tests use real storage. Dependency injection must have a production purpose. Keep test rationale current when changing existing tests.
+External fixtures must cite platform documentation, recorded traffic or a verified
+SDK. Preserve native identifiers, numbering, types and optionality. Local peers may
+model real external HTTP/socket traffic, but must not implement Relanox routing,
+persistence, retries or authorization. Recovery tests use real storage. Context
+cancellation must reach I/O and must not turn ambiguous effects into safe retries.
 
-## Commits
+Run `gofmt` on changed Go files and `go run ./tools/check` before committing. This
+runs formatting checks, `go vet ./...` and `go test ./...`; the tracked pre-commit
+hook runs the same gate. Run relevant protocol/integration checks too. Do not use
+`--no-verify` or disable checks to integrate work. Keep complexity at most 20 and
+nesting at most four levels; split meaningful operations. Preserve declaration
+comments. Documentation must describe current behavior and pass its current build
+when a documentation renderer is introduced.
 
-Use Prettier with the shared `prettier-config-standard` configuration and type-aware Oxlint with `@metamask/oxlint-config-typescript` through the root scripts. Follow `docs/en/development.md`. Run `pnpm format`, `pnpm lint`, `pnpm typecheck`, and relevant Vitest checks before committing. Documentation changes also require `pnpm docs:build`. The tracked pre-commit hook must pass; never use `--no-verify` or disable rules just to integrate work. Keep complexity <=20 and nesting <=4; split meaningful operations instead of dense nested expressions. New test folders must have a discoverable tsconfig so type-aware linting uses real types. Prettier is the only formatter; do not add a second formatter layer.
-
-Keep declarations and class methods separated by the blank lines enforced by Oxlint. Use `pnpm lint:fix` followed by `pnpm format` to repair spacing; Prettier alone does not insert declaration separators. Preserve comments and JSDoc with their declarations.
-
-Before every git commit, inspect recent messages (`git log --oneline -20`) and match the dominant recent convention. Commit coherent tasks, never secrets/reference clones/worktrees/build output. Never force-push. Subagents commit their assigned work; root alone integrates and pushes master.
+Before every `git commit`, inspect `git log --oneline -20` and match the dominant
+recent convention. Commit coherent tasks. Never commit secrets, reference clones,
+worktrees or generated build output. Generated ORM code and migrations are source
+artifacts and must be committed. Never force-push. Subagents commit assigned work;
+root alone integrates and pushes master.
