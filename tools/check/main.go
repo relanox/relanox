@@ -24,12 +24,22 @@ func main() {
 			fail(fmt.Errorf("run gofmt on:\n%s", out))
 		}
 	}
-	for _, args := range [][]string{{"vet", "./..."}, {"test", "./..."}} {
-		command := exec.Command("go", args...)
-		command.Stdout, command.Stderr = os.Stdout, os.Stderr
-		if err := command.Run(); err != nil {
-			fail(err)
-		}
+	sources, err := analyzeSources(files)
+	if err != nil {
+		fail(err)
+	}
+	if len(sources) > 0 {
+		runGo(append([]string{"tool", "github.com/fzipp/gocyclo/cmd/gocyclo", "-over", "20"}, sources...)...)
+	}
+	runGo("vet", "./...")
+	runGo("test", "./...")
+}
+
+func runGo(args ...string) {
+	command := exec.Command("go", args...)
+	command.Stdout, command.Stderr = os.Stdout, os.Stderr
+	if err := command.Run(); err != nil {
+		fail(err)
 	}
 }
 

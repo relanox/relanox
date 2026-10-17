@@ -41,6 +41,7 @@ require (
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fatih/color v1.18.0 // indirect
+	github.com/fzipp/gocyclo v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/inflect v0.19.0 // indirect
@@ -109,4 +110,9 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.60.1 // indirect
+)
+
+tool (
+	entgo.io/ent/cmd/ent
+	github.com/fzipp/gocyclo/cmd/gocyclo
 )
