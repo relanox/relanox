@@ -152,6 +152,9 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 	}
 	var data targetData
 	known := learned != nil && learned.Channel == model.MSTeams && learned.AccountID == c.account.ID && learned.ChatID == address.ChatID && learned.ThreadID == address.ThreadID && json.Unmarshal(learned.Data, &data) == nil && c.valid(data, address.ChatID)
+	if learned != nil && !known {
+		return model.ChannelResolution{Reason: "target_identity_changed"}, nil
+	}
 	if !known {
 		saved, entry, err := common.ReadState[targetData](ctx, c.host.State(), c.conversationKey(address.ChatID))
 		if err != nil {
