@@ -111,12 +111,35 @@ func TestWindowRecoveryAndCloudProtocol(t *testing.T) {
 		t.Fatalf("recover target: %+v %v", resolved, err)
 	}
 	assertCloudSends(t, channel, *resolved.Target, peerState)
+	assertLearnedIdentity(t, channel, address, target)
 	if err = common.SaveState(ctx, host.State(), channel.windowKey("customer"), time.Now().Add(-time.Minute).UnixMilli(), nil); err != nil {
 		t.Fatal(err)
 	}
 	sent, err := channel.Send(ctx, model.SendInput{Target: target, Chunk: model.DeliveryChunk{Text: "late"}})
 	if err != nil || sent.ErrorCode != "customer_window_expired" || peerState.messages != 2 {
 		t.Fatalf("expired target: %+v %v", sent, err)
+	}
+}
+
+func assertLearnedIdentity(t *testing.T, channel *Channel, address model.ChannelAddress, original model.ReplyTarget) {
+	t.Helper()
+	for _, change := range []string{"phone", "business", "customer"} {
+		target := original
+		data := channel.target(original.ChatID)
+		switch change {
+		case "phone":
+			data.PhoneNumberID = "replacement"
+		case "business":
+			data.BusinessAccountID = "replacement"
+		case "customer":
+			data.Customer = "another-customer"
+			target.ChatID = data.Customer
+		}
+		target.Data = common.Data(data)
+		resolved, err := channel.Resolve(context.Background(), address, &target)
+		if err != nil || resolved.Available || resolved.Reason != "target_identity_changed" {
+			t.Fatalf("changed %s accepted: %+v %v", change, resolved, err)
+		}
 	}
 }
 

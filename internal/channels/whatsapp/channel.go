@@ -194,7 +194,10 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 		return model.ChannelResolution{Reason: "customer_window_expired"}, nil
 	}
 	target := model.ReplyTarget{Channel: model.WhatsApp, AccountID: c.account.ID, ChatID: address.ChatID, Data: common.Data(c.target(address.ChatID))}
-	if learned != nil && c.validTarget(*learned) {
+	if learned != nil {
+		if !c.validTarget(*learned) || learned.ChatID != address.ChatID {
+			return model.ChannelResolution{Reason: "target_identity_changed"}, nil
+		}
 		target.ReplyToID = learned.ReplyToID
 	}
 	return model.ChannelResolution{Available: true, Target: &target}, nil
