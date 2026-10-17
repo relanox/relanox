@@ -3,7 +3,6 @@ package mattermost
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 	"time"
 
@@ -41,15 +40,15 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 		}
 		post.FileIds = []string{id}
 	}
-	var response mm.Post
-	if err = common.JSON(ctx, c.client, http.MethodPost, c.config.ServerURL+"/api/v4/posts", bearer(token), post, &response); err != nil {
+	created, response, err := c.nativeClient(ctx, token, common.MaxJSONBytes).CreatePost(ctx, post)
+	if err := nativeError(response, err); err != nil {
 		c.rejectToken(err)
 		return common.Failure(err, false), nil
 	}
-	if !mm.IsValidId(response.Id) {
+	if created == nil || !mm.IsValidId(created.Id) {
 		return model.SendResult{Status: model.Unknown, ErrorCode: "native_send_uncertain"}, nil
 	}
-	return common.Sent(response.Id), nil
+	return common.Sent(created.Id), nil
 }
 
 func (c *Channel) validateTarget(input model.SendInput, identity targetData) string {
@@ -88,16 +87,20 @@ func (c *Channel) rejectToken(err error) {
 }
 
 func (c *Channel) upload(ctx context.Context, input model.SendInput, token string) (string, error) {
-	var response mm.FileUploadResponse
 	media := input.Media
-	if err := common.MultipartMIME(ctx, c.client, c.config.ServerURL+"/api/v4/files", bearer(token), map[string]string{"channel_id": input.Target.ChatID}, "files", media.Reference.FileName, media.Reference.MIMEType, media.Data, &response); err != nil {
+	contentType, body, err := common.MultipartBody(map[string]string{"channel_id": input.Target.ChatID}, "files", media.Reference.FileName, media.Reference.MIMEType, media.Data)
+	if err != nil {
+		return "", err
+	}
+	files, response, err := c.nativeClient(ctx, token, common.MaxJSONBytes).DoUploadFile(ctx, "/files", body, contentType)
+	if err := nativeError(response, err); err != nil {
 		c.rejectToken(err)
 		return "", err
 	}
-	if len(response.FileInfos) != 1 || response.FileInfos[0] == nil || !mm.IsValidId(response.FileInfos[0].Id) {
+	if files == nil || len(files.FileInfos) != 1 || files.FileInfos[0] == nil || !mm.IsValidId(files.FileInfos[0].Id) {
 		return "", errors.New("media_upload_failed")
 	}
-	return response.FileInfos[0].Id, nil
+	return files.FileInfos[0].Id, nil
 }
 
 func (c *Channel) message(ctx context.Context, input model.SendInput) (string, error) {

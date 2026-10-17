@@ -113,9 +113,8 @@ func (c *Channel) credentials(ctx context.Context) (targetData, string, error) {
 		return targetData{}, "", errors.New("oauth_unavailable")
 	}
 	user, err := c.identities.Get(ctx, token, func(ctx context.Context) (string, time.Time, error) {
-		var identity mm.User
-		err := common.JSON(ctx, c.client, http.MethodGet, c.config.ServerURL+"/api/v4/users/me", bearer(token), nil, &identity)
-		if err != nil || !mm.IsValidId(identity.Id) {
+		identity, response, err := c.nativeClient(ctx, token, common.MaxJSONBytes).GetMe(ctx, "")
+		if nativeError(response, err) != nil || identity == nil || !mm.IsValidId(identity.Id) {
 			return "", time.Time{}, errors.New("native_identity_unavailable")
 		}
 		return identity.Id, time.Now().Add(time.Minute), nil

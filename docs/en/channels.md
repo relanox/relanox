@@ -25,7 +25,7 @@ native options without introducing a plugin or compatibility format.
 | Matrix | `homeserver`, `accessToken` | Native `/sync`, media APIs and transactions through mautrix. End-to-end encrypted rooms require encryption support outside this account adapter. |
 | Mattermost | `serverUrl`, `token` | Native v4 REST and WebSocket APIs; use the installation's HTTPS URL and a bot/user access token. |
 | Google Chat | `serviceAccount` | Native authenticated interaction events and Chat REST APIs. Configure the printed webhook URL as the app's endpoint/audience. |
-| LINE | `channelSecret`, `accessToken` | Signed Messaging API webhook, native reply/push routes and retry keys. |
+| LINE | `channelSecret`, `accessToken` | Signed Messaging API webhook and SDK push messages with native quote tokens and durable retry keys. |
 | Signal | `serviceUrl`, `account` | Existing native Signal JSON-RPC daemon and event websocket. Optional `selfUuid` and authorization reference. |
 | IRC | `server`, `nick` | TLS IRC/IRCv3 connection; optional server password and SASL credentials. Text only. |
 

@@ -70,7 +70,10 @@ type nativePeer struct {
 // https://github.com/mattermost/mattermost/blob/master/server/public/model/websocket_client.go
 // https://github.com/mattermost/mattermost/blob/master/server/channels/app/platform/web_conn.go
 func (p *nativePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Authorization") != "Bearer native-token" {
+	// Auth schemes are case-insensitive (RFC 9110 section 11.1); the official
+	// Client4 uses BEARER while WebSocket upgrade headers use Bearer.
+	scheme, token, _ := strings.Cut(r.Header.Get("Authorization"), " ")
+	if !strings.EqualFold(scheme, "Bearer") || token != "native-token" {
 		p.t.Error("native credential missing")
 		w.WriteHeader(401)
 		return
@@ -156,7 +159,9 @@ func (p *nativePeer) historyPage(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"id":"native_failure"}`)
 		return
 	}
-	if r.URL.Query().Get("per_page") != "" || r.URL.Query().Get("collapsed_threads") != "false" || since == "" || r.URL.Query().Get("before") != "" {
+	// Native getPostsForChannel and Client4 both use collapsedThreads.
+	// https://github.com/mattermost/mattermost/blob/master/server/channels/api4/post.go
+	if r.URL.Query().Get("per_page") != "" || r.URL.Query().Get("collapsedThreads") != "false" || since == "" || r.URL.Query().Get("before") != "" {
 		p.t.Error("unbounded or discontinuous history query")
 	}
 	key := "complete"

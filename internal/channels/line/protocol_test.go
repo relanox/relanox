@@ -97,7 +97,7 @@ func TestNativeReceiveAndRetryRecovery(t *testing.T) {
 	client := &http.Client{Transport: rewriteTransport{base: base}}
 	filename := filepath.Join(t.TempDir(), "line.db")
 	fixture := openFixture(t, filename, client)
-	body := `{"destination":"bot","events":[{"type":"message","webhookEventId":"01NATIVE-EVENT","source":{"type":"group","userId":"user","groupId":"group"},"message":{"id":"native-message","type":"audio","duration":1250,"quoteToken":"native-quote","contentProvider":{"type":"line"}}}]}`
+	body := `{"destination":"bot","events":[{"type":"message","webhookEventId":"01NATIVE-EVENT","source":{"type":"group","userId":"user","groupId":"group"},"message":{"id":"native-message","type":"audio","duration":1250,"contentProvider":{"type":"line"}}}]}`
 	callWebhook(t, fixture.host.handler, body, "invalid", 401)
 	callWebhook(t, fixture.host.handler, body, lineSignature(body), 200)
 	if len(fixture.host.received) != 1 || peerState.content != 2 {
@@ -105,7 +105,16 @@ func TestNativeReceiveAndRetryRecovery(t *testing.T) {
 	}
 	inbound := fixture.host.received[0]
 	assertInbound(t, inbound)
-	input := model.SendInput{Target: inbound.Target, Reply: &model.ReplyReference{RequestID: "req", Kind: model.Final}, Chunk: model.DeliveryChunk{Text: "**answer**", IdempotencyKey: "delivery"}}
+	// Audio has no native quote token. Quote a text event as defined by the
+	// official webhook schema, while retaining the separate audio/media checks.
+	// https://github.com/line/line-openapi/blob/main/webhook.yml
+	quotedBody := `{"destination":"bot","events":[{"type":"message","webhookEventId":"01TEXT-EVENT","source":{"type":"group","userId":"user","groupId":"group"},"message":{"id":"quoted-message","type":"text","text":"question","quoteToken":"native-quote"}}]}`
+	callWebhook(t, fixture.host.handler, quotedBody, lineSignature(quotedBody), 200)
+	if len(fixture.host.received) != 2 {
+		t.Fatalf("native text ingests = %d", len(fixture.host.received))
+	}
+	quotedTarget := fixture.host.received[1].Target
+	input := model.SendInput{Target: quotedTarget, Reply: &model.ReplyReference{RequestID: "req", Kind: model.Final}, Chunk: model.DeliveryChunk{Text: "**answer**", IdempotencyKey: "delivery"}}
 	result, err := fixture.channel.Send(ctx, input)
 	if err != nil || result.Status != model.Retryable {
 		t.Fatalf("first send %+v %v", result, err)
@@ -115,7 +124,7 @@ func TestNativeReceiveAndRetryRecovery(t *testing.T) {
 	}
 	fixture = openFixture(t, filename, client)
 	defer fixture.store.Close()
-	resolved, err := fixture.channel.Resolve(ctx, model.ChannelAddress{Platform: model.LINE, AccountID: "line", ChatID: "group"}, &inbound.Target)
+	resolved, err := fixture.channel.Resolve(ctx, model.ChannelAddress{Platform: model.LINE, AccountID: "line", ChatID: "group"}, &quotedTarget)
 	if err != nil || !resolved.Available {
 		t.Fatalf("resolve: %+v %v", resolved, err)
 	}

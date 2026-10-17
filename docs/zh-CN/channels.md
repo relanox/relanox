@@ -23,7 +23,7 @@
 | Matrix | `homeserver`、`accessToken` | mautrix 原生 `/sync`、媒体和事务 API；加密房间所需的端到端加密不由该适配器提供。 |
 | Mattermost | `serverUrl`、`token` | 原生 v4 REST / WebSocket，使用实例 HTTPS 地址和 bot / 用户访问 token。 |
 | Google Chat | `serviceAccount` | 原生认证交互事件与 Chat REST；在应用中配置打印出的 webhook URL 与 audience。 |
-| LINE | `channelSecret`、`accessToken` | 签名 Messaging API webhook、reply/push 和原生重试键。 |
+| LINE | `channelSecret`、`accessToken` | 签名 Messaging API webhook，通过 SDK push 消息发送，保留原生引用令牌和持久化重试键。 |
 | Signal | `serviceUrl`、`account` | 已有原生 Signal JSON-RPC daemon 和事件 websocket，可配置 `selfUuid` 与认证引用。 |
 | IRC | `server`、`nick` | TLS IRC/IRCv3，可选 server password 和 SASL；仅文本。 |
 
