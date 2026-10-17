@@ -34,7 +34,11 @@ func newWeComRelay(t *testing.T, path string, start bool) *wecomRelay {
 	t.Helper()
 	f := &wecomRelay{relayFixture: &relayFixture{}}
 	f.ctx, f.cancel = context.WithCancel(context.Background())
-	f.routine = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.Copy(io.Discard, r.Body); w.WriteHeader(204) }))
+	f.routine = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+		w.WriteHeader(http.StatusOK)
+	}))
 	f.relay = httptest.NewUnstartedServer(nil)
 	key := base64.RawStdEncoding.EncodeToString([]byte("01234567890123456789012345678901"))
 	account := model.AccountConfig{ID: "wecom", Channel: model.WeCom, AllowedSenders: []string{"alice"}, Config: common.Data(wecom.Config{Mode: "webhook", BotID: "bot", Token: model.SecretRef{Env: "CALLBACK_TOKEN"}, EncodingAESKey: model.SecretRef{Env: "CALLBACK_AES"}})}

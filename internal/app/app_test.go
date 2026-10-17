@@ -158,7 +158,8 @@ func nativePeer(t *testing.T, notifications chan<- struct{}, sends chan<- map[st
 			}
 			_, _ = io.Copy(io.Discard, r.Body)
 			notifications <- struct{}{}
-			w.WriteHeader(202)
+			// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+			w.WriteHeader(http.StatusOK)
 		case "/bot123:bot-secret/sendMessage":
 			var body map[string]any
 			if json.NewDecoder(r.Body).Decode(&body) != nil {

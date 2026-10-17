@@ -117,7 +117,9 @@ func (a *Agent) Dispatch(ctx context.Context, in model.DispatchInput) (model.Dis
 
 func classifyReceipt(response *http.Response) model.DispatchResult {
 	status := response.StatusCode
-	if status >= 200 && status < 300 {
+	// Cursor documents 200 as the sole acknowledgement that a Routine started.
+	// https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+	if status == http.StatusOK {
 		return model.DispatchResult{Status: model.Accepted}
 	}
 	result := model.DispatchResult{Status: model.Rejected, ErrorCode: "grok_http_" + strconv.Itoa(status)}

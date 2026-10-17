@@ -252,7 +252,8 @@ func openFixture(t *testing.T, path string, peer *httptest.Server, recoveryEpoch
 			return
 		}
 		notifications <- message.Text
-		w.WriteHeader(204)
+		// Routine success receipt: https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean
+		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(routine.Close)
 	server := httptest.NewUnstartedServer(nil)
