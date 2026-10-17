@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	dingpayload "github.com/open-dingtalk/dingtalk-stream-sdk-go/payload"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
 )
@@ -29,18 +30,15 @@ type nativeMessage struct {
 	} `json:"text,omitempty"`
 }
 
-type streamFrame struct {
-	Type    string            `json:"type"`
-	Headers map[string]string `json:"headers"`
-	Data    string            `json:"data"`
-}
+type streamFrame = dingpayload.DataFrame
 
 func acknowledge(ctx context.Context, socket *websocket.Conn, frame streamFrame, system bool) error {
 	headers, data := map[string]string{"contentType": "application/json", "messageId": frame.Headers["messageId"]}, `{"response":null}`
 	if system {
 		headers, data = frame.Headers, frame.Data
 	}
-	return socket.Write(ctx, websocket.MessageText, common.Data(map[string]any{"code": 200, "headers": headers, "message": "OK", "data": data}))
+	response := dingpayload.DataFrameResponse{Code: 200, Headers: headers, Message: "OK", Data: data}
+	return socket.Write(ctx, websocket.MessageText, response.Encode())
 }
 
 // ACK only after durable Core acceptance, and always on the originating socket.
@@ -92,11 +90,10 @@ func (c *Channel) endpoint(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	request := map[string]any{"clientId": c.config.ClientID, "clientSecret": secret, "ua": "relanox-go/0.1.0", "subscriptions": []any{map[string]string{"type": "CALLBACK", "topic": "/v1.0/im/bot/messages/get"}}}
-	var response struct {
-		Endpoint string `json:"endpoint"`
-		Ticket   string `json:"ticket"`
-	}
+	// The stream SDK's connection client owns an unbounded HTTP reader and does
+	// not accept an injected client; reuse its native models with our transport.
+	request := dingpayload.ConnectionEndpointRequest{ClientId: c.config.ClientID, ClientSecret: secret, UserAgent: "relanox-go/0.1.0", Subscriptions: []*dingpayload.SubscriptionModel{{Type: "CALLBACK", Topic: "/v1.0/im/bot/messages/get"}}}
+	var response dingpayload.ConnectionEndpointResponse
 	if err = common.JSON(ctx, c.options.HTTPClient, http.MethodPost, apiBase+"/v1.0/gateway/connections/open", nil, request, &response); err != nil {
 		return "", err
 	}
