@@ -33,13 +33,16 @@ Windows 构建为 `bin/relanox.exe`。引导保存私有凭据、备份原配置
 
 ## 开发
 
+先按[开发指南](docs/en/development.md)安装 `.golangci-lint-version` 中固定的
+golangci-lint 版本，放入 `bin/` 或加入 `PATH`。
+
 ```sh
 git config core.hooksPath .githooks
 go run ./tools/check
 go run ./tools/docs
 ```
 
-门禁检查 gofmt、复杂度、嵌套、vet 与 Go 测试。Go 文档构建器输出 `docs/site`。
+门禁检查 gofmt、复杂度、嵌套、vet、golangci-lint 与 Go 测试。Go 文档构建器输出 `docs/site`。
 修改前阅读[架构](docs/en/architecture.md)和[开发指南](docs/en/development.md)。
 
 Relanox 使用 [MIT 许可](LICENSE)，第三方声明与分发依赖许可见[许可说明](licenses/README.md)。

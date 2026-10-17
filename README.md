@@ -38,14 +38,17 @@ For prebuilt binaries and container usage, see [Deployment](docs/en/deployment.m
 
 ## Development
 
+Install the golangci-lint version in `.golangci-lint-version` into `bin/` or onto
+`PATH` as described in the [development guide](docs/en/development.md).
+
 ```sh
 git config core.hooksPath .githooks
 go run ./tools/check
 go run ./tools/docs
 ```
 
-The gate checks gofmt, complexity/nesting, vet and Go tests. The documentation
-renderer writes `docs/site`. Read [Architecture](docs/en/architecture.md) and
+The gate checks gofmt, complexity/nesting, vet, golangci-lint and Go tests.
+The documentation renderer writes `docs/site`. Read [Architecture](docs/en/architecture.md) and
 [Development](docs/en/development.md) before implementation.
 
 Relanox is licensed under the [MIT License](LICENSE). Third-party notices and

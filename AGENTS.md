@@ -55,8 +55,9 @@ persistence, retries or authorization. Recovery tests use real storage. Context
 cancellation must reach I/O and must not turn ambiguous effects into safe retries.
 
 Run `gofmt` on changed Go files and `go run ./tools/check` before committing. This
-runs formatting checks, `go vet ./...` and `go test ./...`; the tracked pre-commit
-hook runs the same gate. Run relevant protocol/integration checks too. Do not use
+runs formatting checks, `go vet ./...`, pinned golangci-lint and `go test ./...`;
+the tracked pre-commit hook runs the same gate. Run relevant protocol/integration
+checks too. Do not use
 `--no-verify` or disable checks to integrate work. Keep complexity at most 20 and
 nesting at most four levels; split meaningful operations. Preserve declaration
 comments. Documentation must describe current behavior and pass its current build

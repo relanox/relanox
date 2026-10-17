@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -17,7 +16,11 @@ func main() {
 		fail(err)
 	}
 	if len(files) > 0 {
-		out, err := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "gofmt"), append([]string{"-l"}, files...)...).CombinedOutput()
+		root, err := exec.Command("go", "env", "GOROOT").Output()
+		if err != nil {
+			fail(err)
+		}
+		out, err := exec.Command(filepath.Join(strings.TrimSpace(string(root)), "bin", "gofmt"), append([]string{"-l"}, files...)...).CombinedOutput()
 		if err != nil {
 			fail(fmt.Errorf("gofmt: %s", out))
 		}
@@ -33,11 +36,34 @@ func main() {
 		runGo(append([]string{"tool", "github.com/fzipp/gocyclo/cmd/gocyclo", "-over", "20"}, sources...)...)
 	}
 	runGo("vet", "./...")
+	runLint()
 	runGo("test", "./...")
 }
 
+func runLint() {
+	version, err := os.ReadFile(".golangci-lint-version")
+	if err != nil {
+		fail(err)
+	}
+	want := strings.TrimPrefix(strings.TrimSpace(string(version)), "v")
+	tool := "golangci-lint"
+	if local, err := exec.LookPath(filepath.Join("bin", tool)); err == nil {
+		tool = local
+	}
+	out, err := exec.Command(tool, "version", "--short").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != want {
+		fail(fmt.Errorf("install golangci-lint v%s in bin/ or on PATH: https://golangci-lint.run/docs/welcome/install/local/", want))
+	}
+	runCommand(tool, "config", "verify")
+	runCommand(tool, "run", "./...")
+}
+
 func runGo(args ...string) {
-	command := exec.Command("go", args...)
+	runCommand("go", args...)
+}
+
+func runCommand(name string, args ...string) {
+	command := exec.Command(name, args...)
 	command.Stdout, command.Stderr = os.Stdout, os.Stderr
 	if err := command.Run(); err != nil {
 		fail(err)

@@ -50,6 +50,10 @@ jobs:
           cache: true
       - run: go mod verify
       - run: go mod tidy -diff
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
+        with:
+          version-file: .golangci-lint-version
+          install-only: true
       - run: go run ./tools/check
         env:
           # Real SQLite recovery suites share the runner disk. Keep package
