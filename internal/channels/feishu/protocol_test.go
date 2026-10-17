@@ -111,7 +111,7 @@ func TestNativePostNormalizationFormsAndMentions(t *testing.T) {
 		}
 	}
 	message := nativeMessage{Type: "text", Content: `{"text":"@_user_1 asks @_user_10"}`}
-	var mentions []mention
+	var mentions []*mention
 	if err := json.Unmarshal([]byte(`[{"key":"@_user_1","name":"Alice","id":{"open_id":"ou_alice"}},{"key":"@_user_10","name":"Bob","id":{"open_id":"ou_bob"}}]`), &mentions); err != nil {
 		t.Fatal(err)
 	}

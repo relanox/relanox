@@ -13,50 +13,17 @@ import (
 	"github.com/larksuite/oapi-sdk-go/v3/channel/normalize"
 	larktypes "github.com/larksuite/oapi-sdk-go/v3/channel/types"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
 )
 
-type mention struct {
-	Key  string `json:"key"`
-	Name string `json:"name,omitempty"`
-	ID   struct {
-		OpenID string `json:"open_id,omitempty"`
-	} `json:"id"`
-}
+type mention = larkim.MentionEvent
 
+// nativeMessage is the supported projection of a decoded SDK message event.
 type nativeMessage struct {
-	ID        string    `json:"message_id"`
-	ChatID    string    `json:"chat_id"`
-	ChatType  string    `json:"chat_type"`
-	Type      string    `json:"message_type"`
-	Content   string    `json:"content"`
-	CreatedAt string    `json:"create_time"`
-	Mentions  []mention `json:"mentions,omitempty"`
-	RootID    string    `json:"root_id,omitempty"`
-	ParentID  string    `json:"parent_id,omitempty"`
-	ThreadID  string    `json:"thread_id,omitempty"`
-}
-
-type nativeEvent struct {
-	Schema string `json:"schema"`
-	Header struct {
-		ID        string `json:"event_id"`
-		Type      string `json:"event_type"`
-		AppID     string `json:"app_id"`
-		TenantKey string `json:"tenant_key"`
-		Token     string `json:"token"`
-	} `json:"header"`
-	Event struct {
-		Sender struct {
-			Type string `json:"sender_type"`
-			ID   struct {
-				OpenID string `json:"open_id"`
-			} `json:"sender_id"`
-			TenantKey string `json:"tenant_key,omitempty"`
-		} `json:"sender"`
-		Message nativeMessage `json:"message"`
-	} `json:"event"`
+	ID, ChatID, Type, Content, RootID, ThreadID string
+	Mentions                                    []*mention
 }
 
 func equal(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }
@@ -130,20 +97,29 @@ func (c *Channel) webhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Channel) receiveEvent(w http.ResponseWriter, r *http.Request, raw []byte, verification string) {
-	var event nativeEvent
-	if json.Unmarshal(raw, &event) != nil || event.Schema != "2.0" || event.Header.ID == "" {
+	var event larkim.P2MessageReceiveV1
+	if json.Unmarshal(raw, &event) != nil || event.EventV2Base == nil || event.EventV2Base.Header == nil || event.Schema != "2.0" || event.EventV2Base.Header.EventID == "" {
 		w.WriteHeader(400)
 		return
 	}
-	if event.Header.AppID != c.config.AppID || event.Header.TenantKey != c.config.TenantKey || !equal(event.Header.Token, verification) || (event.Event.Sender.TenantKey != "" && event.Event.Sender.TenantKey != c.config.TenantKey) {
+	if event.EventV2Base.Header.AppID != c.config.AppID || event.EventV2Base.Header.TenantKey != c.config.TenantKey || !equal(event.EventV2Base.Header.Token, verification) {
 		w.WriteHeader(401)
 		return
 	}
-	if event.Header.Type != "im.message.receive_v1" {
+	if event.EventV2Base.Header.EventType != "im.message.receive_v1" {
 		w.WriteHeader(200)
 		return
 	}
-	if event.Event.Sender.Type != "user" || !common.Contains(c.account.AllowedSenders, event.Event.Sender.ID.OpenID) {
+	if event.Event == nil || event.Event.Sender == nil || event.Event.Message == nil {
+		w.WriteHeader(400)
+		return
+	}
+	sender := event.Event.Sender
+	if tenant := nativeString(sender.TenantKey); tenant != "" && tenant != c.config.TenantKey {
+		w.WriteHeader(401)
+		return
+	}
+	if nativeString(sender.SenderType) != "user" || !common.Contains(c.account.AllowedSenders, nativeUserID(sender.SenderId)) {
 		w.WriteHeader(200)
 		return
 	}
@@ -188,23 +164,23 @@ func normalizeContent(message nativeMessage, botID string) (string, []larktypes.
 	}
 	text, resources := normalize.ParseContent(message.Type, content)
 	for _, mention := range message.Mentions {
-		if mention.Key == "" {
+		if mention == nil || nativeString(mention.Key) == "" {
 			continue
 		}
-		name := mention.Name
+		name := nativeString(mention.Name)
 		if name == "" {
-			name = mention.ID.OpenID
+			name = nativeUserID(mention.Id)
 		}
 		replacement := "@" + name
-		if mention.ID.OpenID == botID {
+		if nativeUserID(mention.Id) == botID {
 			replacement = ""
 		}
-		text = strings.ReplaceAll(text, mention.Key, replacement)
+		text = strings.ReplaceAll(text, nativeString(mention.Key), replacement)
 	}
 	return strings.TrimSpace(text), resources, nil
 }
 
-func postMentions(body map[string]any, mentions []mention) {
+func postMentions(body map[string]any, mentions []*mention) {
 	for _, field := range []string{"content", "content_v2"} {
 		rows, _ := body[field].([]any)
 		for _, row := range rows {
@@ -213,7 +189,7 @@ func postMentions(body map[string]any, mentions []mention) {
 	}
 }
 
-func postRowMentions(raw any, mentions []mention) {
+func postRowMentions(raw any, mentions []*mention) {
 	row, _ := raw.([]any)
 	for _, rawPart := range row {
 		part, _ := rawPart.(map[string]any)
@@ -227,28 +203,29 @@ func postRowMentions(raw any, mentions []mention) {
 	}
 }
 
-func mentionKey(id string, mentions []mention) string {
+func mentionKey(id string, mentions []*mention) string {
 	for _, mention := range mentions {
-		if mention.ID.OpenID == id && mention.Key != "" {
-			return mention.Key
+		if mention != nil && nativeUserID(mention.Id) == id && nativeString(mention.Key) != "" {
+			return nativeString(mention.Key)
 		}
 	}
 	return ""
 }
 
-func (c *Channel) receive(ctx context.Context, event nativeEvent) error {
-	message := event.Event.Message
+func (c *Channel) receive(ctx context.Context, event larkim.P2MessageReceiveV1) error {
+	message := projectMessage(event.Event.Message)
+	senderID := nativeUserID(event.Event.Sender.SenderId)
 	if !common.Contains([]string{"text", "image", "audio", "media", "file", "post"}, message.Type) {
 		return nil
 	}
-	if message.ID == "" || message.ChatID == "" || event.Event.Sender.ID.OpenID == "" {
+	if message.ID == "" || message.ChatID == "" || senderID == "" {
 		return errors.New("invalid_native_message")
 	}
 	botID, err := c.ensureIdentity(ctx)
 	if err != nil {
 		return err
 	}
-	if event.Event.Sender.ID.OpenID == botID {
+	if senderID == botID {
 		return nil
 	}
 	text, resources, err := normalizeContent(message, botID)
@@ -269,5 +246,5 @@ func (c *Channel) receive(ctx context.Context, event nativeEvent) error {
 			data.ThreadAnchor = message.ID
 		}
 	}
-	return common.Ingest(ctx, c.host, model.IngestInput{Source: model.SourceKey{Channel: model.Feishu, AccountID: c.account.ID, EventID: event.Header.ID}, SenderID: event.Event.Sender.ID.OpenID, Text: text, Attachments: media, Target: model.ReplyTarget{Channel: model.Feishu, AccountID: c.account.ID, ChatID: message.ChatID, ThreadID: message.ThreadID, ReplyToID: message.ID, Data: common.Data(data)}, ReceivedAt: time.Now(), Context: common.Data(map[string]string{"tenantKey": c.config.TenantKey})})
+	return common.Ingest(ctx, c.host, model.IngestInput{Source: model.SourceKey{Channel: model.Feishu, AccountID: c.account.ID, EventID: event.EventV2Base.Header.EventID}, SenderID: senderID, Text: text, Attachments: media, Target: model.ReplyTarget{Channel: model.Feishu, AccountID: c.account.ID, ChatID: message.ChatID, ThreadID: message.ThreadID, ReplyToID: message.ID, Data: common.Data(data)}, ReceivedAt: time.Now(), Context: common.Data(map[string]string{"tenantKey": c.config.TenantKey})})
 }

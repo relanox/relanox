@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/larksuite/oapi-sdk-go/v3/channel/normalize"
 	larktypes "github.com/larksuite/oapi-sdk-go/v3/channel/types"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
@@ -26,17 +25,16 @@ func (c *Channel) downloadResources(ctx context.Context, messageID string, resou
 		if resource.Type == "image" {
 			kind = "image"
 		}
-		endpoint := c.base() + "/open-apis/im/v1/messages/" + escapedID(messageID) + "/resources/" + escapedID(resource.FileKey) + "?type=" + kind
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		request := larkim.NewGetMessageResourceReqBuilder().MessageId(messageID).FileKey(resource.FileKey).Type(kind).Build()
+		response, err := c.imClient(ctx, common.MediaLimit(c.host)).MessageResource.Get(ctx, request, larkcore.WithTenantAccessToken(token))
 		if err != nil {
 			return nil, err
 		}
-		request.Header.Set("Authorization", "Bearer "+token)
-		data, header, err := common.Do(c.options.HTTPClient, request, common.MediaLimit(c.host))
-		if err != nil {
+		if err := nativeError(response.ApiResp, nil); err != nil {
 			return nil, err
 		}
-		mimeType := strings.TrimSpace(strings.Split(header.Get("Content-Type"), ";")[0])
+		data := response.RawBody
+		mimeType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
 		if mimeType == "" || mimeType == "application/octet-stream" {
 			mimeType = map[string]string{"image": "image/jpeg", "audio": "audio/ogg", "video": "video/mp4"}[resource.Type]
 			if mimeType == "" {
@@ -62,9 +60,14 @@ func (c *Channel) uploadImage(ctx context.Context, media model.StoredMedia) (str
 	if err != nil {
 		return "", err
 	}
-	var response larkim.CreateImageResp
-	err = common.Multipart(ctx, c.options.HTTPClient, c.base()+"/open-apis/im/v1/images", http.Header{"Authorization": {"Bearer " + token}}, map[string]string{"image_type": "message"}, "image", media.Reference.FileName, media.Data, &response)
+	kind := "message"
+	body := &larkim.CreateImageReqBody{ImageType: &kind, Image: namedReader{Reader: bytes.NewReader(media.Data), name: media.Reference.FileName}}
+	request := larkim.NewCreateImageReqBuilder().Body(body).Build()
+	response, err := c.imClient(ctx, common.MaxJSONBytes).Image.Create(ctx, request, larkcore.WithTenantAccessToken(token))
 	if err != nil {
+		return "", err
+	}
+	if err := nativeError(response.ApiResp, nil); err != nil {
 		return "", err
 	}
 	if response.Code != 0 {
@@ -112,13 +115,20 @@ func (c *Channel) uploadFile(ctx context.Context, media model.StoredMedia) (stri
 	} else if media.Reference.Kind == model.Video {
 		fileType = "mp4"
 	}
-	fields := map[string]string{"file_type": fileType, "file_name": media.Reference.FileName}
+	body := &larkim.CreateFileReqBody{FileType: &fileType, FileName: &media.Reference.FileName, File: namedReader{Reader: bytes.NewReader(media.Data), name: media.Reference.FileName}}
 	if duration != nil {
-		fields["duration"] = strconv.FormatInt(*duration, 10)
+		nativeDuration := int(*duration)
+		if int64(nativeDuration) != *duration {
+			return "", nil, errors.New("invalid_media_duration")
+		}
+		body.Duration = &nativeDuration
 	}
-	var response larkim.CreateFileResp
-	err = common.Multipart(ctx, c.options.HTTPClient, c.base()+"/open-apis/im/v1/files", http.Header{"Authorization": {"Bearer " + token}}, fields, "file", media.Reference.FileName, media.Data, &response)
+	request := larkim.NewCreateFileReqBuilder().Body(body).Build()
+	response, err := c.imClient(ctx, common.MaxJSONBytes).File.Create(ctx, request, larkcore.WithTenantAccessToken(token))
 	if err != nil {
+		return "", nil, err
+	}
+	if err := nativeError(response.ApiResp, nil); err != nil {
 		return "", nil, err
 	}
 	if response.Code != 0 {
