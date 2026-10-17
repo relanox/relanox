@@ -23,7 +23,10 @@ func (c *Channel) sendMedia(ctx context.Context, client *bot.Bot, input model.Se
 	entities := sdkEntities(caption.Entities)
 	duration := 0
 	if value := input.Media.Reference.DurationMS; value != nil && *value > 0 {
-		duration = int((*value + 999) / 1000)
+		duration = int(*value / 1000)
+		if *value%1000 != 0 {
+			duration++
+		}
 	}
 	switch method {
 	case "sendPhoto":
