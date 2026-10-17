@@ -1,211 +1,105 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 // Licensed under the Apache License, Version 2.0.
-// Go adaptation of muse-gadget-sdk/linux/src/musegadget/noise/noise_xx.py.
+// Muse's Noise XX policy wraps the upstream Noise protocol implementation.
 package musewire
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/ecdh"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/binary"
 	"errors"
+	"io"
+
+	"github.com/flynn/noise"
 )
 
 var errProtocol = errors.New("muse: invalid wire protocol")
 
+var museCipherSuite = noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
+
+// Muse reserves all nonces at and above JavaScript's largest safe integer,
+// unlike Noise's wider uint64 range. An authentication failure kills the session.
 type cipherState struct {
-	aead  cipher.AEAD
-	nonce uint64
+	state *noise.CipherState
 	dead  bool
 }
 
-func newCipher(key []byte) *cipherState {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		panic(err)
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		panic(err)
-	}
-	return &cipherState{aead: aead}
-}
-
 func (s *cipherState) crypt(data, ad []byte, decrypt bool) ([]byte, error) {
-	if s.dead || s.nonce >= 1<<53-1 {
+	if s.dead || s.state == nil || s.state.Nonce() >= 1<<53-1 {
 		s.dead = true
 		return nil, errProtocol
 	}
-	if s.aead == nil {
-		return append([]byte{}, data...), nil
-	}
-	var iv [12]byte
-	binary.BigEndian.PutUint64(iv[4:], s.nonce)
-	s.nonce++
-	if !decrypt {
-		return s.aead.Seal(nil, iv[:], data, ad), nil
-	}
-	plain, err := s.aead.Open(nil, iv[:], data, ad)
-	if err != nil {
-		s.dead = true
-		return nil, errProtocol
-	}
-	return plain, nil
-}
-
-func mac(key, data []byte) []byte {
-	h := hmac.New(sha256.New, key)
-	_, _ = h.Write(data)
-	return h.Sum(nil)
-}
-
-func derive(key, input []byte) ([]byte, []byte) {
-	temp := mac(key, input)
-	first := mac(temp, []byte{1})
-	return first, mac(temp, append(append([]byte{}, first...), 2))
-}
-
-type handshake struct {
-	h, ck  []byte
-	cipher *cipherState
-	e      *ecdh.PrivateKey
-	re     []byte
-	phase  int
-}
-
-func newHandshake() *handshake {
-	h := make([]byte, 32)
-	copy(h, "Noise_XX_25519_AESGCM_SHA256")
-	s := &handshake{h: h, ck: append([]byte{}, h...), cipher: &cipherState{}}
-	s.mixHash(nil)
-	return s
-}
-
-func (s *handshake) mixHash(data []byte) {
-	h := sha256.New()
-	_, _ = h.Write(s.h)
-	_, _ = h.Write(data)
-	s.h = h.Sum(nil)
-}
-
-func (s *handshake) mixKey(data []byte) {
-	var key []byte
-	s.ck, key = derive(s.ck, data)
-	s.cipher = newCipher(key)
-}
-
-func (s *handshake) crypt(data []byte, decrypt bool) ([]byte, error) {
-	out, err := s.cipher.crypt(data, s.h, decrypt)
-	if err != nil {
-		s.phase = -1
-		return nil, err
-	}
+	var out []byte
+	var err error
 	if decrypt {
-		s.mixHash(data)
+		out, err = s.state.Decrypt(nil, ad, data)
 	} else {
-		s.mixHash(out)
+		out, err = s.state.Encrypt(nil, ad, data)
+	}
+	if err != nil {
+		s.dead = true
+		return nil, errProtocol
 	}
 	return out, nil
 }
 
-func (s *handshake) message1(key *ecdh.PrivateKey) ([]byte, error) {
+type handshake struct {
+	state *noise.HandshakeState
+	phase int
+}
+
+// A fresh static key is scoped to this connection, as in the Muse SDK.
+func newHandshake(random io.Reader) (*handshake, error) {
+	key, err := noise.DH25519.GenerateKeypair(random)
+	if err != nil {
+		return nil, err
+	}
+	state, err := noise.NewHandshakeState(noise.Config{
+		CipherSuite: museCipherSuite, Pattern: noise.HandshakeXX,
+		Initiator: true, StaticKeypair: key, Random: random,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &handshake{state: state}, nil
+}
+
+func (s *handshake) message1() ([]byte, error) {
 	if s.phase != 0 {
 		return nil, errProtocol
 	}
-	var err error
-	if key == nil {
-		key, err = ecdh.X25519().GenerateKey(rand.Reader)
-		if err != nil {
-			return nil, err
-		}
-	}
-	s.e = key
-	pub := key.PublicKey().Bytes()
-	s.mixHash(pub)
-	if _, err = s.crypt(nil, false); err != nil {
-		return nil, err
+	s.phase = -1
+	out, _, _, err := s.state.WriteMessage(nil, nil)
+	if err != nil {
+		return nil, errProtocol
 	}
 	s.phase = 1
-	return pub, nil
-}
-
-func dh(key *ecdh.PrivateKey, raw []byte) ([]byte, error) {
-	pub, err := ecdh.X25519().NewPublicKey(raw)
-	if err != nil {
-		return nil, errProtocol
-	}
-	shared, err := key.ECDH(pub)
-	if err != nil {
-		return nil, errProtocol
-	}
-	return shared, nil
+	return out, nil
 }
 
 func (s *handshake) message2(msg []byte) error {
-	if s.phase != 1 || len(msg) < 96 {
-		s.phase = -1
+	if s.phase != 1 {
 		return errProtocol
 	}
 	s.phase = -1
-	s.re = append([]byte{}, msg[:32]...)
-	s.mixHash(s.re)
-	shared, err := dh(s.e, s.re)
-	if err != nil {
-		return err
-	}
-	s.mixKey(shared)
-	remote, err := s.crypt(msg[32:80], true)
-	if err != nil {
-		return err
-	}
-	shared, err = dh(s.e, remote)
-	if err != nil {
-		return err
-	}
-	s.mixKey(shared)
-	if _, err = s.crypt(msg[80:], true); err != nil {
-		return err
+	if _, _, _, err := s.state.ReadMessage(nil, msg); err != nil {
+		return errProtocol
 	}
 	s.phase = 2
 	return nil
 }
 
-func (s *handshake) finish(key *ecdh.PrivateKey) (msg []byte, send, receive *cipherState, err error) {
+func (s *handshake) finish() ([]byte, *cipherState, *cipherState, error) {
 	if s.phase != 2 {
 		return nil, nil, nil, errProtocol
 	}
 	s.phase = -1
-	if key == nil {
-		key, err = ecdh.X25519().GenerateKey(rand.Reader)
-		if err != nil {
-			return
-		}
-	}
-	msg, err = s.crypt(key.PublicKey().Bytes(), false)
+	msg, send, receive, err := s.state.WriteMessage(nil, nil)
 	if err != nil {
-		return
+		return nil, nil, nil, errProtocol
 	}
-	shared, e := dh(key, s.re)
-	if e != nil {
-		err = e
-		return
-	}
-	s.mixKey(shared)
-	tail, e := s.crypt(nil, false)
-	if e != nil {
-		err = e
-		return
-	}
-	msg = append(msg, tail...)
-	k1, k2 := derive(s.ck, nil)
-	send, receive = newCipher(k1), newCipher(k2)
-	clear(s.ck)
-	clear(s.h)
-	s.e = nil
-	s.re = nil
 	s.phase = 3
-	return
+	s.state = nil
+	return msg, &cipherState{state: send}, &cipherState{state: receive}, nil
 }
+
+// Start production handshakes with cryptographic entropy, never reusable keys.
+func freshHandshake() (*handshake, error) { return newHandshake(rand.Reader) }

@@ -2,7 +2,6 @@ package musewire
 
 import (
 	"context"
-	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/flynn/noise"
 )
 
 // Real TLS HTTP/WebSocket peers exercise production request generation, token
@@ -312,82 +312,50 @@ func peerChat(t *testing.T, w http.ResponseWriter, r *http.Request, onBody func(
 	}
 }
 
-// Responder flow follows the official NoiseXXResponder. Fixed external golden
-// fixtures above independently validate the common crypto primitives.
+// This peer delegates only the external Noise protocol to the upstream library.
+// The fixed official Python SDK bytes in crypto_test independently establish
+// compatibility; this peer exercises HTTP/WebSocket, cancellation and receipts.
 func peerHandshake(ctx context.Context, conn *websocket.Conn) (send, receive *cipherState, err error) {
+	static, err := noise.DH25519.GenerateKeypair(rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+	peer, err := noise.NewHandshakeState(noise.Config{
+		CipherSuite: noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256),
+		Pattern:     noise.HandshakeXX, StaticKeypair: static,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
 	kind, m1, err := conn.Read(ctx)
 	if err != nil {
-		return
+		return nil, nil, err
 	}
 	if kind != websocket.MessageBinary || len(m1) != 32 {
 		return nil, nil, errProtocol
 	}
-	s := newHandshake()
-	s.mixHash(m1)
-	if _, err = s.crypt(nil, true); err != nil {
-		return
+	if _, _, _, err = peer.ReadMessage(nil, m1); err != nil {
+		return nil, nil, err
 	}
-	e, e1 := ecdh.X25519().GenerateKey(rand.Reader)
-	if e1 != nil {
-		err = e1
-		return
-	}
-	static, e1 := ecdh.X25519().GenerateKey(rand.Reader)
-	if e1 != nil {
-		err = e1
-		return
-	}
-	pub := e.PublicKey().Bytes()
-	s.mixHash(pub)
-	shared, e1 := dh(e, m1)
-	if e1 != nil {
-		err = e1
-		return
-	}
-	s.mixKey(shared)
-	encStatic, e1 := s.crypt(static.PublicKey().Bytes(), false)
-	if e1 != nil {
-		err = e1
-		return
-	}
-	shared, e1 = dh(static, m1)
-	if e1 != nil {
-		err = e1
-		return
-	}
-	s.mixKey(shared)
-	tail, e1 := s.crypt(nil, false)
-	if e1 != nil {
-		err = e1
-		return
-	}
-	m2 := append(append(append([]byte{}, pub...), encStatic...), tail...)
-	if err = conn.Write(ctx, websocket.MessageBinary, m2); err != nil {
-		return
-	}
-	_, m3, err := conn.Read(ctx)
+	m2, _, _, err := peer.WriteMessage(nil, nil)
 	if err != nil {
-		return
+		return nil, nil, err
 	}
-	if len(m3) < 64 {
+	if err = conn.Write(ctx, websocket.MessageBinary, m2); err != nil {
+		return nil, nil, err
+	}
+	kind, m3, err := conn.Read(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if kind != websocket.MessageBinary {
 		return nil, nil, errProtocol
 	}
-	remote, e1 := s.crypt(m3[:48], true)
-	if e1 != nil {
-		err = e1
-		return
+	_, initiatorSend, responderSend, err := peer.ReadMessage(nil, m3)
+	if err != nil {
+		return nil, nil, err
 	}
-	shared, e1 = dh(e, remote)
-	if e1 != nil {
-		err = e1
-		return
-	}
-	s.mixKey(shared)
-	if _, err = s.crypt(m3[48:], true); err != nil {
-		return
-	}
-	k1, k2 := derive(s.ck, nil)
-	return newCipher(k2), newCipher(k1), nil
+	return &cipherState{state: responderSend}, &cipherState{state: initiatorSend}, nil
 }
 
 func peerRequestBody(data []byte) ([]byte, error) {

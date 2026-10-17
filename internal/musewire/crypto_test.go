@@ -5,6 +5,8 @@ import (
 	"crypto/ecdh"
 	"encoding/hex"
 	"testing"
+
+	"github.com/flynn/noise"
 )
 
 // Fixture provenance: executed the official SDK's NoiseXXInitiator and
@@ -14,11 +16,14 @@ import (
 // 32..63 (responder e), 64..95 (responder s), 96..127 (initiator s).
 // Protects wire compatibility (XX token order, hash, HKDF and AES nonce endian).
 // The archived TS tests mock MuseClient and do not exercise encrypted traffic.
-// No production-only testing seam: the fixed-key helpers are private handshake
-// operations, and public SendMessage always generates fresh cryptographic keys.
+// The production key factory consumes cryptographic entropy; fixed input here
+// selects the published fixture keys without replacing protocol operations.
 func TestOfficialNoiseFixture(t *testing.T) {
-	h := newHandshake()
-	m1, err := h.message1(fixedKey(t, 0))
+	h, err := newHandshake(bytes.NewReader(append(fixedKey(t, 96).Bytes(), fixedKey(t, 0).Bytes()...)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m1, err := h.message1()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +34,7 @@ func TestOfficialNoiseFixture(t *testing.T) {
 	if err = h.message2(m2); err != nil {
 		t.Fatal(err)
 	}
-	m3, send, receive, err := h.finish(fixedKey(t, 96))
+	m3, send, receive, err := h.finish()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,15 +54,18 @@ func TestOfficialNoiseFixture(t *testing.T) {
 }
 
 func TestNoiseRejectsTamperingAndPoisonsCipher(t *testing.T) {
-	c := newCipher(make([]byte, 32))
+	c := &cipherState{state: noise.UnsafeNewCipherState(museCipherSuite, [32]byte{}, 0)}
 	if _, err := c.crypt(bytes.Repeat([]byte{1}, 32), nil, true); err == nil {
 		t.Fatal("accepted unauthenticated ciphertext")
 	}
 	if _, err := c.crypt(nil, nil, false); err == nil {
 		t.Fatal("reused poisoned cipher")
 	}
-	h := newHandshake()
-	if _, err := h.message1(fixedKey(t, 0)); err != nil {
+	h, err := freshHandshake()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.message1(); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.message2(make([]byte, 96)); err == nil {
@@ -85,4 +93,21 @@ func unhex(t *testing.T, s string) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// The Muse SDK caps transport nonces below 2^53-1 and poisons failed sessions.
+// Noise itself permits larger nonces; the golden handshake does not hit this
+// boundary. Its public restoration API establishes the external boundary state.
+func TestMuseNonceLimit(t *testing.T) {
+	c := &cipherState{state: noise.UnsafeNewCipherState(museCipherSuite, [32]byte{}, 1<<53-2)}
+	if _, err := c.crypt([]byte("last"), nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.crypt([]byte("exhausted"), nil, false); err == nil {
+		t.Fatal("accepted exhausted Muse nonce")
+	}
+	c.state.SetNonce(0)
+	if _, err := c.crypt(nil, nil, false); err == nil {
+		t.Fatal("revived exhausted cipher")
+	}
 }

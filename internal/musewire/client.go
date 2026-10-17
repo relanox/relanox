@@ -151,8 +151,11 @@ func connect(ctx context.Context, client *http.Client, creds credentials, vm vm)
 			_ = conn.CloseNow()
 		}
 	}()
-	h := newHandshake()
-	m1, err := h.message1(nil)
+	h, err := freshHandshake()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	m1, err := h.message1()
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -169,7 +172,7 @@ func connect(ctx context.Context, client *http.Client, creds credentials, vm vm)
 	if err = h.message2(m2); err != nil {
 		return nil, nil, nil, err
 	}
-	m3, send, receive, err := h.finish(nil)
+	m3, send, receive, err := h.finish()
 	if err != nil {
 		return nil, nil, nil, err
 	}
