@@ -25,3 +25,8 @@ deploy/relanox.json
 *.db-shm
 *.db-wal
 /relanox.json
+/secrets/
+/state/
+/relanox.json.backup-*
+/relanox.json.lock
+*.secret

@@ -129,5 +129,6 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	go.mau.fi/util v0.11.0 // indirect
 	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
+	golang.org/x/term v0.47.0
 	maunium.net/go/mautrix v0.32.0
 )
