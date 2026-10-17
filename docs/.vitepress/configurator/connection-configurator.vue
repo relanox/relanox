@@ -175,6 +175,7 @@ async function showDetails(): Promise<void> {
                   >
                     <option value="dot">dot</option>
                     <option value="grok">Grok</option>
+                    <option value="muse">Muse</option>
                   </select>
                 </div>
                 <div class="agent-auth-fields">
@@ -203,8 +204,8 @@ async function showDetails(): Promise<void> {
                             '在 dot 选择 OAuth，在 Relanox 授权页面输入此密码。'
                           )
                         : text(
-                            'Copy the complete address from the setup guide into Grok. You do not need to enter this password separately.',
-                            '将接入教程中的完整地址复制到 Grok，无需另外填写密码。'
+                            'Copy the complete address from the setup guide into your Agent. You do not need to enter this password separately.',
+                            '将接入教程中的完整地址复制到 Agent，无需另外填写密码。'
                           )
                     }}
                   </p>

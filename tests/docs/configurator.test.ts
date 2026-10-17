@@ -237,7 +237,7 @@ describe('connection configurator production contracts', () => {
     })
   })
 
-  it.each(['dot', 'grok'] as const)(
+  it.each(['dot', 'grok', 'muse'] as const)(
     'requires a reachable HTTPS origin for %s even with outbound channels',
     async (agentType) => {
       const state = completedState()
@@ -334,23 +334,39 @@ describe('connection configurator production contracts', () => {
     ])
   })
 
-  it('generates all fifteen native accounts accepted by the production validator', async () => {
+  // Guard the downloadable config: missing new plugin fields or a stale catalog
+  // Break real setup despite each plugin passing in isolation. No additional seam.
+  it('generates all sixteen native accounts and three agents accepted by the production validator', async () => {
     const state = completedState()
     const grok = addAgent(state)
     grok.type = 'grok'
     grok.mcpToken = generateMcpToken()
+    const muse = addAgent(state)
+    muse.type = 'muse'
+    muse.mcpToken = generateMcpToken()
     const config = buildConfig(state)
     expect(validateDraft(state)).toEqual([])
-    expect((await validateApp(config)).relay.accounts).toHaveLength(15)
+    expect((await validateApp(config)).relay.accounts).toHaveLength(16)
     expect(config.relay.endpoints.map((entry) => entry.agent)).toEqual([
       'dot',
-      'grok'
+      'grok',
+      'muse'
     ])
     expect(config.relay.endpoints[0]?.config.mcp).toEqual({
       token: { env: 'RELANOX_AGENT_1_MCP_TOKEN' },
       auth: 'oauth'
     })
     expect(config.relay.endpoints[0]?.config).not.toHaveProperty('callback')
+    expect(config.relay.endpoints[2]?.config).toEqual({
+      mcp: { token: { env: 'RELANOX_AGENT_3_MCP_TOKEN' }, auth: 'path' },
+      credentialsDirectory: { env: 'RELANOX_AGENT_3_CREDENTIALS_DIRECTORY' }
+    })
+    expect(connectionDetails(state)[2]?.mcpUrl).toBe(
+      `https://relay.test.example:8443/agents/muse/mcp/agent-3/${muse.mcpToken}`
+    )
+    expect(
+      config.relay.accounts.find((entry) => entry.channel === 'wechat')?.config
+    ).toMatchObject({ botToken: { env: 'WECHAT_BOT_TOKEN' } })
     expect(
       config.relay.accounts.find((entry) => entry.channel === 'googlechat')
         ?.config
@@ -476,7 +492,7 @@ describe('connection configurator production contracts', () => {
     duplicate.threadId = '42'
     expect(validateDraft(state)).toEqual([])
     expect((await validateApp(buildConfig(state))).relay.bindings).toHaveLength(
-      16
+      17
     )
   })
 

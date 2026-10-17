@@ -20,6 +20,7 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
     ['Slack', 'slack'],
     [label('Feishu / Lark', '飞书 / Lark'), 'feishu'],
     [label('WeCom', '企业微信'), 'wecom'],
+    [label('WeChat', '微信'), 'wechat'],
     [label('DingTalk', '钉钉'), 'dingtalk'],
     ['QQ', 'qq'],
     ['Microsoft Teams', 'msteams'],

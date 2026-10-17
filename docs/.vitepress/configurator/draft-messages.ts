@@ -12,8 +12,8 @@ const messages: Record<string, Localized> = {
     zh: '填写公开 HTTPS 地址，不包含路径。'
   },
   agentPublicHost: {
-    en: 'dot and Grok need a public HTTPS address to reach Relanox. Enter your deployed service address.',
-    zh: 'dot 和 Grok 需要公开 HTTPS 地址来访问 Relanox，请填写部署后的服务地址。'
+    en: 'dot, Grok and Muse need a public HTTPS address to reach Relanox. Enter your deployed service address.',
+    zh: 'dot、Grok 和 Muse 需要公开 HTTPS 地址来访问 Relanox，请填写部署后的服务地址。'
   },
   duplicateChat: {
     en: 'This chat and thread are already bound. Edit the existing binding or choose another chat.',

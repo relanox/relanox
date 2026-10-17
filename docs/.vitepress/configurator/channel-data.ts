@@ -96,6 +96,18 @@ export const channelData = [
     }
   },
   {
+    id: 'wechat',
+    chatExample: 'user-id@im.wechat',
+    senderExample: 'user-id@im.wechat',
+    defaults: {
+      apiBaseUrl: 'https://ilinkai.weixin.qq.com',
+      botId: 'bot-id@im.bot',
+      botToken: { env: 'WECHAT_BOT_TOKEN' }
+    },
+    webhook: false,
+    name: { en: 'wechat', zh: 'wechat' }
+  },
+  {
     id: 'dingtalk',
     chatExample: 'staff-user-id',
     senderExample: '$:LWCP_v1:opaque-platform-sender-id',

@@ -214,6 +214,12 @@ function endpointConfig(agent: AgentState): Record<string, Json> {
       routineAuthorization: { env: `${prefix}_ROUTINE_AUTHORIZATION` }
     }
   }
+  if (agent.type === 'muse') {
+    return {
+      mcp,
+      credentialsDirectory: { env: `${prefix}_CREDENTIALS_DIRECTORY` }
+    }
+  }
   return { mcp }
 }
 
@@ -498,7 +504,7 @@ export function connectionDetails(
     id: agent.id,
     mcpUrl: !state.publicHost.trim()
       ? ''
-      : `${publicOrigin(state.publicHost)}/agents/${agent.type}/mcp/${agent.id}${agent.type === 'grok' && agent.mcpToken ? `/${encodeURIComponent(agent.mcpToken)}` : ''}`,
+      : `${publicOrigin(state.publicHost)}/agents/${agent.type}/mcp/${agent.id}${agent.type !== 'dot' && agent.mcpToken ? `/${encodeURIComponent(agent.mcpToken)}` : ''}`,
     tokenEnv: `RELANOX_${agent.id.replaceAll('-', '_').toUpperCase()}_MCP_TOKEN`,
     token: agent.mcpToken,
     auth: agent.type === 'dot' ? 'oauth' : 'path'

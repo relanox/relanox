@@ -1,4 +1,5 @@
 export const fieldLabels: Record<string, [string, string]> = {
+  apiBaseUrl: ['API base URL', 'API 地址'],
   botToken: ['Bot token environment variable', '机器人令牌环境变量'],
   webhookSecret: [
     'Webhook secret environment variable',
@@ -76,6 +77,10 @@ export const channelSetup: Record<string, [string, string]> = {
   wecom: [
     'Create an intelligent robot and obtain its bot ID. Choose WebSocket with a secret, or HTTP callback with Token and EncodingAESKey; use platform sender and chat IDs.',
     '创建智能机器人并获取 bot ID，选择使用密钥的 WebSocket，或使用 Token 和 EncodingAESKey 的 HTTP 回调，填写平台发送者和会话 ID。'
+  ],
+  wechat: [
+    'Run wechat-login and scan the QR code in WeChat. Copy the returned bot ID, user ID and API base URL, and load the saved token into the service environment.',
+    '运行 wechat-login，用微信扫描二维码。填写返回的机器人 ID、用户 ID 和 API 地址，将保存的令牌加载到服务环境。'
   ],
   dingtalk: [
     'Create a DingTalk app with Stream delivery and obtain the client ID and robot code. Copy the complete sender and conversation IDs from events.',
