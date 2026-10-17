@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import https from 'node:https'
 import dns from 'node:dns/promises'
 import { request as httpRequest, createServer } from 'node:http'
@@ -78,6 +79,12 @@ export async function peer(): Promise<{
   ): void
   token(this: void, code: number, body: Json): void
   holdToken(this: void): () => void
+  holdBody(
+    this: void,
+    path: string,
+    body?: Json | Uint8Array,
+    code?: number
+  ): () => void
   keys(this: void, value: Json): void
   disconnect(this: void, path: string): void
   close(this: void): Promise<void>
@@ -87,7 +94,12 @@ export async function peer(): Promise<{
 
   const routes = new Map<
     string,
-    { status: number; body: Json | Uint8Array; headers: Record<string, string> }
+    {
+      status: number
+      body: Json | Uint8Array
+      headers: Record<string, string>
+      wait?: Promise<void>
+    }
   >()
 
   let status = 200
@@ -124,7 +136,7 @@ export async function peer(): Promise<{
       return
     }
     response.setHeader('content-type', 'application/json')
-    if (path === '/oauth2/v3/certs') {
+    if (path === '/oauth2/v1/certs') {
       response.end(JSON.stringify(jwks))
       return
     }
@@ -137,11 +149,19 @@ export async function peer(): Promise<{
     const route = routes.get(path)
     if (route) {
       response.writeHead(route.status, route.headers)
-      response.end(
+
+      const data =
         route.body instanceof Uint8Array
           ? route.body
           : JSON.stringify(route.body)
-      )
+
+      if (route.wait) {
+        response.write(data)
+        await route.wait
+        response.end()
+      } else {
+        response.end(data)
+      }
       return
     }
     response.writeHead(status, headers)
@@ -154,9 +174,7 @@ export async function peer(): Promise<{
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address() as AddressInfo
   interceptMedia()
   const destination = `http://127.0.0.1:${address.port}`
@@ -214,6 +232,16 @@ export async function peer(): Promise<{
       tokenWait = new Promise<void>((resolve) => {
         release = resolve
       })
+      return release
+    },
+    holdBody(path, body = {}, code = 503): () => void {
+      let release: () => void = () => {}
+
+      const wait = new Promise<void>((resolve) => {
+        release = resolve
+      })
+
+      routes.set(path, { status: code, body, headers: {}, wait })
       return release
     },
     keys(value: Json): void {
@@ -410,9 +438,7 @@ export async function webhook(core: CoreRuntime): Promise<{
     void receive(incoming, response).catch(() => response.destroy())
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address() as AddressInfo
   return {
     async post(incoming): Promise<Response> {

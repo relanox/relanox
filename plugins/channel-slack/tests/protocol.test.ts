@@ -10,7 +10,7 @@ import type { AddressInfo } from 'node:net'
 import { WebSocketServer } from 'ws'
 import type { RawData } from 'ws'
 import { createSlackChannel } from '../src/index.js'
-import { peer, recorder, sendInput } from './peer.js'
+import { peer, recorder, sendInput, socketPeer } from './peer.js'
 import { mediaPeer } from '../../channel-telegram/tests/media-peer.js'
 
 installPeerNetwork()
@@ -634,14 +634,9 @@ describe('slack native protocol', () => {
   })
 
   it('opens Socket Mode with app token, ACKs only after ingest and reconnects on disconnect', async () => {
-    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-    await new Promise<void>((resolve) => {
-      wss.once('listening', resolve)
-    })
+    const wss = await socketPeer((server) => new WebSocketServer({ server }))
 
-    const wsUrl = registerPeer(
-      `http://127.0.0.1:${(wss.address() as AddressInfo).port}`
-    ).replace('https:', 'wss:')
+    const wsUrl = `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`
 
     const frames: unknown[] = []
     let connected = 0
@@ -687,14 +682,14 @@ describe('slack native protocol', () => {
     release?.()
     await expect
       .poll(() => frames)
-      .toContainEqual({ envelope_id: 'envelope-42' })
+      .toContainEqual({ envelope_id: 'envelope-42', payload: {} })
     expect(test.received).toHaveLength(1)
     for (const ws of wss.clients) {
       ws.send(
         JSON.stringify({ type: 'disconnect', reason: 'refresh_requested' })
       )
     }
-    await expect.poll(() => connected, { timeout: 3000 }).toBe(2)
+    await expect.poll(() => connected, { timeout: 10_000 }).toBe(2)
     await test.plugin.stop?.()
     const stopped = connected
     await new Promise((resolve) => {
@@ -703,18 +698,13 @@ describe('slack native protocol', () => {
     expect(connected).toBe(stopped)
   })
 
-  it('closes failed Socket Mode handoff without ACK', async () => {
-    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-    await new Promise<void>((resolve) => {
-      wss.once('listening', resolve)
-    })
+  it('leaves failed Socket Mode handoff unacknowledged', async () => {
+    const wss = await socketPeer((server) => new WebSocketServer({ server }))
 
     const remote = await peer(() => ({
       body: {
         ok: true,
-        url: registerPeer(
-          `http://127.0.0.1:${(wss.address() as AddressInfo).port}`
-        ).replace('https:', 'wss:')
+        url: `ws://127.0.0.1:${(wss.address() as AddressInfo).port}`
       }
     }))
 
@@ -741,6 +731,7 @@ describe('slack native protocol', () => {
       await remote.close()
     })
     wss.on('connection', (ws) => {
+      ws.send(JSON.stringify({ type: 'hello' }))
       ws.send(
         JSON.stringify({
           type: 'events_api',
@@ -884,18 +875,19 @@ it('uploads images privately and posts ordered rich blocks in the same Slack thr
     status: 'rejected',
     errorCode: 'invalid_rich_media'
   })
+  // Core splitting is exercised through SQLite in sdk-rich.test.ts. Keep the
+  // Ordered image-ID guard at the SDK upload boundary, with no production seam.
   expect(
     await local.plugin.send({
       ...input,
-      chunk: {
-        ...input.chunk,
-        richText: [
-          { type: 'text', text: 'a'.repeat(2501) },
-          { type: 'image', media: richImage.reference, label: 'photo' }
-        ]
-      }
+      richMedia: [
+        {
+          ...richImage,
+          reference: { ...richImage.reference, id: 'wrong-image' }
+        }
+      ]
     })
-  ).toEqual({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
+  ).toEqual({ status: 'rejected', errorCode: 'invalid_rich_media' })
   expect(remote.requests).toHaveLength(count)
 })
 

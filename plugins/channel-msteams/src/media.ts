@@ -1,7 +1,6 @@
 import {
   downloadMedia,
   mediaKind,
-  mediaBlob,
   MediaDownloadError
 } from '@relanox/channel-media'
 import type {
@@ -13,12 +12,13 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 import type { TeamsConfig } from './config.js'
-import { accessToken, invalidateAccessToken } from './client.js'
-import type { activitySchema } from './schemas.js'
+import type { TeamsClient } from './native.js'
+import type { Activity, Attachment } from '@microsoft/teams.api'
 import { request } from './io.js'
 
 const consentSchema = z.object({
   phase: z.enum(['posting', 'waiting', 'accept', 'decline', 'uploaded']),
+  offset: z.number().int().nonnegative().optional(),
   conversationId: z.string(),
   userId: z.string(),
   botId: z.string(),
@@ -89,7 +89,7 @@ export async function acceptConsent(
 }
 
 export type PreparedAttachment = {
-  readonly attachment?: Json
+  readonly attachment?: Attachment
   readonly outcome?: SendResult
   readonly consentKey?: string
 }
@@ -107,7 +107,7 @@ export async function prepareAttachment(
   if (!input.media) {
     return { outcome: { status: 'rejected', errorCode: 'missing_media' } }
   }
-  const { kind, fileName, mimeType, size } = input.media.reference
+  const { kind, fileName, size } = input.media.reference
   if (usesImageAttachment(kind, input.media.data.byteLength, personal)) {
     return imageAttachment(input, host)
   }
@@ -197,38 +197,10 @@ export async function prepareAttachment(
     }
   }
   if (state.phase !== 'uploaded') {
-    const response = await request(
-      url,
-      {
-        method: 'PUT',
-        headers: {
-          'content-type': mimeType,
-          'content-range': `bytes 0-${size - 1}/${size}`
-        },
-        body: mediaBlob(input.media)
-      },
-      input.signal
-    )
-
-    if (!response.ok) {
-      return {
-        outcome: {
-          status: uploadStatus(response.status),
-          errorCode: 'file_upload_failed'
-        }
-      }
+    const outcome = await uploadFile(host, key, input, url)
+    if (outcome) {
+      return { outcome }
     }
-    await host.state.compareAndSet({
-      key,
-      expectedVersion: entry.version,
-      value: {
-        conversationId: state.conversationId,
-        userId: state.userId,
-        botId: state.botId,
-        uploadInfo: info,
-        phase: 'uploaded'
-      }
-    })
   }
   return {
     attachment: {
@@ -238,6 +210,81 @@ export async function prepareAttachment(
       content: { uniqueId: info.uniqueId, fileType: info.fileType }
     }
   }
+}
+
+// OneDrive upload sessions require sequential fragments below 60 MiB and
+// Multiples of 320 KiB (except the final fragment). Ten MiB satisfies both.
+// https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession
+async function uploadFile(
+  host: ChannelHost,
+  key: string,
+  input: SendInput,
+  url: URL
+): Promise<SendResult | undefined> {
+  const media = input.media
+  if (!media) {
+    throw new Error('missing_media')
+  }
+  const size = media.data.byteLength
+  const fragmentBytes = 10 * 1024 * 1024
+  let entry = await host.state.get(key)
+  if (!entry) {
+    throw new Error('missing_consent_state')
+  }
+  let state = consentSchema.parse(entry.value)
+  let offset = state.offset ?? 0
+  while (offset < size) {
+    const end = Math.min(size, offset + fragmentBytes)
+
+    const response = await request(
+      url,
+      {
+        method: 'PUT',
+        headers: {
+          'content-type': media.reference.mimeType,
+          'content-range': `bytes ${offset}-${end - 1}/${size}`
+        },
+        body: new Blob([media.data.slice(offset, end)])
+      },
+      input.signal
+    )
+
+    await response.body?.cancel()
+    if (!response.ok) {
+      return {
+        status: uploadStatus(response.status),
+        errorCode: 'file_upload_failed'
+      }
+    }
+    const complete = end === size && response.status !== 202
+    if (end === size && !complete) {
+      return { status: 'retryable', errorCode: 'file_upload_incomplete' }
+    }
+
+    const result = await host.state.compareAndSet({
+      key,
+      expectedVersion: entry.version,
+      value: {
+        conversationId: state.conversationId,
+        userId: state.userId,
+        botId: state.botId,
+        ...(state.uploadInfo ? { uploadInfo: state.uploadInfo } : {}),
+        offset: end,
+        phase: complete ? 'uploaded' : 'accept'
+      }
+    })
+
+    if (result.status !== 'updated') {
+      throw new Error('file_consent_contention')
+    }
+    offset = end
+    entry = await host.state.get(key)
+    if (!entry) {
+      throw new Error('missing_consent_state')
+    }
+    state = consentSchema.parse(entry.value)
+  }
+  return undefined
 }
 
 function usesImageAttachment(
@@ -289,9 +336,10 @@ export async function consentPosted(
 }
 
 export async function downloadAttachments(
-  activity: z.infer<typeof activitySchema>,
+  activity: Extract<Activity, { type: 'message' }>,
   host: ChannelHost,
-  config: TeamsConfig
+  config: TeamsConfig,
+  client: TeamsClient
 ): Promise<MediaUpload[]> {
   const attachments = []
   const signal = AbortSignal.timeout(120_000)
@@ -317,15 +365,14 @@ export async function downloadAttachments(
     const origin = new URL(url).origin
     const trusted = config.trustedServiceOrigins.includes(origin)
 
-    const token =
-      !file && trusted ? await accessToken(config, signal) : undefined
+    const token = !file && trusted ? await client.accessToken() : undefined
 
     if (token !== undefined && typeof token !== 'string') {
       throw new Error('media_oauth_unavailable')
     }
 
     const downloaded = await downloadMedia(url, {
-      maxBytes: host.maxMediaBytes ?? 25 * 1024 * 1024,
+      maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
       signal,
       trustedOrigins: [...config.trustedServiceOrigins, ...config.mediaOrigins],
       ...(typeof token === 'string'
@@ -337,7 +384,7 @@ export async function downloadAttachments(
         error instanceof MediaDownloadError &&
         error.status === 401
       ) {
-        invalidateAccessToken(config, token)
+        client.invalidate()
       }
       throw error
     })
@@ -396,7 +443,7 @@ async function imageAttachment(
 export async function richAttachment(
   input: SendInput,
   host: ChannelHost
-): Promise<Json | undefined> {
+): Promise<Attachment | undefined> {
   if (!input.chunk.richText) {
     return undefined
   }

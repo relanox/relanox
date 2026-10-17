@@ -20,6 +20,8 @@ Use event `source.userId` in **Allowed user IDs**. For a private conversation us
 
 Enable Webhooks and set the URL to `https://relay.example.com/channels/line-main/webhook`. Start Relanox, then use the platform’s webhook verification. Enable webhook redelivery if you want LINE to retry failed event delivery.
 
+Relanox uses LINE's maintained official Node.js SDK for webhook signature verification, account identity and message delivery. Core keeps the durable delivery retry key. An in-flight SDK request can finish after cancellation, so its outcome may remain unknown until a retry returns LINE's accepted-request receipt.
+
 ## Send your first message
 
 Send “Hello” from an allowed user to the Official Account or into the bound group/room. The reply is sent by the Official Account to that conversation.
@@ -28,7 +30,7 @@ When the Agent supplies `reply.requestId`, text replies quote that incoming mess
 
 ## Images and files
 
-Send images, audio, videos or files with your question. Image, audio and video replies need the public address; follow [Media](../media.md) to expose it over HTTPS. Use JPEG/PNG images up to 10 MB. Images larger than 1 MB (1,000,000 bytes) and every MP4 video require a JPEG/PNG preview up to 1 MB. Generated audio uses MP3/M4A with a duration. Audio/video can be up to 200 MB, within your relay limit.
+Send images, audio, videos or files with your question. Image, audio and video replies need the public address; follow [Media](../media.md) to expose it over HTTPS. Relanox publishes the stored media and sends its URL through the SDK. LINE enforces its current size and format limits for ordinary media and Flex images; Relanox keeps its configured budget (100 MiB by default). Audio needs a duration and video needs a preview. Images use a supplied preview when present, otherwise their original URL; supply a preview when LINE requires one for the content. Incoming downloads remain bounded and reject unsafe destinations before storage.
 
 ## Troubleshooting
 

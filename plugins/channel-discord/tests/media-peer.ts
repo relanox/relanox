@@ -1,4 +1,5 @@
 import { registerPeer } from '../../channel-wecom/tests/network.js'
+import { socketPeer } from '../../../tests/listen.js'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 
@@ -11,10 +12,10 @@ export async function discordPeer(): Promise<{
   connected(this: void): boolean
   close(this: void): Promise<void>
 }> {
-  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-  await new Promise<void>((resolve) => {
-    server.once('listening', resolve)
-  })
+  const server = await socketPeer(
+    (http) => new WebSocketServer({ server: http })
+  )
+
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new TypeError('invalid_gateway_address')

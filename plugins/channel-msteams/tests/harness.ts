@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import https from 'node:https'
 import dns from 'node:dns/promises'
 import { request as httpRequest, createServer } from 'node:http'
@@ -35,9 +36,11 @@ const transport = {
 function interceptMedia(): void {
   https.request = ((
     url: URL | RequestOptions,
-    options?: RequestOptions,
+    options?: RequestOptions | ((response: HttpResponse) => void),
     callback?: (response: HttpResponse) => void
   ) => {
+    const respond = typeof options === 'function' ? options : callback
+
     const address =
       url instanceof URL
         ? url
@@ -49,10 +52,19 @@ function interceptMedia(): void {
     const destination = transport.destinations.get(address.hostname)
     if (!destination) {
       return url instanceof URL
-        ? transport.request(url, options ?? {}, callback)
-        : transport.request(url, callback)
+        ? transport.request(
+            url,
+            typeof options === 'function' ? {} : (options ?? {}),
+            respond
+          )
+        : transport.request(url, respond)
     }
     const local = new URL(address.pathname + address.search, destination)
+
+    let optionsToForward: RequestOptions = url instanceof URL ? {} : url
+    if (url instanceof URL && typeof options !== 'function') {
+      optionsToForward = options ?? {}
+    }
 
     const {
       agent: _agent,
@@ -62,9 +74,9 @@ function interceptMedia(): void {
       port: _port,
       protocol: _protocol,
       ...forwarded
-    } = (url instanceof URL ? options : url) ?? {}
+    } = optionsToForward
 
-    return httpRequest(local, { ...forwarded, lookup: undefined }, callback)
+    return httpRequest(local, { ...forwarded, lookup: undefined }, respond)
   }) as typeof https.request
   dns.lookup = (async (hostname: string, options: LookupAllOptions) => {
     if (transport.destinations.has(hostname)) {
@@ -75,6 +87,19 @@ function interceptMedia(): void {
   syncBuiltinESMExports()
 }
 
+// The SDK's JsonWebToken consumes the JWT returned by MSAL, rather than a
+// Fabricated opaque string: @microsoft/teams.api 2.1.0 auth/json-web-token.
+export function oauthToken(label: string): string {
+  const payload = {
+    appid: 'app-id',
+    aud: 'https://api.botframework.com',
+    label,
+    exp: Math.floor(Date.now() / 1000) + 3600
+  }
+
+  return `${Buffer.from(JSON.stringify({ alg: 'RS256' })).toString('base64url')}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`
+}
+
 export type Traffic = {
   path: string
   body: string
@@ -83,14 +108,15 @@ export type Traffic = {
 
 export async function peer(): Promise<{
   base: string
+  defaultToken: string
   traffic: Traffic[]
   disconnectOnce(this: void, path: string): void
   route(
     this: void,
     path: string,
-    body: Json | Uint8Array,
+    body: Json | Uint8Array | ((traffic: Traffic) => Json),
     routeHeaders?: Record<string, string>,
-    code?: number
+    code?: number | ((traffic: Traffic) => number)
   ): void
   respond(
     this: void,
@@ -113,7 +139,11 @@ export async function peer(): Promise<{
 
   const routes = new Map<
     string,
-    { status: number; body: Json | Uint8Array; headers: Record<string, string> }
+    {
+      status: number | ((traffic: Traffic) => number)
+      body: Json | Uint8Array | ((traffic: Traffic) => Json)
+      headers: Record<string, string>
+    }
   >()
 
   let status = 200
@@ -125,8 +155,10 @@ export async function peer(): Promise<{
 
   // Bot Connector OAuth documents the lifetime in seconds:
   // https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication
+  const defaultToken = oauthToken('oauth-token')
+
   let tokenBody: Json = {
-    access_token: 'oauth-token',
+    access_token: defaultToken,
     token_type: 'Bearer',
     expires_in: 3600
   }
@@ -141,12 +173,15 @@ export async function peer(): Promise<{
     for await (const part of incoming) {
       parts.push(Buffer.isBuffer(part) ? part : Buffer.from(String(part)))
     }
-    const path = incoming.url ?? '/'
-    traffic.push({
+    const path = new URL(incoming.url ?? '/', 'http://peer').pathname
+
+    const requestEntry: Traffic = {
       path,
       body: Buffer.concat(parts).toString('utf8'),
       headers: incoming.headers
-    })
+    }
+
+    traffic.push(requestEntry)
     if (disconnects.delete(path)) {
       response.destroy()
       return
@@ -154,6 +189,21 @@ export async function peer(): Promise<{
     response.setHeader('content-type', 'application/json')
     if (path === '/v1/.well-known/keys') {
       response.end(JSON.stringify(jwks))
+      return
+    }
+    // Entra authority metadata consumed by the real MSAL library:
+    // https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc
+    if (path.includes('/.well-known/openid-configuration')) {
+      const tenant = path.split('/')[1]
+      response.end(
+        JSON.stringify({
+          authorization_endpoint: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`,
+          token_endpoint: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
+          issuer: `https://login.microsoftonline.com/${tenant}/v2.0`,
+          jwks_uri: `https://login.microsoftonline.com/${tenant}/discovery/v2.0/keys`,
+          end_session_endpoint: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/logout`
+        })
+      )
       return
     }
     if (path === '/botframework.com/oauth2/v2.0/token') {
@@ -164,12 +214,17 @@ export async function peer(): Promise<{
     }
     const route = routes.get(path)
     if (route) {
-      response.writeHead(route.status, route.headers)
-      response.end(
-        route.body instanceof Uint8Array
-          ? route.body
-          : JSON.stringify(route.body)
+      response.writeHead(
+        typeof route.status === 'function'
+          ? route.status(requestEntry)
+          : route.status,
+        route.headers
       )
+
+      const body =
+        typeof route.body === 'function' ? route.body(requestEntry) : route.body
+
+      response.end(body instanceof Uint8Array ? body : JSON.stringify(body))
       return
     }
     response.writeHead(status, headers)
@@ -182,9 +237,7 @@ export async function peer(): Promise<{
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address() as AddressInfo
   interceptMedia()
   const destination = `http://127.0.0.1:${address.port}`
@@ -213,15 +266,16 @@ export async function peer(): Promise<{
   }
   return {
     base,
+    defaultToken,
     traffic,
     disconnectOnce(path: string): void {
       disconnects.add(path)
     },
     route(
       path: string,
-      body: Json | Uint8Array,
+      body: Json | Uint8Array | ((traffic: Traffic) => Json),
       routeHeaders: Record<string, string> = {},
-      code = 200
+      code: number | ((traffic: Traffic) => number) = 200
     ): void {
       routes.set(path, { status: code, body, headers: routeHeaders })
     },

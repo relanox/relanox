@@ -6,10 +6,13 @@ import {
 import { afterEach, describe, expect, it } from 'vitest'
 import type { HttpHandler, ChannelHost, IngestInput } from '@relanox/sdk'
 import { createCipheriv, createHash } from 'node:crypto'
+import { once } from 'node:events'
+import { setImmediate } from 'node:timers/promises'
 import { createFeishuChannel } from '../src/index.js'
-import { peer, recorder, sendInput } from './peer.js'
+import { peer, recorder, sendInput, installSdkNetwork } from './peer.js'
 
 installPeerNetwork()
+const sdkResponses = installSdkNetwork()
 
 const environment = {
   APPSECRET: 'app-secret',
@@ -121,6 +124,7 @@ async function setup(
       ...overrides
     })
   )
+  cleanup.push(async () => plugin.stop?.())
   return {
     plugin,
     ...recorded,
@@ -371,7 +375,7 @@ describe('feishu native HTTP protocol', () => {
       await test.plugin.send(sendInput(test.target, controller.signal))
     ).toEqual({
       status: 'retryable',
-      errorCode: 'tenant_token_transport_error'
+      errorCode: 'feishu_prepare_unavailable'
     })
     expect(remote.requests).toEqual([])
   })
@@ -542,7 +546,7 @@ describe('feishu native HTTP protocol', () => {
       body: {
         msg_type: 'post',
         content:
-          '{"zh_cn":{"content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}',
+          '{"zh_cn":{"title":"","content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}',
         reply_in_thread: true
       }
     })
@@ -567,7 +571,7 @@ describe('feishu native HTTP protocol', () => {
         receive_id: 'oc_chat',
         msg_type: 'post',
         content:
-          '{"zh_cn":{"content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}'
+          '{"zh_cn":{"title":"","content":[[{"tag":"md","text":"**hello** [link](https://example.com) @everyone <@U123>"}]]}}'
       }
     })
   })
@@ -588,6 +592,11 @@ describe('feishu native HTTP protocol', () => {
       expected: { status: 'rejected', errorCode: 'feishu_api_error' }
     },
     {
+      status: 200,
+      body: { code: 230_020, msg: 'reply target gone' },
+      expected: { status: 'rejected', errorCode: 'feishu_api_error' }
+    },
+    {
       status: 401,
       body: { code: 99_991_672 },
       expected: { status: 'rejected', errorCode: 'platform_http_error' }
@@ -600,7 +609,7 @@ describe('feishu native HTTP protocol', () => {
     {
       status: 200,
       body: { code: 0 },
-      expected: { status: 'unknown', errorCode: 'invalid_platform_response' }
+      expected: { status: 'unknown', errorCode: 'feishu_transport_error' }
     }
   ])(
     'maps message API errors without raw fields',
@@ -794,6 +803,169 @@ it('preserves successful JSON resources that contain native error-code-looking d
   await expectJsonResource(storage)
 })
 
+it.each([
+  { status: 200, termination: 'stop' },
+  { status: 401, termination: 'stop' },
+  { status: 200, termination: 'deadline' },
+  { status: 401, termination: 'deadline' }
+])(
+  'cancels an unfinished HTTP $status resource body on $termination',
+  async ({ status, termination }) => {
+    // MessageResource.get uses responseType: stream in @larksuiteoapi/node-sdk 1.75.0.
+    // A native token error uses HTTP 401 and code 99991663:
+    // https://open.feishu.cn/document/faq/trouble-shooting/how-to-fix-99991663-error
+    const remote = await peer((captured) =>
+      captured.path.includes('tenant_access_token')
+        ? {
+            body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+          }
+        : { status, body: Buffer.from('{"code":99991663'), holdOpen: true }
+    )
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+    const headers = once(sdkResponses, 'response')
+
+    const response = test.handler(
+      request({
+        ...event,
+        event: {
+          ...event.event,
+          message: {
+            ...event.event.message,
+            message_type: 'file',
+            content: '{"file_key":"file_unfinished","file_name":"partial.json"}'
+          }
+        }
+      })
+    )
+
+    await headers
+    // Let the SDK process the received headers before stopping its body stream.
+    await setImmediate()
+    if (termination === 'stop') {
+      await test.plugin.stop?.()
+    }
+    expect((await response).status).toBe(503)
+    expect(test.received).toEqual([])
+    expect(remote.requests.map((captured) => captured.path)).toEqual([
+      '/open-apis/im/v1/messages/om_message/resources/file_unfinished?type=file'
+    ])
+  }
+)
+
+it.each([
+  { scenario: 'declared oversized', status: 200, acknowledgement: 200 },
+  { scenario: 'non-JSON error', status: 401, acknowledgement: 503 }
+])(
+  'closes the socket after rejecting an unfinished $scenario resource',
+  async ({ status, acknowledgement }) => {
+    // SDK messageResource.get returns a native binary stream; HTTP failures may be non-JSON.
+    const remote = await peer((captured) =>
+      captured.path.includes('tenant_access_token')
+        ? {
+            body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 }
+          }
+        : {
+            status,
+            headers: {
+              'content-type': 'application/octet-stream',
+              ...(status === 200
+                ? { 'content-length': String(101 * 1024 * 1024) }
+                : {})
+            },
+            body: Buffer.from('partial'),
+            holdOpen: true
+          }
+    )
+
+    cleanup.push(remote.close)
+    const test = await setup(remote.url)
+    const closed = Promise.withResolvers<void>()
+    remote.server.on('request', (incoming) => {
+      if (incoming.url?.includes('/resources/')) {
+        incoming.socket.once('close', () => {
+          closed.resolve()
+        })
+      }
+    })
+
+    const response = await test.handler(
+      request({
+        ...event,
+        event: {
+          ...event.event,
+          message: {
+            ...event.event.message,
+            message_type: 'file',
+            content: '{"file_key":"file_rejected","file_name":"partial.bin"}'
+          }
+        }
+      })
+    )
+
+    expect(response.status).toBe(acknowledgement)
+    await closed.promise
+    expect(test.received).toEqual([])
+  }
+)
+
+it('stores complete native resources above the ordinary JSON response limit', async () => {
+  // Resource stream contract: @larksuiteoapi/node-sdk 1.75.0,
+  // Lib/index.js messageResource.get; resources may be up to 100 MB.
+  const bytes = Buffer.alloc(2 * 1024 * 1024, 7)
+
+  const remote = await peer((captured) =>
+    captured.path.includes('tenant_access_token')
+      ? { body: { code: 0, tenant_access_token: 'tenant-token', expire: 7200 } }
+      : {
+          headers: { 'content-type': 'application/octet-stream' },
+          body: bytes
+        }
+  )
+
+  cleanup.push(remote.close)
+  const { core, storage } = await storedChannel(cleanup, environment, account)
+  expect(
+    (
+      await core.fetch(
+        request({
+          ...event,
+          event: {
+            ...event.event,
+            message: {
+              ...event.event.message,
+              message_type: 'file',
+              content: '{"file_key":"file_binary","file_name":"complete.bin"}'
+            }
+          }
+        })
+      )
+    ).status
+  ).toBe(200)
+  expect(remote.requests).toMatchObject([
+    {
+      path: '/open-apis/im/v1/messages/om_message/resources/file_binary?type=file',
+      headers: { authorization: 'Bearer tenant-token' }
+    }
+  ])
+  const records = await storage.listInbound({ limit: 10 })
+  expect(records).toHaveLength(1)
+  const reference = records[0]?.snapshot.attachments?.[0]
+  const channelId = records[0]?.snapshot.channel.id
+  if (!reference || !channelId) {
+    throw new Error('missing_binary_resource')
+  }
+  expect(reference).toMatchObject({
+    kind: 'file',
+    mimeType: 'application/octet-stream',
+    fileName: 'complete.bin',
+    size: bytes.byteLength
+  })
+  const media = await storage.media?.get(channelId, reference.id)
+  expect(media?.data).toEqual(new Uint8Array(bytes))
+})
+
 async function expectJsonResource(
   storage: Awaited<ReturnType<typeof storedChannel>>['storage']
 ): Promise<void> {
@@ -814,7 +986,8 @@ async function expectJsonResource(
 
 it.each([
   { status: 401, body: {} },
-  { status: 503, body: { code: 99_991_663 } }
+  { status: 503, body: { code: 99_991_663 } },
+  { status: 401, body: { code: 99_991_663, padding: 'x'.repeat(65 * 1024) } }
 ])(
   'retains the cached resource token for unknown HTTP $status failures',
   async ({ status, body }) => {
@@ -1215,7 +1388,7 @@ it.each(
         content:
           operation === 'upload'
             ? '{"image_key":"img_uploaded"}'
-            : '{"zh_cn":{"content":[[{"tag":"md","text":"The answer"}]]}}',
+            : '{"zh_cn":{"title":"","content":[[{"tag":"md","text":"The answer"}]]}}',
         reply_in_thread: true
       }
     })
@@ -1287,18 +1460,19 @@ it('uploads an image key and sends ordered Markdown/image post rows to Feishu', 
     status: 'rejected',
     errorCode: 'invalid_rich_media'
   })
+  // Core's persisted splitting is covered by sdk-rich.test.ts; the adapter only
+  // Matches ordered image references before uploading bytes, without a test seam.
   expect(
     await local.plugin.send({
       ...input,
-      chunk: {
-        ...input.chunk,
-        richText: [
-          { type: 'text', text: 'a'.repeat(8001) },
-          { type: 'image', media: richImage.reference, label: 'photo' }
-        ]
-      }
+      richMedia: [
+        {
+          ...richImage,
+          reference: { ...richImage.reference, id: 'wrong-image' }
+        }
+      ]
     })
-  ).toMatchObject({ status: 'rejected', errorCode: 'rich_text_limit_exceeded' })
+  ).toMatchObject({ status: 'rejected', errorCode: 'invalid_rich_media' })
   expect(remote.requests).toHaveLength(count)
 })
 
@@ -1325,8 +1499,8 @@ it('does not post a rich Feishu message without a successful uploaded image key'
       richMedia: [richImage]
     })
   ).toMatchObject({
-    status: 'retryable',
-    errorCode: 'media_upload_transport_error'
+    status: 'rejected',
+    errorCode: 'feishu_api_error'
   })
   expect(remote.requests.map((captured) => captured.path)).toEqual([
     '/open-apis/im/v1/images'
@@ -1359,7 +1533,9 @@ it('accepts native Markdown post rows in authenticated inbound events', async ()
 
   expect(response.status).toBe(200)
   expect(local.received).toHaveLength(1)
-  expect(local.received[0]?.text).toBe('Question\n**Please** explain this.')
+  expect(local.received[0]?.text).toBe(
+    '**Question**\n\n**Please** explain this.'
+  )
 })
 
 it.each([false, true])(
@@ -1401,7 +1577,7 @@ it.each([false, true])(
     expect(response.status).toBe(200)
     expect(local.received).toHaveLength(1)
     expect(local.received[0]?.text).toBe(
-      'Question\nAnalyze [the report](https://example.com/report?version=2#summary) and explain the findings.'
+      '**Question**\n\nAnalyze [the report](https://example.com/report?version=2#summary) and explain the findings.'
     )
   }
 )
@@ -1413,19 +1589,22 @@ it.each([
     content: {
       content: [
         [
-          { tag: 'at', user_id: '@_user_1', user_name: '' },
+          { tag: 'at', user_id: 'ou_alice', user_name: '' },
           { tag: 'text', text: ' asks ' },
-          { tag: 'at', user_id: '@_user_10', user_name: '' }
+          { tag: 'at', user_id: 'ou_bob', user_name: '' }
         ]
       ]
     }
   }
 ])(
-  'resolves native mention placeholders in $message_type messages',
+  'uses SDK mention normalization in native key order for $message_type messages',
   async ({ message_type, content }) => {
     // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
     // Channel/normalize/context.ts RawMention and channel/normalize/mentions.ts resolveMentions.
     // Native empty post user_name: https://open.feishu.cn/document/server-docs/im-v1/message-content-description/message_content
+    // SDK 1.75.0 lib/index.js resolveMentions replaces keys in supplied order.
+    // These literal results were verified against the published normalize API;
+    // No adapter parser or pre-sort is added to change overlapping-key output.
     const local = await setup()
 
     const response = await local.handler(
@@ -1447,13 +1626,14 @@ it.each([
     )
 
     expect(response.status).toBe(200)
-    expect(local.received[0]?.text).toBe('@Alice asks @Bob')
+    expect(local.received[0]?.text).toBe('@Alice asks @Alice0')
   }
 )
 
-it('preserves the native shortcode in emotion-only rich posts', async () => {
+it('uses the official SDK fallback for emotion-only rich posts', async () => {
   // Source: https://open.feishu.cn/document/server-docs/im-v1/message-content-description/message_content
   // Native emotion elements carry emoji_type, including SMILE, without a text field.
+  // @larksuiteoapi/node-sdk 1.75.0 convertPost uses this nonempty fallback.
   const local = await setup()
 
   const response = await local.handler(
@@ -1475,15 +1655,83 @@ it('preserves the native shortcode in emotion-only rich posts', async () => {
 
   expect(response.status).toBe(200)
   expect(local.received).toHaveLength(1)
-  expect(local.received[0]?.text).toBe(':SMILE:')
+  expect(local.received[0]?.text).toBe('[rich text message]')
+})
+
+it('does not repeat an SDK message POST after the connection drops without a receipt', async () => {
+  // Real HTTP disconnect after request capture, not a simulated Relanox retry.
+  const remote = await peer((captured) =>
+    captured.path.includes('tenant_access_token')
+      ? { body: { code: 0, tenant_access_token: 'token', expire: 7200 } }
+      : { body: null, disconnect: true }
+  )
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+  expect(await local.plugin.send(sendInput(local.target))).toEqual({
+    status: 'unknown',
+    errorCode: 'feishu_transport_error'
+  })
+  expect(remote.requests.map((captured) => captured.path)).toEqual([
+    '/open-apis/im/v1/messages/om_message/reply'
+  ])
+})
+
+it('stops an SDK media send before the next request after cancellation', async () => {
+  const controller = new AbortController()
+
+  const remote = await peer((captured) => {
+    if (captured.path.includes('tenant_access_token')) {
+      return { body: { code: 0, tenant_access_token: 'token', expire: 7200 } }
+    }
+    controller.abort()
+    return { body: { code: 0, data: { image_key: 'img_uploaded' } } }
+  })
+
+  cleanup.push(remote.close)
+  const local = await setup(remote.url)
+  const input = sendInput(local.target, controller.signal)
+  expect(
+    await local.plugin.send({
+      ...input,
+      chunk: { ...input.chunk, text: '', media: richImage.reference },
+      media: richImage
+    })
+  ).toMatchObject({ status: 'retryable' })
+  expect(remote.requests.map((captured) => captured.path)).toEqual([
+    '/open-apis/im/v1/images'
+  ])
+  await local.plugin.stop?.()
+  const count = remote.requests.length
+  expect(await local.plugin.send(sendInput(local.target))).toMatchObject({
+    status: 'retryable'
+  })
+  expect(remote.requests).toHaveLength(count)
 })
 
 it.each([
-  { scenario: 'oversized', status: 200, acknowledgement: 200 },
-  { scenario: 'unavailable', status: 503, acknowledgement: 503 }
+  { scenario: 'oversized', status: 200, acknowledgement: 200, declared: false },
+  {
+    scenario: 'declared oversized',
+    status: 200,
+    acknowledgement: 200,
+    declared: true
+  },
+  {
+    scenario: 'redirected',
+    status: 302,
+    acknowledgement: 503,
+    declared: false
+  },
+  {
+    scenario: 'unavailable',
+    status: 503,
+    acknowledgement: 503,
+    declared: false
+  }
 ])(
   'returns the native retry outcome for $scenario resources',
-  async ({ status, acknowledgement }) => {
+  async ({ status, acknowledgement, declared }) => {
     // Source: larksuite/node-sdk e34a66f0d20935ee77f94909d16d93292d58b6c7,
     // Code-gen/projects/im.ts messageResource.get allows binary resources up to 100 MB.
     // Native retry ACK: https://open.feishu.cn/document/server-docs/event-subscription-guide/overview
@@ -1494,9 +1742,17 @@ it.each([
           }
         : {
             status,
-            headers: { 'content-type': 'application/octet-stream' },
+            headers: {
+              'content-type': 'application/octet-stream',
+              ...(declared
+                ? { 'content-length': String(26 * 1024 * 1024) }
+                : {}),
+              ...(status === 302
+                ? { location: 'https://open.feishu.cn/unexpected' }
+                : {})
+            },
             body:
-              status === 200
+              status === 200 && !declared
                 ? new Uint8Array(26 * 1024 * 1024)
                 : new Uint8Array()
           }

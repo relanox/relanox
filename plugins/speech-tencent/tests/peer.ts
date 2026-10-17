@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { createServer, request as httpRequest } from 'node:http'
 import type {
   IncomingHttpHeaders,
@@ -5,7 +6,6 @@ import type {
   RequestOptions
 } from 'node:http'
 import https from 'node:https'
-import { once } from 'node:events'
 import { vi } from 'vitest'
 
 type RecordedRequest = {
@@ -60,8 +60,7 @@ export async function tencentPeer(): Promise<{
     })
   })
 
-  server.listen(0, '127.0.0.1')
-  await once(server, 'listening')
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('missing_peer_address')

@@ -42,8 +42,3 @@ export const targetSchema = z
     scope: z.object({ botId: z.string().min(1), wsUrl: z.url() }).strict()
   })
   .strict()
-
-export const botEventSchema = z.object({
-  aibotid: z.string(),
-  event: z.object({ eventtype: z.string() })
-})

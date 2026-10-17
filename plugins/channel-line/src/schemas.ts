@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { platformIdSchema } from './config.js'
 
+export type LineMessage = NonNullable<z.infer<typeof eventSchema>['message']>
+
 export const eventSchema = z.object({
   type: z.string(),
   webhookEventId: platformIdSchema.optional(),
@@ -48,8 +50,4 @@ export const targetSchema = z.strictObject({
 export const retrySchema = z.strictObject({
   retryKey: z.uuid(),
   startedAt: z.number().int().nonnegative()
-})
-
-export const receiptSchema = z.object({
-  sentMessages: z.array(z.object({ id: platformIdSchema })).optional()
 })

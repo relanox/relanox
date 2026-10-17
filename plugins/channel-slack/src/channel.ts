@@ -1,12 +1,5 @@
-import {
-  API_BASE_URL,
-  validateConfig,
-  validateTransportUrl,
-  REQUEST_TIMEOUT_MS,
-  RECONNECT_DELAY_MS
-} from './config.js'
+import { API_BASE_URL, validateConfig } from './config.js'
 import { createHmac } from 'node:crypto'
-import { setTimeout as delay } from 'node:timers/promises'
 import type {
   AccountConfig,
   ChannelHost,
@@ -15,17 +8,17 @@ import type {
   ReplyTarget,
   IngestInput
 } from '@relanox/sdk'
-import { WebSocket } from 'ws'
+import { SocketModeClient } from '@slack/socket-mode'
+import {
+  createClient,
+  discoverIdentity,
+  sendOutcome,
+  sdkFailure,
+  sdkOptions
+} from './client.js'
 import type { z } from 'zod'
 import type { SlackConfig } from './config.js'
-import {
-  socketFrameSchema,
-  socketOpenResponseSchema,
-  targetSchema,
-  envelopeSchema,
-  messageSchema
-} from './schemas.js'
-import { frameText, waitForStop } from './socket.js'
+import { targetSchema, envelopeSchema, messageSchema } from './schemas.js'
 import {
   receiveMedia,
   MediaDownloadError,
@@ -33,20 +26,10 @@ import {
   richBlocks,
   richError,
   richCapabilities,
-  sendOutcome,
-  discoverIdentity,
   slackMarkdown,
   splitSlackMarkdown
 } from './media.js'
-import {
-  bytes,
-  credential,
-  equal,
-  fresh,
-  ingest,
-  jsonResponse,
-  postJson
-} from './transport.js'
+import { bytes, credential, equal, fresh, ingest } from './transport.js'
 
 function messageThreadId(
   event: z.infer<typeof messageSchema>
@@ -112,9 +95,16 @@ export function createSlackChannel(
     apiBaseUrl: new URL(API_BASE_URL).toString().replace(/\/$/u, '')
   })
 
-  let controller: AbortController | undefined
-  let task: Promise<void> | undefined
-  let socket: WebSocket | undefined
+  let socket: SocketModeClient | undefined
+  let receiveSignal: AbortSignal | undefined
+  let task: Promise<unknown> | undefined
+  const inbound = new Set<Promise<void>>()
+
+  function abortSocket(): void {
+    void socket?.disconnect().catch(() => {
+      host.connection('degraded', 'socket_stop_error')
+    })
+  }
 
   async function ingestWithMedia(
     input: Omit<IngestInput, 'attachments'>,
@@ -124,7 +114,8 @@ export function createSlackChannel(
       const attachments = await receiveMedia(
         files,
         host,
-        credential(config.botToken, environment)
+        credential(config.botToken, environment),
+        createClient(credential(config.botToken, environment), receiveSignal)
       )
 
       await ingest(host, { ...input, attachments })
@@ -220,153 +211,6 @@ export function createSlackChannel(
     )
   }
 
-  async function connect(signal: AbortSignal): Promise<void> {
-    if (!('appToken' in config)) {
-      return
-    }
-
-    const response = await postJson(
-      `${API_BASE_URL.replace(/\/$/u, '')}/apps.connections.open`,
-      { authorization: `Bearer ${credential(config.appToken, environment)}` },
-      {},
-      signal,
-      REQUEST_TIMEOUT_MS
-    )
-
-    const result = socketOpenResponseSchema.parse(await jsonResponse(response))
-    if (!response.ok || !result.ok || !result.url) {
-      throw new Error('socket_open_failed')
-    }
-
-    const ws = new WebSocket(validateTransportUrl(result.url, false, true), {
-      maxPayload: 1024 * 1024,
-      handshakeTimeout: REQUEST_TIMEOUT_MS
-    })
-
-    socket = ws
-    let chain = Promise.resolve()
-    let pending = 0
-    let failed = false
-    let alive = true
-
-    const ping = setInterval(() => {
-      if (!alive) {
-        ws.terminate()
-        return
-      }
-      if (ws.readyState === WebSocket.OPEN) {
-        alive = false
-        ws.ping()
-      }
-    }, 30_000)
-
-    const abort = (): void => {
-      ws.terminate()
-    }
-
-    signal.addEventListener('abort', abort, { once: true })
-    if (signal.aborted) {
-      abort()
-    }
-    await new Promise<void>((resolve) => {
-      ws.on('pong', () => {
-        alive = true
-      })
-      ws.on('error', () => {
-        host.connection('degraded', 'socket_transport_error')
-        ws.terminate()
-      })
-      ws.on('close', () => {
-        clearInterval(ping)
-        signal.removeEventListener('abort', abort)
-        host.connection('disconnected')
-        resolve()
-      })
-      ws.on('message', (raw) => {
-        const parsed = socketFrameSchema.safeParse(
-          ((): unknown => {
-            try {
-              return JSON.parse(frameText(raw))
-            } catch {
-              return null
-            }
-          })()
-        )
-
-        if (!parsed.success) {
-          ws.terminate()
-          return
-        }
-        const frame = parsed.data
-        if (frame.type === 'hello') {
-          host.connection('connected')
-          return
-        }
-        if (frame.type === 'disconnect') {
-          ws.terminate()
-          return
-        }
-        if (!frame.envelope_id) {
-          return
-        }
-        if (++pending > 64) {
-          ws.terminate()
-          return
-        }
-
-        const consume = async (): Promise<void> => {
-          if (signal.aborted || failed) {
-            return
-          }
-          if (frame.type === 'events_api') {
-            await ingestEnvelope(frame.payload)
-          } else {
-            host.observe.count('relanox_inbound_total', {
-              channel: 'slack',
-              operation: 'ingest',
-              outcome: 'rejected',
-              error_class: 'unsupported'
-            })
-          }
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ envelope_id: frame.envelope_id }))
-          }
-        }
-
-        chain = chain
-          .then(consume)
-          .catch(() => {
-            failed = true
-            host.connection('degraded', 'socket_ingest_error')
-            ws.terminate()
-          })
-          .finally(() => {
-            pending--
-          })
-      })
-    })
-    await chain
-  }
-
-  async function run(signal: AbortSignal): Promise<void> {
-    let failures = 0
-    while (!signal.aborted) {
-      try {
-        await connect(signal)
-      } catch {
-        host.connection('degraded', 'socket_connection_error')
-      }
-      if (signal.aborted) {
-        break
-      }
-      await delay(
-        Math.min(30_000, RECONNECT_DELAY_MS * 2 ** Math.min(failures++, 5)),
-        undefined,
-        { signal }
-      ).catch(() => {})
-    }
-  }
-
   return {
     id: 'channel-slack',
     sdkMajor: 1,
@@ -420,13 +264,53 @@ export function createSlackChannel(
       config = nextConfig
 
       const discovered = await discoverIdentity(
-        credential(config.botToken, environment)
+        createClient(credential(config.botToken, environment))
       )
 
       botUserId = discovered.botUserId
       teamId = discovered.teamId
       if ('appToken' in config) {
-        credential(config.appToken, environment)
+        const options = sdkOptions()
+        socket = new SocketModeClient({
+          appToken: credential(config.appToken, environment),
+          clientOptions: options,
+          ...(options.logger ? { logger: options.logger } : {})
+        })
+        socket.on('connected', () => {
+          host.connection('connected')
+        })
+        socket.on('disconnected', () => {
+          host.connection('disconnected')
+        })
+        socket.on('reconnecting', () => {
+          host.connection('disconnected')
+        })
+        socket.on('error', () => {
+          host.connection('degraded', 'socket_transport_error')
+        })
+        socket.on(
+          'slack_event',
+          ({
+            body,
+            ack
+          }: {
+            body: unknown
+            ack(this: void): Promise<void>
+          }) => {
+            const work = (async (): Promise<void> => {
+              await ingestEnvelope(body)
+              if (!receiveSignal?.aborted) {
+                await ack()
+              }
+            })()
+              .catch(() => {
+                host.connection('degraded', 'socket_ingest_error')
+              })
+              .finally(() => inbound.delete(work))
+
+            inbound.add(work)
+          }
+        )
         return
       }
       credential(config.signingSecret, environment)
@@ -485,18 +369,21 @@ export function createSlackChannel(
       })
     },
     async start(signal) {
-      if (task || 'signingSecret' in config) {
+      if (!socket || task) {
         return
       }
-      controller = new AbortController()
-      task = run(AbortSignal.any([signal, controller.signal])).catch(() => {
+      receiveSignal = signal
+      signal.throwIfAborted()
+      signal.addEventListener('abort', abortSocket, { once: true })
+      task = socket.start().catch(() => {
         host.connection('degraded', 'socket_lifecycle_error')
       })
     },
     async stop() {
-      controller?.abort()
-      socket?.terminate()
-      await waitForStop(task, REQUEST_TIMEOUT_MS)
+      receiveSignal?.removeEventListener('abort', abortSocket)
+      await socket?.disconnect()
+      await task
+      await Promise.all(inbound)
       task = undefined
     },
     async send(input) {
@@ -515,58 +402,49 @@ export function createSlackChannel(
       ) {
         return { status: 'rejected', errorCode: 'invalid_target' }
       }
-      const errorCode = richError(input, host)
+      const errorCode = richError(input)
       if (errorCode) {
         return { status: 'rejected', errorCode }
       }
       try {
+        input.signal.throwIfAborted()
+
+        const client = createClient(
+          credential(config.botToken, environment),
+          input.signal
+        )
+
         const threadId =
           input.target.threadId ??
           (input.reply ? input.target.replyToId : undefined)
 
         if (input.chunk.media) {
-          return await sendMedia(
-            input,
-            host,
-            credential(config.botToken, environment)
-          )
+          return await sendMedia(input, client)
         }
 
         const formatted = input.chunk.richText
-          ? await richBlocks(
-              input,
-              credential(config.botToken, environment)
-            ).catch(() => ({
-              status: 'retryable' as const,
-              errorCode: 'rich_media_preparation_unavailable'
-            }))
+          ? await richBlocks(input, client)
           : slackMarkdown(input.chunk.text)
 
         if ('status' in formatted) {
           return formatted
         }
 
-        const response = await postJson(
-          `${API_BASE_URL.replace(/\/$/u, '')}/chat.postMessage`,
-          {
-            authorization: `Bearer ${credential(config.botToken, environment)}`
-          },
-          {
-            channel: input.target.chatId,
-            ...formatted,
-            mrkdwn: false,
-            parse: 'none',
-            unfurl_links: false,
-            unfurl_media: false,
-            ...(threadId ? { thread_ts: threadId } : {})
-          },
-          input.signal,
-          REQUEST_TIMEOUT_MS
-        )
+        const { postMessage: postSlackMessage } = client.chat
 
-        return await sendOutcome(response)
-      } catch {
-        return { status: 'unknown', errorCode: 'slack_transport_error' }
+        const response = await postSlackMessage({
+          channel: input.target.chatId,
+          ...formatted,
+          mrkdwn: false,
+          parse: 'none',
+          unfurl_links: false,
+          unfurl_media: false,
+          ...(threadId ? { thread_ts: threadId } : {})
+        })
+
+        return sendOutcome(response)
+      } catch (error) {
+        return sdkFailure(error)
       }
     }
   }

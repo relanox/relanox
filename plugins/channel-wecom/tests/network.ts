@@ -72,19 +72,51 @@ function publicPath(url: URL): string {
 }
 
 function httpsPeerRequest(
-  url: URL,
-  options: RequestOptions,
-  callback: (response: IncomingMessage) => void
+  input: string | URL | RequestOptions,
+  options: RequestOptions | ((response: IncomingMessage) => void),
+  callback?: (response: IncomingMessage) => void
 ): ClientRequest {
-  const mapped = routes.get(url.origin)
+  const optionsOnly = typeof input === 'object' && !(input instanceof URL)
+  let request: RequestOptions = typeof options === 'function' ? {} : options
+  if (optionsOnly) {
+    request = input
+  }
+  const receive = typeof options === 'function' ? options : callback
+  const url = optionsOnly ? requestUrl(input) : new URL(input)
 
-  return mapped
-    ? httpRequest(
-        new URL(`${mapped}${publicPath(url)}${url.search}`),
-        { ...options, lookup: undefined },
-        callback
-      )
-    : originalHttps(url, options, callback)
+  const mapped =
+    routes.get(url.origin) ?? routes.get(url.origin.replace('https:', 'wss:'))
+
+  if (!mapped) {
+    return originalHttps(url, request, receive)
+  }
+
+  const {
+    protocol: _protocol,
+    hostname: _hostname,
+    host: _host,
+    path: _path,
+    port: _port,
+    agent: _agent,
+    createConnection: _createConnection,
+    lookup: _lookup,
+    ...localOptions
+  } = request
+
+  return httpRequest(
+    new URL(`${mapped.replace(/^ws/u, 'http')}${publicPath(url)}${url.search}`),
+    localOptions,
+    receive
+  )
+}
+
+function requestUrl(options: RequestOptions): URL {
+  const port =
+    options.port === undefined || options.port === '' ? '' : `:${options.port}`
+
+  return new URL(
+    `https://${options.hostname ?? options.host}${port}${options.path ?? '/'}`
+  )
 }
 
 async function peerLookup(

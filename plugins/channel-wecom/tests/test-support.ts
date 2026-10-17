@@ -1,8 +1,8 @@
-import { afterEach, vi } from 'vitest'
+import { createServer, listenPeer } from '../../../tests/listen.js'
+import type { IncomingHttpHeaders } from '../../../tests/listen.js'
+import { afterEach, expect, vi } from 'vitest'
 import { registerPeer, routePlatform } from './network.js'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer } from 'node:http'
-import type { IncomingHttpHeaders } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createCore } from '@relanox/core'
@@ -114,9 +114,7 @@ export async function peer(
     })
     connected(socket)
   })
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('Missing local peer address')
@@ -262,6 +260,18 @@ export async function assemble<C>(
     },
     start: async () => plugin.start?.(controller.signal)
   }
+}
+
+// Happy-path peers wait for public connection readiness before sending traffic.
+// SDK connect() starts asynchronously; relying on start() to await authentication
+// Races real sockets. This only observes status and adds no production seam.
+export async function startConnected(
+  host: Awaited<ReturnType<typeof assemble>>
+): Promise<void> {
+  await host.start()
+  await expect
+    .poll(async () => (await host.runtime.status()).connections['channels/bot'])
+    .toBe('connected')
 }
 
 export async function records(

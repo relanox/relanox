@@ -11,9 +11,8 @@ import type {
 import { webhookConfigSchema } from './config.js'
 import type { WebhookConfig } from './config.js'
 import {
-  callbackKey,
+  callbackCrypto,
   encryptedCallback,
-  decryptCallback,
   verifyCallback
 } from './callback-crypto.js'
 import { messageSchema } from './schemas.js'
@@ -209,7 +208,13 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
     }
     const url = new URL(request.url)
     let plain: string
+    let crypto: ReturnType<typeof callbackCrypto>
     try {
+      crypto = callbackCrypto(
+        secret(config.token),
+        secret(config.encodingAESKey)
+      )
+
       const encrypted =
         request.method === 'GET'
           ? (url.searchParams.get('echostr') ?? '')
@@ -217,13 +222,10 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
               .object({ encrypt: z.string().min(1) })
               .parse(JSON.parse(await requestBody(request))).encrypt
 
-      if (!verifyCallback(url, encrypted, secret(config.token))) {
+      if (!verifyCallback(url, encrypted, crypto)) {
         return new Response(null, { status: 401 })
       }
-      plain = decryptCallback(
-        encrypted,
-        callbackKey(secret(config.encodingAESKey))
-      )
+      plain = crypto.decrypt(encrypted)
     } catch {
       return new Response(null, { status: 400 })
     }
@@ -243,14 +245,9 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       )
 
       return body
-        ? Response.json(
-            encryptedCallback(
-              body,
-              callbackKey(secret(config.encodingAESKey)),
-              secret(config.token)
-            ),
-            { headers: { 'content-type': 'text/plain; charset=utf-8' } }
-          )
+        ? Response.json(encryptedCallback(body, crypto), {
+            headers: { 'content-type': 'text/plain; charset=utf-8' }
+          })
         : new Response(null, { status: 200 })
     } catch {
       return new Response(null, { status: 503 })
@@ -335,8 +332,7 @@ export function createWebhookChannel(): ChannelPlugin<WebhookConfig> {
       host = nextHost
       account = nextAccount
       config = webhookConfigSchema.parse(nextConfig)
-      callbackKey(secret(config.encodingAESKey))
-      secret(config.token)
+      callbackCrypto(secret(config.token), secret(config.encodingAESKey))
       host.mountHttp('/webhook', callback, {
         maxBodyBytes: maximumBody,
         authorize: async () => {}

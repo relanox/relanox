@@ -113,10 +113,14 @@ function platformResponse(path: string): { status?: number; json: unknown } {
     '/token': { access_token: 'token' }
   }
 
-  if (path.endsWith('/state/m.room.encryption')) {
+  if (
+    new URL(path, 'https://matrix.example').pathname
+      .replace(/\/$/u, '')
+      .endsWith('/state/m.room.encryption')
+  ) {
     // Matrix Client-Server v1.16 GET /rooms/{roomId}/state/{eventType}/{stateKey}:
     // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3roomsroomidstateeventtypestatekey
-    // Matrix-js-sdk d633e7c1954a6b92597fbc3f8a95f183789a8d40 src/client.ts getStateEvent caller.
+    // Matrix-js-sdk 43.0.0 getStateEvent encodes an empty state key as a trailing slash.
     // A missing state event returns 404 with the native M_NOT_FOUND error code.
     return { status: 404, json: { errcode: 'M_NOT_FOUND' } }
   }

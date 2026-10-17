@@ -1,3 +1,4 @@
+import { listenPeer } from '../listen.js'
 import { createServer } from 'node:http'
 import type {
   IncomingHttpHeaders,
@@ -6,6 +7,7 @@ import type {
 } from 'node:http'
 
 export { redirectRoutine } from '../../plugins/agent-grok/tests/routine-peer.js'
+export { availablePort } from '../listen.js'
 
 export type Traffic = {
   readonly method: string
@@ -68,12 +70,7 @@ export async function peer(
     })
   })
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      resolve()
-    })
-  })
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('missing_peer_address')
@@ -93,28 +90,4 @@ export async function peer(
         })
       })
   }
-}
-
-export async function availablePort(): Promise<number> {
-  const server = createServer()
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      resolve()
-    })
-  })
-  const address = server.address()
-  if (address === null || typeof address === 'string') {
-    throw new Error('missing_reserved_port')
-  }
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error)
-      } else {
-        resolve()
-      }
-    })
-  })
-  return address.port
 }

@@ -1,15 +1,22 @@
-import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
+import { peer } from './peer.js'
+import { installPeerNetwork } from './network.js'
 import { expect, test, vi } from 'vitest'
 import {
   assemble,
-  peer,
   records,
-  sendInput
+  sendInput,
+  temporaryDatabase
 } from '../../channel-wecom/tests/test-support.js'
 import { createDingTalkChannel } from '../src/index.js'
 
 installPeerNetwork()
 
+// Keep real SDK protocol coverage: a wrong native staff/group field, ACK before
+// Ingest, or hidden POST retry loses or duplicates work. Earlier handwritten
+// Transport tests cannot cover SDK serialization. Network peers only redirect
+// Actual SDK I/O; they provide no routing, persistence or retry implementation.
+// Fixtures: dingtalk-stream@2.1.7-beta.1 src/client.ts and
+// @alicloud/dingtalk@2.2.48 src/{oauth2_1_0,robot_1_0}/client.ts.
 const message = {
   msgId: 'stable-message',
   conversationType: '1',
@@ -142,12 +149,12 @@ test.each([
     await expect
       .poll(() => remote.frames)
       .toContainEqual({
-        code: 404,
+        code: 200,
         headers: {
           contentType: 'application/json',
           messageId: 'missing-direct-staff'
         },
-        message: 'Unsupported',
+        message: 'OK',
         data: '{"response":null}'
       })
     expect(await records(local.storage)).toHaveLength(1)
@@ -180,7 +187,7 @@ test('DingTalk acknowledges the native disconnect frame before closing the Strea
   if (!socket) {
     throw new Error('Peer not connected')
   }
-  // Official SDK: open-dingtalk/dingtalk-stream-sdk-nodejs@e7fe301d9afdcc1d62d2b7ffeba6fe7768b6489c
+  // Official SDK: open-dingtalk/dingtalk-stream-sdk-nodejs@v2.1.7-beta.1
   // Src/client.ts onSystem('disconnect') echoes the payload with code 200 before close.
   socket.send(
     JSON.stringify({
@@ -193,7 +200,7 @@ test('DingTalk acknowledges the native disconnect frame before closing the Strea
   expect(remote.frames).toContainEqual({
     code: 200,
     headers: {
-      contentType: 'application/json',
+      topic: 'disconnect',
       messageId: 'disconnect-request'
     },
     message: 'OK',
@@ -290,7 +297,7 @@ test('DingTalk authenticates Stream, ACKs durable stable messages and sends to s
   })
   expect(remote.frames).toContainEqual({
     code: 200,
-    headers: { contentType: 'application/json', messageId: 'system-ping' },
+    headers: { topic: 'ping', messageId: 'system-ping' },
     message: 'OK',
     data: '{"opaque":"ping-value"}'
   })
@@ -372,6 +379,7 @@ test('DingTalk never acknowledges text after a failed durable write; unmentioned
   }))
 
   address = remote.ws
+  const filename = await temporaryDatabase()
   const plugin = createDingTalkChannel()
 
   const host = await assemble(
@@ -381,7 +389,8 @@ test('DingTalk never acknowledges text after a failed durable write; unmentioned
       clientSecret: { env: 'DING_SECRET' },
       robotCode: 'robot-code'
     },
-    [{ chatId: 'staff', senderId: 'platform-sender' }]
+    [{ chatId: 'staff', senderId: 'platform-sender' }],
+    filename
   )
 
   await host.start()
@@ -416,16 +425,61 @@ test('DingTalk never acknowledges text after a failed durable write; unmentioned
   await expect.poll(() => remote.frames.length).toBe(4)
   expect(await records(host.storage)).toHaveLength(0)
   expect(remote.frames).toContainEqual({
-    code: 404,
+    code: 200,
     headers: { contentType: 'application/json', messageId: 'media' },
-    message: 'Unsupported',
+    message: 'OK',
     data: '{"response":null}'
   })
   await host.storage.close()
   socket.send(JSON.stringify(robotFrame('must-not-ack', message)))
-  await expect.poll(() => socket.readyState).toBe(3)
-  expect(remote.frames).toHaveLength(4)
+  // SDK callback failures leave the session open for server redelivery.
+  socket.send(
+    JSON.stringify({
+      type: 'SYSTEM',
+      headers: { topic: 'ping', messageId: 'after-failed-write' },
+      data: '{}'
+    })
+  )
+  await expect.poll(() => remote.frames.length).toBe(5)
+
+  const failedHeaders: unknown = expect.objectContaining({
+    messageId: 'must-not-ack'
+  })
+
+  const failedFrame: unknown = expect.objectContaining({
+    headers: failedHeaders
+  })
+
+  expect(remote.frames).not.toContainEqual(failedFrame)
   host.controller.abort()
+  await plugin.stop?.()
+
+  // A fresh plugin/Core instance reopens the actual SQLite database. A callback
+  // ACK before the failed write would silently discard this redelivery.
+  const restored = await assemble(
+    createDingTalkChannel(),
+    {
+      clientId: 'app',
+      clientSecret: { env: 'DING_SECRET' },
+      robotCode: 'robot-code'
+    },
+    [{ chatId: 'staff', senderId: 'platform-sender' }],
+    filename
+  )
+
+  await restored.start()
+  remote.sockets
+    .at(-1)
+    ?.send(JSON.stringify(robotFrame('after-restart', message)))
+  await expect
+    .poll(() => remote.frames)
+    .toContainEqual({
+      code: 200,
+      headers: { contentType: 'application/json', messageId: 'after-restart' },
+      message: 'OK',
+      data: '{"response":null}'
+    })
+  expect(await records(restored.storage)).toHaveLength(1)
 })
 
 test.each([
@@ -434,7 +488,7 @@ test.each([
     result: {
       status: 'retryable',
       errorCode: 'rate_limited',
-      retryAfterMs: 2000
+      retryAfterMs: 1000
     }
   },
   {
@@ -454,6 +508,14 @@ test.each([
     result: { status: 'rejected', errorCode: 'invalid_staff_id' }
   },
   {
+    reply: { status: 413 },
+    result: { status: 'rejected', errorCode: 'http_413' }
+  },
+  {
+    reply: { status: 503 },
+    result: { status: 'unknown', errorCode: 'http_503' }
+  },
+  {
     reply: { status: 403 },
     result: { status: 'rejected', errorCode: 'http_403' }
   },
@@ -466,7 +528,7 @@ test.each([
   async ({ reply, result }) => {
     vi.stubEnv('DING_SECRET', 'secret')
 
-    await peer((request) =>
+    const remote = await peer((request) =>
       request.path === '/v1.0/oauth2/accessToken'
         ? { body: { accessToken: 'token', expireIn: 7200 } }
         : reply
@@ -495,5 +557,12 @@ test.each([
         })
       )
     ).toEqual(result)
+    // @alicloud/gateway-dingtalk 1.0.2 exposes status/body, not Retry-After.
+    // RuntimeOptions.autoretry=false prevents SDK retries after uncertain POSTs.
+    expect(
+      remote.requests.filter(
+        (request) => request.path === '/v1.0/robot/oToMessages/batchSend'
+      )
+    ).toHaveLength(1)
   }
 )

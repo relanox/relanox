@@ -1,6 +1,6 @@
+import { createServer, listenPeer } from '../../../tests/listen.js'
+import type { IncomingMessage, ServerResponse } from '../../../tests/listen.js'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer } from 'node:http'
-import type { IncomingMessage, ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as pause } from 'node:timers/promises'
@@ -78,7 +78,9 @@ export async function httpPeer(
   identityHandler?: (
     request: IncomingMessage,
     response: ServerResponse
-  ) => Promise<void> | void
+  ) => Promise<void> | void,
+  versionsHandler?: (response: ServerResponse) => Promise<void> | void,
+  basePath = ''
 ): Promise<{
   server: ReturnType<typeof createServer>
   base: string
@@ -86,11 +88,63 @@ export async function httpPeer(
   const errors: unknown[] = []
 
   const server = createServer((request, response) => {
+    const requestPath = new URL(request.url ?? '/', 'http://peer').pathname
+    if (!requestPath.startsWith(`${basePath}/`)) {
+      json(response, {}, 404)
+      return
+    }
+    const path = requestPath.slice(basePath.length)
+    // Bootstrap responses required by the real matrix-js-sdk 43.0.0 client:
+    // Src/sync.ts:prepareSync/prepareFilter and src/client.ts:startClient.
+    // Protect the SDK's stable thread negotiation; advertising v1.11 alone omits
+    // The v1.4 capability Client.isVersionSupported actually checks. Earlier tests
+    // Hand-built relations and missed this. Real protocol fixtures need no seam.
+    // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientversions
+    // https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3pushrules
+    // https://spec.matrix.org/v1.16/client-server-api/#post_matrixclientv3useruseridfilter
+    if (path === '/_matrix/client/versions' && versionsHandler) {
+      Promise.resolve(versionsHandler(response)).catch((error: unknown) => {
+        errors.push(error)
+        response.destroy()
+      })
+      return
+    }
+    if (path === '/_matrix/client/versions') {
+      json(response, { versions: ['v1.4', 'v1.11'], unstable_features: {} })
+      return
+    }
+    if (path.endsWith('/pushrules/')) {
+      json(response, {
+        global: {
+          override: [],
+          content: [],
+          room: [],
+          sender: [],
+          underride: []
+        }
+      })
+      return
+    }
+    if (path.endsWith('/filter')) {
+      json(response, { filter_id: 'relanox' })
+      return
+    }
+    if (path.endsWith('/capabilities') || path.includes('/profile/')) {
+      json(response, { capabilities: {} })
+      return
+    }
+    if (path.endsWith('/rtc/transports')) {
+      // Optional RTC discovery: SDK src/matrixrtc/RTCSessionManager.ts.
+      json(
+        response,
+        { errcode: 'M_UNRECOGNIZED', error: 'Unsupported endpoint' },
+        404
+      )
+      return
+    }
     if (
       identityHandler &&
-      ['/api/v4/users/me', '/_matrix/client/v3/account/whoami'].includes(
-        request.url ?? ''
-      )
+      ['/api/v4/users/me', '/_matrix/client/v3/account/whoami'].includes(path)
     ) {
       Promise.resolve(identityHandler(request, response)).catch(
         (error: unknown) => {
@@ -100,23 +154,25 @@ export async function httpPeer(
       )
       return
     }
-    if (request.url === '/_matrix/client/v3/account/whoami') {
+    if (path === '/_matrix/client/v3/account/whoami') {
       json(response, { user_id: '@bot:local.test' })
       return
     }
-    if (request.url === '/api/v4/users/me') {
+    if (path === '/api/v4/users/me') {
       json(response, { id: 'self-bot' })
       return
     }
     Promise.resolve(handler(request, response)).catch((error: unknown) => {
-      errors.push(error)
+      errors.push(
+        new Error(
+          `${request.method ?? ''} ${request.url ?? ''}: ${String(error)}`
+        )
+      )
       response.destroy()
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('Missing peer address')
@@ -133,10 +189,13 @@ export async function httpPeer(
       })
     })
     if (errors.length > 0) {
-      throw new AggregateError(errors, 'Peer failed')
+      throw new AggregateError(
+        errors,
+        `Peer failed: ${errors.map(String).join('; ')}`
+      )
     }
   })
-  return { server, base: `http://127.0.0.1:${address.port}` }
+  return { server, base: `http://127.0.0.1:${address.port}${basePath}` }
 }
 
 export function observations(): {
@@ -194,11 +253,22 @@ function protocolAgent(dispatchUrl: string): AgentPlugin {
           .object({
             channel: z.string(),
             idempotencyKey: z.string(),
-            text: z.string()
+            text: z.string(),
+            reply: z
+              .object({
+                requestId: z.string(),
+                kind: z.enum(['progress', 'final'])
+              })
+              .optional()
           })
           .parse((await request.json()) as unknown)
 
-        const output = await host.forPrincipal(principal).sendMessage(input)
+        const { reply, ...message } = input
+
+        const output = await host.forPrincipal(principal).sendMessage({
+          ...message,
+          ...(reply ? { reply } : {})
+        })
 
         return Response.json(output)
       })
@@ -232,6 +302,13 @@ export async function harness(
     filename?: string
     observe?: Observability
     worker?: WorkerOptions
+    accounts?: readonly {
+      id: string
+      plugin: ChannelPlugin<unknown>
+      config: Json
+      chats: readonly { chatId: string; threadId?: string }[]
+      senders: readonly string[]
+    }[]
   } = {}
 ): Promise<{
   runtime: Awaited<ReturnType<typeof createCore>>
@@ -240,7 +317,8 @@ export async function harness(
   sendReply(
     this: void,
     requestId: string,
-    text?: string
+    text?: string,
+    replyKind?: 'progress' | 'final'
   ): Promise<{
     status: 'queued'
     deliveryId: string
@@ -254,28 +332,40 @@ export async function harness(
 
   await storage.initialize()
 
+  const accounts = [
+    { id: 'bot', plugin, config, chats, senders },
+    ...(options.accounts ?? [])
+  ]
+
   cleanup(async () => {
-    await plugin.stop?.()
+    for (const account of accounts) {
+      await account.plugin.stop?.()
+    }
     await storage.close()
   })
 
-  const bindings: Binding[] = chats.map((chat) => ({
-    accountId: 'bot',
-    endpointId: 'worker',
-    ...chat
-  }))
+  const bindings: Binding[] = accounts.flatMap((account) =>
+    account.chats.map((chat) => ({
+      accountId: account.id,
+      endpointId: 'worker',
+      ...chat
+    }))
+  )
 
   const runtime = await createCore({
     publicUrl: 'https://relay.example',
     storage,
-    channels: new Map([['bot', plugin]]),
+    channels: new Map(accounts.map((account) => [account.id, account.plugin])),
     agents: new Map([['grok', protocolAgent(dispatchUrl)]]),
     ...(options.observe ? { observe: options.observe } : {}),
     ...(options.worker ? { worker: options.worker } : {}),
     config: {
-      accounts: [
-        { id: 'bot', channel: plugin.channel, config, allowedSenders: senders }
-      ],
+      accounts: accounts.map((account) => ({
+        id: account.id,
+        channel: account.plugin.channel,
+        config: account.config,
+        allowedSenders: account.senders
+      })),
       endpoints: [{ id: 'worker', agent: 'grok', config: {} }],
       bindings,
       storage: { plugin: 'sqlite', config: {} },
@@ -285,7 +375,8 @@ export async function harness(
 
   async function sendReply(
     requestId: string,
-    text = 'delayed answer'
+    text = 'delayed answer',
+    replyKind?: 'progress' | 'final'
   ): Promise<{ status: 'queued'; deliveryId: string }> {
     const call = async (input: unknown): Promise<Response> =>
       runtime.fetch(
@@ -306,8 +397,9 @@ export async function harness(
 
     const completed = await call({
       channel: stored.snapshot.channel.id,
-      idempotencyKey: `reply:${requestId}`,
-      text
+      idempotencyKey: `reply:${requestId}${replyKind ? `:${replyKind}` : ''}`,
+      text,
+      ...(replyKind ? { reply: { requestId, kind: replyKind } } : {})
     })
 
     return z

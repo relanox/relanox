@@ -1,5 +1,5 @@
+import { listenPeer } from '../listen.js'
 import { createServer } from 'node:http'
-import { once } from 'node:events'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, it } from 'vitest'
 import { incoming, mediaFixture, picture } from './fixture.js'
@@ -22,8 +22,7 @@ async function throughHttp(
       })
   })
 
-  server.listen(0, '127.0.0.1')
-  await once(server, 'listening')
+  await listenPeer(server)
   const address = server.address()
   if (address === null || typeof address === 'string') {
     throw new Error('Expected listener')

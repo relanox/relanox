@@ -16,10 +16,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@mattermost/client": "11.9.0",
+    "@mattermost/types": "11.9.0",
     "@relanox/channel-media": "workspace:*",
     "@relanox/markdown": "workspace:*",
     "@relanox/sdk": "workspace:*",
-    "@relanox/transport": "workspace:*",
     "ws": "8.22.0",
     "zod": "4.6.5"
   },

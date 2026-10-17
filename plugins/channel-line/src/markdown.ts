@@ -1,8 +1,8 @@
 import { markdownRuns, safeLink, splitMarkdown } from '@relanox/markdown'
 import type { MarkdownRun } from '@relanox/markdown'
-import type { Json } from '@relanox/sdk'
+import type { messagingApi } from '@line/bot-sdk'
 
-function span(run: MarkdownRun): Json {
+function span(run: MarkdownRun): messagingApi.FlexSpan {
   return {
     type: 'span',
     text: run.text,
@@ -12,14 +12,14 @@ function span(run: MarkdownRun): Json {
   }
 }
 
-function paragraph(runs: readonly MarkdownRun[]): Json {
+function paragraph(runs: readonly MarkdownRun[]): messagingApi.FlexText {
   return { type: 'text', wrap: true, contents: runs.map(span) }
 }
 
 /** Flex provides inline styles; links need their own text component for a URI action. */
-export function lineContents(markdown: string): Json[] {
+export function lineContents(markdown: string): messagingApi.FlexComponent[] {
   const runs = markdownRuns(markdown)
-  const contents: Json[] = []
+  const contents: messagingApi.FlexComponent[] = []
   let paragraphRuns: MarkdownRun[] = []
   for (const run of runs) {
     if (!run.href) {
@@ -43,7 +43,7 @@ export function lineContents(markdown: string): Json[] {
   return contents
 }
 
-export function lineMarkdown(markdown: string): Json {
+export function lineMarkdown(markdown: string): messagingApi.FlexMessage {
   const contents = lineContents(markdown)
 
   const visible = markdownRuns(markdown)
@@ -77,7 +77,10 @@ export function splitLineMarkdown(markdown: string): readonly string[] {
   })
 }
 
-export function quotedText(text: string, quoteToken: string | undefined): Json {
+export function quotedText(
+  text: string,
+  quoteToken: string | undefined
+): messagingApi.Message {
   return quoteToken
     ? { type: 'text', text: quotedPlainText(text), quoteToken }
     : lineMarkdown(text)

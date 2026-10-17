@@ -33,6 +33,13 @@ export type TeamsConfig = z.infer<typeof configSchema>
 
 export function validateConfig(value: unknown): TeamsConfig {
   const config = configSchema.parse(value)
+  const token = new URL(config.tokenUrl)
+  if (
+    !/^\/[^/]+\/oauth2\/v2\.0\/token$/u.test(token.pathname) ||
+    token.search
+  ) {
+    throw new Error('token_url_must_be_entra_v2_endpoint')
+  }
   for (const url of [
     config.tokenUrl,
     ...config.trustedServiceOrigins,

@@ -18,6 +18,8 @@ pnpm check
 
 原生插件作为 CLI 的工作区开发依赖提供，`pnpm install --frozen-lockfile` 和 `pnpm build` 保持原有源码流程。CLI 包可以独立打包；生产分发需要安装或组装所用的原生包。支持打包不表示对应版本已经发布到 npm。
 
+构建后，运行 `pnpm exec node scripts/assemble-plugins.mts <destination> "channel-wecom channel-matrix"`，即可装配生产 CLI 和选定的原生包。Docker 使用同一脚本。每次独立的 `pnpm deploy` 允许目标生产依赖图未使用企微等工作区补丁；所需补丁仍必须成功应用。普通工作区安装继续严格检查未使用补丁。
+
 需要在正常工作区解析之外开发插件时，先构建，再在测试配置中用 `plugins.load.paths` 指向包目录。相对覆盖路径以该配置文件所在目录为准。覆盖包需要 `relanox` 清单，以及导出 `createPlugin` 的编译入口 `dist/plugin.js`；详见[打包原生插件](reference/sdk.md#打包原生插件)。重复身份或无效覆盖会直接失败，不会使用已安装副本。修改后重新构建并重启。
 
 ## 保持修改集中

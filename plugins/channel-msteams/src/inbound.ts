@@ -1,16 +1,17 @@
 import { acceptConsent, downloadAttachments } from './media.js'
 import { MediaDownloadError } from '@relanox/channel-media'
 import type { AccountConfig, ChannelHost } from '@relanox/sdk'
-import type { z } from 'zod'
+import type { Activity } from '@microsoft/teams.api'
+import type { TeamsClient } from './native.js'
 import type { TeamsConfig } from './config.js'
 import { ingest } from './io.js'
-import type { activitySchema } from './schemas.js'
 
 export async function receive(
   host: ChannelHost,
   account: AccountConfig,
   config: TeamsConfig,
-  activity: z.infer<typeof activitySchema>
+  activity: Activity,
+  client: TeamsClient
 ): Promise<void> {
   if (!account.allowedSenders.includes(activity.from.id)) {
     host.observe.log('info', 'channel_policy_rejection', {
@@ -41,7 +42,7 @@ export async function receive(
   }
   let attachments: Awaited<ReturnType<typeof downloadAttachments>>
   try {
-    attachments = await downloadAttachments(activity, host, config)
+    attachments = await downloadAttachments(activity, host, config, client)
   } catch (error) {
     if (
       !(error instanceof MediaDownloadError) ||
@@ -74,12 +75,12 @@ export async function receive(
       replyToId: activity.id,
       data: {
         appId: config.appId,
-        serviceUrl: activity.serviceUrl,
+        serviceUrl: activity.serviceUrl ?? '',
         conversationId: activity.conversation.id,
         tenantId: config.tenantId,
         botId: config.botId,
         userId: activity.from.id,
-        ...(activity.conversation.conversationType
+        ...(activity.conversation.conversationType !== undefined
           ? { personal: activity.conversation.conversationType === 'personal' }
           : {}),
         replyToId: threadId ?? activity.id

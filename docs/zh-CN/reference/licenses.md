@@ -8,22 +8,27 @@ Relanox 使用 [MIT 许可证](https://github.com/relanox/relanox/blob/master/LI
 
 包清单和锁文件记录了精确版本。随运行环境提供的依赖声明了以下许可：
 
-| 许可         | 运行依赖示例                                                                                                                                                                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| MIT          | Hono、Pino、better-sqlite3、PostgreSQL 的 `pg` 客户端、Zod、`ws`、Standard Webhooks、Marked、`mime-types`、`mime-db`、`file-type`、`silk-wasm`、`@tencent-connect/qqbot-nodejs`、`eventsource-parser`、`ipaddr.js`、`proper-lockfile`、`retry`。 |
-| Apache-2.0   | Model Context Protocol 包、OpenTelemetry 包、Prometheus 客户端、Drizzle ORM、腾讯云 ASR SDK 及其公共包、`google-auth-library`、`simple-oauth2`。                                                                                                 |
-| BSD-2-Clause | `entities`。                                                                                                                                                                                                                                     |
-| BSD-3-Clause | `buffer-equal-constant-time`、Joi 及其 Hapi 依赖。                                                                                                                                                                                               |
-| ISC          | `pg-int8`、`split2`、`ini`、`graceful-fs` 和 `signal-exit`。                                                                                                                                                                                     |
-| 0BSD         | `tslib`。                                                                                                                                                                                                                                        |
-| Unlicense    | `fast-sha256`。                                                                                                                                                                                                                                  |
-| 公有领域     | better-sqlite3 内嵌的 SQLite。                                                                                                                                                                                                                   |
+| 许可          | 运行依赖示例                                                                                                                                                                                 |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MIT           | Hono、Pino、better-sqlite3、PostgreSQL 的 `pg` 客户端、Zod、`ws`、Standard Webhooks、Marked、`file-type`、`silk-wasm`、QQ、飞书、Slack、企微和 Teams SDK、发布的 Mattermost 客户端及类型包。 |
+| Apache-2.0    | Model Context Protocol 包、OpenTelemetry 包、Prometheus 客户端、Drizzle ORM、腾讯云 ASR SDK、Matrix SDK、LINE SDK、Google Chat API 及认证库、部分阿里云 SDK 包。                             |
+| BSD-2-Clause  | `entities`。                                                                                                                                                                                 |
+| BSD-3-Clause  | `buffer-equal-constant-time`、`protobufjs` 及其 `@protobufjs/*` 辅助包、`qs`、`ieee754` 和 `url-template`（后者的元数据使用简写 `BSD`）。                                                    |
+| ISC           | `pg-int8`、`split2`、`ini`、`graceful-fs`、`signal-exit`、`semver` 及部分阿里云包的声明；声明差异见下文。                                                                                    |
+| BlueOak-1.0.0 | `sax` 1.6.1，其 `LICENSE.md` 包含完整的 Blue Oak Model License 1.0.0。                                                                                                                       |
+| 0BSD          | `tslib`。                                                                                                                                                                                    |
+| Unlicense     | `fast-sha256`。                                                                                                                                                                              |
+| 公有领域      | better-sqlite3 内嵌的 SQLite。                                                                                                                                                               |
 
-`pg-types`、`pgpass` 和 `data-uri-to-buffer` 的 MIT 文本包含在各自的 README 文件中。Standard Webhooks 的发布包缺少许可文件，Prometheus 客户端的发布包缺少上游 NOTICE；仓库在 `licenses/` 中提供了对应发布提交的补充文件。Marked 的许可文件还保留了原始 Markdown 实现的 BSD-3-Clause 声明。开发工具与生产镜像分开。
+`pg-types`、`pgpass`、`data-uri-to-buffer`、`@tokenizer/token`、`http-proxy-agent` 5.0.0 和 `socks-proxy-agent` 6.2.1 的 MIT 文本包含在各自的 README 文件中。Standard Webhooks 的发布包缺少许可文件，Prometheus 客户端的发布包缺少上游 NOTICE；仓库在 `licenses/` 中提供了对应发布提交的补充文件。Marked 的许可文件还保留了原始 Markdown 实现的 BSD-3-Clause 声明。开发工具与生产镜像分开。
 
 Drizzle ORM 0.45.4 声明使用 Apache-2.0，但发布包缺少许可文本。`licenses/drizzle-orm.LICENSE` 提供了对应[发布提交](https://github.com/drizzle-team/drizzle-orm/blob/eab8bedbb65d5429c54e612ddbd88aa23091d398/LICENSE)中的文本。
 
-simple-oauth2 5.1.0 的[发布元数据](https://github.com/lelylan/simple-oauth2/blob/a4a4486b8f4c6d2af82969211052f445c50c1b11/package.json)声明使用 Apache-2.0，但发布包缺少许可文本。`licenses/simple-oauth2.LICENSE` 附上该来源声明和标准 Apache-2.0 文本。其 Hapi 和 Joi 依赖在各自包中保留了 BSD-3-Clause 声明。
+部分官方 SDK 的发布包缺少独立许可文件。[SDK 补充声明](https://github.com/relanox/relanox/blob/master/licenses/sdk-dependencies.NOTICE)记录了精确包版本、发布声明及文本来源。Teams 2.1.0 系列包和 Google Chat 51.2.0 补充了对应上游版本的许可文件。企微 1.0.7、所列阿里云包、`httpx` 2.3.3 和 `sm3` 1.0.3 则保留发布元数据及 README 的声明，并附上相应标准许可文本。这些标准文本是补充文件，不冒充上游缺失文件，也不推测版权人。
+
+两个阿里云包的发布声明不一致：`@alicloud/openapi-client` 0.4.15 的 `package.json` 声明 ISC，README 声明 Apache-2.0；`@alicloud/tea-typescript` 1.8.0 的 `package.json` 声明 ISC，README 声明 MIT。补充声明保留每处来源并附上双方引用的文本，不据此认定双重授权，也不宣称差异已解决。
+
+发布的 `@mattermost/client` 和 `@mattermost/types` 11.9.0 声明 MIT。对应的[上游许可政策](https://github.com/mattermost/mattermost/blob/583461af10fc9b2aef2871c722fc4376db695832/LICENSE.txt)区分官方编译发行物的 MIT 与 `webapp` 源码的 Apache-2.0。`licenses/mattermost-compiled.LICENSE` 和 `licenses/mattermost-source.LICENSE` 保留两份原始文档。政策中的其他源码条款不代表这些 npm 包声明了相应许可。
 
 如果在再分发前修改了生产依赖，请检查已安装包的许可文件，并随依赖变更更新声明。依赖维护步骤见[贡献指南](../development.md)。
 
