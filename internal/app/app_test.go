@@ -77,7 +77,7 @@ func TestApplicationNativeRoundTripAndPrivateManagement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response.Body.Close()
+	_ = response.Body.Close()
 	if response.StatusCode != 200 {
 		t.Fatalf("webhook=%d", response.StatusCode)
 	}
@@ -92,7 +92,7 @@ func TestApplicationNativeRoundTripAndPrivateManagement(t *testing.T) {
 	}
 	connection, err := net.DialTimeout("tcp", strings.TrimPrefix(public, "http://"), 100*time.Millisecond)
 	if err == nil {
-		connection.Close()
+		_ = connection.Close()
 		t.Fatal("public listener survived Close")
 	}
 	assertStoredInput(t, ctx, cfg)
@@ -107,7 +107,7 @@ func assertStatus(t *testing.T, address string, want int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != want {
 		t.Fatalf("%s=%d want %d", address, response.StatusCode, want)
 	}
@@ -121,12 +121,14 @@ func TestFailedManagementBindReleasesPublicListener(t *testing.T) {
 		t.Fatal(err)
 	}
 	address := reserved.Addr().String()
-	reserved.Close()
+	if err := reserved.Close(); err != nil {
+		t.Fatal(err)
+	}
 	blocked, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer blocked.Close()
+	defer func() { _ = blocked.Close() }()
 	data, _ := json.Marshal(map[string]any{"storage": map[string]any{"driver": "sqlite", "path": filepath.Join(t.TempDir(), "relay.db")}, "http": map[string]any{"listen": address, "managementListen": blocked.Addr().String()}})
 	cfg, err := config.Decode(data)
 	if err != nil {
@@ -143,7 +145,9 @@ func TestFailedManagementBindReleasesPublicListener(t *testing.T) {
 	if err != nil {
 		t.Fatalf("public listener leaked: %v", err)
 	}
-	listener.Close()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func nativePeer(t *testing.T, notifications chan<- struct{}, sends chan<- map[string]any) *httptest.Server {
@@ -168,7 +172,7 @@ func nativePeer(t *testing.T, notifications chan<- struct{}, sends chan<- map[st
 				w.WriteHeader(400)
 				return
 			}
-			defer r.MultipartForm.RemoveAll()
+			defer func() { _ = r.MultipartForm.RemoveAll() }()
 			body := map[string]any{"text": r.FormValue("text"), "chat_id": r.FormValue("chat_id")}
 			sends <- body
 			_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":102}}`)
@@ -185,7 +189,11 @@ func assertStoredInput(t *testing.T, ctx context.Context, cfg config.Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	records, err := store.ListInbound(ctx, model.ListInboundInput{StatusFilter: model.StatusFilter{Limit: 10}})
 	if err != nil || len(records) != 1 {
 		t.Fatalf("durable record=%v %v", records, err)
@@ -204,7 +212,7 @@ func roundTripMCP(t *testing.T, ctx context.Context, public string, sends <-chan
 	if err != nil {
 		t.Fatal(err)
 	}
-	response.Body.Close()
+	_ = response.Body.Close()
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("unconfigured MCP Host=%d", response.StatusCode)
 	}

@@ -78,7 +78,8 @@ func saveCredentials(directory string, creds credentials) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
+	// A successful rename consumes this path; failure cleanup is best effort.
+	defer func() { _ = os.Remove(file.Name()) }()
 	if err = file.Chmod(0600); err == nil {
 		_, err = file.Write(data)
 	}

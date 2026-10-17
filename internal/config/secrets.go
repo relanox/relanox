@@ -43,7 +43,8 @@ func (c Config) ResolveSecret(ref model.SecretRef) (string, error) {
 	if err != nil {
 		return "", invalid("credential", "file_unreadable")
 	}
-	defer file.Close()
+	// Read errors are handled below; this descriptor carries no pending writes.
+	defer func() { _ = file.Close() }()
 	const maxSecretBytes = 64 << 10
 	data, err := io.ReadAll(io.LimitReader(file, maxSecretBytes+1))
 	if err != nil || len(data) > maxSecretBytes {

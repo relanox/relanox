@@ -37,7 +37,11 @@ func adminFixture(t *testing.T) (string, int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	endpoint := model.EndpointConfig{ID: "dot", Agent: model.Dot, Config: json.RawMessage(`{"mcp":{"token":{"file":"private-credential-location"}}}`)}
 	address := model.ChannelAddress{ID: "conversation", Platform: model.Telegram, AccountID: "bot", ChatID: "22"}
 	if err = store.RegisterConversations(ctx, []model.ConversationRecord{{Address: address, Endpoint: endpoint}}); err != nil {

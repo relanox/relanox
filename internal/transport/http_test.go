@@ -21,7 +21,11 @@ import (
 // TLS option fails the trusted request; default plaintext tests cannot catch it.
 // This uses real TLS and the production trust configuration, without a bypass.
 func TestClientAcceptsExplicitCertificateAuthority(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"ok":true}`) }))
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.WriteString(w, `{"ok":true}`); err != nil {
+			t.Error(err)
+		}
+	}))
 	defer server.Close()
 	roots := x509.NewCertPool()
 	roots.AddCert(server.Certificate())
@@ -47,7 +51,9 @@ func TestClientDeniesPrivateDestinationUnlessExplicitlyConfigured(t *testing.T) 
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		io.WriteString(w, `{"id":"00042"}`)
+		if _, err := io.WriteString(w, `{"id":"00042"}`); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	var result struct {
@@ -76,7 +82,9 @@ func TestClientBlocksCrossOriginRedirectAndBoundsResponse(t *testing.T) {
 			http.Redirect(w, r, target.URL, http.StatusFound)
 			return
 		}
-		io.WriteString(w, strings.Repeat("x", 100))
+		if _, err := io.WriteString(w, strings.Repeat("x", 100)); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer origin.Close()
 	client := transport.NewClient(transport.Options{AllowPrivateHosts: []string{"127.0.0.1"}})
@@ -94,7 +102,9 @@ func TestDoJSONPropagatesCancellationAndRedactsHTTPFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "7")
 		w.WriteHeader(http.StatusTooManyRequests)
-		io.WriteString(w, "private-response-token")
+		if _, err := io.WriteString(w, "private-response-token"); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	client := transport.NewClient(transport.Options{AllowPrivateHosts: []string{"127.0.0.1"}})

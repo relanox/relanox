@@ -246,7 +246,7 @@ func DoJSON(ctx context.Context, client *http.Client, method, endpoint string, h
 		}
 		return errors.New("remote_request_failed")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return &HTTPError{Status: response.StatusCode, RetryAfter: RetryAfter(response.Header.Get("Retry-After"), time.Now())}
 	}

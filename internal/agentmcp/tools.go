@@ -294,7 +294,7 @@ func (s *Server) download(ctx context.Context, value string, limit int64) (model
 	if err != nil {
 		return zero, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 || response.ContentLength > limit {
 		return zero, errors.New("media_unavailable")
 	}

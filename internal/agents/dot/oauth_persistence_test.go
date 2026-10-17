@@ -218,7 +218,7 @@ func (h *oauthHarness) do(t *testing.T, request *http.Request) (int, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -272,7 +272,7 @@ func (h *oauthHarness) authorize(t *testing.T) (clientID, code string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != 303 {
 		data, _ := io.ReadAll(response.Body)
 		t.Fatalf("allow consent %d %s", response.StatusCode, data)

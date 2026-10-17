@@ -94,7 +94,7 @@ func uploadFixture(t *testing.T, f *relayFixture, session *mcp.ClientSession, ch
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	var body struct {
 		ID string `json:"fileId"`
 	}
@@ -137,7 +137,7 @@ func assertDownload(t *testing.T, client *http.Client, url string, code int, exp
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	data, err := io.ReadAll(response.Body)
 	if err != nil || response.StatusCode != code || code == 200 && (!bytes.Equal(data, expected) || response.Header.Get("Cache-Control") != "no-store" || response.Header.Get("X-Content-Type-Options") != "nosniff") {
 		t.Fatalf("download: %d %q %v", response.StatusCode, data, err)

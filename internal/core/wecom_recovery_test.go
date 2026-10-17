@@ -130,7 +130,7 @@ func callbackWeCom(t *testing.T, f *wecomRelay, message string) wecomStream {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != 200 {
 		t.Fatalf("native callback=%d", response.StatusCode)
 	}

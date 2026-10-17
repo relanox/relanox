@@ -111,7 +111,8 @@ func (a *Agent) Dispatch(ctx context.Context, in model.DispatchInput) (model.Dis
 	if err != nil {
 		return model.DispatchResult{Status: model.Unknown, ErrorCode: "grok_trigger_uncertain"}, nil
 	}
-	defer resp.Body.Close()
+	// The HTTP receipt determines dispatch outcome, not connection cleanup.
+	defer func() { _ = resp.Body.Close() }()
 	return classifyReceipt(resp), nil
 }
 

@@ -106,7 +106,8 @@ func SendMessage(ctx context.Context, options Options, message string) (Acknowle
 			}
 			return zero, dispatchError("connect", false, e)
 		}
-		defer conn.CloseNow()
+		// Closing the socket cannot change whether the remote send took effect.
+		defer func() { _ = conn.CloseNow() }()
 		return sendChat(ctx, conn, send, receive, encoded)
 	}
 	return zero, dispatchError("connect", false, errProtocol)

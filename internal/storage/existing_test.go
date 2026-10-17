@@ -142,7 +142,11 @@ func TestOpenExistingDoesNotInitializePostgreSQLSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	driver, err := postgres.Open(db)
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +165,11 @@ func TestOpenExistingDoesNotInitializePostgreSQLSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	assertStoredState(t, store, false)
 	cfg.Schema += "_missing"
 	if _, err := storage.OpenExisting(ctx, cfg, resolve); !errors.Is(err, storage.ErrDatabaseUninitialized) {

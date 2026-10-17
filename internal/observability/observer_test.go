@@ -132,8 +132,8 @@ func assertMetricsHTTPConfiguration(t *testing.T, observer *observability.Observ
 // The shutdown deadline remains observable without a fake writer implementation.
 func TestLogBackpressureIsBoundedAndShutdownHonorsDeadline(t *testing.T) {
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
 	observer, err := observability.New(config.Observability{Metrics: true}, observability.Options{Writer: writer})
 	if err != nil {
 		t.Fatal(err)

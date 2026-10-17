@@ -58,7 +58,7 @@ func TestMCPGuardsBeforeParsingAndReadsRotatedSecrets(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			data, _ := io.ReadAll(response.Body)
 			if response.StatusCode != row.want {
 				t.Fatalf("status=%d body=%s", response.StatusCode, data)
@@ -163,7 +163,11 @@ func TestConstructorRegistersTypedToolSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer server.Close(context.Background())
+	defer func() {
+		if err := server.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	}()
 	request := func(method string, params map[string]any) []byte {
 		params["_meta"] = map[string]any{"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": map[string]any{}}
 		data, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
@@ -184,7 +188,7 @@ func TestConstructorRegistersTypedToolSchemas(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)

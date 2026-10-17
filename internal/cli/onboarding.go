@@ -429,7 +429,9 @@ func (c *command) setupCommand() *cobra.Command {
 			return err
 		}
 		defer d.rollback()
-		fmt.Fprintln(c.options.Err, "Native IDs are platform-specific. WeChat uses wechat-login; WeCom discovery can find chat and sender IDs before binding.")
+		if _, err := fmt.Fprintln(c.options.Err, "Native IDs are platform-specific. WeChat uses wechat-login; WeCom discovery can find chat and sender IDs before binding."); err != nil {
+			return err
+		}
 		if err = c.addAccount(cmd.Context(), d, addOptions{}); err != nil {
 			return err
 		}
