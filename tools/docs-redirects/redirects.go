@@ -2,27 +2,14 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"html/template"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func validateRedirectBase(base string) error {
-	if base == "" {
-		return nil
-	}
-	target, err := url.Parse(base)
-	if err != nil || target.Scheme != "https" || target.Host == "" || target.User != nil || target.RawQuery != "" || target.Fragment != "" || !strings.HasSuffix(base, "/") {
-		return fmt.Errorf("redirect_base_must_be_an_https_directory_url")
-	}
-	return nil
-}
-
-// Retain published VitePress URLs after the Go documentation migration.
-func writeLegacyRedirects(out, base string) error {
+// Retain published URLs whose topics moved into the current Go documentation.
+func writeLegacyRedirects(out string) error {
 	aliases := map[string]string{
 		"index.html": "quickstart.html", "getting-started.html": "quickstart.html",
 		"connect.html": "quickstart.html", "media.html": "configuration.html",
@@ -36,30 +23,38 @@ func writeLegacyRedirects(out, base string) error {
 	}
 	for _, language := range []string{"en", "zh-CN"} {
 		for alias, target := range aliases {
-			if err := writeSiteRedirect(out, base, language+"/"+alias, language+"/"+target); err != nil {
+			if err := writeSiteRedirect(out, language+"/"+alias, language+"/"+target); err != nil {
 				return err
 			}
 		}
-		if err := writeSiteRedirect(out, base, language+"/reference/sdk.html", "en/architecture.html"); err != nil {
+		if err := writeSiteRedirect(out, language+"/reference/sdk.html", "en/architecture.html"); err != nil {
 			return err
 		}
-		if err := writeRedirect(out, language+"/reference/licenses.html", "https://github.com/relanox/relanox/blob/master/licenses/README.md"); err != nil {
+		if err := writeMissingRedirect(out, language+"/reference/licenses.html", "https://github.com/relanox/relanox/blob/master/licenses/README.md"); err != nil {
 			return err
 		}
 	}
 	for _, page := range []string{"architecture.html", "development.html"} {
-		if err := writeSiteRedirect(out, base, "zh-CN/"+page, "en/"+page); err != nil {
+		if err := writeSiteRedirect(out, "zh-CN/"+page, "en/"+page); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writeSiteRedirect(out, base, alias, target string) error {
-	if base == "" {
-		base = strings.Repeat("../", strings.Count(alias, "/"))
+func writeSiteRedirect(out, alias, target string) error {
+	base := strings.Repeat("../", strings.Count(alias, "/"))
+	return writeMissingRedirect(out, alias, base+target)
+}
+
+func writeMissingRedirect(out, alias, target string) error {
+	file := filepath.Join(out, filepath.FromSlash(alias))
+	if _, err := os.Stat(file); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
 	}
-	return writeRedirect(out, alias, base+target)
+	return writeRedirect(out, alias, target)
 }
 
 func writeRedirect(out, alias, target string) error {
