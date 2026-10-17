@@ -26,6 +26,8 @@ import (
 // https://github.com/Tencent/openclaw-weixin/blob/main/src/api/types.ts
 type Identifier string
 
+// UnmarshalJSON preserves native uint64 numbers and string IDs beyond the SDK's
+// int64 MessageID. Polling also advances its cursor only after durable acceptance.
 func (id *Identifier) UnmarshalJSON(raw []byte) error {
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 		return nil

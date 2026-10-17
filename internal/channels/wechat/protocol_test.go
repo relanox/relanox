@@ -202,6 +202,9 @@ func (p *fileUploadPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			p.t.Error("missing native file item")
 			return
 		}
+		if body.Message.ClientID != "public-message" || body.Message.ContextToken != "public-context" {
+			p.t.Error("native idempotency/context changed")
+		}
 		file := body.Message.Items[0].File
 		if file.Length != "3" || file.FileName != "opaque file.bin" || file.Media.Query != "public-download-ticket" {
 			p.t.Errorf("file identifiers/length changed: %+v", file)

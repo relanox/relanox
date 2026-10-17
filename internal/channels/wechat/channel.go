@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	ilink "github.com/openilink/openilink-sdk-go"
+
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
@@ -244,7 +246,7 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if input.Target.Channel != model.WeChat || input.Target.AccountID != c.account.ID || input.Target.ThreadID != "" || json.Unmarshal(input.Target.Data, &data) != nil || !c.matches(data) {
 		return common.Reject("invalid_target"), nil
 	}
-	item := Item{Type: 1, Text: &Content{Text: input.Chunk.Text}}
+	item := ilink.MessageItem{Type: ilink.ItemText, TextItem: &ilink.TextItem{Text: input.Chunk.Text}}
 	var err error
 	if input.Chunk.Media != nil {
 		if input.Media == nil {
@@ -261,9 +263,8 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if err = ctx.Err(); err != nil {
 		return common.Retry("send_cancelled_before_transmit", 0), nil
 	}
-	message := Message{To: input.Target.ChatID, ClientID: input.Chunk.IdempotencyKey, Type: 2, State: 2, ContextToken: data.ContextToken, Items: []Item{item}}
-	var response map[string]any
-	err = c.client.Post(ctx, "sendmessage", map[string]any{"msg": message}, &response, 15*time.Second)
+	message := &ilink.WeixinMessage{ToUserID: input.Target.ChatID, ClientID: input.Chunk.IdempotencyKey, MessageType: ilink.MsgTypeBot, MessageState: ilink.StateFinish, ContextToken: data.ContextToken, ItemList: []ilink.MessageItem{item}}
+	err = c.client.send(ctx, message)
 	if err == nil {
 		receipt := common.Sent("")
 		receipt.Receipt.Data = common.Data(map[string]string{"clientId": input.Chunk.IdempotencyKey})
