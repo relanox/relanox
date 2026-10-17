@@ -105,20 +105,39 @@ func (s *scopedAgent) enqueuePlan(ctx context.Context, input model.SendMessageIn
 		return model.MessageReceipt{}, failure("channel_target_scope_mismatch")
 	}
 	deliveryID := uuid.NewString()
+	parent, err := s.replyTrace(ctx, input.Reply)
+	if err != nil {
+		return model.MessageReceipt{}, err
+	}
+	ctx, span := s.runtime.observe.Span(ctx, "enqueue_message", model.LogFields{Component: "core", Operation: "enqueue_message", ChannelID: input.Channel, DeliveryID: deliveryID}, parent)
+	outcome := "failed"
+	defer func() { span.End(outcome) }()
 	chunks, err := deliveryPlan(channel, deliveryID, rich, refs, *resolution.Target)
 	if err != nil {
 		return model.MessageReceipt{}, err
 	}
 	limits := s.runtime.cfg.Media
 	limits.MaxAttachments *= 2
-	result, err := s.runtime.store.EnqueueMessage(ctx, model.EnqueueMessageInput{ChannelID: input.Channel, EndpointIDs: s.principal.EndpointIDs, Agent: s.kind, Message: message, Media: assets, Limits: limits, Outbound: model.OutboundRecord{DeliveryID: deliveryID, ChannelID: input.Channel, Endpoint: conversation.Endpoint, MessageID: message.MessageID, Target: *resolution.Target, Reply: input.Reply, Chunks: chunks, Status: model.DeliveryPending, Version: 1, DueAt: now, CreatedAt: now}})
+	result, err := s.runtime.store.EnqueueMessage(ctx, model.EnqueueMessageInput{ChannelID: input.Channel, EndpointIDs: s.principal.EndpointIDs, Agent: s.kind, Message: message, Media: assets, Limits: limits, Outbound: model.OutboundRecord{DeliveryID: deliveryID, ChannelID: input.Channel, Endpoint: conversation.Endpoint, MessageID: message.MessageID, Target: *resolution.Target, Reply: input.Reply, Chunks: chunks, Status: model.DeliveryPending, Version: 1, DueAt: now, CreatedAt: now, Trace: span.Context()}})
 	if err == nil {
+		outcome = string(result.Status)
 		s.runtime.observe.Log(ctx, "info", "message.queued", model.LogFields{Component: "core", ChannelID: input.Channel, DeliveryID: result.DeliveryID, Outcome: string(result.Status)})
 	}
 	if err == nil && result.Status != model.Queued && result.Status != model.NotFound && result.Status != model.Unauthorized && result.Status != model.Conflict {
 		return model.MessageReceipt{}, failure(string(result.Status))
 	}
 	return result, err
+}
+
+func (s *scopedAgent) replyTrace(ctx context.Context, reply *model.ReplyReference) (*model.TraceContext, error) {
+	if reply == nil {
+		return nil, nil
+	}
+	record, err := s.runtime.store.GetInbound(ctx, reply.RequestID)
+	if err != nil || record == nil {
+		return nil, err
+	}
+	return record.Snapshot.Trace, nil
 }
 
 func targetMatches(target model.ReplyTarget, address model.ChannelAddress) bool {
