@@ -219,11 +219,11 @@ func awaitDiscordState(t *testing.T, f *discordRelay, predicate func(gatewayStat
 	defer ticker.Stop()
 	var state gatewayState
 	for {
-		var err error
-		state, err = readDiscordCheckpoint(ctx, f)
+		checkpoint, err := readDiscordCheckpoint(ctx, f)
 		if err != nil {
 			failDiscordCheckpoint(t, f, state, err)
 		}
+		state = checkpoint
 		if predicate(state) {
 			return state
 		}
