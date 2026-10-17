@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -58,7 +59,7 @@ func parseConfig(raw json.RawMessage) (Config, error) {
 		return c, errors.New("invalid_wecom_mode")
 	}
 	for id, kind := range c.RecipientTypes {
-		if id == "" || !common.Contains([]string{"single", "group"}, kind) {
+		if id == "" || !slices.Contains([]string{"single", "group"}, kind) {
 			return c, errors.New("invalid_recipient_type")
 		}
 	}
@@ -156,7 +157,7 @@ type targetData struct {
 }
 
 func (c *Channel) valid(data targetData) bool {
-	if data.Scope.BotID != c.config.BotID || !common.Contains([]string{"single", "group"}, data.ChatType) {
+	if data.Scope.BotID != c.config.BotID || !slices.Contains([]string{"single", "group"}, data.ChatType) {
 		return false
 	}
 	if c.config.Mode == "webhook" {

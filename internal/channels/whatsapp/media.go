@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -70,12 +71,12 @@ func (c *Channel) receiveMedia(ctx context.Context, m message) (string, []model.
 		return "", nil, err
 	}
 	origin := common.Origin(metadata.URL)
-	if metadata.ID != payload.ID || !common.Contains([]string{apiBase, "https://lookaside.fbsbx.com"}, origin) {
+	if metadata.ID != payload.ID || !slices.Contains([]string{apiBase, "https://lookaside.fbsbx.com"}, origin) {
 		return "", nil, errors.New("untrusted_media_origin")
 	}
 	mimeType := strings.ToLower(strings.TrimSpace(strings.Split(metadata.MIME, ";")[0]))
 	format := formats[kind]
-	if !common.Contains(format.mimes, mimeType) {
+	if !slices.Contains(format.mimes, mimeType) {
 		return "", nil, errors.New("unsupported_media")
 	}
 	size, err := strconv.ParseInt(strings.Trim(string(metadata.Size), `"`), 10, 64)
@@ -174,7 +175,7 @@ func (c *Channel) upload(ctx context.Context, input model.SendInput, headers htt
 	}
 	ref := input.Media.Reference
 	format, ok := formats[ref.Kind]
-	if !ok || !common.Contains(format.mimes, ref.MIMEType) {
+	if !ok || !slices.Contains(format.mimes, ref.MIMEType) {
 		result := common.Reject("media_format_unsupported")
 		return nil, "", &result
 	}

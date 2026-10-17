@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -249,10 +250,10 @@ func mediaMethod(ref model.MediaReference) (string, string, int64) {
 		}
 		return "sendPhoto", "photo", 10 * 1024 * 1024
 	case model.Audio:
-		if common.Contains([]string{"audio/ogg", "audio/opus"}, ref.MIMEType) {
+		if slices.Contains([]string{"audio/ogg", "audio/opus"}, ref.MIMEType) {
 			return "sendVoice", "voice", 50 * 1024 * 1024
 		}
-		if common.Contains([]string{"audio/mpeg", "audio/mp4", "audio/x-m4a"}, ref.MIMEType) {
+		if slices.Contains([]string{"audio/mpeg", "audio/mp4", "audio/x-m4a"}, ref.MIMEType) {
 			return "sendAudio", "audio", 50 * 1024 * 1024
 		}
 	case model.Video:

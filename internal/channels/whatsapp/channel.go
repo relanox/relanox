@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -318,7 +319,7 @@ func (c *Channel) receiveBody(ctx context.Context, body webhookBody) error {
 }
 
 func (c *Channel) receive(ctx context.Context, m message) error {
-	if !common.Contains(c.account.AllowedSenders, m.From) {
+	if !slices.Contains(c.account.AllowedSenders, m.From) {
 		return nil
 	}
 	if !platformID(m.ID) || !platformID(m.From) {

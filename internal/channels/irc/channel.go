@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,7 +124,7 @@ func New(host model.ChannelHost, account model.AccountConfig, options common.Opt
 		if !channelName(chat) {
 			return nil, errors.New("invalid_bound_channel")
 		}
-		if !common.Contains(c.channels, chat) {
+		if !slices.Contains(c.channels, chat) {
 			c.channels = append(c.channels, chat)
 		}
 	}
@@ -333,7 +334,7 @@ func (c *Channel) receive(ctx context.Context, current *connection, message *wir
 	if !authenticated {
 		senderID = "nick:" + fold(sender, state.CaseMapping)
 	}
-	if !common.Contains(c.account.AllowedSenders, senderID) {
+	if !slices.Contains(c.account.AllowedSenders, senderID) {
 		return nil
 	}
 	eventID := message.Tags["msgid"]

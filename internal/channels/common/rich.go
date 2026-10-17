@@ -1,6 +1,7 @@
 package common
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/relanox/relanox/internal/model"
@@ -51,7 +52,7 @@ func validRichImage(part model.RichTextPart, media model.StoredMedia, limits mod
 	if ref.Kind != model.Image || stored.Kind != model.Image || ref.ID != stored.ID || ref.MIMEType != stored.MIMEType || ref.Size != stored.Size || ref.SHA256 != stored.SHA256 || ref.FileName != stored.FileName || int64(len(media.Data)) != ref.Size || len(media.Data) == 0 {
 		return false
 	}
-	if len(limits.ImageMIMETypes) > 0 && !Contains(limits.ImageMIMETypes, ref.MIMEType) {
+	if len(limits.ImageMIMETypes) > 0 && !slices.Contains(limits.ImageMIMETypes, ref.MIMEType) {
 		return false
 	}
 	limit := maximum

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -67,7 +68,7 @@ func (c *Channel) receive(ctx context.Context, input event) error {
 	if err := c.host.DiscoverConversation(ctx, model.DiscoveredConversation{ChatID: input.Space.Name, ThreadID: thread, SenderID: m.Sender.Name}); err != nil {
 		return err
 	}
-	if !common.Contains(c.host.BoundChatIDs(), input.Space.Name) {
+	if !slices.Contains(c.host.BoundChatIDs(), input.Space.Name) {
 		return nil
 	}
 	value := m.Text
@@ -98,7 +99,7 @@ func (c *Channel) receive(ctx context.Context, input event) error {
 }
 
 func (c *Channel) allowedSender(sender *chat.User) bool {
-	return sender != nil && sender.Type != "BOT" && userID.MatchString(sender.Name) && common.Contains(c.account.AllowedSenders, sender.Name)
+	return sender != nil && sender.Type != "BOT" && userID.MatchString(sender.Name) && slices.Contains(c.account.AllowedSenders, sender.Name)
 }
 
 func (c *Channel) download(ctx context.Context, space string, attachments []*chat.Attachment) ([]model.MediaUpload, error) {

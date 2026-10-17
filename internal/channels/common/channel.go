@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -116,7 +117,7 @@ func PolicyRejection(err error) bool {
 	if errors.As(err, &coded) {
 		code = coded.Code()
 	}
-	return Contains([]string{"sender_not_allowed", "unbound_conversation", "unauthorized_sender", "unauthorized_conversation", "unknown_account", "media_too_large", "too_many_attachments", "media_total_too_large"}, code)
+	return slices.Contains([]string{"sender_not_allowed", "unbound_conversation", "unauthorized_sender", "unauthorized_conversation", "unknown_account", "media_too_large", "too_many_attachments", "media_total_too_large"}, code)
 }
 
 func Ingest(ctx context.Context, host model.ChannelHost, input model.IngestInput) error {

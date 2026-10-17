@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/common"
@@ -133,17 +134,17 @@ func (c *Channel) ingest(ctx context.Context, message nativeMessage, requestID s
 	if message.BotID != c.config.BotID || message.From.UserID == c.config.BotID {
 		return false, nil
 	}
-	if !common.Contains([]string{"text", "image", "file", "video", "mixed", "voice"}, message.Type) {
+	if !slices.Contains([]string{"text", "image", "file", "video", "mixed", "voice"}, message.Type) {
 		return false, nil
 	}
 	chatID := message.chatID()
-	if chatID == "" || message.MessageID == "" || !common.Contains([]string{"single", "group"}, message.ChatType) {
+	if chatID == "" || message.MessageID == "" || !slices.Contains([]string{"single", "group"}, message.ChatType) {
 		return false, errors.New("invalid_wecom_message")
 	}
 	if err := c.host.DiscoverConversation(ctx, model.DiscoveredConversation{ChatID: chatID, SenderID: message.From.UserID}); err != nil {
 		return false, err
 	}
-	if !common.Contains(c.account.AllowedSenders, message.From.UserID) {
+	if !slices.Contains(c.account.AllowedSenders, message.From.UserID) {
 		return false, nil
 	}
 	text, attachments, err := c.receiveParts(ctx, message)

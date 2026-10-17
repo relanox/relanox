@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -250,7 +251,7 @@ func (c *Channel) receive(ctx context.Context, raw []byte) error {
 }
 
 func (c *Channel) acceptsSender(sender string, envelope envelope) bool {
-	return platformID(sender) && envelope.Message != nil && !c.self(envelope) && common.Contains(c.account.AllowedSenders, sender)
+	return platformID(sender) && envelope.Message != nil && !c.self(envelope) && slices.Contains(c.account.AllowedSenders, sender)
 }
 
 func (c *Channel) self(envelope envelope) bool {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -248,7 +249,7 @@ func (c *Channel) receive(ctx context.Context, event webhook.MessageEvent, botID
 		return err
 	}
 	m, ok := nativeContent(event.Message)
-	if !ok || source.user == botID || !common.Contains(c.account.AllowedSenders, source.user) {
+	if !ok || source.user == botID || !slices.Contains(c.account.AllowedSenders, source.user) {
 		return nil
 	}
 	if !platformID(event.WebhookEventId) || !platformID(m.ID) {

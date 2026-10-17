@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -149,7 +150,7 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	}
 	messages, err := c.messages(ctx, input, target)
 	if err != nil {
-		if common.Contains([]string{"native_file_send_unsupported", "audio_requires_duration", "media_requires_preview", "invalid_media", "media_format_unsupported", "media_too_large", "rich_text_limit_exceeded", "text_limit_exceeded"}, err.Error()) {
+		if slices.Contains([]string{"native_file_send_unsupported", "audio_requires_duration", "media_requires_preview", "invalid_media", "media_format_unsupported", "media_too_large", "rich_text_limit_exceeded", "text_limit_exceeded"}, err.Error()) {
 			return common.Reject(err.Error()), nil
 		}
 		return common.Failure(err, true), nil
@@ -285,7 +286,7 @@ func validateMedia(ref model.MediaReference, preview *model.StoredMedia) string 
 	case model.File:
 		return "native_file_send_unsupported"
 	case model.Image:
-		if !common.Contains([]string{"image/png", "image/jpeg"}, ref.MIMEType) {
+		if !slices.Contains([]string{"image/png", "image/jpeg"}, ref.MIMEType) {
 			return "media_format_unsupported"
 		}
 		if ref.Size > 10_000_000 {
@@ -295,7 +296,7 @@ func validateMedia(ref model.MediaReference, preview *model.StoredMedia) string 
 			return "media_requires_preview"
 		}
 	case model.Audio:
-		if !common.Contains([]string{"audio/mpeg", "audio/mp4", "audio/x-m4a"}, ref.MIMEType) {
+		if !slices.Contains([]string{"audio/mpeg", "audio/mp4", "audio/x-m4a"}, ref.MIMEType) {
 			return "media_format_unsupported"
 		}
 		if ref.Size > 200_000_000 {
@@ -311,7 +312,7 @@ func validateMedia(ref model.MediaReference, preview *model.StoredMedia) string 
 	default:
 		return "media_format_unsupported"
 	}
-	if preview != nil && (preview.Reference.Kind != model.Image || !common.Contains([]string{"image/jpeg", "image/png"}, preview.Reference.MIMEType) || int64(len(preview.Data)) != preview.Reference.Size || preview.Reference.Size > 1_000_000 || preview.Reference.Size <= 0) {
+	if preview != nil && (preview.Reference.Kind != model.Image || !slices.Contains([]string{"image/jpeg", "image/png"}, preview.Reference.MIMEType) || int64(len(preview.Data)) != preview.Reference.Size || preview.Reference.Size > 1_000_000 || preview.Reference.Size <= 0) {
 		return "invalid_media"
 	}
 	return ""

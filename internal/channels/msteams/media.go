@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,7 +48,7 @@ func (c *Channel) acceptConsent(ctx context.Context, input activity) error {
 		} `json:"context"`
 		UploadInfo *uploadInfo `json:"uploadInfo,omitempty"`
 	}
-	if json.Unmarshal(input.Value, &invoke) != nil || !common.Contains([]string{"accept", "decline"}, invoke.Action) || invoke.Context.ConsentID == "" {
+	if json.Unmarshal(input.Value, &invoke) != nil || !slices.Contains([]string{"accept", "decline"}, invoke.Action) || invoke.Context.ConsentID == "" {
 		return errors.New("invalid_file_consent")
 	}
 	key := "consent:" + invoke.Context.ConsentID
@@ -127,7 +128,7 @@ func (c *Channel) prepareAttachment(ctx context.Context, input model.SendInput, 
 	if info == nil {
 		return outcome(common.Reject("missing_file_upload_info")), nil
 	}
-	if !validEndpoint(info.UploadURL) || !common.Contains(c.config.TrustedUploadOrigins, common.Origin(info.UploadURL)) {
+	if !validEndpoint(info.UploadURL) || !slices.Contains(c.config.TrustedUploadOrigins, common.Origin(info.UploadURL)) {
 		return outcome(common.Reject("untrusted_file_upload_origin")), nil
 	}
 	if state.Phase != "uploaded" {
@@ -273,7 +274,7 @@ func (c *Channel) downloadAttachments(ctx context.Context, attachments []attachm
 	var result []model.MediaUpload
 	for _, attachment := range attachments {
 		file := attachment.ContentType == "application/vnd.microsoft.teams.file.download.info"
-		if common.Contains([]string{"text/html", "text/plain"}, attachment.ContentType) && attachment.ContentURL == "" {
+		if slices.Contains([]string{"text/html", "text/plain"}, attachment.ContentType) && attachment.ContentURL == "" {
 			continue
 		}
 		endpoint := attachment.ContentURL
@@ -290,7 +291,7 @@ func (c *Channel) downloadAttachments(ctx context.Context, attachments []attachm
 			return nil, errors.New("missing_media_url")
 		}
 		headers := make(http.Header)
-		if !file && common.Contains(c.config.TrustedServiceOrigins, common.Origin(endpoint)) {
+		if !file && slices.Contains(c.config.TrustedServiceOrigins, common.Origin(endpoint)) {
 			token, err := c.client.AccessToken(ctx)
 			if err != nil {
 				return nil, err

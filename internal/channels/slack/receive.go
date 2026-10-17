@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -100,10 +101,10 @@ func (c *Channel) humanMessage(message slackevents.MessageEvent, bot *identity) 
 	if message.Type != "message" && message.Type != "app_mention" {
 		return false
 	}
-	if message.SubType != "" && !common.Contains([]string{"file_share", "me_message", "thread_broadcast"}, message.SubType) {
+	if message.SubType != "" && !slices.Contains([]string{"file_share", "me_message", "thread_broadcast"}, message.SubType) {
 		return false
 	}
-	return message.BotID == "" && message.User != bot.UserID && common.Contains(c.account.AllowedSenders, message.User) && common.Contains(c.host.BoundChatIDs(), message.Channel)
+	return message.BotID == "" && message.User != bot.UserID && slices.Contains(c.account.AllowedSenders, message.User) && slices.Contains(c.host.BoundChatIDs(), message.Channel)
 }
 
 func (c *Channel) receive(ctx context.Context, raw json.RawMessage, bot *identity) error {

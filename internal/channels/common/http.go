@@ -18,6 +18,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -100,14 +101,7 @@ func JSON(ctx context.Context, client *http.Client, method, endpoint string, hea
 	if input != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	raw, _, err := Do(client, request, MaxJSONBytes)
-	if err != nil || output == nil {
-		return err
-	}
-	if err = json.Unmarshal(raw, output); err != nil {
-		return errors.New("native_invalid_response")
-	}
-	return nil
+	return doJSON(client, request, output)
 }
 
 func Multipart(ctx context.Context, client *http.Client, endpoint string, headers http.Header, fields map[string]string, field, filename string, data []byte, output any) error {
@@ -130,6 +124,10 @@ func MultipartMIME(ctx context.Context, client *http.Client, endpoint string, he
 		request.Header = make(http.Header)
 	}
 	request.Header.Set("Content-Type", contentType)
+	return doJSON(client, request, output)
+}
+
+func doJSON(client *http.Client, request *http.Request, output any) error {
 	raw, _, err := Do(client, request, MaxJSONBytes)
 	if err != nil || output == nil {
 		return err
@@ -176,15 +174,6 @@ func Origin(value string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-func Contains(values []string, value string) bool {
-	for _, item := range values {
-		if item == value {
-			return true
-		}
-	}
-	return false
-}
-
 func RandomID() string {
 	var raw [16]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -228,7 +217,7 @@ func Download(ctx context.Context, value string, options DownloadOptions) (Downl
 	if err != nil || u.Host == "" {
 		return result, errors.New("forbidden_destination")
 	}
-	trusted := Contains(options.TrustedOrigins, Origin(value))
+	trusted := slices.Contains(options.TrustedOrigins, Origin(value))
 	loopback := u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"
 	if u.User != nil || u.Fragment != "" || (u.Scheme != "https" && !(trusted && loopback && options.AllowInsecureLoopback && u.Scheme == "http")) || (!trusted && len(options.Headers) > 0) {
 		return result, errors.New("forbidden_destination")

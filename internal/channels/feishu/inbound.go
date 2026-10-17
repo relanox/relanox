@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -119,7 +120,7 @@ func (c *Channel) receiveEvent(w http.ResponseWriter, r *http.Request, raw []byt
 		w.WriteHeader(401)
 		return
 	}
-	if nativeString(sender.SenderType) != "user" || !common.Contains(c.account.AllowedSenders, nativeUserID(sender.SenderId)) {
+	if nativeString(sender.SenderType) != "user" || !slices.Contains(c.account.AllowedSenders, nativeUserID(sender.SenderId)) {
 		w.WriteHeader(200)
 		return
 	}
@@ -215,7 +216,7 @@ func mentionKey(id string, mentions []*mention) string {
 func (c *Channel) receive(ctx context.Context, event larkim.P2MessageReceiveV1) error {
 	message := projectMessage(event.Event.Message)
 	senderID := nativeUserID(event.Event.Sender.SenderId)
-	if !common.Contains([]string{"text", "image", "audio", "media", "file", "post"}, message.Type) {
+	if !slices.Contains([]string{"text", "image", "audio", "media", "file", "post"}, message.Type) {
 		return nil
 	}
 	if message.ID == "" || message.ChatID == "" || senderID == "" {

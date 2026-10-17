@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,7 +42,7 @@ func (c *Channel) receiveMessage(ctx context.Context, message discordgo.Message,
 	if !snowflake(message.ID) || !snowflake(message.ChannelID) || message.Author == nil {
 		return errors.New("invalid_native_message")
 	}
-	if message.Author.Bot || message.Author.ID == bot.UserID || !common.Contains(c.account.AllowedSenders, message.Author.ID) {
+	if message.Author.Bot || message.Author.ID == bot.UserID || !slices.Contains(c.account.AllowedSenders, message.Author.ID) {
 		return nil
 	}
 	if message.Type != discordgo.MessageTypeDefault && message.Type != discordgo.MessageTypeReply {
@@ -58,7 +59,7 @@ func (c *Channel) receiveMessage(ctx context.Context, message discordgo.Message,
 	if native.IsThread() {
 		chat, thread = native.ParentID, native.ID
 	}
-	if !common.Contains(c.host.BoundChatIDs(), chat) {
+	if !slices.Contains(c.host.BoundChatIDs(), chat) {
 		return nil
 	}
 	attachments, err := c.attachments(ctx, message.Attachments)

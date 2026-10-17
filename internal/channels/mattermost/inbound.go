@@ -3,6 +3,7 @@ package mattermost
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,13 +21,13 @@ func (c *Channel) receive(ctx context.Context, post *mm.Post, identity targetDat
 	if !validPost(post) {
 		return errors.New("invalid_native_post")
 	}
-	if post.UserId == identity.BotUserID || !common.Contains(c.account.AllowedSenders, post.UserId) || (post.Type != "" && post.Type != "me") {
+	if post.UserId == identity.BotUserID || !slices.Contains(c.account.AllowedSenders, post.UserId) || (post.Type != "" && post.Type != "me") {
 		return nil
 	}
 	if err := c.host.DiscoverConversation(ctx, model.DiscoveredConversation{ChatID: post.ChannelId, ThreadID: post.RootId, SenderID: post.UserId}); err != nil {
 		return err
 	}
-	if !common.Contains(c.host.BoundChatIDs(), post.ChannelId) || (post.Message == "" && len(post.FileIds) == 0) {
+	if !slices.Contains(c.host.BoundChatIDs(), post.ChannelId) || (post.Message == "" && len(post.FileIds) == 0) {
 		return nil
 	}
 	attachments, err := c.receiveFiles(ctx, post)

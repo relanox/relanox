@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -208,7 +209,7 @@ func (c *Channel) webhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
 		return
 	}
-	if m.From == nil || m.From.Bot || m.Chat.Type == "channel" || !common.Contains(c.account.AllowedSenders, m.From.ID.String()) {
+	if m.From == nil || m.From.Bot || m.Chat.Type == "channel" || !slices.Contains(c.account.AllowedSenders, m.From.ID.String()) {
 		w.WriteHeader(200)
 		return
 	}

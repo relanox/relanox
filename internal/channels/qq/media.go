@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,7 +35,7 @@ func fileType(kind model.MediaKind) int {
 
 func uploadFormat(media model.StoredMedia) bool {
 	formats := map[model.MediaKind][]string{model.Image: {"image/jpeg", "image/png"}, model.Audio: {"audio/silk", "audio/x-silk"}, model.Video: {"video/mp4"}}
-	return media.Reference.Kind == model.File || common.Contains(formats[media.Reference.Kind], media.Reference.MIMEType)
+	return media.Reference.Kind == model.File || slices.Contains(formats[media.Reference.Kind], media.Reference.MIMEType)
 }
 
 func sanitizedName(name string) string {
@@ -197,7 +198,7 @@ func (c *Channel) putPart(ctx context.Context, endpoint string, data []byte) err
 		return errors.New("invalid_upload_part_origin")
 	}
 	client := c.uploadHTTP
-	if common.Contains(c.config.TrustedUploadOrigins, common.Origin(endpoint)) {
+	if slices.Contains(c.config.TrustedUploadOrigins, common.Origin(endpoint)) {
 		client = c.trustedUploadHTTP
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(data))

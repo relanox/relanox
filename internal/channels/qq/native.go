@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -132,7 +133,7 @@ func (c *Channel) failure(err error, preparing bool) model.SendResult {
 	if errors.As(err, &native) {
 		return businessFailure(native.code, preparing)
 	}
-	if common.Contains([]string{"missing_media", "unsupported_media_format", "media_too_large", "media_publication_unavailable", "invalid_publication_url", "rich_text_limit_exceeded", "qq_upload_daily_limit", "invalid_upload_plan", "invalid_upload_part_origin"}, err.Error()) {
+	if slices.Contains([]string{"missing_media", "unsupported_media_format", "media_too_large", "media_publication_unavailable", "invalid_publication_url", "rich_text_limit_exceeded", "qq_upload_daily_limit", "invalid_upload_plan", "invalid_upload_part_origin"}, err.Error()) {
 		return common.Reject(err.Error())
 	}
 	return common.Failure(err, preparing)
