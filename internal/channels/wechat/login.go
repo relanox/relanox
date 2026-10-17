@@ -276,7 +276,8 @@ func nextVerification(ctx context.Context, path, submitted string) (string, bool
 
 // Login reserves a private file before pairing. Existing credentials are never
 // overwritten; failed pairing removes only the file reserved by this call.
-func Login(ctx context.Context, options LoginOptions) error {
+// Cleanup failures are returned alongside the original pairing or write error.
+func Login(ctx context.Context, options LoginOptions) (result error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -299,9 +300,16 @@ func Login(ctx context.Context, options LoginOptions) error {
 	}
 	saved := false
 	defer func() {
-		_ = file.Close()
-		if !saved {
-			_ = os.Remove(path)
+		if saved {
+			return
+		}
+		// A prior explicit close may already have consumed the handle. Its
+		// failure is the original result, so do not add a duplicate closed error.
+		if closeErr := file.Close(); closeErr != nil && !errors.Is(closeErr, os.ErrClosed) {
+			result = errors.Join(result, closeErr)
+		}
+		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			result = errors.Join(result, removeErr)
 		}
 	}()
 	credentials, err := Authenticate(ctx, options)
