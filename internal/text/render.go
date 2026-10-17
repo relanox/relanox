@@ -91,7 +91,7 @@ func (b *runBuilder) children(n ast.Node, source []byte, style Run, depth int) {
 
 func (b *runBuilder) node(n ast.Node, source []byte, style Run, depth int) {
 	if depth > 128 {
-		b.append(string(n.Text(source)), style)
+		b.append(string(nodeText(n, source)), style)
 		return
 	}
 	if b.inline(n, source, style, depth) {
@@ -164,7 +164,7 @@ func (b *runBuilder) inline(n ast.Node, source []byte, style Run, depth int) boo
 		b.children(n, source, style, depth)
 	case *ast.CodeSpan:
 		style.Code = true
-		b.append(strings.ReplaceAll(string(n.Text(source)), "\n", " "), style)
+		b.append(strings.ReplaceAll(string(nodeText(value, source)), "\n", " "), style)
 	case *ast.Link:
 		style.Href = safeLink(string(value.Destination))
 		b.children(n, source, style, depth)
@@ -191,6 +191,37 @@ func blockLines(n ast.Node, source []byte) string {
 		out.Write(line.Value(source))
 	}
 	return out.String()
+}
+
+// nodeText collects the unrendered text of a node, retaining source segments
+// and soft breaks when flattening link labels, code spans or deep formatting.
+func nodeText(n ast.Node, source []byte) []byte {
+	switch value := n.(type) {
+	case *ast.Text:
+		return value.Value(source)
+	case *ast.String:
+		return value.Value
+	case *ast.AutoLink:
+		return value.Label(source)
+	case *ast.RawHTML:
+		return value.Segments.Value(source)
+	case *ast.HTMLBlock:
+		text := append([]byte(nil), value.Lines().Value(source)...)
+		if value.HasClosure() {
+			text = append(text, value.ClosureLine.Value(source)...)
+		}
+		return text
+	case *ast.Paragraph, *ast.TextBlock, *ast.CodeBlock, *ast.FencedCodeBlock:
+		return n.Lines().Value(source)
+	}
+	var text bytes.Buffer
+	for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+		text.Write(nodeText(child, source))
+		if value, ok := child.(*ast.Text); ok && value.SoftLineBreak() {
+			text.WriteByte('\n')
+		}
+	}
+	return text.Bytes()
 }
 
 func listMarker(item *ast.ListItem) string {

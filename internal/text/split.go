@@ -96,7 +96,7 @@ func scalarParts(s string, wrap func(string) string, fits fitsFunc) ([]string, e
 	var out []string
 	for offset := 0; offset < len(runes); {
 		remaining := len(runes) - offset
-		low, high, count := 1, 1, 0
+		high, count := 1, 0
 		accepts := func(n int) bool { return fits(wrap(string(runes[offset : offset+n]))) }
 		for accepts(high) {
 			count = high
@@ -106,7 +106,8 @@ func scalarParts(s string, wrap func(string) string, fits fitsFunc) ([]string, e
 			high = min(remaining, high*2)
 		}
 		if count < remaining {
-			low, high = count+1, high-1
+			low := count + 1
+			high--
 			for low <= high {
 				middle := low + (high-low)/2
 				if accepts(middle) {
@@ -230,7 +231,7 @@ func nodeParts(n ast.Node, source []byte, fits fitsFunc, depth int) ([]string, e
 	case *ast.AutoLink:
 		return scalarParts(string(value.Label(source)), func(s string) string { return "[" + escape(s) + "](<" + string(value.URL(source)) + ">)" }, fits)
 	case *ast.CodeSpan:
-		return scalarParts(strings.ReplaceAll(string(n.Text(source)), "\n", " "), codeSpan, fits)
+		return scalarParts(strings.ReplaceAll(string(nodeText(value, source)), "\n", " "), codeSpan, fits)
 	}
 	return blockParts(n, source, fits, depth)
 }

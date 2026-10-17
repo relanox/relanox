@@ -30,3 +30,17 @@ func TestLiteralMediaSyntaxAndInvalidReference(t *testing.T) {
 		t.Fatal("invalid native numbering accepted")
 	}
 }
+
+// Media labels are flattened from their native Markdown children. Simple label
+// coverage misses nested formatting, code soft breaks and autolinks; replacing
+// deprecated AST text extraction must retain all three without a test seam.
+// https://spec.commonmark.org/0.31.2/#images
+func TestRichMediaLabelRetainsNestedSourceText(t *testing.T) {
+	parts, err := text.ParseRichMarkdown("![alt *label* `a\nb` <https://example.com> &amp;](relanox://attachment/1)")
+	if err != nil || len(parts) != 1 || parts[0].Media == nil {
+		t.Fatalf("media: %#v %v", parts, err)
+	}
+	if parts[0].Media.Label != "alt label a\nb https://example.com &" {
+		t.Fatalf("label: %q", parts[0].Media.Label)
+	}
+}
