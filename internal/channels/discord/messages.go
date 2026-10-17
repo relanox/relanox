@@ -250,7 +250,7 @@ func (c *Channel) richMessage(message nativeSend, input model.SendInput) (native
 			message.Embeds = append(message.Embeds, &discordgo.MessageEmbed{Description: part.Text})
 			continue
 		}
-		if part.Media == nil || len(files) >= len(input.RichMedia) || len(part.Label) > 256 {
+		if part.Media == nil || len(files) >= len(input.RichMedia) || text.Length(part.Label, model.UTF16) > 256 {
 			return message, nil, errors.New("invalid_media")
 		}
 		name := "image-" + string(rune('a'+len(files))) + ".png"
