@@ -1,0 +1,9 @@
+The narrow OAuth and robot wire structures in protocol.go were adapted from
+github.com/alibabacloud-go/dingtalk v1.7.46 (Alibaba Cloud), licensed under the
+Apache License, Version 2.0. The generated SDK methods and gateway clients are
+not included. JSON fields used by Relanox retain their original optionality.
+
+Source:
+https://github.com/alibabacloud-go/dingtalk/tree/v1.7.46
+
+The upstream license text is included alongside this notice as LICENSE.
