@@ -18,7 +18,9 @@ require (
 	github.com/line/line-bot-sdk-go/v8 v8.23.0
 	github.com/mattermost/mattermost/server/public v0.5.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.2-beta.1
+	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.1
+	github.com/openilink/openilink-sdk-go v0.6.0
+	github.com/piusalfred/whatsapp v0.1.12
 	github.com/prometheus/client_golang v1.25.0
 	github.com/rs/zerolog v1.35.1
 	github.com/slack-go/slack v0.30.1

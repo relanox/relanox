@@ -75,6 +75,8 @@ func loginOrigin(value, initial string, insecure bool) (string, error) {
 	return origin, nil
 }
 
+// BeginLogin retains the native local_token_list request and verify_code flow;
+// these current fields are not supported by the SDK's older QR login API.
 func BeginLogin(ctx context.Context, options LoginOptions) (QRCode, error) {
 	var result QRCode
 	base, err := loginBase(options)

@@ -3,7 +3,6 @@ package wechat
 import (
 	"bytes"
 	"context"
-	"crypto/aes"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/base64"
@@ -14,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	ilink "github.com/openilink/openilink-sdk-go"
 
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
@@ -30,53 +31,26 @@ func mediaKey(hexKey, encodedKey string) ([]byte, error) {
 	if encodedKey == "" {
 		return nil, nil
 	}
-	raw, err := base64.StdEncoding.DecodeString(encodedKey)
+	key, err := ilink.ParseAESKey(encodedKey)
 	if err != nil {
-		return nil, errors.New("invalid_media_key")
-	}
-	if len(raw) == 16 {
-		return raw, nil
-	}
-	key, err := hex.DecodeString(string(raw))
-	if err != nil || len(key) != 16 {
 		return nil, errors.New("invalid_media_key")
 	}
 	return key, nil
 }
 
 func cryptECB(data, key []byte, encrypt bool) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
+	var result []byte
+	var err error
 	if encrypt {
-		n := aes.BlockSize - len(data)%aes.BlockSize
-		data = append(bytes.Clone(data), bytes.Repeat([]byte{byte(n)}, n)...)
+		// The SDK pads by appending; preserve the relay-owned source buffer.
+		result, err = ilink.EncryptAESECB(bytes.Clone(data), key)
+	} else {
+		result, err = ilink.DecryptAESECB(data, key)
 	}
-	if len(data) == 0 || len(data)%aes.BlockSize != 0 {
+	if err != nil {
 		return nil, errors.New("invalid_media_ciphertext")
 	}
-	result := make([]byte, len(data))
-	for offset := 0; offset < len(data); offset += aes.BlockSize {
-		if encrypt {
-			block.Encrypt(result[offset:], data[offset:])
-		} else {
-			block.Decrypt(result[offset:], data[offset:])
-		}
-	}
-	if encrypt {
-		return result, nil
-	}
-	n := int(result[len(result)-1])
-	if n < 1 || n > aes.BlockSize || n > len(result) {
-		return nil, errors.New("invalid_media_padding")
-	}
-	for _, value := range result[len(result)-n:] {
-		if int(value) != n {
-			return nil, errors.New("invalid_media_padding")
-		}
-	}
-	return result[:len(result)-n], nil
+	return result, nil
 }
 
 func (c *Client) cdnURL(full, operation, param, filekey string) (string, error) {
@@ -195,8 +169,8 @@ func (c *Client) receiveMedia(ctx context.Context, items []Item, maxBytes int64,
 	return result, nil
 }
 
-func (c *Client) uploadMedia(ctx context.Context, media model.StoredMedia, recipient string) (Item, error) {
-	var result Item
+func (c *Client) uploadMedia(ctx context.Context, media model.StoredMedia, recipient string) (ilink.MessageItem, error) {
+	var result ilink.MessageItem
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
 		return result, err
@@ -211,18 +185,18 @@ func (c *Client) uploadMedia(ctx context.Context, media model.StoredMedia, recip
 		return result, errors.New("unsupported_media_type")
 	}
 	digest := md5.Sum(media.Data)
-	var ticket struct {
-		FullURL   string `json:"upload_full_url"`
-		Parameter string `json:"upload_param"`
-	}
-	err = c.Post(ctx, "getuploadurl", map[string]any{"filekey": filekey, "media_type": mediaType, "to_user_id": recipient, "rawsize": len(media.Data), "rawfilemd5": hex.EncodeToString(digest[:]), "filesize": len(ciphertext), "no_need_thumb": true, "aeskey": hex.EncodeToString(key)}, &ticket, 15*time.Second)
+	client, err := c.sdk(ctx)
 	if err != nil {
 		return result, err
 	}
-	if ticket.FullURL == "" && ticket.Parameter == "" {
+	ticket, err := client.GetUploadURL(ctx, &ilink.GetUploadURLReq{FileKey: filekey, MediaType: mediaType, ToUserID: recipient, RawSize: int64(len(media.Data)), RawFileMD5: hex.EncodeToString(digest[:]), FileSize: int64(len(ciphertext)), NoNeedThumb: true, AESKey: hex.EncodeToString(key)})
+	if err != nil {
+		return result, err
+	}
+	if ticket.UploadFullURL == "" && ticket.UploadParam == "" {
 		return result, errors.New("missing_upload_url")
 	}
-	endpoint, err := c.cdnURL(ticket.FullURL, "upload", ticket.Parameter, filekey)
+	endpoint, err := c.cdnURL(ticket.UploadFullURL, "upload", ticket.UploadParam, filekey)
 	if err != nil {
 		return result, err
 	}
@@ -241,13 +215,13 @@ func (c *Client) uploadMedia(ctx context.Context, media model.StoredMedia, recip
 	if param == "" {
 		return result, errors.New("media_upload_failed")
 	}
-	ref := &CDNMedia{Query: param, AESKey: base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(key))), EncryptType: 1}
+	ref := &ilink.CDNMedia{EncryptQueryParam: param, AESKey: base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(key))), EncryptType: 1}
 	switch media.Reference.Kind {
 	case model.Image:
-		return Item{Type: 2, Image: &Content{Media: ref, MidSize: len(ciphertext)}}, nil
+		return ilink.MessageItem{Type: ilink.ItemImage, ImageItem: &ilink.ImageItem{Media: ref, MidSize: int64(len(ciphertext))}}, nil
 	case model.Video:
-		return Item{Type: 5, Video: &Content{Media: ref, VideoSize: len(ciphertext)}}, nil
+		return ilink.MessageItem{Type: ilink.ItemVideo, VideoItem: &ilink.VideoItem{Media: ref, VideoSize: int64(len(ciphertext))}}, nil
 	default:
-		return Item{Type: 4, File: &Content{Media: ref, FileName: media.Reference.FileName, Length: strconv.Itoa(len(media.Data))}}, nil
+		return ilink.MessageItem{Type: ilink.ItemFile, FileItem: &ilink.FileItem{Media: ref, FileName: media.Reference.FileName, Len: strconv.Itoa(len(media.Data))}}, nil
 	}
 }

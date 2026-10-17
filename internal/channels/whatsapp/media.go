@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	wamessage "github.com/piusalfred/whatsapp/message"
+
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/text"
@@ -56,6 +58,8 @@ func (c *Channel) receiveMedia(ctx context.Context, m message) (string, []model.
 	if err != nil {
 		return "", nil, err
 	}
+	// SDK media.Information fixes file_size to int64 and its GetInfo rejects
+	// unknown fields. Preserve native string-or-number sizes and future fields.
 	var metadata struct {
 		ID   string          `json:"id"`
 		URL  string          `json:"url"`
@@ -131,44 +135,39 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if err != nil {
 		return failure(err, true), nil
 	}
-	body := map[string]any{"messaging_product": "whatsapp", "recipient_type": "individual", "to": input.Target.ChatID}
+	body := &wamessage.Message{Product: wamessage.MessagingProduct, RecipientType: "individual", To: input.Target.ChatID}
 	if input.Reply != nil && platformID(input.Target.ReplyToID) {
-		body["context"] = map[string]string{"message_id": input.Target.ReplyToID}
+		body.Context = &wamessage.Context{MessageID: input.Target.ReplyToID}
 	}
 	if input.Chunk.Media == nil {
 		value := markdown(input.Chunk.Text)
 		if text.Length(value, model.UTF16) > 4096 {
 			return common.Reject("text_limit_exceeded"), nil
 		}
-		body["type"] = "text"
-		body["text"] = map[string]any{"body": value, "preview_url": false}
+		body.Type = wamessage.TypeText
+		body.Text = &wamessage.Text{Body: value}
 	} else {
 		media, kind, outcome := c.upload(ctx, input, headers)
 		if outcome != nil {
 			return *outcome, nil
 		}
-		body["type"] = kind
-		body[kind] = media
+		body.Type = kind
+		setMedia(body, media)
 	}
 	if ctx.Err() != nil {
 		return common.Retry("send_cancelled_before_transmit", 0), nil
 	}
-	var result struct {
-		Product  string `json:"messaging_product"`
-		Messages []struct {
-			ID string `json:"id"`
-		} `json:"messages"`
-	}
-	if err = common.JSON(ctx, c.client, http.MethodPost, endpoint(c.config.PhoneNumberID, "/messages"), headers, body, &result); err != nil {
+	result, err := c.sendMessage(ctx, body, headers)
+	if err != nil {
 		return failure(err, false), nil
 	}
-	if result.Product != "whatsapp" || len(result.Messages) == 0 || !platformID(result.Messages[0].ID) {
+	if result == nil || result.Product != "whatsapp" || len(result.Messages) == 0 || result.Messages[0] == nil || !platformID(result.Messages[0].ID) {
 		return model.SendResult{Status: model.Unknown, ErrorCode: "native_invalid_response"}, nil
 	}
 	return common.Sent(result.Messages[0].ID), nil
 }
 
-func (c *Channel) upload(ctx context.Context, input model.SendInput, headers http.Header) (map[string]string, string, *model.SendResult) {
+func (c *Channel) upload(ctx context.Context, input model.SendInput, headers http.Header) (*wamessage.Media, string, *model.SendResult) {
 	if input.Media == nil || input.Media.Reference.ID != input.Chunk.Media.ID || input.Media.Reference.Size != int64(len(input.Media.Data)) {
 		result := common.Reject("invalid_media")
 		return nil, "", &result
@@ -191,6 +190,8 @@ func (c *Channel) upload(ctx context.Context, input model.SendInput, headers htt
 	var uploaded struct {
 		ID string `json:"id"`
 	}
+	// SDK Upload accepts only a filesystem path. Keep owned media in memory
+	// and preserve its exact MIME on the actual multipart file part.
 	err := common.MultipartMIME(ctx, c.client, endpoint(c.config.PhoneNumberID, "/media"), headers, map[string]string{"messaging_product": "whatsapp", "type": ref.MIMEType}, "file", ref.FileName, ref.MIMEType, input.Media.Data, &uploaded)
 	if err != nil {
 		result := failure(err, true)
@@ -204,12 +205,9 @@ func (c *Channel) upload(ctx context.Context, input model.SendInput, headers htt
 	if ref.Kind == model.File {
 		kind = "document"
 	}
-	media := map[string]string{"id": uploaded.ID}
-	if caption != "" {
-		media["caption"] = caption
-	}
+	media := &wamessage.Media{ID: uploaded.ID, Caption: caption}
 	if ref.Kind == model.File {
-		media["filename"] = ref.FileName
+		media.Filename = ref.FileName
 	}
 	return media, kind, nil
 }
