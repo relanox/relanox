@@ -172,6 +172,15 @@ func newWeChatPeer(t *testing.T, sends chan<- wechat.Message) *httptest.Server {
 				return
 			}
 			_, _ = io.WriteString(w, `{"ret":0}`)
+		case "/ilink/bot/getuploadurl":
+			_, _ = io.Copy(io.Discard, r.Body)
+			_, _ = io.WriteString(w, `{"upload_param":"public-upload-ticket"}`)
+		case "/c2c/upload":
+			_, _ = io.Copy(io.Discard, r.Body)
+			if r.URL.Query().Get("encrypted_query_param") != "public-upload-ticket" || r.Header.Get("Authorization") != "" {
+				t.Error("invalid native CDN upload boundary")
+			}
+			w.Header().Set("x-encrypted-param", "public-download-ticket")
 		default:
 			t.Errorf("unexpected WeChat operation %s", r.URL.Path)
 			w.WriteHeader(404)
