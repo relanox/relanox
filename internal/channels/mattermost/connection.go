@@ -230,14 +230,8 @@ func (c *Channel) processFrame(ctx context.Context, input frame, saved *cursor) 
 		if json.Unmarshal([]byte(input.Data.Post), &post) != nil {
 			return errors.New("invalid_native_post")
 		}
-		if err := c.receive(ctx, &post, saved.Identity); err != nil {
+		if err := c.receivePosted(ctx, &post, saved); err != nil {
 			return err
-		}
-		if common.Contains(c.host.BoundChatIDs(), post.ChannelId) {
-			if saved.Watermarks == nil {
-				saved.Watermarks = map[string]int64{}
-			}
-			saved.Watermarks[post.ChannelId] = max(saved.Watermarks[post.ChannelId], post.CreateAt)
 		}
 	}
 	// Advance only after durable acceptance. A crash between accept and this CAS
@@ -248,6 +242,27 @@ func (c *Channel) processFrame(ctx context.Context, input frame, saved *cursor) 
 	}
 	if input.Event == "hello" {
 		c.host.Connection(model.Connected, "")
+	}
+	return nil
+}
+
+func (c *Channel) receivePosted(ctx context.Context, post *mm.Post, saved *cursor) error {
+	if !validPost(post) {
+		return errors.New("invalid_native_post")
+	}
+	// Reliable native replay can contain events preceding a new binding. They
+	// still consume socket sequence numbers, without becoming new Core work.
+	if post.CreateAt < saved.BoundStarts[post.ChannelId] {
+		return nil
+	}
+	if err := c.receive(ctx, post, saved.Identity); err != nil {
+		return err
+	}
+	if common.Contains(c.host.BoundChatIDs(), post.ChannelId) {
+		if saved.Watermarks == nil {
+			saved.Watermarks = map[string]int64{}
+		}
+		saved.Watermarks[post.ChannelId] = max(saved.Watermarks[post.ChannelId], post.CreateAt)
 	}
 	return nil
 }
