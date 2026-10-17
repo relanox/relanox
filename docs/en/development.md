@@ -16,8 +16,12 @@ pinned, review their licenses and retain attribution when porting protocol code.
 Do not bypass hooks. Inspect recent commit messages before every commit and follow
 the dominant existing convention.
 
-Use concrete constructors and compile-time interfaces. Account/endpoint config is
-decoded and validated offline before opening connections. Reject unknown structural
+Use concrete constructors and compile-time interfaces. Constructors validate offline
+and mount explicit HTTP routes; `Start(ctx)` initiates connections and background
+loops, then returns. The context owns their lifetime; `Close(ctx)` stops and joins
+workers within the shutdown deadline. Never block startup for the connection's
+whole lifetime. Keep validation independently usable without opening connections.
+Account/endpoint config is decoded and validated offline. Reject unknown structural
 fields and report safe field/error codes without echoing rejected values. Resolve
 relative paths beside the selected configuration. Secret references support an
 environment override and managed local file; never place resolved credentials in a
