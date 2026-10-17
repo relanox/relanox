@@ -95,6 +95,8 @@ github.com/go-openapi/inflect v1.0.1 h1:gqN2BW4CxqueOg9FO861a592OZKBNJ7GV1XE+gDI
 github.com/go-openapi/inflect v1.0.1/go.mod h1:lxYFcPUUAw+O6UXnm1tPRgWDTLnH/Rwz4xdKInO0ccA=
 github.com/go-sphere/wecom-aibot-go-sdk v1.0.5 h1:M/T4PROt6rEnV8pLljJm5XNQdmxGA7vBGytWix1Evo0=
 github.com/go-sphere/wecom-aibot-go-sdk v1.0.5/go.mod h1:MULp3kxPQqjy68/lqSxTVJooTmWpflcB4GEC2mVTULk=
+github.com/go-telegram/bot v1.27.0 h1:PG9yBDzM8O26oUerE9SZwWlHon4RpH8WcNslZ7CEZmE=
+github.com/go-telegram/bot v1.27.0/go.mod h1:i2TRs7fXWIeaceF3z7KzsMt/he0TwkVC680mvdTFYeM=
 github.com/go-test/deep v1.1.1 h1:0r/53hagsehfO4bzD2Pgr/+RgHqhmf+k1Bpse2cTu1U=
 github.com/go-test/deep v1.1.1/go.mod h1:5C2ZWiW0ErCdrYzpqxLbTX7MG14M9iiw8DgHncVwcsE=
 github.com/goccy/go-json v0.11.2 h1:jdZv93Tt4ioR8yW1CoNsvSxrcZlCXAUU1aZXN7gpXUA=
@@ -320,6 +322,8 @@ github.com/stretchr/testify v1.7.2/go.mod h1:R6va5+xMeoiuVRoj+gSkQ7d3FALtqAAGI1F
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
+github.com/taigrr/signalcli v0.1.1 h1:sOjjDWewPfYyxxXXhHA67Wqgbs+i2Tj/lZ81AYSycLI=
+github.com/taigrr/signalcli v0.1.1/go.mod h1:PyUMlKG5Mwbsj66O7TVYGo9HoAX7AQ/eAQkiGgyGLSM=
 github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cbyO7IOYJZWg1U88JhDg3PB6klq9Hg2pA=
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/asr v1.3.182 h1:UBXiprUPfSsqPwHj026Eadp2FDvNBFuU69YE58up3JI=
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/asr v1.3.182/go.mod h1:tcBQnoIFjye4wz5kgjSLvA4ZiL+v1ec06H/78GkhYMM=

@@ -26,7 +26,7 @@ native options without introducing a plugin or compatibility format.
 | Mattermost | `serverUrl`, `token` | Native v4 REST and WebSocket APIs; use the installation's HTTPS URL and a bot/user access token. |
 | Google Chat | `serviceAccount` | Native authenticated interaction events and Chat REST APIs. Configure the printed webhook URL as the app's endpoint/audience. |
 | LINE | `channelSecret`, `accessToken` | Signed Messaging API webhook and SDK push messages with native quote tokens and durable retry keys. |
-| Signal | `serviceUrl`, `account` | Existing native Signal JSON-RPC daemon and event websocket. Optional `selfUuid` and authorization reference. |
+| Signal | `serviceUrl`, `account` | Existing signal-cli daemon: JSON-RPC at `/api/v1/rpc` and SSE events at `/api/v1/events`. Optional `selfUuid` and authorization reference. |
 | IRC | `server`, `nick` | TLS IRC/IRCv3 connection; optional server password and SASL credentials. Text only. |
 
 For WeCom, DingTalk and QQ, `recipientTypes` can map known chat IDs to their native
@@ -55,7 +55,7 @@ Prefix these paths with `http.publicUrl`; `{account}` is the local account ID.
 | Mattermost | None; outbound native WebSocket | Native 26-character channel/user IDs; optional thread root post ID. |
 | Google Chat | `/channels/googlechat/{account}/webhook` | `spaces/...`, `users/...`, optional `spaces/.../threads/...`. |
 | LINE | `/channels/line/{account}/webhook` | Native user/group/room IDs; allowlist uses sender `userId`. |
-| Signal | None; outbound daemon event websocket | Chat `direct:<sender>` or `group:<groupId>`; sender UUID, with native number/source fallback. |
+| Signal | None; outbound daemon SSE events | Chat `direct:<sender>` or `group:<groupId>`; sender UUID, with native number/source fallback. |
 | IRC | None; outbound IRC connection | Native channel or direct nickname; use the native sender identity accepted by the connection. |
 
 For socket/polling channels, no inbound callback route is needed. Their hosted

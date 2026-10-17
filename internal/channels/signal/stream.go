@@ -16,6 +16,10 @@ import (
 
 const maximumEvent = 1024 * 1024
 
+// The SDK listener owns its HTTP client and has no Last-Event-ID interface.
+// Keep SSE reads here so authorization, bounded frames and the accepted durable
+// cursor stay under the same cancellable connection lifetime.
+
 func (c *Channel) cursorKey() string {
 	return "events:" + string(common.Data([]string{c.config.ServiceURL, c.config.Account}))
 }

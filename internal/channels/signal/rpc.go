@@ -1,57 +1,32 @@
 package signal
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"mime"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/taigrr/signalcli"
 
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/text"
 )
 
-type rpcResponse struct {
-	Version string          `json:"jsonrpc"`
-	ID      string          `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   json.RawMessage `json:"error,omitempty"`
-}
-
-func (c *Channel) rpc(ctx context.Context, id, method string, params map[string]any, maximum int64) (json.RawMessage, error) {
+func (c *Channel) rpc(ctx context.Context, method string, params map[string]any, maximum int64) (json.RawMessage, error) {
 	headers, err := c.headers()
 	if err != nil {
 		return nil, err
 	}
 	params["account"] = c.config.Account
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.ServiceURL+"/api/v1/rpc", bytes.NewReader(common.Data(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})))
-	if err != nil {
-		return nil, err
-	}
-	request.Header = headers
-	request.Header.Set("Content-Type", "application/json")
-	raw, _, err := common.Do(c.client, request, maximum)
-	if err != nil {
-		return nil, err
-	}
-	var response rpcResponse
-	if json.Unmarshal(raw, &response) != nil || response.Version != "2.0" || response.ID != id {
-		return nil, errors.New("rpc_response_mismatch")
-	}
-	if len(response.Error) > 0 && string(response.Error) != "null" {
-		return nil, errors.New("rpc_operation_error")
-	}
-	if len(response.Result) == 0 || string(response.Result) == "null" {
-		return nil, errors.New("rpc_missing_result")
-	}
-	return response.Result, nil
+	client := common.SDKHTTPClient(c.client, ctx, maximum)
+	client.Transport = rpcTransport{base: client.Transport, headers: headers}
+	return signalcli.NewClient(c.config.ServiceURL, c.config.Account).WithHTTPClient(client).Call(ctx, method, params)
 }
 
 func (c *Channel) receiveAttachments(ctx context.Context, attachments []attachment, sender, groupID string) ([]model.MediaUpload, error) {
@@ -71,7 +46,7 @@ func (c *Channel) receiveAttachments(ctx context.Context, attachments []attachme
 			params["recipient"] = sender
 		}
 		encodedMaximum := (maximum + 2) / 3 * 4
-		raw, err := c.rpc(ctx, common.RandomID(), "getAttachment", params, encodedMaximum+16*1024)
+		raw, err := c.rpc(ctx, "getAttachment", params, encodedMaximum+16*1024)
 		if err != nil {
 			return nil, err
 		}
@@ -180,7 +155,7 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if ctx.Err() != nil {
 		return common.Retry("send_cancelled_before_transmit", 0), nil
 	}
-	raw, err := c.rpc(ctx, input.Chunk.IdempotencyKey, "send", params, common.MaxJSONBytes)
+	raw, err := c.rpc(ctx, "send", params, common.MaxJSONBytes)
 	if err != nil {
 		var native *common.HTTPError
 		if errors.As(err, &native) && native.Status == 408 {
