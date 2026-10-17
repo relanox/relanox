@@ -76,7 +76,16 @@ func (c *Channel) passiveAvailability(ctx context.Context, id, eventID, chatID s
 	return "", nil
 }
 
-func (c *Channel) passiveResponse(ctx context.Context, id, chatID string) (any, error) {
+// passiveReply captures the state version used to build a callback response.
+// Only a complete write of that response can confirm this version as served.
+type passiveReply struct {
+	body    any
+	key     string
+	state   passiveState
+	version int64
+}
+
+func (c *Channel) passiveResponse(ctx context.Context, id, chatID string) (*passiveReply, error) {
 	state, entry, err := common.ReadState[passiveState](ctx, c.host.State(), "stream:"+id)
 	if err != nil {
 		return nil, err
@@ -86,16 +95,6 @@ func (c *Channel) passiveResponse(ctx context.Context, id, chatID string) (any, 
 	}
 	if state.ChatID != chatID {
 		return nil, errors.New("callback_identity_mismatch")
-	}
-	if state.Finish && !state.Served {
-		state.Served = true
-		result, err := c.host.State().CompareAndSet(ctx, model.CompareAndSetStateInput{Key: entry.Key, ExpectedVersion: &entry.Version, ExpiresAt: &state.ExpiresAt, Value: common.Data(state)})
-		if err != nil {
-			return nil, err
-		}
-		if result.Status != model.Updated {
-			return nil, errors.New("callback_state_conflict")
-		}
 	}
 	stream := map[string]any{"id": id, "finish": state.Finish, "content": ""}
 	if state.Finish {
@@ -108,7 +107,26 @@ func (c *Channel) passiveResponse(ctx context.Context, id, chatID string) (any, 
 			stream["msg_item"] = items
 		}
 	}
-	return map[string]any{"msgtype": "stream", "stream": stream}, nil
+	return &passiveReply{body: map[string]any{"msgtype": "stream", "stream": stream}, key: entry.Key, state: state, version: entry.Version}, nil
+}
+
+func (c *Channel) confirmPassive(ctx context.Context, reply *passiveReply) error {
+	state := reply.state
+	if !state.Finish || state.Served {
+		return nil
+	}
+	if !state.ExpiresAt.After(time.Now()) {
+		return errors.New("callback_stream_expired")
+	}
+	state.Served = true
+	result, err := c.host.State().CompareAndSet(ctx, model.CompareAndSetStateInput{Key: reply.key, ExpectedVersion: &reply.version, ExpiresAt: &state.ExpiresAt, Value: common.Data(state)})
+	if err != nil {
+		return err
+	}
+	if result.Status != model.Updated {
+		return errors.New("callback_state_conflict")
+	}
+	return nil
 }
 
 func appendImage(images []passiveImage, input model.SendInput) ([]passiveImage, string) {
