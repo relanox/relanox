@@ -132,7 +132,7 @@ func safeName(value string) string {
 	return result.String()
 }
 
-func (d *document) save() (string, error) {
+func (d *document) save() (backup string, result error) {
 	if err := app.Validate(d.Config); err != nil {
 		return "", err
 	}
@@ -148,13 +148,23 @@ func (d *document) save() (string, error) {
 	if err != nil {
 		return "", problem("config_locked")
 	}
-	// Cleanup must not turn a committed configuration replacement into a failed save.
-	defer func() { _ = os.Remove(d.Path + ".lock") }()
-	_ = lock.Close()
+	committed := false
+	defer func() {
+		if err := os.Remove(d.Path + ".lock"); err != nil && !errors.Is(err, os.ErrNotExist) {
+			code := "config_lock_release_failed"
+			if committed {
+				code = "config_saved_but_lock_release_failed"
+			}
+			result = errors.Join(result, problem(code))
+		}
+	}()
+	if err = lock.Close(); err != nil {
+		return "", problem("config_lock_close_failed")
+	}
 	if err = d.verifyOriginal(); err != nil {
 		return "", err
 	}
-	backup, err := d.backup()
+	backup, err = d.backup()
 	if err != nil {
 		return "", err
 	}
@@ -179,6 +189,7 @@ func (d *document) save() (string, error) {
 	}
 	d.original = data
 	d.created = nil
+	committed = true
 	return backup, nil
 }
 

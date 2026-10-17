@@ -57,6 +57,10 @@ CLI 在 `secrets/` 下创建独立文件，Unix 使用仅属主可访问权限�
 用户和 SYSTEM 的 DACL。刷新时保留旧凭据；配置修改产生 `*.backup-*` 备份。凭据和
 备份不应提交到 Git。
 
+配置修改通过 `<config>.lock` 文件取得独占锁。修改失败且锁文件无法删除时，错误会包含
+`config_lock_release_failed`。`config_saved_but_lock_release_failed` 表示新配置及其托管
+凭据已提交，但锁文件仍然存在。确认没有配置命令正在运行后，删除残留锁文件再继续修改。
+
 ## 脚本配置
 
 ```sh

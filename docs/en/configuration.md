@@ -62,6 +62,12 @@ permissions or a Windows DACL limited to the current user and SYSTEM. It never
 overwrites old credential files during a refresh. Successful configuration edits
 keep the old JSON in a `*.backup-*` file; these files remain private and untracked.
 
+Configuration edits hold an exclusive `<config>.lock` file. If an edit fails and
+its lock cannot be removed, the error includes `config_lock_release_failed`.
+`config_saved_but_lock_release_failed` means the new configuration and its managed
+credentials were committed, but the lock remains. After confirming no configuration
+command is running, remove the stale lock before the next edit.
+
 ## Scripted setup
 
 ```sh
