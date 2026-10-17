@@ -14,7 +14,7 @@ replies, local inference and Serverless execution are outside the supported scop
 
 ## Start from source
 
-Use Go 1.26:
+Use Go 1.27.2:
 
 ```sh
 go build -trimpath -o bin/relanox ./cmd/relanox

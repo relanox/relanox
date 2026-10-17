@@ -4,6 +4,7 @@ package ent
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 
@@ -30,7 +31,7 @@ type State struct {
 	// ExpiresAt holds the value of the "expires_at" field.
 	ExpiresAt *int64 `json:"expires_at,omitempty"`
 	// Value holds the value of the "value" field.
-	Value        json.RawMessage `json:"value,omitempty"`
+	Value        jsontext.Value `json:"value,omitempty"`
 	selectValues sql.SelectValues
 }
 

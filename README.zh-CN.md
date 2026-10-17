@@ -12,7 +12,7 @@ Relanox 将原生消息平台连接到已有的 dot、Grok 和 Muse Agent。Go �
 
 ## 从源码开始
 
-使用 Go 1.26：
+使用 Go 1.27.2：
 
 ```sh
 go build -trimpath -o bin/relanox ./cmd/relanox

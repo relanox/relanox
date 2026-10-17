@@ -1,6 +1,6 @@
 # Development
 
-Use Go 1.26 and a separate branch/worktree under `.worktree/` for every implementation
+Use Go 1.27.2 and a separate branch/worktree under `.worktree/` for every implementation
 task. Read [architecture](architecture.md) and root [AGENTS.md](../../AGENTS.md).
 The old TypeScript implementation is archived under `ref/typescript`; its package
 manager, hooks and development rules do not apply to the Go runtime.
