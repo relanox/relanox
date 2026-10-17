@@ -1,6 +1,7 @@
 import { markdownRuns, splitMarkdown } from '@relanox/markdown'
 import type { MarkdownRun } from '@relanox/markdown'
-import type { Json, ReplyTarget } from '@relanox/sdk'
+import type { ReplyTarget } from '@relanox/sdk'
+import type { RichTextBlock, RichTextBlockElement } from '@slack/types'
 
 type Element =
   | { type: 'text'; text: string; style?: Readonly<Record<string, boolean>> }
@@ -39,10 +40,10 @@ function escaped(text: string): string {
 /** Rich-text elements represent literal text and links without Slack's mention parser. */
 export function slackMarkdown(markdown: string): {
   text: string
-  blocks: Json[]
+  blocks: RichTextBlock[]
 } {
   const runs = markdownRuns(markdown)
-  const sections: Json[] = []
+  const sections: RichTextBlockElement[] = []
   let elements: Element[] = []
   for (const run of runs) {
     if (!run.pre) {

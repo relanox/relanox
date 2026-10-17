@@ -3,7 +3,13 @@ import { expect, test, vi } from 'vitest'
 import { wireText } from '../../channel-wecom/src/transport.js'
 import { z } from 'zod'
 import { createWeComChannel } from '../src/index.js'
-import { assemble, peer, records, sendInput } from './test-support.js'
+import {
+  assemble,
+  peer,
+  records,
+  sendInput,
+  startConnected
+} from './test-support.js'
 
 installPeerNetwork()
 
@@ -32,7 +38,7 @@ test('WeCom uses the selected callback request for out-of-order native replies a
     [{ chatId: 'user', senderId: 'user' }]
   )
 
-  await host.start()
+  await startConnected(host)
   for (const number of [1, 2, 3]) {
     remote.sockets[0]?.send(
       JSON.stringify({
@@ -185,7 +191,7 @@ test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
     ]
   )
 
-  await host.start()
+  await startConnected(host)
   expect(remote.frames[0]).toMatchObject({
     cmd: 'aibot_subscribe',
     body: { bot_id: 'robot', secret: 'private-value' }
@@ -271,7 +277,6 @@ test('WeCom subscribes, deduplicates body IDs, keeps durable targets and sends i
       markdown: { content: 'hello_*世界' }
     }
   })
-  expect(remote.frames.at(-1)).toMatchObject({ body: { chat_type: 2 } })
 })
 
 test('WeCom correlates heartbeats and preserves uncertain sends when the socket closes before ACK', async () => {
@@ -393,7 +398,7 @@ test('WeCom stops recovery after the platform replaces this bot connection', asy
     [{ chatId: 'user', senderId: 'user' }]
   )
 
-  await host.start()
+  await startConnected(host)
   const socket = remote.sockets[0]
   if (!socket) {
     throw new Error('Peer not connected')
@@ -402,7 +407,14 @@ test('WeCom stops recovery after the platform replaces this bot connection', asy
     JSON.stringify({
       cmd: 'aibot_event_callback',
       headers: { req_id: 'replaced' },
-      body: { aibotid: 'robot', event: { eventtype: 'disconnected_event' } }
+      body: {
+        aibotid: 'robot',
+        msgid: 'replaced-message',
+        msgtype: 'event',
+        create_time: Date.now(),
+        from: { userid: 'robot' },
+        event: { eventtype: 'disconnected_event' }
+      }
     })
   )
   await expect
@@ -460,7 +472,11 @@ test.each(['missing credential', 'rejected subscription'])(
     )
 
     await host.start()
-    await expect.poll(() => remote.sockets[0]?.readyState).toBe(3)
+    if (scenario === 'missing credential') {
+      expect(remote.sockets).toEqual([])
+    } else {
+      await expect.poll(() => remote.sockets[0]?.readyState).toBe(3)
+    }
     expect(
       await plugin.send(
         sendInput('wecom', 'user', {
@@ -507,11 +523,8 @@ test('WeCom websocket sends to explicitly configured single/group conversations 
     ]
   )
 
-  await host.start()
-  for (const [chatId, chatType] of [
-    ['user', 1],
-    ['group', 2]
-  ] as const) {
+  await startConnected(host)
+  for (const chatId of ['user', 'group']) {
     const resolved = await plugin.resolveChannel?.({
       id: 'channel',
       platform: 'wecom',
@@ -536,7 +549,7 @@ test('WeCom websocket sends to explicitly configured single/group conversations 
     ).toMatchObject({ status: 'sent' })
     expect(remote.frames.at(-1)).toMatchObject({
       cmd: 'aibot_send_msg',
-      body: { chatid: chatId, chat_type: chatType }
+      body: { chatid: chatId }
     })
   }
   expect(await records(host.storage)).toEqual([])

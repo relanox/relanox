@@ -24,6 +24,8 @@
 
 HTTP 接收方式：将事件请求地址设为 `https://relay.example.com/channels/slack-main/events`，按需订阅 `message.channels`、`message.groups`、`message.im`、`message.mpim` 或 `app_mention`。Slack 验证地址前先启动 Relanox。也可启用 Socket Mode，填写 App Token 环境变量名，清空签名密钥，并为 App Token 授予 `connections:write`；此时 Relanox 自动建立连接。HTTP 接收与 Socket Mode 选择一种，仅填写相应凭据。
 
+Relanox 使用 Slack 官方 Node SDK 处理 API、上传和 Socket Mode，在 Core 接受事件后确认接收。接收失败时不确认该事件，同时继续接收后续消息，让 Slack 可以重新投递。连接恢复由 SDK 管理；请保持 Relanox 运行，中断后检查是否仍有未获回复的消息。
+
 ## 发送第一条消息
 
 在配置的会话中发送“你好”，或根据订阅的事件 @ 应用。如果配置了消息串绑定，请在对应消息串中回复，并打开消息串查看答案。
@@ -33,6 +35,8 @@ Agent 通过 `reply.requestId` 指定某条来信时，Slack 会在该消息的�
 ## 图片和文件
 
 发送问题时可分享图片、音频、视频或文件。生成文件会发回同一频道或消息串。确认已安装的机器人 Token 具备两个文件权限；修改权限后重新安装应用。
+
+SDK 和 Slack 执行当前上传大小与格式限制，有序图文回复中的图片也交给它们判断。Relanox 保留配置的媒体预算（默认 100 MiB）、入站下载大小保护，以及原生布局的文字和请求体预算。
 
 ## 常见问题
 

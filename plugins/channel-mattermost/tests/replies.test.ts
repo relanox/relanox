@@ -1,9 +1,9 @@
-import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
 import { expect, it } from 'vitest'
 import { createMattermostChannel } from '../src/index.js'
-import { assemble, peer } from '../../channel-wecom/tests/test-support.js'
+import { assemble } from '../../channel-wecom/tests/test-support.js'
 
-installPeerNetwork()
+import { body, httpPeer, json } from '../../channel-matrix/tests/harness.js'
+import { websocketPeer } from './peer.js'
 
 const botId = 'bbbbbbbbbbbbbbbbbbbbbbbbbb'
 
@@ -20,52 +20,57 @@ const postIds = [
 // Native Post and create-post root_id are documented by Mattermost:
 // https://docs.mattermost.com/api/reference/create-post
 it('threads out-of-order replies to selected incoming posts and sends ordinary posts without root_id', async () => {
-  const remote = await peer(
-    (request) => ({
-      body: {
-        id:
-          request.path === '/api/v4/users/me'
-            ? botId
-            : 'ssssssssssssssssssssssssss'
-      }
-    }),
-    (socket) => {
-      socket.once('message', () => {
-        socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
-        for (const [index, id] of postIds.entries()) {
-          socket.send(
-            JSON.stringify({
-              event: 'posted',
-              seq: index + 1,
-              data: {
-                post: JSON.stringify({
-                  id,
-                  user_id: userId,
-                  channel_id: chatId,
-                  message: id,
-                  root_id: '',
-                  create_at: 1_800_000_000_000,
-                  type: ''
-                })
-              }
-            })
-          )
-        }
-      })
+  const posts: unknown[] = []
+
+  const remote = await httpPeer(
+    async (request, response) => {
+      posts.push(await body(request))
+      json(response, { id: 'ssssssssssssssssssssssssss' })
+    },
+    (_request, response) => {
+      json(response, { id: botId })
     }
   )
+
+  const sockets = websocketPeer(remote)
+  sockets.on('connection', (socket) => {
+    socket.once('message', () => {
+      socket.send(JSON.stringify({ status: 'OK', seq_reply: 1 }))
+      for (const [index, id] of postIds.entries()) {
+        socket.send(
+          JSON.stringify({
+            event: 'posted',
+            seq: index + 1,
+            data: {
+              post: JSON.stringify({
+                id,
+                user_id: userId,
+                channel_id: chatId,
+                message: id,
+                root_id: '',
+                create_at: 1_800_000_000_000,
+                type: ''
+              })
+            }
+          })
+        )
+      }
+    })
+  })
 
   const plugin = createMattermostChannel({ TOKEN: 'bot-token' })
 
   const local = await assemble(
     plugin,
-    { serverUrl: remote.http, token: { env: 'TOKEN' } },
+    {
+      serverUrl: remote.base,
+      token: { env: 'TOKEN' },
+      allowInsecureLocalhost: true
+    },
     [{ chatId, senderId: userId }]
   )
 
   await local.start()
-  await expect.poll(() => remote.sockets.length).toBe(1)
-  await expect.poll(() => remote.frames.length).toBe(1)
   await expect
     .poll(async () => local.storage.listInbound({ limit: 10 }))
     .toHaveLength(3)
@@ -94,11 +99,7 @@ it('threads out-of-order replies to selected incoming posts and sends ordinary p
   ).toMatchObject({ status: 'queued' })
   await local.runtime.processDue()
 
-  const posts = remote.requests.filter(
-    (request) => request.path === '/api/v4/posts'
-  )
-
-  expect(posts.map((request) => request.body)).toEqual([
+  expect(posts).toEqual([
     {
       channel_id: chatId,
       message: 'answer ppppppppppppppppppppppppp2',

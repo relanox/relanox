@@ -1,12 +1,9 @@
-import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
+import { peer } from './peer.js'
+import { installPeerNetwork } from './network.js'
 import { expect, test, vi } from 'vitest'
 import type { SendInput } from '@relanox/sdk'
 import { createDingTalkChannel } from '../src/index.js'
-import {
-  assemble,
-  peer,
-  records
-} from '../../channel-wecom/tests/test-support.js'
+import { assemble, records } from '../../channel-wecom/tests/test-support.js'
 
 installPeerNetwork()
 
@@ -259,4 +256,129 @@ test('DingTalk sends uploaded images between Markdown fragments and rejects mism
     errorCode: 'invalid_rich_media'
   })
   expect(remote.requests).toHaveLength(count)
+})
+
+// Protect platform validation and refusals on ordinary and rich uploads. Old
+// Byte, MIME and extension prechecks fail before HTTP; small supported files
+// Cannot catch those paths. The existing plugin API needs no production seam.
+// Legacy multipart contract: open.dingtalk.com/document/orgapp/upload-media-files;
+// HTTP 413: RFC 9110 section 15.5.14.
+test.each([
+  {
+    label: 'file above the former byte limit',
+    kind: 'file' as const,
+    mimeType: 'application/pdf',
+    fileName: 'document.pdf',
+    size: 21 * 1024 * 1024,
+    rich: false
+  },
+  {
+    label: 'rich image above the former byte limit',
+    kind: 'image' as const,
+    mimeType: 'image/png',
+    fileName: 'picture.png',
+    size: 21 * 1024 * 1024,
+    rich: true
+  },
+  {
+    label: 'image outside the former MIME allowlist',
+    kind: 'image' as const,
+    mimeType: 'image/svg+xml',
+    fileName: 'picture.svg',
+    size: 4,
+    rich: false
+  },
+  {
+    label: 'file outside the former extension allowlist',
+    kind: 'file' as const,
+    mimeType: 'application/octet-stream',
+    fileName: 'document.bin',
+    size: 4,
+    rich: false
+  }
+])('DingTalk submits $label and preserves the upload refusal', async (item) => {
+  vi.stubEnv('DING_UPLOAD_SECRET', 'secret')
+  const bytes = new Uint8Array(item.size)
+
+  const media = {
+    reference: {
+      id: 'document',
+      kind: item.kind,
+      mimeType: item.mimeType,
+      fileName: item.fileName,
+      size: bytes.byteLength,
+      sha256: '0'.repeat(64)
+    },
+    data: bytes
+  }
+
+  const remote = await peer((request) =>
+    request.path === '/v1.0/oauth2/accessToken'
+      ? { body: { accessToken: 'upload-token', expireIn: 7200 } }
+      : { status: 413 }
+  )
+
+  const plugin = createDingTalkChannel()
+  await assemble(
+    plugin,
+    {
+      clientId: 'app',
+      robotCode: 'robot',
+      clientSecret: { env: 'DING_UPLOAD_SECRET' },
+      recipientTypes: { staff: 'single' }
+    },
+    [{ chatId: 'staff', senderId: 'sender' }]
+  )
+
+  const resolved = await plugin.resolveChannel?.({
+    platform: 'dingtalk',
+    accountId: 'bot',
+    chatId: 'staff',
+    id: 'channel'
+  })
+
+  if (resolved?.status !== 'available') {
+    throw new Error('missing_target')
+  }
+  expect(
+    await plugin.send({
+      deliveryId: 'file',
+      channelId: 'channel',
+      target: resolved.target,
+      chunkIndex: 0,
+      signal: new AbortController().signal,
+      chunk: {
+        text: '',
+        ...(item.rich
+          ? {
+              richText: [
+                {
+                  type: 'image' as const,
+                  media: media.reference,
+                  label: item.fileName
+                }
+              ]
+            }
+          : { media: media.reference }),
+        state: null,
+        idempotencyKey: 'file'
+      },
+      ...(item.rich ? { richMedia: [media] } : { media })
+    })
+  ).toEqual({ status: 'rejected', errorCode: 'http_413' })
+
+  const uploads = remote.requests.filter((request) =>
+    request.path.startsWith('/media/upload?')
+  )
+
+  expect(uploads).toHaveLength(1)
+  expect(uploads[0]?.path).toContain(`type=${item.kind}`)
+  expect(
+    Buffer.isBuffer(uploads[0]?.body) ? uploads[0].body.byteLength : 0
+  ).toBeGreaterThan(bytes.byteLength)
+  expect(
+    remote.requests.filter(
+      (request) => request.path === '/v1.0/robot/oToMessages/batchSend'
+    )
+  ).toHaveLength(0)
 })

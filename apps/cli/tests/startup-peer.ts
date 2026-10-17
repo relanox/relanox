@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { registerPeer } from '../../../plugins/channel-wecom/tests/network.js'
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
@@ -6,7 +7,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { RawData, WebSocket } from 'ws'
 import { z } from 'zod'
-import { closeServer, listen } from '../src/listeners.js'
+import { closeServer } from '../src/listeners.js'
 import { deadline } from '../src/deadline.js'
 
 export async function sqliteWriteLock(
@@ -92,7 +93,7 @@ export function gate(): { waiting: Promise<void>; release(this: void): void } {
 
 export async function freeManagementPort(): Promise<number> {
   const server = createServer()
-  const url = await listen(server, 0, '127.0.0.1')
+  const url = await listenPeer(server)
   await closeServer(server)
   return Number(new URL(url).port)
 }
@@ -136,7 +137,10 @@ export async function nativePeers(): Promise<{
 
   const sockets = new WebSocketServer({ server })
   sockets.on('connection', (socket, incoming) => {
-    if (incoming.url !== '/wecom') {
+    // The real SDK's CJS ws path uses an HTTP upgrade and normalizes the root
+    // Endpoint with '/'; the local transport mapping retains that trailing slash.
+    // Auth ACK: @wecom/aibot-node-sdk 1.0.7, dist/index.cjs.js handleFrame.
+    if (incoming.url !== '/wecom' && incoming.url !== '/wecom/') {
       return
     }
     fastSocket = socket
@@ -151,7 +155,7 @@ export async function nativePeers(): Promise<{
       socket.send(JSON.stringify({ headers: frame.headers, errcode: 0 }))
     })
   })
-  origin = await listen(server, 0, '127.0.0.1')
+  origin = await listenPeer(server)
   return {
     origin,
     discovered: discovered.waiting,
@@ -195,7 +199,7 @@ export async function nativePeers(): Promise<{
 }
 
 export async function routinePeer(): Promise<{
-  origin: Awaited<ReturnType<typeof listen>>
+  origin: Awaited<ReturnType<typeof listenPeer>>
   requests: { path: string; body: string }[]
   received: Promise<void>
   release(this: void): void
@@ -229,7 +233,7 @@ export async function routinePeer(): Promise<{
     })
   })
 
-  const origin = await listen(server, 0, '127.0.0.1')
+  const origin = await listenPeer(server)
   return {
     origin,
     requests,

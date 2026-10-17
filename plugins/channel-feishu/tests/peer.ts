@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import {
   registerPeer,
   routePlatform
@@ -10,6 +11,10 @@ import type {
   ServerResponse
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import https from 'node:https'
+import { syncBuiltinESMExports } from 'node:module'
+import { beforeEach } from 'vitest'
+import type { RequestOptions } from 'node:https'
 import { noopObservability } from '@relanox/sdk'
 import type {
   ChannelHost,
@@ -17,6 +22,50 @@ import type {
   IngestInput,
   SendInput
 } from '@relanox/sdk'
+
+/** Axios uses the options-only native request overload; retain real HTTP peers. */
+export function installSdkNetwork(): EventTarget {
+  const responses = new EventTarget()
+
+  beforeEach(() => {
+    const routed = https.request
+    https.request = ((
+      input: string | URL | RequestOptions,
+      options: RequestOptions | ((response: IncomingMessage) => void),
+      callback?: (response: IncomingMessage) => void
+    ) => {
+      if (typeof input === 'object' && !(input instanceof URL)) {
+        const url = new URL(
+          `https://${input.hostname ?? input.host}${input.port !== undefined && input.port !== '' ? `:${input.port}` : ''}${input.path ?? '/'}`
+        )
+
+        const {
+          protocol: _protocol,
+          hostname: _hostname,
+          host: _host,
+          path: _path,
+          port: _port,
+          agent: _agent,
+          ...request
+        } = input
+
+        const outgoing = routed(
+          url,
+          request,
+          options as (response: IncomingMessage) => void
+        )
+
+        outgoing.once('response', () =>
+          responses.dispatchEvent(new Event('response'))
+        )
+        return outgoing
+      }
+      return routed(input, options as RequestOptions, callback)
+    }) as typeof https.request
+    syncBuiltinESMExports()
+  })
+  return responses
+}
 
 export function recorder(ingest?: (input: IngestInput) => Promise<void>): {
   host: ChannelHost
@@ -66,6 +115,8 @@ type PeerResponse = {
   status?: number
   headers?: Record<string, string>
   body: unknown
+  disconnect?: boolean
+  holdOpen?: boolean
 }
 
 export async function peer(
@@ -127,15 +178,25 @@ export async function peer(
       }
     }
     const output: PeerResponse = identity ?? respond(input)
+    if (output.disconnect) {
+      response.destroy()
+      return
+    }
     response.writeHead(identity ? identityStatus : (output.status ?? 200), {
       'content-type': 'application/json',
       ...output.headers
     })
-    response.end(
+
+    const contentBytes =
       output.body instanceof Uint8Array
         ? output.body
         : JSON.stringify(output.body)
-    )
+
+    if (output.holdOpen) {
+      response.write(contentBytes)
+      return
+    }
+    response.end(contentBytes)
   }
 
   const server = createServer((request, response) => {
@@ -145,9 +206,7 @@ export async function peer(
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
 
   const url = registerPeer(
     `http://127.0.0.1:${(server.address() as AddressInfo).port}`

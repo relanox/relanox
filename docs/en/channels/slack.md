@@ -24,6 +24,8 @@ For a specific thread, set **Thread ID** to the root message’s `ts`; replies i
 
 For HTTP reception, set the Events request URL to `https://relay.example.com/channels/slack-main/events`. Subscribe to the applicable `message.channels`, `message.groups`, `message.im`, `message.mpim` or `app_mention` events. Start Relanox before Slack verifies the URL. Alternatively, enable Socket Mode, enter an app token variable name instead of the signing secret, and grant that app token `connections:write`; Relanox then connects automatically. Choose either HTTP reception or Socket Mode and provide only the matching credential.
 
+Relanox uses Slack's official Node SDK for API calls, uploads and Socket Mode. Events are acknowledged after Core accepts them. Failed acceptance leaves the event unacknowledged while the connection continues receiving, so Slack can redeliver it. The SDK manages connection recovery; keep Relanox running and check for unanswered messages after an interruption.
+
 ## Send your first message
 
 Send “Hello” or mention the app in the configured conversation, depending on your subscribed events. If you configured a thread binding, reply inside that thread and open it to see the answer.
@@ -33,6 +35,8 @@ When the Agent specifies an incoming request in `reply.requestId`, Slack replies
 ## Images and files
 
 Share images, audio, videos or files with your question. Relanox sends generated files back into the same channel/thread. Ensure the installed bot token has both file scopes, then reinstall the app after changing scopes.
+
+The SDK and Slack enforce current upload size and format limits, including images in ordered text/image replies. Relanox keeps its configured media budget (100 MiB by default), bounds incoming downloads and preserves the native layout's text and payload budgets.
 
 ## Troubleshooting
 

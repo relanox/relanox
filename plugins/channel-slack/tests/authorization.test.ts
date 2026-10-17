@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { fixture } from './authorization-runtime.js'
 import { mediaPeer } from '../../channel-telegram/tests/media-peer.js'
 import { WebSocketServer } from 'ws'
+import { socketPeer } from './peer.js'
 
 installPeerNetwork()
 
@@ -121,10 +122,7 @@ it('skips denied sender file downloads before authenticated HTTP acceptance and 
 })
 
 it('ACKs denied Socket Mode file shares without a download or durable inbound record', async () => {
-  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
-  await new Promise<void>((resolve) => {
-    wss.once('listening', resolve)
-  })
+  const wss = await socketPeer((server) => new WebSocketServer({ server }))
   cleanup.push(async () => {
     for (const socket of wss.clients) {
       socket.terminate()
@@ -140,10 +138,7 @@ it('ACKs denied Socket Mode file shares without a download or durable inbound re
     throw new Error('missing_socket_address')
   }
 
-  const url = registerPeer(`http://127.0.0.1:${address.port}`).replace(
-    'https:',
-    'wss:'
-  )
+  const url = `ws://127.0.0.1:${address.port}`
 
   const remote = await mediaPeer((traffic) => {
     if (traffic.path === '/auth.test') {
@@ -190,7 +185,9 @@ it('ACKs denied Socket Mode file shares without a download or durable inbound re
     .poll(() => remote.traffic.map((item) => item.path))
     .toContain('/apps.connections.open')
   await expect.poll(() => connected).toBe(1)
-  await expect.poll(() => frames).toContainEqual({ envelope_id: 'denied' })
+  await expect
+    .poll(() => frames)
+    .toContainEqual({ envelope_id: 'denied', payload: {} })
   expect(remote.traffic.filter((item) => item.method === 'GET')).toEqual([])
   expect((await runtime.core.status()).requests).toEqual([])
   for (const socket of wss.clients) {
@@ -202,7 +199,9 @@ it('ACKs denied Socket Mode file shares without a download or durable inbound re
       })
     )
   }
-  await expect.poll(() => frames).toContainEqual({ envelope_id: 'allowed' })
+  await expect
+    .poll(() => frames)
+    .toContainEqual({ envelope_id: 'allowed', payload: {} })
   expect(remote.traffic.filter((item) => item.method === 'GET')).toHaveLength(1)
   expect((await runtime.core.status()).requests).toHaveLength(1)
 })

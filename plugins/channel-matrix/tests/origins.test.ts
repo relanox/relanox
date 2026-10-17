@@ -154,15 +154,15 @@ it.each(discoveredCases)(
       ['sender'],
       `${peer.base}/dispatch`
     )
-    expect(discovery).toEqual([
-      {
-        path:
-          example.name === 'matrix'
-            ? '/_matrix/client/v3/account/whoami'
-            : '/api/v4/users/me',
-        authorization: 'Bearer secret'
-      }
+    expect(discovery.map((request) => request.path)).toEqual([
+      example.name === 'matrix'
+        ? '/_matrix/client/v3/account/whoami'
+        : '/api/v4/users/me'
     ])
+    // RFC 9110 section 11.1: auth schemes are case-insensitive; tokens are not.
+    expect(discovery[0]?.authorization).toMatch(
+      /^[bB][eE][aA][rR][eE][rR] secret$/u
+    )
 
     const frozen =
       example.name === 'matrix'
@@ -200,15 +200,14 @@ it.each(discoveredCases)(
         target: { ...input.target, data: discovered }
       })
     ).toMatchObject({ status: 'sent' })
-    expect(sends).toEqual([
-      {
-        path:
-          example.name === 'matrix'
-            ? '/_matrix/client/v3/rooms/chat/send/m.room.message/delivery%3A0'
-            : '/api/v4/posts',
-        authorization: 'Bearer secret'
-      }
+    expect(sends.map((request) => request.path)).toEqual([
+      example.name === 'matrix'
+        ? '/_matrix/client/v3/rooms/chat/send/m.room.message/delivery%3A0'
+        : '/api/v4/posts'
     ])
+    expect(sends[0]?.authorization).toMatch(
+      /^[bB][eE][aA][rR][eE][rR] secret$/u
+    )
   }
 )
 

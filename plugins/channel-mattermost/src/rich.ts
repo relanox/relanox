@@ -34,11 +34,7 @@ export function richError(
     return 'missing_media'
   }
   if (
-    (input.richMedia ?? []).some(
-      (media) =>
-        media.reference.kind !== 'image' ||
-        media.data.byteLength > (host.maxMediaBytes ?? 16 * 1024 * 1024)
-    )
+    (input.richMedia ?? []).some((media) => media.reference.kind !== 'image')
   ) {
     return 'media_limit_exceeded'
   }

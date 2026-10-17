@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import type { RelanoxConfig } from '@relanox/sdk'
 import { createServer } from 'node:http'
 import { access, rm } from 'node:fs/promises'
@@ -433,10 +434,10 @@ test('real listeners isolate management endpoints and release both ports on shut
 test('a failed second listener cleans up the first listener and storage', async () => {
   const value = await setup()
   const busy = createServer()
-  const busyUrl = await listen(busy, 0, '127.0.0.1')
+  const busyUrl = await listenPeer(busy)
   stops.push(async () => closeServer(busy))
   const probe = createServer()
-  const businessUrl = await listen(probe, 0, '127.0.0.1')
+  const businessUrl = await listenPeer(probe)
   await closeServer(probe)
   await expect(
     startRuntime({

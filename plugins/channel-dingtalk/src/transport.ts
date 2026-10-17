@@ -1,20 +1,8 @@
 import type { ChannelHost, IngestInput, SendResult } from '@relanox/sdk'
-import { WebSocket } from 'ws'
-import type { RawData } from 'ws'
 import { z } from 'zod'
 import { RemoteError } from './remote-error.js'
 
 export { RemoteError } from './remote-error.js'
-
-export function wireText(data: RawData): string {
-  if (Buffer.isBuffer(data)) {
-    return data.toString('utf8')
-  }
-  if (Array.isArray(data)) {
-    return Buffer.concat(data).toString('utf8')
-  }
-  return Buffer.from(data).toString('utf8')
-}
 
 export function secret(ref: { env: string }): string {
   const value = process.env[ref.env]
@@ -52,7 +40,8 @@ export async function ingestText(
   }
 }
 
-export async function httpJson(
+/** Narrow fallback for the legacy multipart endpoint absent from the generated SDK. */
+export async function uploadJson(
   url: string,
   init: RequestInit,
   signal: AbortSignal
@@ -112,227 +101,33 @@ export async function httpJson(
   return body
 }
 
-export const jsonPostRequest = (
-  body: unknown,
-  headers: Record<string, string> = {}
-): RequestInit => ({
-  method: 'POST',
-  headers: {
-    'content-type': 'application/json',
-    accept: 'application/json',
-    ...headers
-  },
-  body: JSON.stringify(body)
-})
-
-export const sendFailure = (error: unknown): SendResult =>
-  error instanceof RemoteError
-    ? error.result
-    : { status: 'unknown', errorCode: 'transport_uncertain' }
-
-/** Each account owns exactly one socket. Initialization is short; recovery uses bounded delays. */
-export class JsonSocketConnection {
-  socket: WebSocket | undefined
-  signal: AbortSignal = AbortSignal.abort()
-  private abortListener: (() => void) | undefined
-  private controller: AbortController | undefined
-  private reconnect: ReturnType<typeof setTimeout> | undefined
-  private heartbeat: ReturnType<typeof setInterval> | undefined
-  private authenticationDeadline: ReturnType<typeof setTimeout> | undefined
-  private attempts = 0
-  private queued = 0
-  private active = false
-
-  constructor(
-    readonly host: ChannelHost,
-    readonly url: (signal: AbortSignal) => Promise<string>,
-    readonly onOpen: () => Promise<void>,
-    readonly onFrame: (frame: unknown, socket: WebSocket) => Promise<void>,
-    readonly onClose: (code?: number) => void,
-    readonly maxAttempts: number
-  ) {}
-
-  async start(signal: AbortSignal): Promise<void> {
-    if (this.active) {
-      throw new Error('already_started')
-    }
-    signal.throwIfAborted()
-    this.active = true
-    this.attempts = 0
-    this.controller = new AbortController()
-    this.signal = AbortSignal.any([signal, this.controller.signal])
-    this.abortListener = (): void => {
-      void this.stop()
-    }
-    this.signal.addEventListener('abort', this.abortListener, { once: true })
-    try {
-      await this.connect()
-    } catch {
-      this.host.connection('degraded', 'connection_failed')
-      this.schedule()
+/** Preserve Core's outcome classification; the SDK does not retry message POSTs. */
+export function sendFailure(error: unknown): SendResult {
+  if (error instanceof RemoteError) {
+    return error.result
+  }
+  const remote = z.object({ statusCode: z.number() }).safeParse(error)
+  if (!remote.success) {
+    return { status: 'unknown', errorCode: 'transport_uncertain' }
+  }
+  const status = remote.data.statusCode
+  if (status === 429) {
+    // The official DingTalk gateway exposes status/body but drops response headers.
+    return {
+      status: 'retryable',
+      errorCode: 'rate_limited',
+      retryAfterMs: 1000
     }
   }
-
-  private schedule(): void {
-    if (!this.active || this.signal.aborted || this.reconnect) {
-      return
-    }
-    if (this.attempts >= this.maxAttempts) {
-      this.host.connection('degraded', 'reconnect_exhausted')
-      return
-    }
-    const delay = Math.min(1000 * 2 ** this.attempts++, 30_000)
-    this.reconnect = setTimeout(() => {
-      this.reconnect = undefined
-      void this.connect().catch(() => {
-        this.host.connection('degraded', 'connection_failed')
-        this.schedule()
-      })
-    }, delay)
-  }
-
-  private async connect(): Promise<void> {
-    const address = await this.url(this.signal)
-    this.signal.throwIfAborted()
-
-    const socket = new WebSocket(address, {
-      handshakeTimeout: 10_000,
-      maxPayload: 1024 * 1024
-    })
-
-    this.socket = socket
-    socket.on('error', () => {
-      this.host.connection('degraded', 'socket_error')
-    })
-    socket.on('message', (bytes) => {
-      if (socket !== this.socket || !this.active) {
-        return
-      }
-      if (this.queued >= 100) {
-        socket.terminate()
-        return
-      }
-      let frame: unknown
-      try {
-        frame = JSON.parse(wireText(bytes))
-      } catch {
-        this.host.observe.log('warn', 'channel_invalid_frame')
-        return
-      }
-      // Protocol ACK/heartbeat frames must not wait behind durable message writes.
-      this.queued++
-      void this.onFrame(frame, socket)
-        .catch(() => {
-          this.host.connection('degraded', 'frame_processing_failed')
-          socket.terminate()
-        })
-        .finally(() => {
-          this.queued--
-        })
-    })
-    socket.on('close', (code) => {
-      if (socket !== this.socket) {
-        return
-      }
-      this.socket = undefined
-      this.clearHeartbeat()
-      this.onClose(code)
-      this.host.connection('disconnected')
-      this.schedule()
-    })
-    await new Promise<void>((resolve, reject) => {
-      const abort = (): void => {
-        socket.terminate()
-        reject(new Error('aborted'))
-      }
-
-      this.signal.addEventListener('abort', abort, { once: true })
-
-      const cleanup = (): void => {
-        this.signal.removeEventListener('abort', abort)
-      }
-
-      socket.once('open', () => {
-        cleanup()
-        resolve()
-      })
-      socket.once('error', () => {
-        cleanup()
-        reject(new Error('socket_open_failed'))
-      })
-      socket.once('close', () => {
-        cleanup()
-        reject(new Error('socket_closed'))
-      })
-    })
-    this.authenticationDeadline = setTimeout(() => {
-      this.host.connection('degraded', 'authentication_timeout')
-      socket.terminate()
-    }, 10_000)
-    try {
-      await this.onOpen()
-    } catch (error) {
-      socket.terminate()
-      throw error
+  if (status === 401) {
+    return {
+      status: 'retryable',
+      errorCode: 'token_expired',
+      retryAfterMs: 1000
     }
   }
-
-  ready(): void {
-    if (this.authenticationDeadline) {
-      clearTimeout(this.authenticationDeadline)
-    }
-    this.authenticationDeadline = undefined
-    this.attempts = 0
-    this.host.connection('connected')
-  }
-
-  send(frame: unknown, socket: WebSocket): void {
-    if (socket !== this.socket) {
-      return
-    }
-    if (this.signal.aborted || socket.readyState !== WebSocket.OPEN) {
-      throw new Error('not_connected')
-    }
-    socket.send(JSON.stringify(frame))
-  }
-
-  setHeartbeat(ms: number, tick: () => void): void {
-    this.clearHeartbeat()
-    this.heartbeat = setInterval(() => {
-      try {
-        tick()
-      } catch {
-        this.socket?.terminate()
-      }
-    }, ms)
-  }
-
-  private clearHeartbeat(): void {
-    if (this.heartbeat) {
-      clearInterval(this.heartbeat)
-    }
-    this.heartbeat = undefined
-    if (this.authenticationDeadline) {
-      clearTimeout(this.authenticationDeadline)
-    }
-    this.authenticationDeadline = undefined
-  }
-
-  async stop(): Promise<void> {
-    this.active = false
-    if (this.abortListener) {
-      this.signal.removeEventListener('abort', this.abortListener)
-    }
-    this.controller?.abort()
-    if (this.reconnect) {
-      clearTimeout(this.reconnect)
-    }
-    this.reconnect = undefined
-    this.clearHeartbeat()
-    const socket = this.socket
-    this.socket = undefined
-    socket?.terminate()
-    this.onClose()
-    this.host.connection('disconnected')
+  return {
+    status: status >= 500 ? 'unknown' : 'rejected',
+    errorCode: `http_${status}`
   }
 }

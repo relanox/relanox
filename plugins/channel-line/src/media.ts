@@ -8,11 +8,11 @@ import {
 } from '@relanox/channel-media'
 import type { DownloadedMedia } from '@relanox/channel-media'
 import { setTimeout as delay } from 'node:timers/promises'
-import type { ChannelHost, Json, MediaUpload, SendInput } from '@relanox/sdk'
-import type { z } from 'zod'
+import type { ChannelHost, MediaUpload, SendInput } from '@relanox/sdk'
+import type { messagingApi } from '@line/bot-sdk'
 import type { LineConfig } from './config.js'
 import { secret } from './io.js'
-import type { eventSchema } from './schemas.js'
+import type { LineMessage as Message } from './schemas.js'
 
 const fallbackMime: Readonly<Record<string, string>> = {
   image: 'image/jpeg',
@@ -21,8 +21,9 @@ const fallbackMime: Readonly<Record<string, string>> = {
   file: 'application/octet-stream'
 }
 
-type Message = NonNullable<z.infer<typeof eventSchema>['message']>
-
+// SDK 11.3.0 HTTPFetchClient has no signal/fetch injection, and its Readable
+// Wrapper does not cancel the underlying reader. Keep bounded, non-redirecting
+// Downloads through the shared media boundary instead of a second SDK driver.
 async function nativeContent(
   url: string,
   maximum: number,
@@ -58,7 +59,7 @@ export async function receiveMedia(
   if (message.type === 'text') {
     return []
   }
-  const maximum = host.maxMediaBytes ?? 25 * 1024 * 1024
+  const maximum = host.maxMediaBytes ?? 100 * 1024 * 1024
   if ((message.fileSize ?? 0) > maximum) {
     throw new MediaDownloadError('media_too_large')
   }
@@ -97,18 +98,6 @@ export async function receiveMedia(
   ]
 }
 
-function previewError(input: SendInput): string | undefined {
-  const preview = input.preview
-  if (
-    !preview ||
-    !['image/jpeg', 'image/png'].includes(preview.reference.mimeType) ||
-    preview.data.byteLength > 1000 * 1000
-  ) {
-    return 'media_requires_jpeg_png_preview'
-  }
-  return undefined
-}
-
 export function mediaError(
   input: SendInput,
   host: ChannelHost
@@ -126,47 +115,15 @@ export function mediaError(
   if (!media) {
     return 'missing_media'
   }
-  if (media.data.byteLength > (host.maxMediaBytes ?? 25 * 1024 * 1024)) {
-    return 'media_too_large'
+  if (media.reference.kind === 'audio' && !media.reference.durationMs) {
+    return 'audio_requires_duration'
   }
-  switch (media.reference.kind) {
-    case 'image': {
-      if (
-        !['image/jpeg', 'image/png'].includes(media.reference.mimeType) ||
-        media.data.byteLength > 10 * 1000 * 1000
-      ) {
-        return 'image_format_or_size_unsupported'
-      }
-      return media.data.byteLength > 1000 * 1000
-        ? previewError(input)
-        : undefined
-    }
-    case 'audio': {
-      if (
-        !['audio/mpeg', 'audio/mp4', 'audio/x-m4a'].includes(
-          media.reference.mimeType
-        ) ||
-        !media.reference.durationMs ||
-        media.data.byteLength > 200 * 1000 * 1000
-      ) {
-        return 'audio_requires_mp3_m4a_duration'
-      }
-      return undefined
-    }
-    case 'video': {
-      if (
-        media.reference.mimeType !== 'video/mp4' ||
-        media.data.byteLength > 200 * 1000 * 1000
-      ) {
-        return 'video_format_or_size_unsupported'
-      }
-      return previewError(input)
-    }
-    case 'file': {
-      return 'native_file_send_unsupported'
-    }
+  if (media.reference.kind === 'video' && !input.preview) {
+    return 'media_requires_preview'
   }
-  return undefined
+  return media.reference.kind === 'file'
+    ? 'native_file_send_unsupported'
+    : undefined
 }
 
 export { splitLineMarkdown } from './markdown.js'
@@ -175,7 +132,7 @@ export async function messages(
   input: SendInput,
   host: ChannelHost,
   quoteToken?: string
-): Promise<Json[]> {
+): Promise<messagingApi.Message[]> {
   if (input.chunk.richText) {
     return [await richMessage(input, host)]
   }
@@ -192,16 +149,26 @@ export async function messages(
     mediaId: media.id
   })
 
-  const message: Record<string, Json> = { type: media.kind, originalContentUrl }
+  let message: messagingApi.Message
   if (media.kind === 'audio') {
-    message.duration = media.durationMs ?? 0
+    message = {
+      type: 'audio',
+      originalContentUrl,
+      duration: media.durationMs ?? 0
+    }
   } else {
-    message.previewImageUrl = input.preview
+    if (media.kind === 'file') {
+      throw new Error('native_file_send_unsupported')
+    }
+
+    const previewImageUrl = input.preview
       ? await host.media.publish({
           channelId: input.channelId,
           mediaId: input.preview.reference.id
         })
       : originalContentUrl
+
+    message = { type: media.kind, originalContentUrl, previewImageUrl }
   }
   return input.chunk.text
     ? [

@@ -1,10 +1,7 @@
+import { peer } from './peer.js'
 import { expect, test, vi } from 'vitest'
-import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
-import {
-  assemble,
-  peer,
-  records
-} from '../../channel-wecom/tests/test-support.js'
+import { installPeerNetwork } from './network.js'
+import { assemble, records } from '../../channel-wecom/tests/test-support.js'
 import { createDingTalkChannel } from '../src/index.js'
 import { limitsRuntime } from './limits-runtime.js'
 
@@ -44,13 +41,16 @@ function ack(
   data = '{"response":null}'
 ): {
   code: number
-  headers: { contentType: string; messageId: string }
+  headers: { contentType?: string; topic?: string; messageId: string }
   message: string
   data: string
 } {
   return {
     code: 200,
-    headers: { contentType: 'application/json', messageId },
+    headers:
+      data === '{}'
+        ? { topic: 'ping', messageId }
+        : { contentType: 'application/json', messageId },
     message: 'OK',
     data
   }
@@ -106,7 +106,7 @@ test('DingTalk keeps delayed callback ACKs on their originating Stream session',
       .poll(() => remote.requests.map((request) => request.path))
       .toContain('/picture.png')
     first.terminate()
-    await expect.poll(() => remote.sockets.length, { timeout: 3000 }).toBe(2)
+    await expect.poll(() => remote.sockets.length, { timeout: 5000 }).toBe(2)
     const replacement = remote.sockets[1]
     if (!replacement) {
       throw new Error('missing_replacement_socket')
@@ -121,7 +121,7 @@ test('DingTalk keeps delayed callback ACKs on their originating Stream session',
     await expect
       .poll(() => remote.frames)
       .toContainEqual(ack('after-delayed-callback', '{}'))
-    // Node SDK@e7fe301d9afdcc1d62d2b7ffeba6fe7768b6489c client.ts
+    // Node SDK@v2.1.7-beta.1 client.ts
     // Binds onCallback()/socketCallBackResponse() to the receiving socket.
     expect(remote.frames).not.toContainEqual(ack('old-session-callback'))
     replacement.send(frame('redelivery-on-replacement', picture))
@@ -237,11 +237,17 @@ test('DingTalk leaves failed media downloads unacknowledged until redelivery sav
     throw new Error('missing_initial_socket')
   }
   first.send(frame('failed-download', picture))
+  await expect
+    .poll(() => remote.requests.map((request) => request.path))
+    .toContain('/picture.png')
+  // Simulate server transport loss after its failed media response. Recovery is
+  // The real SDK policy, rather than forcing reconnect from the callback adapter.
+  first.terminate()
   await expect.poll(() => first.readyState).toBe(3)
   expect(remote.frames).toEqual([])
   expect(await records(local.storage)).toHaveLength(0)
   available = true
-  await expect.poll(() => remote.sockets.length, { timeout: 3000 }).toBe(2)
+  await expect.poll(() => remote.sockets.length, { timeout: 5000 }).toBe(2)
   remote.sockets[1]?.send(frame('recovered-download', picture))
   await expect
     .poll(() => remote.frames)

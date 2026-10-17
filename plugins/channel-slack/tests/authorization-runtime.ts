@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { vi } from 'vitest'
 import { createCore } from '../../../packages/core/src/index.js'
 import type { WorkerOptions } from '../../../packages/core/src/index.js'
@@ -6,7 +7,6 @@ import { createSqliteStorage } from '../../storage-sqlite/src/index.js'
 import { createGrokAgentPlugin } from '../../agent-grok/src/index.js'
 import {
   createListeners,
-  listen,
   closeServer
 } from '../../../apps/cli/src/listeners.js'
 import { createSlackChannel } from '../src/index.js'
@@ -95,7 +95,7 @@ export async function fixture(
     () => true
   )
 
-  const origin = await listen(servers.business, 0, '127.0.0.1')
+  const origin = await listenPeer(servers.business)
   cleanup.push(async () => closeServer(servers.business))
   return { core, storage, origin, plugin }
 }

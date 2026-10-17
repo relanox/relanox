@@ -29,7 +29,7 @@ it('publishes scoped inline images in one ordered Mattermost Markdown post', asy
   expect(plugin.capabilities.richText).toEqual({
     maxParts: 20,
     maxTextLength: 8000,
-    maxImageBytes: 16_777_216
+    maxImageBytes: 104_857_600
   })
 
   const input = richInput({
@@ -46,7 +46,7 @@ it('publishes scoped inline images in one ordered Mattermost Markdown post', asy
   })
   expect(sent).toEqual([
     {
-      authorization: 'Bearer secret',
+      authorization: expect.stringMatching(/^Bearer secret$/iu) as unknown,
       content: {
         channel_id: 'channel',
         root_id: 'thread',

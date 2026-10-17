@@ -1,27 +1,110 @@
-import { REQUEST_TIMEOUT_MS } from './config.js'
-import {
-  downloadMedia,
-  mediaBlob,
-  mediaKind,
-  MediaDownloadError
-} from '@relanox/channel-media'
+import { mediaKind, MediaDownloadError } from '@relanox/channel-media'
 import type {
   ChannelHost,
   MediaUpload,
   SendInput,
   StoredMedia
 } from '@relanox/sdk'
+import type {
+  LarkChannel,
+  ResourceDescriptor,
+  SendInput as NativeInput
+} from '@larksuiteoapi/node-sdk'
+import { Readable } from 'node:stream'
+import { readBounded } from '@relanox/transport'
 import { z } from 'zod'
-import type { FeishuConfig } from './config.js'
-import {
-  FeishuTokenError,
-  jsonResponse,
-  tenantTokenRejected
-} from './transport.js'
 
-import type { InboundContent } from './inbound-content.js'
+const resourceHeadersSchema = z.object({
+  'content-type': z.string().optional(),
+  'content-length': z.coerce.number().optional()
+})
 
-export { parseContent } from './inbound-content.js'
+const resourceErrorSchema = z.object({
+  response: z.object({
+    status: z.number(),
+    data: z.instanceof(Readable),
+    headers: resourceHeadersSchema
+  })
+})
+
+function contentType(headers: z.infer<typeof resourceHeadersSchema>): string {
+  return (
+    headers['content-type']?.split(';')[0]?.trim().toLowerCase() ??
+    'application/octet-stream'
+  )
+}
+
+async function resourceFailure(error: unknown): Promise<never> {
+  const parsed = resourceErrorSchema.safeParse(error)
+  if (!parsed.success) {
+    throw error
+  }
+  const { status, data: stream, headers } = parsed.data.response
+  let body: unknown
+  try {
+    const mimeType = contentType(headers)
+    const maxErrorBytes = 64 * 1024
+    if (
+      (mimeType === 'application/json' || mimeType.endsWith('+json')) &&
+      !(Number(headers['content-length']) > maxErrorBytes)
+    ) {
+      const input = Readable.toWeb(
+        stream
+      ) as unknown as ReadableStream<Uint8Array>
+
+      body = JSON.parse(
+        (await readBounded(input, maxErrorBytes)).toString('utf8')
+      ) as unknown
+    }
+  } catch {
+    // Incomplete, oversized and non-JSON errors cannot establish a native code.
+  } finally {
+    stream.destroy()
+  }
+  throw new MediaDownloadError('media_download_failed', status, body)
+}
+
+async function downloadResource(
+  messageId: string,
+  resource: ResourceDescriptor,
+  channel: LarkChannel,
+  maxBytes: number
+): Promise<{ data: Buffer; mimeType: string }> {
+  let stream: Readable | undefined
+  try {
+    const downloaded = await channel.rawClient.im.v1.messageResource.get({
+      path: {
+        message_id: encodeURIComponent(messageId),
+        file_key: encodeURIComponent(resource.fileKey)
+      },
+      params: { type: resource.type === 'image' ? 'image' : 'file' }
+    })
+
+    stream = downloaded.getReadableStream()
+    const headers = resourceHeadersSchema.parse(downloaded.headers)
+    if (Number(headers['content-length']) > maxBytes) {
+      throw new MediaDownloadError('media_too_large')
+    }
+
+    const input = Readable.toWeb(
+      stream
+    ) as unknown as ReadableStream<Uint8Array>
+
+    return {
+      data: await readBounded(input, maxBytes).catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'payload_too_large') {
+          throw new MediaDownloadError('media_too_large')
+        }
+        throw error
+      }),
+      mimeType: contentType(headers)
+    }
+  } catch (error) {
+    return await resourceFailure(error)
+  } finally {
+    stream?.destroy()
+  }
+}
 
 export function isMediaSizeRejection(error: unknown): boolean {
   return error instanceof MediaDownloadError && error.code === 'media_too_large'
@@ -30,59 +113,45 @@ export function isMediaSizeRejection(error: unknown): boolean {
 export function isMediaTokenRejection(error: unknown): boolean {
   return (
     error instanceof MediaDownloadError &&
-    error.code === 'media_download_failed' &&
     error.status !== undefined &&
-    tenantTokenRejected({ ok: false, status: error.status }, error.responseBody)
+    [400, 401].includes(error.status) &&
+    typeof error.responseBody === 'object' &&
+    error.responseBody !== null &&
+    'code' in error.responseBody &&
+    error.responseBody.code === 99_991_663
   )
-}
-
-const nativeType = {
-  image: 'image',
-  audio: 'audio',
-  video: 'media',
-  file: 'file'
-}
-
-const fileType = {
-  image: 'stream',
-  audio: 'opus',
-  video: 'mp4',
-  file: 'stream'
 }
 
 export async function receiveMedia(
   messageId: string,
-  content: InboundContent,
+  resources: ResourceDescriptor[],
   host: ChannelHost,
-  config: FeishuConfig,
-  base: string,
-  access: string
+  channel: LarkChannel
 ): Promise<MediaUpload[]> {
   return Promise.all(
-    content.resources.map(async (resource) => {
-      const downloaded = await downloadMedia(
-        `${base.replace(/\/$/u, '')}/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(resource.key)}?type=${resource.type}`,
-        {
-          maxBytes: Math.min(
-            host.maxMediaBytes ?? 25 * 1024 * 1024,
-            100 * 1024 * 1024
-          ),
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          trustedOrigins: [new URL(base).origin],
-          allowInsecureLocalhost: false,
-          headers: { authorization: `Bearer ${access}` }
-        }
+    resources.map(async (resource) => {
+      const downloaded = await downloadResource(
+        messageId,
+        resource,
+        channel,
+        host.maxMediaBytes ?? 100 * 1024 * 1024
       )
+
+      const fallback: Readonly<Record<string, string>> = {
+        image: 'image/jpeg',
+        audio: 'audio/ogg',
+        video: 'video/mp4'
+      }
 
       const mimeType =
         downloaded.mimeType === 'application/octet-stream'
-          ? resource.fallbackMime
+          ? (fallback[resource.type] ?? downloaded.mimeType)
           : downloaded.mimeType
 
       return {
         kind: mediaKind(mimeType),
         mimeType,
-        fileName: resource.fileName ?? resource.key,
+        fileName: resource.fileName ?? resource.fileKey,
         data: downloaded.data,
         ...(resource.durationMs ? { durationMs: resource.durationMs } : {})
       }
@@ -90,119 +159,24 @@ export async function receiveMedia(
   )
 }
 
-const uploadSchema = z.looseObject({
-  code: z.literal(0),
-  data: z.looseObject({
-    image_key: z.string().optional(),
-    file_key: z.string().optional()
-  })
-})
-
-async function uploadAsset(
+async function imageKey(
   media: StoredMedia,
-  host: ChannelHost,
-  config: FeishuConfig,
-  base: string,
-  access: string,
-  signal: AbortSignal
+  channel: LarkChannel
 ): Promise<string> {
-  const image = media.reference.kind === 'image'
-  if (
-    media.data.byteLength >
-    Math.min(
-      host.maxMediaBytes ?? 25 * 1024 * 1024,
-      (image ? 10 : 30) * 1024 * 1024
-    )
-  ) {
-    throw new Error('media_too_large')
-  }
-  const body = new FormData()
-  if (image) {
-    body.set('image_type', 'message')
-  } else {
-    body.set('file_type', fileType[media.reference.kind])
-    body.set('file_name', media.reference.fileName)
-    if (media.reference.durationMs) {
-      body.set('duration', String(media.reference.durationMs))
-    }
-  }
-  body.set(image ? 'image' : 'file', mediaBlob(media), media.reference.fileName)
+  const result = await channel.rawClient.im.v1.image.create({
+    data: { image_type: 'message', image: Buffer.from(media.data) }
+  })
 
-  const response = await fetch(
-    `${base.replace(/\/$/u, '')}/open-apis/im/v1/${image ? 'images' : 'files'}`,
-    {
-      method: 'POST',
-      headers: { authorization: `Bearer ${access}` },
-      body,
-      signal: AbortSignal.any([
-        signal,
-        AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-      ]),
-      redirect: 'error'
-    }
-  )
-
-  const value = await jsonResponse(response)
-  if (tenantTokenRejected(response, value)) {
-    throw new FeishuTokenError()
-  }
-  const uploaded = uploadSchema.parse(value)
-  if (!response.ok) {
-    throw new Error('media_upload_failed')
-  }
-  const key = image ? uploaded.data.image_key : uploaded.data.file_key
-  if (!key) {
+  if (!result?.image_key) {
     throw new Error('missing_uploaded_key')
   }
-  return key
+  return result.image_key
 }
 
-export function mediaError(
+export async function nativeContent(
   input: SendInput,
-  host: ChannelHost
-): string | undefined {
-  if (!input.chunk.media) {
-    return undefined
-  }
-  const media = input.media
-  if (!media) {
-    return 'missing_media'
-  }
-  if (input.chunk.text) {
-    return 'media_caption_unsupported'
-  }
-  if (
-    media.data.byteLength >
-    Math.min(
-      host.maxMediaBytes ?? 25 * 1024 * 1024,
-      (media.reference.kind === 'image' ? 10 : 30) * 1024 * 1024
-    )
-  ) {
-    return 'media_too_large'
-  }
-  if (
-    media.reference.kind === 'video' &&
-    (media.reference.mimeType !== 'video/mp4' || !media.reference.durationMs)
-  ) {
-    return 'video_requires_mp4_duration'
-  }
-  if (
-    media.reference.kind === 'audio' &&
-    (!['audio/ogg', 'audio/opus'].includes(media.reference.mimeType) ||
-      !media.reference.durationMs)
-  ) {
-    return 'audio_requires_opus_duration'
-  }
-  return undefined
-}
-
-export async function messageContent(
-  input: SendInput,
-  host: ChannelHost,
-  config: FeishuConfig,
-  base: string,
-  access: string
-): Promise<{ msg_type: string; content: string }> {
+  channel: LarkChannel
+): Promise<NativeInput> {
   if (input.chunk.richText) {
     const rows: Record<string, string>[][] = []
     let imageIndex = 0
@@ -214,53 +188,52 @@ export async function messageContent(
         if (!media) {
           throw new Error('missing_media')
         }
-
-        const key = await uploadAsset(
-          media,
-          host,
-          config,
-          base,
-          access,
-          input.signal
-        )
-
-        rows.push([{ tag: 'img', image_key: key }])
+        input.signal.throwIfAborted()
+        rows.push([{ tag: 'img', image_key: await imageKey(media, channel) }])
       }
     }
-    return {
-      msg_type: 'post',
-      content: JSON.stringify({ zh_cn: { content: rows } })
-    }
+    return { post: { zh_cn: { content: rows } } }
   }
   if (!input.chunk.media) {
-    return {
-      msg_type: 'post',
-      content: JSON.stringify({
-        zh_cn: { content: [[{ tag: 'md', text: input.chunk.text }]] }
-      })
-    }
+    return { markdown: input.chunk.text }
   }
   const media = input.media
   if (!media) {
     throw new Error('missing_media')
   }
-  const key = await uploadAsset(media, host, config, base, access, input.signal)
-
-  const content: Record<string, string> =
-    media.reference.kind === 'image' ? { image_key: key } : { file_key: key }
-
-  if (input.preview && media.reference.kind === 'video') {
-    content.image_key = await uploadAsset(
-      input.preview,
-      host,
-      config,
-      base,
-      access,
-      input.signal
-    )
-  }
-  return {
-    msg_type: nativeType[media.reference.kind],
-    content: JSON.stringify(content)
+  const source = Buffer.from(media.data)
+  switch (media.reference.kind) {
+    case 'image': {
+      return { image: { source } }
+    }
+    case 'audio': {
+      return {
+        audio: {
+          source,
+          ...(media.reference.durationMs
+            ? { duration: media.reference.durationMs }
+            : {})
+        }
+      }
+    }
+    case 'video': {
+      return {
+        video: {
+          source,
+          ...(media.reference.durationMs
+            ? { duration: media.reference.durationMs }
+            : {}),
+          ...(input.preview
+            ? { coverImageKey: await imageKey(input.preview, channel) }
+            : {})
+        }
+      }
+    }
+    case 'file': {
+      return { file: { source, fileName: media.reference.fileName } }
+    }
+    default: {
+      throw new Error('unsupported_media_kind')
+    }
   }
 }

@@ -16,17 +16,18 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@googleapis/chat": "51.2.0",
     "@relanox/channel-media": "workspace:*",
     "@relanox/markdown": "workspace:*",
     "@relanox/sdk": "workspace:*",
     "@relanox/transport": "workspace:*",
     "google-auth-library": "11.1.0",
-    "jose": "6.2.12",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@relanox/core": "workspace:*",
-    "@relanox/storage-sqlite": "workspace:*"
+    "@relanox/storage-sqlite": "workspace:*",
+    "jose": "6.2.12"
   },
   "engines": {
     "node": ">=26 <27"

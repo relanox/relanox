@@ -8,9 +8,12 @@ import type {
   SendInput,
   SendResult
 } from '@relanox/sdk'
+import type { MatrixClient } from 'matrix-js-sdk'
+import { ContentHelpers, MsgType } from 'matrix-js-sdk'
+import type { MediaEventContent } from 'matrix-js-sdk/lib/@types/media.js'
 import { z } from 'zod'
 import type { MatrixConfig } from './config.js'
-import { httpFailure, readJson } from './protocol.js'
+import { sendFailure } from './protocol.js'
 
 const mediaSchema = z
   .object({
@@ -30,8 +33,6 @@ const mediaSchema = z
   })
   .refine((value) => value.filename !== undefined || value.body.length <= 255)
 
-const uploadResponse = z.object({ content_uri: z.string() })
-
 const kinds = {
   'm.image': 'image',
   'm.audio': 'audio',
@@ -39,45 +40,47 @@ const kinds = {
   'm.file': 'file'
 } as const
 
-function contentUri(value: string): { server: string; id: string } {
-  const match = /^mxc:\/\/(?<server>[^/?#@\s]+)\/(?<id>[A-Za-z0-9_-]+)$/u.exec(
-    value
-  )?.groups
-
-  if (!match?.server || !match.id) {
-    throw new Error('invalid_media_uri')
-  }
-  return { server: match.server, id: match.id }
-}
-
 export async function receiveMedia(
   content: unknown,
   host: ChannelHost,
   config: MatrixConfig,
-  base: string,
+  client: MatrixClient,
   headers: Readonly<Record<string, string>>,
   signal: AbortSignal
 ): Promise<MediaUpload[]> {
-  if (content !== null && typeof content === 'object' && 'file' in content) {
-    throw new Error('encrypted_unsupported')
-  }
   const parsed = mediaSchema.safeParse(content)
   if (!parsed.success) {
     return []
   }
   const data = parsed.data
-  const uri = contentUri(data.url)
 
-  const downloaded = await downloadMedia(
-    `${base}/_matrix/client/v1/media/download/${encodeURIComponent(uri.server)}/${encodeURIComponent(uri.id)}`,
-    {
-      maxBytes: host.maxMediaBytes ?? 16 * 1024 * 1024,
-      signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
-      headers,
-      trustedOrigins: [new URL(base).origin],
-      allowInsecureLocalhost: config.allowInsecureLocalhost
-    }
+  const url = client.mxcUrlToHttp(
+    data.url,
+    undefined,
+    undefined,
+    undefined,
+    false,
+    false,
+    true
   )
+
+  if (!url) {
+    throw new Error('invalid_media_uri')
+  }
+
+  // SDK media conversion roots /_matrix at the origin, while its other APIs
+  // Retain a configured homeserver path. Keep that deployment prefix here too.
+  const homeserver = new URL(client.getHomeserverUrl())
+  const downloadUrl = new URL(url)
+  downloadUrl.pathname = `${homeserver.pathname.replace(/\/$/u, '')}${downloadUrl.pathname}`
+
+  const downloaded = await downloadMedia(downloadUrl.href, {
+    maxBytes: host.maxMediaBytes ?? 100 * 1024 * 1024,
+    signal: AbortSignal.any([signal, AbortSignal.timeout(requestTimeoutMs)]),
+    headers,
+    trustedOrigins: [homeserver.origin],
+    allowInsecureLocalhost: config.allowInsecureLocalhost
+  })
 
   return [
     {
@@ -101,71 +104,36 @@ export function mediaCaption(content: unknown): string {
 }
 
 async function upload(
-  base: string,
-  headers: Readonly<Record<string, string>>,
-  media: NonNullable<SendInput['media']>,
-  signal: AbortSignal
+  client: MatrixClient,
+  media: NonNullable<SendInput['media']>
 ): Promise<string | SendResult> {
   try {
-    const url = new URL(`${base}/_matrix/media/v3/upload`)
-    url.searchParams.set('filename', media.reference.fileName)
-
-    const response = await fetch(url, {
-      method: 'POST',
-      redirect: 'error',
-      signal,
-      headers: { ...headers, 'Content-Type': media.reference.mimeType },
-      body: mediaBlob(media)
+    const result = await client.uploadContent(mediaBlob(media), {
+      name: media.reference.fileName,
+      type: media.reference.mimeType
     })
 
-    if (!response.ok) {
-      const result = await httpFailure(response)
-      return result.status === 'unknown'
-        ? { status: 'retryable', errorCode: 'media_upload_failed' }
-        : result
+    if (!client.mxcUrlToHttp(result.content_uri)) {
+      throw new Error('invalid_media_uri')
     }
-    const result = uploadResponse.parse(await readJson(response))
-    contentUri(result.content_uri)
     return result.content_uri
-  } catch {
-    return { status: 'retryable', errorCode: 'media_upload_failed' }
+  } catch (error) {
+    const failure = sendFailure(error)
+    // Uploading a blob cannot deliver a room message. Retrying it is safe.
+    return failure.status === 'unknown'
+      ? { status: 'retryable', errorCode: 'media_upload_failed' }
+      : failure
   }
 }
 
 export async function messageContent(
   input: SendInput,
-  base: string,
-  headers: Readonly<Record<string, string>>,
-  signal: AbortSignal
-): Promise<
-  | SendResult
-  | {
-      msgtype: string
-      body: string
-      format: 'org.matrix.custom.html'
-      formatted_body: string
-      filename?: never
-      url?: never
-      info?: never
-    }
-  | {
-      msgtype: string
-      body: string
-      filename: string
-      url: string
-      info: {
-        thumbnail_url?: string
-        thumbnail_info?: { mimetype: string; size: number }
-        duration?: number
-        mimetype: string
-        size: number
-      }
-    }
-> {
+  client: MatrixClient
+): Promise<SendResult | ReturnType<typeof richContent> | MediaEventContent> {
   if (input.chunk.richText) {
     const urls: string[] = []
     for (const media of input.richMedia ?? []) {
-      const uploaded = await upload(base, headers, media, signal)
+      const uploaded = await upload(client, media)
       if (typeof uploaded !== 'string') {
         return uploaded
       }
@@ -179,28 +147,27 @@ export async function messageContent(
     return content
   }
   if (!input.media) {
-    return {
-      msgtype: 'm.text',
-      body: input.chunk.text,
-      format: 'org.matrix.custom.html',
-      formatted_body: renderHtml(input.chunk.text)
-    }
+    // MakeHtmlMessage always creates m.text, despite its broader SDK return type.
+    return ContentHelpers.makeHtmlMessage(
+      input.chunk.text,
+      renderHtml(input.chunk.text)
+    ) as ReturnType<typeof richContent>
   }
   const media = input.media
-  const url = await upload(base, headers, media, signal)
+  const url = await upload(client, media)
   if (typeof url !== 'string') {
     return url
   }
 
   const thumbnailUrl = input.preview
-    ? await upload(base, headers, input.preview, signal)
+    ? await upload(client, input.preview)
     : undefined
 
   if (thumbnailUrl !== undefined && typeof thumbnailUrl !== 'string') {
     return thumbnailUrl
   }
-  return {
-    msgtype: `m.${media.reference.kind}`,
+
+  const content = {
     body: media.reference.fileName,
     filename: media.reference.fileName,
     url,
@@ -221,4 +188,13 @@ export async function messageContent(
         : {})
     }
   }
+
+  const types = {
+    image: MsgType.Image,
+    audio: MsgType.Audio,
+    video: MsgType.Video,
+    file: MsgType.File
+  } as const
+
+  return { ...content, msgtype: types[media.reference.kind] }
 }

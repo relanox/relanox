@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import { vi } from 'vitest'
 import { createCore } from '../../../packages/core/src/index.js'
 import type {
@@ -11,8 +12,7 @@ import { createGrokAgentPlugin } from '../../agent-grok/src/index.js'
 import { redirectRoutine } from '../../agent-grok/tests/routine-peer.js'
 import {
   closeServer,
-  createListeners,
-  listen
+  createListeners
 } from '../../../apps/cli/src/listeners.js'
 import { mediaPeer } from './media-peer.js'
 import { ingressStorage } from './ingress-storage.js'
@@ -111,7 +111,7 @@ export async function ingressFixture(
       () => true
     )
 
-    const origin = await listen(listeners.business, 0, '127.0.0.1')
+    const origin = await listenPeer(listeners.business)
     let stopped = false
 
     const stop = async (): Promise<void> => {

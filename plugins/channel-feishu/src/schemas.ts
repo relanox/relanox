@@ -38,7 +38,7 @@ export const messageSchema = z.looseObject({
   message: z.looseObject({
     message_id: platformIdSchema,
     chat_id: platformIdSchema,
-    chat_type: platformIdSchema,
+    chat_type: z.enum(['p2p', 'group']),
     message_type: platformIdSchema,
     content: z.string().max(1024 * 1024),
     create_time: z.string(),
@@ -57,26 +57,8 @@ export const messageSchema = z.looseObject({
   })
 })
 
-export const apiSchema = z.looseObject({
-  code: z.number().int(),
-  data: z.looseObject({ message_id: platformIdSchema.optional() }).optional()
-})
-
-export const tenantTokenResponseSchema = z.looseObject({
-  code: z.number().int(),
-  tenant_access_token: platformIdSchema.optional(),
-  expire: z.number().positive().optional()
-})
-
 export const encryptedEventSchema = z.object({
   encrypt: z
-    .string()
-    .min(1)
-    .max(1024 * 1024)
-})
-
-export const textContentSchema = z.looseObject({
-  text: z
     .string()
     .min(1)
     .max(1024 * 1024)

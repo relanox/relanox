@@ -1,51 +1,33 @@
 import { richError, richCapabilities } from './rich.js'
-import { createDecipheriv, createHash } from 'node:crypto'
+import { createHash } from 'node:crypto'
+import { AESCipher, normalize } from '@larksuiteoapi/node-sdk'
+import type { RawMessageEvent } from '@larksuiteoapi/node-sdk'
+import { createSdk } from './sdk.js'
 import type {
   AccountConfig,
   ChannelHost,
   ChannelPlugin,
-  SendResult,
   ReplyTarget,
   ChannelAddress,
   Json
 } from '@relanox/sdk'
-import { z } from 'zod'
-import { validateConfig, REQUEST_TIMEOUT_MS } from './config.js'
+import type { z } from 'zod'
+import { validateConfig } from './config.js'
 import type { FeishuConfig } from './config.js'
 import {
   receiveMedia,
-  messageContent,
-  mediaError,
-  parseContent,
+  nativeContent,
   isMediaSizeRejection,
   isMediaTokenRejection
 } from './media.js'
 import {
   encryptedEventSchema,
-  tenantTokenResponseSchema,
   targetSchema,
   challengeSchema,
   eventSchema,
-  messageSchema,
-  apiSchema
+  messageSchema
 } from './schemas.js'
-import {
-  bytes,
-  credential,
-  equal,
-  failure,
-  fresh,
-  ingest,
-  jsonResponse,
-  postJson,
-  FeishuTokenError,
-  tenantTokenRejected
-} from './transport.js'
-
-const botInfoSchema = z.object({
-  code: z.literal(0),
-  bot: z.object({ open_id: z.string().min(1) })
-})
+import { bytes, credential, equal, fresh, ingest } from './transport.js'
 
 function matchesIdentity(
   data: z.infer<typeof targetSchema>,
@@ -110,7 +92,7 @@ export function createFeishuChannel(
   let account: AccountConfig
   let config: FeishuConfig
   let botOpenId: string
-  let token: { value: string; until: number; secretDigest: string } | undefined
+  let sdk: ReturnType<typeof createSdk>
 
   const base = (): string =>
     config.domain === 'lark'
@@ -128,85 +110,6 @@ export function createFeishuChannel(
     botId: botOpenId,
     apiBaseUrl: new URL(base()).toString().replace(/\/$/u, '')
   })
-
-  async function accessToken(
-    signal: AbortSignal
-  ): Promise<string | SendResult> {
-    const appSecret = credential(config.appSecret, environment)
-    const secretDigest = createHash('sha256').update(appSecret).digest('hex')
-    if (
-      token &&
-      token.until > Date.now() &&
-      token.secretDigest === secretDigest
-    ) {
-      return token.value
-    }
-
-    const response = await postJson(
-      `${base().replace(/\/$/u, '')}/open-apis/auth/v3/tenant_access_token/internal`,
-      {},
-      { app_id: config.appId, app_secret: appSecret },
-      signal,
-      REQUEST_TIMEOUT_MS
-    )
-
-    if (!response.ok) {
-      return response.status >= 500
-        ? { status: 'retryable', errorCode: 'tenant_token_unavailable' }
-        : failure(response)
-    }
-
-    const parsed = tenantTokenResponseSchema.safeParse(
-      await jsonResponse(response)
-    )
-
-    if (!parsed.success) {
-      return { status: 'retryable', errorCode: 'tenant_token_unavailable' }
-    }
-    if (parsed.data.code !== 0) {
-      return { status: 'rejected', errorCode: 'tenant_token_unavailable' }
-    }
-    if (!parsed.data.tenant_access_token || !parsed.data.expire) {
-      return { status: 'retryable', errorCode: 'tenant_token_unavailable' }
-    }
-    token = {
-      value: parsed.data.tenant_access_token,
-      until: Date.now() + Math.max(0, parsed.data.expire * 1000 - 60_000),
-      secretDigest
-    }
-    return token.value
-  }
-
-  async function sendOutcome(response: Response): Promise<SendResult> {
-    if (!response.ok && ![400, 401].includes(response.status)) {
-      return failure(response)
-    }
-
-    const value = await jsonResponse(response).catch(() => {})
-
-    // The platform intercepts this code at authentication, before the message effect.
-    if (tenantTokenRejected(response, value)) {
-      token = undefined
-      return { status: 'retryable', errorCode: 'feishu_token_invalid' }
-    }
-    if (!response.ok) {
-      return failure(response)
-    }
-    const parsed = apiSchema.safeParse(value)
-    if (!parsed.success) {
-      return { status: 'unknown', errorCode: 'invalid_platform_response' }
-    }
-    if (parsed.data.code !== 0) {
-      token = undefined
-      return { status: 'rejected', errorCode: 'feishu_api_error' }
-    }
-    return parsed.data.data?.message_id
-      ? {
-          status: 'sent',
-          receipt: { platformMessageId: parsed.data.data.message_id }
-        }
-      : { status: 'unknown', errorCode: 'invalid_platform_response' }
-  }
 
   async function verifyRequest(request: Request): Promise<unknown> {
     if (request.method !== 'POST') {
@@ -241,25 +144,8 @@ export function createFeishuChannel(
       value = JSON.parse(raw.toString('utf8'))
       const encrypted = encryptedEventSchema.safeParse(value)
       if (encrypted.success) {
-        if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encrypted.data.encrypt)) {
-          throw new Error('invalid_encryption')
-        }
-        const payload = Buffer.from(encrypted.data.encrypt, 'base64')
-        if (payload.length < 32 || payload.length % 16) {
-          throw new Error('invalid_encryption')
-        }
-
-        const decipher = createDecipheriv(
-          'aes-256-cbc',
-          createHash('sha256').update(encryptKey).digest(),
-          payload.subarray(0, 16)
-        )
-
         value = JSON.parse(
-          Buffer.concat([
-            decipher.update(payload.subarray(16)),
-            decipher.final()
-          ]).toString('utf8')
+          new AESCipher(encryptKey).decrypt(encrypted.data.encrypt)
         )
       }
     } catch {
@@ -278,7 +164,7 @@ export function createFeishuChannel(
 
   function inboundFailure(error: unknown): Response {
     if (isMediaTokenRejection(error)) {
-      token = undefined
+      void sdk.invalidateToken()
     }
     if (isMediaSizeRejection(error)) {
       host.observe.count('relanox_inbound_total', {
@@ -345,23 +231,14 @@ export function createFeishuChannel(
       })
       return new Response(null, { status: 200 })
     }
-    let content: ReturnType<typeof parseContent>
     try {
-      content = parseContent(message)
-    } catch {
-      return new Response(null, { status: 400 })
-    }
-    try {
+      const content = await normalize(messageEvent.data as RawMessageEvent, {
+        botIdentity: { openId: botOpenId, name: 'bot' },
+        stripBotMentions: true
+      })
+
       const threadId = message.thread_id
 
-      const access =
-        content.resources.length > 0
-          ? await accessToken(AbortSignal.timeout(REQUEST_TIMEOUT_MS))
-          : ''
-
-      if (typeof access !== 'string') {
-        return new Response(null, { status: 503 })
-      }
       await ingest(host, {
         source: {
           channel: 'feishu',
@@ -369,17 +246,12 @@ export function createFeishuChannel(
           eventId: header.event_id
         },
         senderId: sender.sender_id.open_id,
-        text: content.text.replaceAll(/@_user_\d+|@_all/gu, (key) => {
-          const mention = message.mentions?.find((entry) => entry.key === key)
-          return mention?.name ? `@${mention.name}` : key
-        }),
+        text: content.content,
         attachments: await receiveMedia(
           message.message_id,
-          content,
+          content.resources,
           host,
-          config,
-          base(),
-          access
+          sdk.channel
         ),
         target: {
           channel: 'feishu',
@@ -463,25 +335,12 @@ export function createFeishuChannel(
       credential(config.encryptKey, environment)
       credential(config.verificationToken, environment)
 
-      const tenantToken = await accessToken(
-        AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-      )
-
-      if (typeof tenantToken !== 'string') {
-        throw new TypeError('feishu_identity_unavailable')
-      }
-
-      const response = await fetch(`${base()}/open-apis/bot/v3/info`, {
-        redirect: 'error',
-        headers: { authorization: `Bearer ${tenantToken}` },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-      })
-
-      if (!response.ok) {
-        await response.body?.cancel()
+      sdk = createSdk(config, environment)
+      await sdk.channel.connect()
+      if (!sdk.channel.botIdentity?.openId) {
         throw new Error('feishu_identity_unavailable')
       }
-      botOpenId = botInfoSchema.parse(await jsonResponse(response)).bot.open_id
+      botOpenId = sdk.channel.botIdentity.openId
       host.mountHttp('/events', async (request) => {
         const value = await verifyRequest(request)
         if (value instanceof Response) {
@@ -506,6 +365,7 @@ export function createFeishuChannel(
         return receiveEvent(parsed.data)
       })
     },
+    stop: async () => sdk.stop(),
     async send(input) {
       const data = targetSchema.safeParse(input.target.data)
       const current = identity()
@@ -526,63 +386,33 @@ export function createFeishuChannel(
       ) {
         return { status: 'rejected', errorCode: 'address_unresolved' }
       }
-      // Authentication precedes the message effect, so failures here are safe to retry.
-      const errorCode = richError(input, host) ?? mediaError(input, host)
+      const errorCode = richError(input)
       if (errorCode) {
         return { status: 'rejected', errorCode }
       }
-
-      const access = await accessToken(input.signal).catch(() => ({
-        status: 'retryable' as const,
-        errorCode: 'tenant_token_transport_error'
-      }))
-
-      if (typeof access !== 'string') {
-        return access
+      if (input.chunk.media && !input.media) {
+        return { status: 'rejected', errorCode: 'missing_media' }
       }
-
-      const content = await messageContent(
-        input,
-        host,
-        config,
-        base(),
-        access
-      ).catch((error: unknown) => {
-        const invalidToken = error instanceof FeishuTokenError
-        if (invalidToken) {
-          token = undefined
-        }
-        return {
-          status: 'retryable' as const,
-          errorCode: invalidToken
-            ? 'feishu_token_invalid'
-            : 'media_upload_transport_error'
-        }
-      })
-
-      if ('status' in content) {
-        return content
+      if (input.chunk.media && input.chunk.text) {
+        return { status: 'rejected', errorCode: 'media_caption_unsupported' }
       }
-      try {
+      return sdk.run(input.signal, async () => {
+        const content = await nativeContent(input, sdk.channel)
+        input.signal.throwIfAborted()
         const reply = threadReply(input.target, data.data, Boolean(input.reply))
 
-        const response = await postJson(
-          `${base().replace(/\/$/u, '')}/open-apis/im/v1/messages${reply ? `/${encodeURIComponent(reply)}/reply` : '?receive_id_type=chat_id'}`,
-          { authorization: `Bearer ${access}` },
-          {
-            ...content,
-            ...(reply
-              ? { reply_in_thread: Boolean(input.target.threadId) }
-              : { receive_id: input.target.chatId })
-          },
-          input.signal,
-          REQUEST_TIMEOUT_MS
+        const sent = await sdk.channel.send(
+          input.target.chatId,
+          content,
+          reply
+            ? { replyTo: reply, replyInThread: Boolean(input.target.threadId) }
+            : {}
         )
 
-        return await sendOutcome(response)
-      } catch {
-        return { status: 'unknown', errorCode: 'feishu_transport_error' }
-      }
+        return sent.messageId
+          ? { status: 'sent', receipt: { platformMessageId: sent.messageId } }
+          : { status: 'unknown', errorCode: 'invalid_platform_response' }
+      })
     }
   }
 }

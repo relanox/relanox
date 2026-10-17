@@ -1,54 +1,26 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  timingSafeEqual
-} from 'node:crypto'
+import { WecomCrypto } from '@wecom/aibot-node-sdk'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 
-export function encryptedCallback(
-  body: object,
-  key: Buffer,
-  token: string
-): object {
-  const content = Buffer.from(JSON.stringify(body))
-  const length = Buffer.alloc(4)
-  length.writeUInt32BE(content.length)
-  const plain = Buffer.concat([randomBytes(16), length, content])
-  const padding = 32 - (plain.length % 32)
-  const cipher = createCipheriv('aes-256-cbc', key, key.subarray(0, 16))
-  cipher.setAutoPadding(false)
-
-  const encrypt = Buffer.concat([
-    cipher.update(Buffer.concat([plain, Buffer.alloc(padding, padding)])),
-    cipher.final()
-  ]).toString('base64')
-
-  const timeStamp = String(Math.floor(Date.now() / 1000))
-  const nonce = randomBytes(16).toString('hex')
-
-  const msgSignature = createHash('sha1')
-    .update([token, timeStamp, nonce, encrypt].toSorted().join(''))
-    .digest('hex')
-
-  return { encrypt, msgsignature: msgSignature, timestamp: timeStamp, nonce }
+export function callbackCrypto(token: string, key: string): WecomCrypto {
+  return new WecomCrypto(token, key)
 }
 
-export function callbackKey(value: string): Buffer {
-  if (!/^[A-Za-z0-9+/]{43}=?$/u.test(value)) {
-    throw new Error('invalid_callback_key')
+export function encryptedCallback(body: object, crypto: WecomCrypto): object {
+  const timeStamp = String(Math.floor(Date.now() / 1000))
+  const nonce = randomBytes(16).toString('hex')
+  const encrypted = crypto.encrypt(JSON.stringify(body), timeStamp, nonce)
+  return {
+    encrypt: encrypted.encrypt,
+    msgsignature: encrypted.signature,
+    timestamp: timeStamp,
+    nonce
   }
-  const key = Buffer.from(value, 'base64')
-  if (key.length !== 32) {
-    throw new Error('invalid_callback_key')
-  }
-  return key
 }
 
 export function verifyCallback(
   url: URL,
   encrypted: string,
-  token: string
+  crypto: WecomCrypto
 ): boolean {
   const signature = url.searchParams.get('msg_signature') ?? ''
   const timestamp = url.searchParams.get('timestamp') ?? ''
@@ -62,39 +34,9 @@ export function verifyCallback(
     return false
   }
 
-  const expected = createHash('sha1')
-    .update([token, timestamp, nonce, encrypted].toSorted().join(''))
-    .digest()
-
-  return timingSafeEqual(expected, Buffer.from(signature, 'hex'))
-}
-
-export function decryptCallback(encrypted: string, key: Buffer): string {
-  if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encrypted)) {
-    throw new Error('invalid_callback_payload')
-  }
-  const decipher = createDecipheriv('aes-256-cbc', key, key.subarray(0, 16))
-  decipher.setAutoPadding(false)
-
-  const padded = Buffer.concat([
-    decipher.update(Buffer.from(encrypted, 'base64')),
-    decipher.final()
-  ])
-
-  const padding = padded.at(-1) ?? 0
-  if (
-    padding < 1 ||
-    padded.length % 32 !== 0 ||
-    padding > 32 ||
-    padding > padded.length ||
-    !padded.subarray(-padding).every((byte) => byte === padding)
-  ) {
-    throw new Error('invalid_callback_padding')
-  }
-  const payload = padded.subarray(0, -padding)
-  if (payload.length < 20 || payload.readUInt32BE(16) !== payload.length - 20) {
-    throw new Error('invalid_callback_payload')
-  }
-  // Native intelligent robot callbacks use an empty receiveId suffix.
-  return payload.subarray(20).toString('utf8')
+  const expected = crypto.computeSignature(timestamp, nonce, encrypted)
+  return timingSafeEqual(
+    Buffer.from(expected, 'hex'),
+    Buffer.from(signature, 'hex')
+  )
 }

@@ -6,8 +6,7 @@ import type {
 } from '@relanox/sdk'
 import { z } from 'zod'
 
-export { signed } from '@relanox/transport'
-export { rawBody, parseBody, request } from '@relanox/transport'
+export { rawBody, parseBody } from '@relanox/transport'
 
 export function secret(ref: SecretRef): string {
   const value = process.env[ref.env]

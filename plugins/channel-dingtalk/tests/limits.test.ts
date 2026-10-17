@@ -1,6 +1,7 @@
+import { peer } from './peer.js'
 import { expect, test, vi } from 'vitest'
-import { installPeerNetwork } from '../../channel-wecom/tests/network.js'
-import { peer, records } from '../../channel-wecom/tests/test-support.js'
+import { installPeerNetwork } from './network.js'
+import { records } from '../../channel-wecom/tests/test-support.js'
 import { limitsRuntime } from './limits-runtime.js'
 
 installPeerNetwork()

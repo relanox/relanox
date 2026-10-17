@@ -44,6 +44,8 @@ node apps/cli/dist/main.js validate --config relanox.json
 
 使用 WebSocket 模式时，启动 Relanox 后会自动连接机器人。保持进程运行。
 
+WebSocket 接入由[企业微信官方 Node SDK](https://github.com/WecomTeam/aibot-node-sdk)处理鉴权、心跳、重连、原生回复和媒体上传。SDK 将收到的回调直接交给 Relanox，并在内存中排列待发送回复；它不提供持久化接收恢复。回调到达 SDK 时，Core 可能尚未保存；存储或下载失败后，平台不保证重新投递。请检查连接状态，并重新发送未被接收的消息。HTTP 模式使用 SDK 的回调加解密能力，并在 Core 保存回调后才确认接收，临时失败可由平台重投恢复。
+
 需要在 Relanox 收到该会话消息前通过 WebSocket 向已绑定会话发送时，在下载配置的账号 `config` 中加入 `recipientTypes`，将会话的「聊天 ID」映射为 `single` 或 `group`。省略时，Relanox 从已验证的消息事件取得类型。使用准确的成员 userid 或群聊 ID，「话题 / 线程 ID」留空。参见[手写配置示例](../reference/channels.md#wecom)。
 
 使用 HTTP 回调模式时，先通过公网 HTTPS 地址提供 Relanox 服务，再在机器人设置中填写生成的回调 URL：`https://your-host/channels/wecom-main/webhook`。将 `wecom-main` 替换为账号 ID。Token 和 EncodingAESKey 必须与服务环境一致，URL 验证成功后保存平台设置。
@@ -65,6 +67,8 @@ WebSocket 模式可发送图片、视频、文件或图文混合消息；语音�
 HTTP 回调模式接收文本、图片、视频、文件、图文混合消息和语音识别文字。每条来信发送一次最终 Markdown 回复，可带最多 10 张 PNG/JPEG 图片，每张不超过 10 MB，同时受 Relanox 限制。回复文字总长度不超过 20,480 个 UTF-8 字节。回复准备好后会一次显示。等待期间请保持 Relanox 在线，并确保回调地址可访问。此模式不支持回复音频、视频或文件。
 
 两种模式都保留企业微信支持的 Markdown 格式。
+
+Relanox 保留配置的媒体预算（默认 100 MiB），并在读取加密入站下载时限制大小。SDK 上传采用原生 512 KiB 分片、编号和并发，平台执行当前媒体大小与格式限制。在途 SDK 上传可能在交付取消后完成，但 Relanox 会在发送最终消息前检查取消状态。停止账号会断开 SDK 并清空其待发送回复队列。消息已发送但未收到回执时保留不确定状态，不会自动重发。
 
 ## 常见问题
 

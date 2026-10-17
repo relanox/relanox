@@ -8,7 +8,13 @@ import { z } from 'zod'
 import type { MediaKind } from '@relanox/sdk'
 import { channelConfig, httpIngress, nativeTargets } from './media-events.js'
 import type { PrimaryChannel } from './media-events.js'
-import { mediaPeer, multipart, trafficJson, formJson } from './media-peer.js'
+import {
+  mediaPeer,
+  multipart,
+  multipartBytes,
+  trafficJson,
+  formJson
+} from './media-peer.js'
 import { discordPeer } from '../../channel-discord/tests/media-peer.js'
 import type { MediaReply, MediaTraffic } from './media-peer.js'
 import { mediaRuntime } from './media-runtime.js'
@@ -40,6 +46,25 @@ const outputBytes = Uint8Array.of(
   0,
   19
 )
+
+// @larksuiteoapi/node-sdk 1.75.0 normalize/converters/{post,audio,video,file}
+// Retains native resource markers in the text alongside separately stored bytes.
+// These are independent protocol expectations, not normalize() output reused by
+// The assertion. Keep caption, resource key, filename and duration observable.
+const feishuInboundText = {
+  image: 'native caption![image](img_700)',
+  audio: '<audio key="file_700" duration="1s"/>',
+  video: '<video key="file_700" name="incoming.bin" duration="1s"/>',
+  file: '<file key="file_700" name="incoming.bin"/>'
+}
+
+function expectedInboundText(
+  channel: PrimaryChannel,
+  kind: MediaKind,
+  caption: string
+): string {
+  return channel === 'feishu' ? feishuInboundText[kind] : caption
+}
 
 const channels: PrimaryChannel[] = [
   'telegram',
@@ -205,7 +230,14 @@ async function assertNativeOutput(
     if (!upload) {
       throw new Error('missing_slack_upload')
     }
-    expect(new Uint8Array(upload.data)).toEqual(expected)
+    // WebClient 8.2.0 postFileUploadsToExternalURL calls makeRequest({body}),
+    // Whose serializeBody wraps that binary value in the multipart `body` field.
+    const file = (await multipart(upload)).get('body')
+    expect(file).toBeInstanceOf(File)
+    if (!(file instanceof File)) {
+      throw new Error('missing_slack_upload_bytes')
+    }
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(expected)
     expect(trafficJson(effect)).toMatchObject({
       files: [{ id: 'FGENERATED' }],
       channel_id: 'C456',
@@ -222,11 +254,15 @@ async function assertNativeOutput(
       throw new Error('missing_feishu_upload')
     }
     const form = await multipart(upload)
-    const file = form.get(kind === 'image' ? 'image' : 'file')
-    if (!(file instanceof File)) {
-      throw new Error('missing_feishu_binary')
-    }
-    expect(new Uint8Array(await file.arrayBuffer())).toEqual(expected)
+    // Node-sdk 1.75.0 passes Buffer to its Axios multipart serializer without
+    // A filename. RFC 7578 section 4.2 permits this; formData() reads such a
+    // Field as text, so inspect its original bytes instead of corrupting UTF-8.
+    expect(multipartBytes(upload, kind === 'image' ? 'image' : 'file')).toEqual(
+      expected
+    )
+    expect(form.get(kind === 'image' ? 'image_type' : 'file_type')).toBe(
+      { image: 'message', audio: 'opus', video: 'mp4', file: 'stream' }[kind]
+    )
     expect(trafficJson(effect)).toMatchObject({
       msg_type: {
         image: 'image',
@@ -264,6 +300,10 @@ function peerOrigin(channel: PrimaryChannel, origin: string): string {
   return ['telegram', 'line'].includes(channel) ? origin : registerPeer(origin)
 }
 
+// Preserve the cross-channel CLI/Core contract: authenticated media reads,
+// Exact bytes through SQLite, and native delivery to the frozen conversation.
+// Wrong multipart handling or missing SDK-normalized content must fail; isolated
+// Channel peers do not cover this complete path. No production seam is added.
 it.each(cases)(
   '$channel relays pure native $kind bytes through authenticated media reads and SQLite to the frozen reply',
   async ({ channel, kind }) => {
@@ -355,7 +395,7 @@ it.each(cases)(
     }
     const client = await fixture.client(runtime)
     const request = await dispatchedMedia(fixture.routine)
-    expect(request.text).toBe(caption)
+    expect(request.text).toBe(expectedInboundText(channel, kind, caption))
     expect(request.attachments).toMatchObject([
       { kind, mimeType, size: inputBytes.byteLength }
     ])

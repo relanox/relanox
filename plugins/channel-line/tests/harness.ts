@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import https from 'node:https'
 import dns from 'node:dns/promises'
 import { request as httpRequest, createServer } from 'node:http'
@@ -24,6 +25,8 @@ import type {
   OutboundRecord
 } from '@relanox/sdk'
 import { createSqliteStorage } from '@relanox/storage-sqlite'
+
+export { listenPeer } from '../../../tests/listen.js'
 
 const transport = {
   destinations: new Map<string, string>(),
@@ -149,9 +152,7 @@ export async function peer(): Promise<{
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
   const address = server.address() as AddressInfo
   interceptMedia()
   const destination = `http://127.0.0.1:${address.port}`

@@ -1,4 +1,3 @@
-import { requestTimeoutMs, reconnectDelayMs } from './constants.js'
 import type {
   AccountConfig,
   ChannelHost,
@@ -10,40 +9,12 @@ import type {
 } from '@relanox/sdk'
 import { receiveFiles, uploadFile } from './media.js'
 import { richError, richMarkdown } from './rich.js'
-import { websocketResume } from './resume.js'
-import { WebSocket } from 'ws'
-import type { RawData } from 'ws'
-import { z } from 'zod'
+import { MattermostClient, mattermostWebSocket } from './client.js'
+import type { WebSocketEvents, WebSocketMessage } from '@mattermost/client'
 import { validateConfig, validateBaseUrl, platformIdSchema } from './config.js'
 import type { MattermostConfig } from './config.js'
-import {
-  delay,
-  diagnose,
-  httpFailure,
-  ingest,
-  readJson,
-  secret,
-  stopTask
-} from './protocol.js'
-import {
-  sendResponseSchema,
-  postedEventSchema,
-  frameSchema,
-  postSchema,
-  targetSchema
-} from './schemas.js'
-
-function decodeFrame(bytes: RawData): z.infer<typeof frameSchema> {
-  let buffer: Buffer
-  if (Array.isArray(bytes)) {
-    buffer = Buffer.concat(bytes)
-  } else if (bytes instanceof ArrayBuffer) {
-    buffer = Buffer.from(bytes)
-  } else {
-    buffer = bytes
-  }
-  return frameSchema.parse(JSON.parse(buffer.toString('utf8')) as unknown)
-}
+import { diagnose, sendFailure, ingest, secret } from './protocol.js'
+import { postSchema, targetSchema } from './schemas.js'
 
 function sourceReplyId(
   address: ChannelAddress,
@@ -74,20 +45,16 @@ export function createMattermostChannel(
         config: MattermostConfig
         base: string
         botUserId: string
+        webSocketUrl: string
       }
     | undefined
 
-  let task: Promise<void> | undefined
   let controller: AbortController | undefined
-  let socket: WebSocket | undefined
+  let socket: ReturnType<typeof mattermostWebSocket> | undefined
+  const pending = new Set<Promise<void>>()
+  let removeAbort: (() => void) | undefined
 
-  function configured(): {
-    host: ChannelHost
-    account: AccountConfig
-    config: MattermostConfig
-    base: string
-    botUserId: string
-  } {
+  function configured(): NonNullable<typeof runtime> {
     if (!runtime) {
       throw new Error('not_setup')
     }
@@ -95,15 +62,15 @@ export function createMattermostChannel(
   }
 
   async function receive(
-    frame: z.infer<typeof frameSchema>,
+    frame: WebSocketMessage,
     signal: AbortSignal
   ): Promise<void> {
     const { host, account, config, base, botUserId } = configured()
-    if (frame.event !== 'posted') {
+    // SDK event constants are declaration-only const enums under verbatim modules.
+    if (frame.event !== ('posted' as WebSocketEvents.Posted)) {
       return
     }
-    const encoded = postedEventSchema.parse(frame.data)
-    const post = postSchema.parse(JSON.parse(encoded.post) as unknown)
+    const post = postSchema.parse(JSON.parse(frame.data.post) as unknown)
     if (post.user_id === botUserId) {
       return
     }
@@ -120,11 +87,10 @@ export function createMattermostChannel(
     }
 
     const attachments = await receiveFiles(
-      post.file_ids,
+      post,
       host,
       config,
-      base,
-      `Bearer ${secret(config.token, environment)}`,
+      new MattermostClient(base, secret(config.token, environment), signal),
       signal
     )
 
@@ -154,141 +120,31 @@ export function createMattermostChannel(
     })
   }
 
-  async function connect(signal: AbortSignal): Promise<void> {
-    const { host, base, config, botUserId } = configured()
-    const url = new URL(`${base}/api/v4/websocket`)
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    const token = secret(config.token, environment)
-    const resume = await websocketResume(host, base, botUserId)
-    resume.query(url)
-
-    const current = new WebSocket(url, {
-      handshakeTimeout: requestTimeoutMs,
-      maxPayload: 2 * 1024 * 1024,
-      headers: { Authorization: `Bearer ${token}` },
-      followRedirects: false
-    })
-
-    socket = current
-    let authenticated = false
-    const beforeAuthentication: z.infer<typeof frameSchema>[] = []
-    let queued = 0
-    let pending = Promise.resolve()
-    let lastPong = Date.now()
-
-    const authTimeout = setTimeout(() => {
-      diagnose(host, 'authentication_timeout')
-      current.terminate()
-    }, requestTimeoutMs)
-
-    const heartbeat = setInterval(() => {
-      if (current.readyState !== WebSocket.OPEN) {
-        return
-      }
-      if (Date.now() - lastPong > 30_000) {
-        current.terminate()
-        return
-      }
-      current.ping()
-    }, 10_000)
-
-    const abort = (): void => {
-      current.terminate()
-    }
-
-    signal.addEventListener('abort', abort, { once: true })
+  function received(frame: WebSocketMessage, signal: AbortSignal): void {
     if (signal.aborted) {
-      abort()
-    }
-    current.on('open', () => {
-      current.send(
-        JSON.stringify({
-          seq: 1,
-          action: 'authentication_challenge',
-          data: { token }
-        })
-      )
-    })
-    current.on('pong', () => {
-      lastPong = Date.now()
-    })
-
-    async function processFrame(
-      frame: z.infer<typeof frameSchema>
-    ): Promise<void> {
-      if (frame.seq_reply === 1) {
-        if (frame.status !== 'OK') {
-          diagnose(host, 'authentication_failed')
-          current.terminate()
-          return
-        }
-        authenticated = true
-        clearTimeout(authTimeout)
-        host.connection('connected')
-        for (const buffered of beforeAuthentication.splice(0)) {
-          resume.check(buffered)
-          await receive(buffered, signal)
-          await resume.accept(buffered)
-        }
-        return
-      }
-      if (frame.event && !authenticated) {
-        if (beforeAuthentication.length >= 100) {
-          throw new Error('unauthenticated_event_overflow')
-        }
-        beforeAuthentication.push(frame)
-        return
-      }
-      resume.check(frame)
-      await receive(frame, signal)
-      await resume.accept(frame)
+      return
     }
 
-    current.on('message', (bytes, isBinary) => {
-      if (isBinary || queued >= 100) {
-        diagnose(host, 'invalid_frame')
-        current.terminate()
-        return
+    // The SDK's in-memory receipt cursor is independent of asynchronous ingestion.
+    const task = receive(frame, signal).catch(() => {
+      if (!signal.aborted) {
+        diagnose(configured().host, 'receive_failed')
       }
-      queued += 1
-      pending = pending
-        .then(async () => processFrame(decodeFrame(bytes)))
-        .catch(() => {
-          diagnose(host, 'receive_failed')
-          host.connection('degraded')
-          current.terminate()
-        })
-        .finally(() => {
-          queued -= 1
-        })
     })
-    await new Promise<void>((resolve) => {
-      current.once('close', () => {
-        resolve()
-      })
-      current.on('error', () => {
-        current.terminate()
-        resolve()
-      })
-    })
-    clearTimeout(authTimeout)
-    clearInterval(heartbeat)
-    signal.removeEventListener('abort', abort)
-    await pending
-    host.connection('disconnected')
+
+    pending.add(task)
+    void task.finally(() => pending.delete(task))
   }
 
-  async function loop(signal: AbortSignal): Promise<void> {
-    const { host } = configured()
-    while (!signal.aborted) {
-      try {
-        await connect(signal)
-      } catch {
-        host.connection('degraded')
-        diagnose(host, 'connection_failed')
-      }
-      await delay(reconnectDelayMs, signal)
-    }
+  async function stop(): Promise<void> {
+    removeAbort?.()
+    removeAbort = undefined
+    controller?.abort()
+    controller = undefined
+    socket?.close()
+    socket = undefined
+    await Promise.all(pending)
+    runtime?.host.connection('disconnected')
   }
 
   async function send(input: SendInput): Promise<SendResult> {
@@ -319,17 +175,13 @@ export function createMattermostChannel(
       return message
     }
     try {
-      const signal = AbortSignal.any([
-        input.signal,
-        AbortSignal.timeout(requestTimeoutMs)
-      ])
+      const client = new MattermostClient(
+        base,
+        secret(config.token, environment),
+        input.signal
+      )
 
-      const authorization = `Bearer ${secret(config.token, environment)}`
-
-      const upload = input.media
-        ? await uploadFile(input, base, authorization, signal)
-        : undefined
-
+      const upload = input.media ? await uploadFile(input, client) : undefined
       if (upload && !('fileId' in upload)) {
         return upload
       }
@@ -338,32 +190,19 @@ export function createMattermostChannel(
         input.target.threadId ??
         (input.reply ? input.target.replyToId : undefined)
 
-      const response = await fetch(`${base}/api/v4/posts`, {
-        method: 'POST',
-        redirect: 'error',
-        signal,
-        headers: {
-          Authorization: authorization,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          channel_id: input.target.chatId,
-          message,
-          ...(upload && 'fileId' in upload
-            ? { file_ids: [upload.fileId] }
-            : {}),
-          ...(rootId ? { root_id: rootId } : {})
-        })
+      const result = await client.createPost({
+        channel_id: input.target.chatId,
+        message,
+        ...(upload && 'fileId' in upload ? { file_ids: [upload.fileId] } : {}),
+        ...(rootId ? { root_id: rootId } : {})
       })
 
-      if (!response.ok) {
-        await response.body?.cancel()
-        return httpFailure(response)
+      return {
+        status: 'sent',
+        receipt: { platformMessageId: platformIdSchema.parse(result.id) }
       }
-      const post = sendResponseSchema.parse(await readJson(response))
-      return { status: 'sent', receipt: { platformMessageId: post.id } }
-    } catch {
-      return { status: 'unknown', errorCode: 'send_outcome_unknown' }
+    } catch (error) {
+      return sendFailure(error)
     }
   }
 
@@ -385,7 +224,7 @@ export function createMattermostChannel(
               richText: {
                 maxParts: 20,
                 maxTextLength: 8000,
-                maxImageBytes: runtime.host.maxMediaBytes ?? 16 * 1024 * 1024
+                maxImageBytes: runtime.host.maxMediaBytes ?? 100 * 1024 * 1024
               }
             }
           : {}),
@@ -440,47 +279,71 @@ export function createMattermostChannel(
         config.allowInsecureLocalhost
       )
 
-      const response = await fetch(`${base}/api/v4/users/me`, {
-        headers: {
-          Authorization: `Bearer ${secret(config.token, environment)}`
-        },
-        redirect: 'error',
-        signal: AbortSignal.timeout(requestTimeoutMs)
-      })
+      const client = new MattermostClient(
+        base,
+        secret(config.token, environment)
+      )
 
-      if (!response.ok) {
-        await response.body?.cancel()
-        throw new Error('identity_discovery_failed')
-      }
-
-      const identity = z
-        .object({ id: platformIdSchema })
-        .parse(await readJson(response))
+      const botUserId = platformIdSchema.parse((await client.getMe()).id)
 
       runtime = {
         host,
         account,
         config,
         base,
-        botUserId: identity.id
+        botUserId,
+        webSocketUrl: client.getWebSocketUrl()
       }
     },
     async start(signal) {
-      if (task) {
+      if (controller || signal.aborted) {
         return
       }
-      configured()
-      controller = new AbortController()
-      task = loop(AbortSignal.any([signal, controller.signal])).finally(() => {
-        task = undefined
+      const { host, config, webSocketUrl } = configured()
+      const active = new AbortController()
+      controller = active
+      const connection = mattermostWebSocket()
+      socket = connection
+      const current = connection.client
+      current.addMessageListener((frame): void => {
+        received(frame, active.signal)
       })
+
+      const connected = (): void => {
+        if (!active.signal.aborted) {
+          host.connection('connected')
+        }
+      }
+
+      const degraded = (): void => {
+        if (!active.signal.aborted) {
+          host.connection('degraded', 'connection_failed')
+        }
+      }
+
+      current.addFirstConnectListener(connected)
+      current.addReconnectListener(connected)
+      current.addErrorListener(degraded)
+      current.addCloseListener(degraded)
+      current.addMissedMessageListener((): void => {
+        if (!active.signal.aborted) {
+          diagnose(host, 'history_gap')
+        }
+      })
+
+      const abort = (): void => {
+        void stop()
+      }
+
+      signal.addEventListener('abort', abort, { once: true })
+      removeAbort = (): void => {
+        signal.removeEventListener('abort', abort)
+      }
+      const url = new URL(webSocketUrl)
+      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+      current.initialize(url.href, secret(config.token, environment))
     },
-    async stop() {
-      controller?.abort()
-      socket?.terminate()
-      runtime?.host.connection('disconnected')
-      await stopTask(task)
-    },
+    stop,
     send
   }
 }

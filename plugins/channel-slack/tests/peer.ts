@@ -1,3 +1,4 @@
+import { listenPeer } from '../../../tests/listen.js'
 import {
   registerPeer,
   routePlatform
@@ -17,6 +18,8 @@ import type {
   IngestInput,
   SendInput
 } from '@relanox/sdk'
+
+export { socketPeer } from '../../../tests/listen.js'
 
 export function recorder(ingest?: (input: IngestInput) => Promise<void>): {
   host: ChannelHost
@@ -68,6 +71,19 @@ type PeerResponse = {
   body: unknown
 }
 
+// The official WebClient uses application/x-www-form-urlencoded, with structured
+// Arguments serialized as JSON: node-slack-sdk packages/web-api/src/WebClient.ts.
+function formBody(content: string): Record<string, unknown> {
+  return Object.fromEntries(
+    Array.from(new URLSearchParams(content), ([key, value]) => [
+      key,
+      ['blocks', 'files'].includes(key) || value === 'true' || value === 'false'
+        ? (JSON.parse(value) as unknown)
+        : value
+    ])
+  )
+}
+
 export async function peer(
   respond: (input: Captured) => PeerResponse
 ): Promise<{
@@ -98,11 +114,14 @@ export async function peer(
 
     const content = Buffer.concat(chunks).toString('utf8')
 
-    const body: unknown = request.headers['content-type']?.includes(
-      'application/json'
-    )
-      ? JSON.parse(content || 'null')
-      : content
+    const type = request.headers['content-type'] ?? ''
+
+    let body: unknown = content
+    if (type.includes('application/json')) {
+      body = JSON.parse(content || 'null')
+    } else if (type.includes('application/x-www-form-urlencoded')) {
+      body = formBody(content)
+    }
 
     const input: Captured = {
       path: (request.url ?? '').replace(/^\/api(?:\/v10)?(?=\/)/u, ''),
@@ -143,9 +162,7 @@ export async function peer(
     })
   })
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
-  })
+  await listenPeer(server)
 
   const url = registerPeer(
     `http://127.0.0.1:${(server.address() as AddressInfo).port}`
