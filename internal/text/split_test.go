@@ -110,3 +110,13 @@ func TestHardBreakRemainsVisibleWhenLongDocumentIsSplit(t *testing.T) {
 		t.Fatalf("hard break lost: %s", output.String())
 	}
 }
+
+// Splitting an unrelated long paragraph must preserve the normalized literal
+// contents of an inline code span. Existing split tests exercise fenced code
+// only, so they miss loss of inline code children during AST text extraction.
+func TestCodeSpanTextSurvivesDocumentSplitting(t *testing.T) {
+	parts, err := text.SplitMarkdown(strings.Repeat("x", 40)+"\n\n`a\nb &amp;`", 20, model.UTF8)
+	if err != nil || len(parts) != 3 || parts[2] != "`a b &amp;`" {
+		t.Fatalf("inline code: %#v %v", parts, err)
+	}
+}

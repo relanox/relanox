@@ -55,3 +55,17 @@ func TestNativeEscapingAndCode(t *testing.T) {
 		t.Fatalf("code: %+v", rendered)
 	}
 }
+
+// CommonMark code spans normalize line endings but retain literal entities and
+// escape characters. Existing renderer coverage has only single-line code, so
+// flattening AST children incorrectly could silently alter native reply text.
+// https://spec.commonmark.org/0.31.2/#code-spans
+func TestCodeSpanSourceTextSurvivesNativeRendering(t *testing.T) {
+	got := Telegram("`a\nb &amp; \\*` ![alt *label*](https://example.com/image) <https://example.com>")
+	if got.Text != "a b &amp; \\* alt label https://example.com" {
+		t.Fatalf("visible text: %q", got.Text)
+	}
+	if len(got.Entities) != 3 || got.Entities[0] != (TelegramEntity{Type: "code", Offset: 0, Length: 12}) || got.Entities[1].Type != "italic" || got.Entities[2].URL != "https://example.com" {
+		t.Fatalf("native formatting: %+v", got.Entities)
+	}
+}

@@ -141,7 +141,7 @@ func mediaReference(destination []byte, image bool, label string) (*MediaReferen
 
 func richNode(n ast.Node, source []byte, depth int) ([]RichPart, error) {
 	if destination, image, ok := nodeLink(n); ok {
-		ref, err := mediaReference(destination, image, decoded(n.Text(source)))
+		ref, err := mediaReference(destination, image, decoded(nodeText(n, source)))
 		if err != nil {
 			return nil, err
 		}
