@@ -103,12 +103,12 @@ func (b *runBuilder) node(n ast.Node, source []byte, style Run, depth int) {
 		style.Pre = true
 		style.Code = false
 		style.Language = string(value.Language(source))
-		b.append(blockLines(value, source), style)
+		b.append(string(nodeText(value, source)), style)
 		b.separator("\n\n")
 	case *ast.CodeBlock:
 		b.separator("\n\n")
 		style.Pre = true
-		b.append(blockLines(value, source), style)
+		b.append(string(nodeText(value, source)), style)
 		b.separator("\n\n")
 	case *ast.Heading:
 		b.separator("\n\n")
@@ -128,7 +128,7 @@ func (b *runBuilder) node(n ast.Node, source []byte, style Run, depth int) {
 		b.append("---", Run{})
 		b.separator("\n\n")
 	case *ast.HTMLBlock:
-		b.append(blockLines(value, source), style)
+		b.append(string(nodeText(value, source)), style)
 	case *extast.TableRow, *extast.TableHeader:
 		b.separator("\n")
 		b.children(n, source, style, depth)
@@ -138,6 +138,12 @@ func (b *runBuilder) node(n ast.Node, source []byte, style Run, depth int) {
 			b.append("\t", Run{})
 		}
 		b.children(n, source, style, depth)
+	case *extast.TaskCheckBox:
+		marker := "[ ] "
+		if value.IsChecked {
+			marker = "[x] "
+		}
+		b.append(marker, style)
 	default:
 		b.children(n, source, style, depth)
 	}
@@ -167,9 +173,9 @@ func (b *runBuilder) inline(n ast.Node, source []byte, style Run, depth int) boo
 		b.append(strings.ReplaceAll(string(nodeText(value, source)), "\n", " "), style)
 	case *ast.Link:
 		style.Href = safeLink(string(value.Destination))
-		b.children(n, source, style, depth)
+		b.linkLabel(n, source, style, depth, style.Href)
 	case *ast.Image:
-		b.children(n, source, style, depth)
+		b.linkLabel(n, source, style, depth, "Image")
 	case *ast.AutoLink:
 		style.Href = safeLink(string(value.URL(source)))
 		b.append(string(value.Label(source)), style)
@@ -184,13 +190,12 @@ func (b *runBuilder) inline(n ast.Node, source []byte, style Run, depth int) boo
 	return true
 }
 
-func blockLines(n ast.Node, source []byte) string {
-	var out strings.Builder
-	for i := 0; i < n.Lines().Len(); i++ {
-		line := n.Lines().At(i)
-		out.Write(line.Value(source))
+func (b *runBuilder) linkLabel(n ast.Node, source []byte, style Run, depth int, fallback string) {
+	if n.FirstChild() == nil {
+		b.append(fallback, style)
+		return
 	}
-	return out.String()
+	b.children(n, source, style, depth)
 }
 
 // nodeText collects the unrendered text of a node, retaining source segments
