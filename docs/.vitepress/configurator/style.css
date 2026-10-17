@@ -1,0 +1,722 @@
+/* Desktop uses bounded panes; narrow screens follow the document flow. */
+.Layout.connection-page {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.connection-page .VPNav,
+.connection-page .VPLocalNav {
+  flex-shrink: 0;
+}
+.connection-page .VPLocalNav {
+  position: relative;
+  top: auto;
+}
+.connection-page .VPLocalNavOutlineDropdown {
+  display: none;
+}
+.connection-page .VPLocalNav .menu {
+  min-height: 44px;
+}
+.connection-page .VPContent {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.connection-page .VPDoc {
+  height: 100%;
+  padding: 20px 24px;
+}
+.connection-page
+  .VPDoc
+  :is(.container, .content, .content-container, .main, .vp-doc),
+.connection-page .VPDoc .vp-doc > div {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  max-width: none;
+}
+.connection-page .VPDoc .container {
+  max-width: 1600px;
+}
+.connection-page .VPDoc .content {
+  padding: 0;
+}
+.connection-page :is(.VPDocFooter, .VPFooter) {
+  display: none;
+}
+.connection-app {
+  --connection-accent: var(--vp-c-brand-1);
+  --connection-border: var(--vp-c-divider);
+  --connection-muted: var(--vp-c-text-2);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
+  font-family: var(--vp-font-family-base);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.connection-app * {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vp-c-divider) transparent;
+}
+.connection-app ::selection {
+  background: var(--vp-c-brand-soft);
+}
+.connection-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: none;
+  padding-bottom: 16px;
+}
+.connection-page .connection-intro h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: normal;
+}
+.connection-page .connection-intro p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--connection-muted);
+}
+.connection-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--connection-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.connection-settings,
+.connection-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.connection-preview {
+  border-left: 1px solid var(--connection-border);
+}
+.settings-toolbar,
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--connection-border);
+}
+.connection-page .connection-app h2 {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.connection-page .settings-toolbar h2 {
+  margin: 0;
+}
+.preview-toolbar strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.live-label {
+  color: var(--connection-muted);
+  font-size: 12px;
+}
+.connection-inputs {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+  scroll-padding: 16px;
+}
+.connection-selectors {
+  display: grid;
+  gap: 24px;
+}
+.channel-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+}
+.channel-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.channel-choice:hover {
+  background: var(--vp-c-bg-soft);
+}
+.channel-choice:has(input:checked) {
+  background: var(--vp-c-brand-soft);
+}
+.connection-app input[type='checkbox'] {
+  accent-color: var(--connection-accent);
+  height: 16px;
+  width: 16px;
+  flex: 0 0 16px;
+  cursor: pointer;
+}
+.connection-app input:not([type='checkbox']),
+.connection-app select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--connection-border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  min-height: 40px;
+  background: var(--vp-c-bg);
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+  caret-color: var(--connection-accent);
+}
+.connection-app select {
+  appearance: auto;
+  padding-right: 24px;
+}
+.connection-app input::placeholder {
+  color: var(--connection-muted);
+}
+.connection-app
+  :is(button, a, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--connection-accent);
+  outline-offset: 2px;
+}
+.connection-app :is(.connection-inputs, .preview-code):focus-visible {
+  outline-offset: -2px;
+}
+.agent-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 0.65fr);
+  grid-template-areas: 'name-label type-label' 'name-input type-input';
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.agent-heading {
+  grid-area: name-label;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.agent-fields > input {
+  grid-area: name-input;
+}
+.agent-fields > label {
+  grid-area: type-label;
+}
+.agent-type-select {
+  grid-area: type-input;
+}
+.agent-auth-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  margin-top: 4px;
+}
+.agent-auth-fields > .connection-link {
+  justify-self: start;
+  min-height: 24px;
+}
+.connection-app .platform-logo {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  object-fit: contain;
+  margin: 0;
+}
+.dark .connection-app .platform-logo {
+  filter: brightness(0) invert(1);
+}
+.platform-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.platform-select {
+  position: relative;
+  min-width: 0;
+}
+.platform-select .platform-logo {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.connection-app .platform-select select {
+  padding-left: 42px;
+}
+.agent-fields label {
+  color: var(--connection-muted);
+  font-size: 12px;
+}
+.connection-link {
+  color: var(--connection-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.connection-link:hover,
+.connection-app a:hover {
+  text-decoration: underline;
+}
+.connection-link.remove-agent {
+  min-height: 20px;
+  font-size: 12px;
+  color: var(--connection-muted);
+}
+.more-channels {
+  margin-top: 4px;
+}
+.connection-mapping {
+  margin-top: 24px;
+}
+.mapping-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.8fr) 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.mapping-row > span,
+.connection-muted,
+.field-hint {
+  color: var(--connection-muted);
+}
+.mapping-row small {
+  display: block;
+  font-size: 11px;
+  color: var(--connection-muted);
+  overflow-wrap: anywhere;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+.chat-bindings,
+.chat-fields {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.chat-fields {
+  margin: 0;
+  padding: 12px 0 16px;
+  border: 0;
+  border-top: 1px solid var(--connection-border);
+}
+.chat-fields legend {
+  padding-right: 8px;
+  font-weight: 600;
+}
+.chat-fields .connection-link,
+.chat-bindings > .connection-link {
+  justify-self: start;
+}
+.discovery-help {
+  min-width: 0;
+  margin: 8px 0 16px;
+}
+.account-advanced {
+  margin-top: 12px;
+}
+.account-advanced summary {
+  cursor: pointer;
+}
+.account-advanced summary span {
+  color: var(--connection-muted);
+  font-size: 12px;
+  margin-left: 8px;
+}
+.tutorial-chat {
+  display: block;
+}
+.draft-issues {
+  font-size: 12px;
+  color: #8b5b13;
+  list-style: disc;
+  padding-left: 16px;
+  margin: 0 0 12px;
+}
+.connection-details {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--connection-border);
+}
+.connection-details summary {
+  cursor: pointer;
+  font-size: 14px;
+  min-height: 36px;
+  align-content: center;
+}
+.connection-details summary span {
+  font-size: 12px;
+  margin-left: 8px;
+}
+.connection-detail-fields {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+}
+.connection-detail-fields > label:not(:first-child) {
+  margin-top: 8px;
+}
+.connection-page .connection-app .field-hint {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 4px;
+}
+.field-guide {
+  font-size: 12px;
+  justify-self: start;
+}
+.extra-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.connection-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: 8px;
+  min-height: 32px;
+  border: 1px solid var(--connection-border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  background: var(--vp-c-bg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.connection-button:hover {
+  background: var(--vp-c-bg-soft);
+  border-color: var(--connection-accent);
+}
+.preview-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.preview-code {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 0;
+  background: var(--vp-c-bg-soft);
+}
+.connection-page .vp-doc .preview-code pre {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font: 12px/1.8 var(--vp-font-family-mono);
+  width: max-content;
+  min-width: 100%;
+}
+.connection-page .vp-doc .preview-code code {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+.code-line {
+  display: flex;
+  padding-right: 20px;
+}
+.line-number {
+  flex: 0 0 40px;
+  width: 40px;
+  text-align: right;
+  padding-right: 12px;
+  margin-right: 16px;
+  color: var(--connection-muted);
+  user-select: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.json-key {
+  color: #b32737;
+}
+.json-string {
+  color: #175bc1;
+}
+.json-literal {
+  color: #7957a8;
+}
+.preview-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  max-height: 88px;
+  overflow: auto;
+  border-top: 1px solid var(--connection-border);
+  padding: 4px 16px;
+  gap: 12px;
+  color: var(--connection-muted);
+  font-size: 12px;
+}
+.preview-message {
+  min-width: 0;
+}
+.draft-label {
+  color: #8b5b13;
+  cursor: pointer;
+  flex: none;
+  min-height: 32px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.connection-page .vp-doc .connection-app a {
+  font-weight: inherit;
+  text-decoration: none;
+}
+.connection-tutorial {
+  width: min(800px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  margin: auto;
+  border: 1px solid var(--connection-border);
+  border-radius: 10px;
+  background: var(--vp-c-bg);
+  color: inherit;
+}
+.connection-tutorial::backdrop {
+  background: rgba(19, 29, 47, 0.35);
+}
+.connection-tutorial > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  background: var(--vp-c-bg);
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--connection-border);
+  gap: 16px;
+}
+.connection-tutorial h2 {
+  margin: 0;
+}
+.tutorial-body {
+  padding: 24px 28px;
+}
+.tutorial-notice {
+  color: #8b5b13;
+  margin: 0 0 20px;
+}
+.tutorial-steps {
+  list-style: decimal;
+  padding-left: 22px;
+}
+.tutorial-steps > li {
+  padding-left: 6px;
+  margin-bottom: 28px;
+}
+.tutorial-steps h3 {
+  font-size: 16px;
+  font-weight: 650;
+  margin: 0 0 12px;
+}
+.tutorial-steps p {
+  margin: 10px 0;
+}
+.tutorial-steps a {
+  color: var(--connection-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.tutorial-steps code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.tutorial-steps pre {
+  padding: 12px;
+  overflow: auto;
+  background: var(--vp-c-bg-soft);
+  border-radius: 4px;
+}
+.tutorial-steps .vpi-arrow-right {
+  display: inline-block;
+  vertical-align: middle;
+}
+.environment-list {
+  list-style: disc;
+  padding-left: 18px;
+}
+.tutorial-agent {
+  border-left: 2px solid var(--connection-border);
+  padding-left: 14px;
+  margin-bottom: 20px;
+}
+.connection-url {
+  display: block;
+}
+.dark .json-key {
+  color: #efa0a9;
+}
+.dark .json-string {
+  color: #97baf7;
+}
+.dark .json-literal {
+  color: #c6a6f3;
+}
+.dark :is(.draft-label, .tutorial-notice, .draft-issues) {
+  color: #e6be77;
+}
+.dark .tutorial-steps pre {
+  background: #161a21;
+}
+
+@media (max-width: 1279px) {
+  .connection-page .VPDoc {
+    padding: 16px;
+  }
+  .settings-toolbar,
+  .preview-toolbar {
+    padding: 0 16px;
+  }
+  .live-label {
+    display: none;
+  }
+}
+@media (max-width: 959px) {
+  .connection-page .VPContent {
+    padding-top: 0;
+  }
+}
+@media (max-width: 767px) {
+  .channel-choice {
+    gap: 6px;
+    padding-inline: 6px;
+  }
+  .Layout.connection-page {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .connection-page .VPContent {
+    flex: none;
+  }
+  .connection-page .VPDoc,
+  .connection-page
+    .VPDoc
+    :is(.container, .content, .content-container, .main, .vp-doc),
+  .connection-page .VPDoc .vp-doc > div,
+  .connection-app {
+    height: auto;
+  }
+  .connection-workspace {
+    flex: none;
+  }
+  .connection-inputs {
+    flex: none;
+    overflow: visible;
+  }
+  .connection-details {
+    scroll-margin-top: calc(var(--vp-nav-height) + 16px);
+  }
+  .preview-code {
+    flex: none;
+    max-height: min(70dvh, 640px);
+  }
+  .connection-page .VPDoc {
+    padding: 12px;
+  }
+  .connection-intro {
+    padding-bottom: 12px;
+    gap: 8px;
+  }
+  .connection-page .connection-intro h1 {
+    font-size: 18px;
+  }
+  .connection-page .connection-intro p {
+    display: none;
+  }
+  .connection-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+  .connection-preview {
+    border-left: 0;
+    border-top: 1px solid var(--connection-border);
+  }
+  .connection-inputs {
+    padding: 16px;
+  }
+  .settings-toolbar {
+    display: none;
+  }
+  .preview-toolbar {
+    height: 52px;
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .connection-app
+    :is(
+      .connection-button,
+      .connection-link,
+      .draft-label,
+      .channel-choice,
+      summary,
+      select,
+      input:not([type='checkbox'])
+    ) {
+    min-height: 44px;
+  }
+  .connection-details summary span {
+    display: none;
+  }
+  .preview-footer {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+  .preview-message {
+    font-size: 11px;
+  }
+  .connection-tutorial > header,
+  .tutorial-body {
+    padding: 16px;
+  }
+}
+@media (max-height: 520px) and (max-width: 767px) {
+  .connection-page .VPDoc {
+    padding: 8px;
+  }
+  .connection-intro {
+    padding-bottom: 8px;
+  }
+}
