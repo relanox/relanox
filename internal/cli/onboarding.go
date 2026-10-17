@@ -282,12 +282,17 @@ func accountFields(kind model.ChannelKind) []formField {
 		return []formField{{name: "server"}, {name: "nick"}}
 	case model.Matrix:
 		return []formField{{name: "homeserver"}, {name: "accessToken", secret: true}}
+	case model.Discord:
+		return []formField{{name: "botToken", secret: true}}
 	default:
 		return nil
 	}
 }
 
 func (c *command) accountForm(d *document, id string, kind model.ChannelKind) (json.RawMessage, error) {
+	if kind == model.GoogleChat {
+		return c.googleChatForm(d, id)
+	}
 	spec := accountFields(kind)
 	if spec == nil {
 		return nil, problem("native_config_file_required_for_channel")
@@ -313,6 +318,22 @@ func (c *command) accountForm(d *document, id string, kind model.ChannelKind) (j
 		}
 	}
 	return json.Marshal(fields)
+}
+
+func (c *command) googleChatForm(d *document, id string) (json.RawMessage, error) {
+	path, err := c.prompt("Google service account JSON file", "", false)
+	if err != nil {
+		return nil, err
+	}
+	data, err := boundedFile(path, 64<<10)
+	if err != nil || !json.Valid(data) {
+		return nil, problem("service_account_json_unreadable_or_invalid")
+	}
+	ref, err := d.secret(id, "serviceAccount", string(data), environment(id, "serviceAccount"))
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]any{"serviceAccount": ref})
 }
 
 func (c *command) bindCommand() *cobra.Command {

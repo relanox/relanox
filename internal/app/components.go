@@ -11,7 +11,9 @@ import (
 	"github.com/relanox/relanox/internal/agents/muse"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/channels/dingtalk"
+	"github.com/relanox/relanox/internal/channels/discord"
 	"github.com/relanox/relanox/internal/channels/feishu"
+	"github.com/relanox/relanox/internal/channels/googlechat"
 	"github.com/relanox/relanox/internal/channels/irc"
 	"github.com/relanox/relanox/internal/channels/line"
 	"github.com/relanox/relanox/internal/channels/matrix"
@@ -56,6 +58,10 @@ func ValidateAccount(account model.AccountConfig) error {
 		err = irc.ValidateConfig(account.Config)
 	case model.Matrix:
 		err = matrix.ValidateConfig(account.Config)
+	case model.Discord:
+		err = discord.ValidateConfig(account.Config)
+	case model.GoogleChat:
+		err = googlechat.ValidateConfig(account.Config)
 	default:
 		return invalid("channel", "component_unavailable")
 	}
@@ -109,6 +115,10 @@ func nativeChannel(host model.ChannelHost, account model.AccountConfig, options 
 		return irc.New(host, account, options)
 	case model.Matrix:
 		return matrix.New(host, account, options)
+	case model.Discord:
+		return discord.New(host, account, options)
+	case model.GoogleChat:
+		return googlechat.New(host, account, options)
 	}
 	return nil, invalid("channel", "component_unavailable")
 }
