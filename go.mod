@@ -46,7 +46,7 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fatih/color v1.18.0 // indirect
+	github.com/fatih/color v1.19.0 // indirect
 	github.com/fzipp/gocyclo v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -128,11 +128,31 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.3.0
 	cloud.google.com/go/compute/metadata v0.10.0
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/dyatlov/go-opengraph/opengraph v0.0.0-20220524092352-606d7b1e5f8a
 	github.com/felixge/httpsnoop v1.1.0
+	github.com/francoispqt/gojay v1.2.13
+	github.com/go-asn1-ber/asn1-ber v1.5.7
+	github.com/goccy/go-yaml v1.19.2
+	github.com/golang/protobuf v1.5.4
 	github.com/google/s2a-go v0.1.11
 	github.com/googleapis/enterprise-certificate-proxy v0.3.23
 	github.com/googleapis/gax-go/v2 v2.26.2
+	github.com/hashicorp/errwrap v1.1.0
+	github.com/hashicorp/go-hclog v1.6.3
+	github.com/hashicorp/go-multierror v1.1.1
+	github.com/hashicorp/go-plugin v1.7.0
+	github.com/hashicorp/yamux v0.1.2
 	github.com/kr/pretty v0.3.1 // indirect
+	github.com/mattermost/go-i18n v1.11.1-0.20211013152124-5c415071e404
+	github.com/mattermost/ldap v0.0.0-20231116144001-0f480c025956
+	github.com/mattermost/logr/v2 v2.0.22
+	github.com/mattermost/mattermost/server/public v0.4.0
+	github.com/oklog/run v1.2.0
+	github.com/pborman/uuid v1.2.1
+	github.com/pelletier/go-toml v1.9.5
+	github.com/philhofer/fwd v1.2.0
+	github.com/pkg/errors v0.9.1
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1 // indirect
@@ -140,11 +160,19 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/tinylib/msgp v1.6.3
+	github.com/vmihailenco/msgpack/v5 v5.4.1
+	github.com/vmihailenco/tagparser/v2 v2.0.0
+	github.com/wiggin77/merror v1.0.5
+	github.com/wiggin77/srslog v1.0.1
 	go.mau.fi/util v0.11.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
 	golang.org/x/term v0.47.0
 	golang.org/x/tools/go/packages/packagestest v0.1.1-deprecated
 	google.golang.org/api v0.304.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
+	gopkg.in/yaml.v2 v2.4.0
 	maunium.net/go/mautrix v0.32.0
 )
