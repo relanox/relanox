@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	sdk "github.com/line/line-bot-sdk-go/v8/linebot/messaging_api"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/text"
@@ -164,18 +165,17 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if ctx.Err() != nil {
 		return common.Retry("send_cancelled_before_transmit", 0), nil
 	}
-	var result struct {
-		Messages []struct {
-			ID string `json:"id"`
-		} `json:"sentMessages"`
-	}
-	err = common.JSON(ctx, c.client, http.MethodPost, apiBase+"/v2/bot/message/push", headers, map[string]any{"to": target.Destination, "messages": messages}, &result)
+	var result sdk.PushMessageResponse
+	// The official SDK owns native discriminator/field serialization. Keep our
+	// bounded transport: v8.23.0's generated API client reads error bodies with
+	// unbounded io.ReadAll before returning them to the caller.
+	err = common.JSON(ctx, c.client, http.MethodPost, apiBase+"/v2/bot/message/push", headers, &sdk.PushMessageRequest{To: target.Destination, Messages: messages}, &result)
 	if err != nil {
 		return lineFailure(err), nil
 	}
 	receipt := common.Sent("")
-	if len(result.Messages) > 0 {
-		receipt.Receipt.PlatformMessageID = result.Messages[0].ID
+	if len(result.SentMessages) > 0 {
+		receipt.Receipt.PlatformMessageID = result.SentMessages[0].Id
 	}
 	return receipt, nil
 }
@@ -212,16 +212,16 @@ func (c *Channel) publish(ctx context.Context, input model.SendInput, id string)
 	return value, nil
 }
 
-func (c *Channel) messages(ctx context.Context, input model.SendInput, target targetData) ([]map[string]any, error) {
+func (c *Channel) messages(ctx context.Context, input model.SendInput, target targetData) ([]sdk.MessageInterface, error) {
 	if len(input.Chunk.RichText) > 0 {
 		message, err := c.rich(ctx, input)
-		return []map[string]any{message}, err
+		return []sdk.MessageInterface{message}, err
 	}
-	var messages []map[string]any
+	var messages []sdk.MessageInterface
 	if input.Chunk.Text != "" {
-		message := flex(input.Chunk.Text)
+		var message sdk.MessageInterface = flex(input.Chunk.Text)
 		if input.Reply != nil && target.QuoteToken != "" {
-			message = map[string]any{"type": "text", "text": quotedPlain(input.Chunk.Text), "quoteToken": target.QuoteToken}
+			message = &sdk.TextMessage{Text: quotedPlain(input.Chunk.Text), QuoteToken: target.QuoteToken}
 		}
 		if text.Length(quotedPlain(input.Chunk.Text), model.UTF16) > 5000 || len(common.Data(message)) > 30000 {
 			return nil, errors.New("text_limit_exceeded")
@@ -241,7 +241,7 @@ func (c *Channel) messages(ctx context.Context, input model.SendInput, target ta
 	return messages, nil
 }
 
-func (c *Channel) outboundMedia(ctx context.Context, input model.SendInput) (map[string]any, error) {
+func (c *Channel) outboundMedia(ctx context.Context, input model.SendInput) (sdk.MessageInterface, error) {
 	if input.Media == nil || input.Media.Reference.ID != input.Chunk.Media.ID || input.Media.Reference.Size != int64(len(input.Media.Data)) || int64(len(input.Media.Data)) > common.MediaLimit(c.host) {
 		return nil, errors.New("invalid_media")
 	}
@@ -262,10 +262,8 @@ func (c *Channel) outboundMedia(ctx context.Context, input model.SendInput) (map
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]any{"type": string(ref.Kind), "originalContentUrl": original}
 	if ref.Kind == model.Audio {
-		out["duration"] = *ref.DurationMS
-		return out, nil
+		return &sdk.AudioMessage{OriginalContentUrl: original, Duration: *ref.DurationMS}, nil
 	}
 	preview := original
 	if input.Preview != nil {
@@ -274,8 +272,10 @@ func (c *Channel) outboundMedia(ctx context.Context, input model.SendInput) (map
 			return nil, err
 		}
 	}
-	out["previewImageUrl"] = preview
-	return out, nil
+	if ref.Kind == model.Video {
+		return &sdk.VideoMessage{OriginalContentUrl: original, PreviewImageUrl: preview}, nil
+	}
+	return &sdk.ImageMessage{OriginalContentUrl: original, PreviewImageUrl: preview}, nil
 }
 
 // Limits and formats are native Messaging API contracts, including the tighter
@@ -329,30 +329,29 @@ func quotedPlain(value string) string {
 	return out.String()
 }
 
-func spans(value string) []map[string]any {
-	var out []map[string]any
-	var paragraph []map[string]any
+func spans(value string) []sdk.FlexComponentInterface {
+	var out []sdk.FlexComponentInterface
+	var paragraph []sdk.FlexSpan
 	flush := func() {
 		if len(paragraph) > 0 {
-			out = append(out, map[string]any{"type": "text", "wrap": true, "contents": paragraph})
+			out = append(out, &sdk.FlexText{Wrap: true, Contents: paragraph})
 			paragraph = nil
 		}
 	}
 	for _, run := range text.Runs(value) {
-		span := map[string]any{"type": "span", "text": run.Text}
+		span := sdk.FlexSpan{Text: run.Text}
 		if run.Bold {
-			span["weight"] = "bold"
+			span.Weight = "bold"
 		}
 		if run.Italic {
-			span["style"] = "italic"
+			span.Style = "italic"
 		}
 		if run.Strike {
-			span["decoration"] = "line-through"
+			span.Decoration = "line-through"
 		}
 		if run.Href != "" {
 			flush()
-			item := map[string]any{"type": "text", "wrap": true, "contents": []any{span}}
-			item["action"] = map[string]string{"type": "uri", "uri": run.Href}
+			item := &sdk.FlexText{Wrap: true, Contents: []sdk.FlexSpan{span}, Action: &sdk.UriAction{Uri: run.Href}}
 			out = append(out, item)
 		} else {
 			paragraph = append(paragraph, span)
@@ -362,9 +361,9 @@ func spans(value string) []map[string]any {
 	return out
 }
 
-func flex(value string) map[string]any { return flexContents(text.Plain(value), spans(value)) }
+func flex(value string) *sdk.FlexMessage { return flexContents(text.Plain(value), spans(value)) }
 
-func flexContents(label string, contents []map[string]any) map[string]any {
+func flexContents(label string, contents []sdk.FlexComponentInterface) *sdk.FlexMessage {
 	runes := []rune(label)
 	if len(runes) > 500 {
 		label = string(runes[:500])
@@ -372,11 +371,11 @@ func flexContents(label string, contents []map[string]any) map[string]any {
 	if label == "" {
 		label = "Message"
 	}
-	return map[string]any{"type": "flex", "altText": label, "contents": map[string]any{"type": "bubble", "body": map[string]any{"type": "box", "layout": "vertical", "contents": contents}}}
+	return &sdk.FlexMessage{AltText: label, Contents: &sdk.FlexBubble{Body: &sdk.FlexBox{Layout: "vertical", Contents: contents}}}
 }
 
-func (c *Channel) rich(ctx context.Context, input model.SendInput) (map[string]any, error) {
-	var contents []map[string]any
+func (c *Channel) rich(ctx context.Context, input model.SendInput) (*sdk.FlexMessage, error) {
+	var contents []sdk.FlexComponentInterface
 	var labels []string
 	for _, part := range input.Chunk.RichText {
 		if part.Type == "text" {
@@ -391,7 +390,7 @@ func (c *Channel) rich(ctx context.Context, input model.SendInput) (map[string]a
 		if err != nil {
 			return nil, err
 		}
-		contents = append(contents, map[string]any{"type": "image", "url": image, "size": "full", "aspectMode": "fit"})
+		contents = append(contents, &sdk.FlexImage{Url: image, Size: "full", AspectMode: "fit"})
 		labels = append(labels, part.Label)
 	}
 	message := flexContents(strings.Join(labels, "\n"), contents)
