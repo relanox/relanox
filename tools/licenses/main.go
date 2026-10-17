@@ -113,12 +113,8 @@ func collectTarget(temporary, raw, target string, index int, modules map[string]
 	if err != nil {
 		return fmt.Errorf("license_report_%s: %w\n%s", target, err, diagnostic.String())
 	}
-	rows, err := csv.NewReader(bytes.NewReader(report)).ReadAll()
-	if err != nil {
+	if err = mergeReport(report, reports); err != nil {
 		return err
-	}
-	for _, row := range rows {
-		reports[strings.Join(row, "\x00")] = row
 	}
 	if err = mergeFiles(destination, raw); err != nil {
 		return err
@@ -128,6 +124,24 @@ func collectTarget(temporary, raw, target string, index int, modules map[string]
 		return err
 	}
 	return decodeModules(data, modules)
+}
+
+func mergeReport(data []byte, reports map[string][]string) error {
+	rows, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if len(row) != 3 {
+			return fmt.Errorf("invalid_license_report_columns")
+		}
+		// go-licenses v2.0.1 Library.FileURL passes filepath.Rel to the
+		// URL builder. On Windows, nested LICENSE paths retain backslashes.
+		// URLs use slash separators regardless of the collector's host OS.
+		row[1] = strings.ReplaceAll(row[1], "\\", "/")
+		reports[strings.Join(row, "\x00")] = row
+	}
+	return nil
 }
 
 func collector(temporary string) (string, error) {
