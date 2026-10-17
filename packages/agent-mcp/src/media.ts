@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto'
 import type { McpServer } from '@modelcontextprotocol/server'
-import type { ScopedAgentHost } from '@relanox/sdk'
+import type { AgentId, ScopedAgentHost } from '@relanox/sdk'
 import { attachmentDisposition, validatePublicUrl } from '@relanox/sdk'
 import { z } from 'zod'
 import type { McpConfig } from './config.js'
@@ -22,7 +22,7 @@ export function createMediaTransport(
   host: ScopedAgentHost,
   config: McpConfig,
   endpointId: string,
-  agent: 'dot' | 'grok',
+  agent: AgentId,
   publicUrl: string
 ): {
   authorize(this: void, request: Request): Promise<Response | undefined>

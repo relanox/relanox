@@ -1,14 +1,21 @@
+import type { AgentId } from '@relanox/sdk'
+
 /** Instructions delivered by MCP discovery, independently of incoming user data. */
-export function agentInstructions(agent: 'dot' | 'grok'): string {
-  const incoming =
+export function agentInstructions(agent: AgentId): string {
+  const incomingByEvent =
     agent === 'dot'
       ? 'Before subscribing, use relanox_status for a read-only connection check; no message or attachment IDs are needed. Subscribe to relanox.message_available using the host native event subscription. Copy the original-conversation reply rule into every native event task you create, recreate or update. For a relanox.message_available event, read the incoming message from data. If data is missing, call relanox_read_messages with data.requestId or the eventId without its evt_ prefix. If neither ID is available, inspect recent messages and match the event before replying; do not assume the newest message is the trigger. Reads do not acknowledge or claim messages, and may include messages already processed. When running after an interruption or a manual recovery request, call relanox_read_messages with pending=true and follow nextCursor to the end (an extra empty last page is possible). Process awaiting_final only; inspect deliveryId for pending/rejected/unknown rather than regenerate an answer. Check request status again before sending. Reads are snapshots, not locks; the final send deduplicates concurrent answers. This cannot wake a sleeping Agent. Do not poll for events. Use the source.channel.id and attachment IDs automatically; never ask the user to supply tool IDs. Select attachments belonging to the message you are processing.'
       : 'For a Grok Routine webhook, parse the JSON string in content to read the incoming message and its requestId. For the final answer, use reply: { requestId, kind: "final" } with the requestId from that exact Routine invocation. Another message in the same conversation may arrive before you answer; do not substitute its requestId or choose the newest message.'
 
+  const incoming =
+    agent === 'muse'
+      ? 'For a Relanox notification received through the paired device, read the incoming JSON message and its requestId. For the final answer, use reply: { requestId, kind: "final" } with the requestId from that exact notification. Another message in the same conversation may arrive before you answer; do not substitute its requestId or choose the newest message. Use relanox_status before recovery and relanox_read_messages with pending=true to retrieve retained unfinished work.'
+      : incomingByEvent
+
   const generated =
     agent === 'dot'
       ? 'To send files generated or selected in dot, use the top-level files parameter of relanox_send_message. The host supplies OpenAI file objects with download_url and file_id, plus optional mime_type and file_name. Never invent a download URL or use the OpenAI file_id as a Relanox mediaId. For positional Markdown references, count attachments first and then files; unreferenced items are appended in that order. For local files or media requiring duration/preview metadata, use relanox_create_upload when a terminal or HTTP tool is available.'
-      : 'To send a file generated on the Grok Bot computer, call relanox_create_upload with the selected authorized channel, fileName, kind, mimeType and exact byte size. Use a terminal or HTTP tool to PUT the local file bytes to the returned uploadUrl with the returned headers. Do not pass a local path as a public download URL.'
+      : 'To send a file generated in the Agent environment, call relanox_create_upload with the selected authorized channel, fileName, kind, mimeType and exact byte size. Use a terminal or HTTP tool to PUT the local file bytes to the returned uploadUrl with the returned headers. Do not pass a local path as a public download URL.'
 
   return [
     'Relanox connects this Agent to messaging conversations. Reply to every incoming message in its original conversation through relanox_send_message with source.channel.id. All replies and clarification questions must return to that original conversation. A QQ message must be answered in its original QQ conversation. Do not move replies to the Agent chat or another conversation. A normal Agent response alone does not send a message to the original chat.',
