@@ -1,0 +1,248 @@
+package discord
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/relanox/relanox/internal/channels/common"
+	"github.com/relanox/relanox/internal/model"
+	"github.com/relanox/relanox/internal/text"
+)
+
+func (c *Channel) receive(ctx context.Context, raw json.RawMessage, bot *identity) error {
+	var message discordgo.Message
+	if json.Unmarshal(raw, &message) != nil || !snowflake(message.ID) || !snowflake(message.ChannelID) || message.Author == nil {
+		return errors.New("invalid_native_message")
+	}
+	if message.Author.Bot || message.Author.ID == bot.UserID || !common.Contains(c.account.AllowedSenders, message.Author.ID) {
+		return nil
+	}
+	if message.Type != discordgo.MessageTypeDefault && message.Type != discordgo.MessageTypeReply {
+		return nil
+	}
+	var native discordgo.Channel
+	if err := c.api(ctx, http.MethodGet, "/channels/"+message.ChannelID, nil, &native); err != nil {
+		return err
+	}
+	if native.ID != message.ChannelID || native.GuildID != message.GuildID {
+		return errors.New("native_channel_identity_changed")
+	}
+	chat, thread := native.ID, ""
+	if native.IsThread() {
+		chat, thread = native.ParentID, native.ID
+	}
+	if !common.Contains(c.host.BoundChatIDs(), chat) {
+		return nil
+	}
+	attachments, err := c.attachments(ctx, message.Attachments)
+	if err != nil {
+		return err
+	}
+	if message.Content == "" && len(attachments) == 0 {
+		return nil
+	}
+	received := message.Timestamp
+	if received.IsZero() {
+		received = time.Now()
+	}
+	return common.Ingest(ctx, c.host, model.IngestInput{Source: model.SourceKey{Channel: model.Discord, AccountID: c.account.ID, EventID: message.ID}, SenderID: message.Author.ID, Text: message.Content, Attachments: attachments, ReceivedAt: received, Target: model.ReplyTarget{Channel: model.Discord, AccountID: c.account.ID, ChatID: chat, ThreadID: thread, ReplyToID: message.ID, Data: common.Data(targetData{APIBaseURL: c.config.APIBaseURL, BotID: bot.UserID, GuildID: native.GuildID})}})
+}
+
+func (c *Channel) attachments(ctx context.Context, native []*discordgo.MessageAttachment) ([]model.MediaUpload, error) {
+	if len(native) > 10 {
+		return nil, errors.New("too_many_attachments")
+	}
+	result := make([]model.MediaUpload, 0, len(native))
+	for _, file := range native {
+		if file == nil || file.Size < 0 || int64(file.Size) > common.MediaLimit(c.host) {
+			return nil, errors.New("media_too_large")
+		}
+		u, err := url.Parse(file.URL)
+		if err != nil || u.Scheme != "https" || (u.Hostname() != "cdn.discordapp.com" && u.Hostname() != "media.discordapp.net" && common.Origin(file.URL) != common.Origin(c.config.APIBaseURL)) {
+			return nil, errors.New("invalid_attachment_url")
+		}
+		data, err := common.Download(ctx, file.URL, common.DownloadOptions{MaxBytes: common.MediaLimit(c.host), TrustedOrigins: []string{common.Origin(c.config.APIBaseURL)}, TLSClientConfig: c.options.TLSClientConfig})
+		if err != nil {
+			return nil, err
+		}
+		mimeType := file.ContentType
+		if mimeType == "" {
+			mimeType = data.MIMEType
+		}
+		media := model.MediaUpload{Kind: common.MediaKind(mimeType), MIMEType: mimeType, FileName: file.Filename, Data: data.Data}
+		if file.DurationSecs > 0 {
+			duration := int64(file.DurationSecs * 1000)
+			media.DurationMS = &duration
+		}
+		result = append(result, media)
+	}
+	return result, nil
+}
+
+// Discord's create-message nonce is bounded to 25 characters and server dedupe
+// lasts only a few minutes. It reduces immediate duplicates but is insufficient
+// to advertise durable idempotence to Core across arbitrary restart delays.
+type nativeSend struct {
+	discordgo.MessageSend
+	Nonce        string `json:"nonce"`
+	EnforceNonce bool   `json:"enforce_nonce"`
+}
+
+func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendResult, error) {
+	if !snowflake(input.Target.ChatID) || input.Target.ThreadID != "" && !snowflake(input.Target.ThreadID) {
+		return common.Reject("invalid_target"), nil
+	}
+	bot, err := c.identify(ctx)
+	if err != nil {
+		return common.Failure(err, true), nil
+	}
+	native, err := c.nativeChannel(ctx, input.Target.ChatID, input.Target.ThreadID)
+	if err != nil {
+		return common.Failure(err, true), nil
+	}
+	if !c.validTarget(input.Target, bot, native) {
+		return common.Reject("target_identity_changed"), nil
+	}
+	limits := richLimits
+	limits.MaxImageBytes = common.MediaLimit(c.host)
+	if code := common.ValidateRich(input, limits, model.UTF16, common.MediaLimit(c.host)); code != "" {
+		return common.Reject(code), nil
+	}
+	if text.Length(input.Chunk.Text, model.UTF16) > 2000 {
+		return common.Reject("text_limit_exceeded"), nil
+	}
+	if input.Chunk.IdempotencyKey == "" {
+		return common.Reject("missing_idempotency_key"), nil
+	}
+	payload, files, err := c.message(input)
+	if err != nil {
+		return common.Reject("invalid_media"), nil
+	}
+	if ctx.Err() != nil {
+		return common.Retry("send_cancelled_before_transmit", 0), nil
+	}
+	var response discordgo.Message
+	endpoint := c.config.APIBaseURL + "/channels/" + native.ID + "/messages"
+	if len(files) > 0 {
+		err = c.multipart(ctx, endpoint, payload, files, &response)
+	} else {
+		err = c.api(ctx, http.MethodPost, "/channels/"+native.ID+"/messages", payload, &response)
+	}
+	if err != nil {
+		return failure(err, false), nil
+	}
+	if !snowflake(response.ID) || response.ChannelID != native.ID {
+		return model.SendResult{Status: model.Unknown, ErrorCode: "native_invalid_response"}, nil
+	}
+	return common.Sent(response.ID), nil
+}
+
+func failure(err error, preparing bool) model.SendResult {
+	var native *common.HTTPError
+	if errors.As(err, &native) && native.Status == 429 {
+		var body struct {
+			RetryAfter float64 `json:"retry_after"`
+		}
+		_ = json.Unmarshal(native.Body, &body)
+		return common.Retry("rate_limited", time.Duration(body.RetryAfter*float64(time.Second)))
+	}
+	return common.Failure(err, preparing)
+}
+
+func (c *Channel) multipart(ctx context.Context, endpoint string, payload nativeSend, files []*discordgo.File, output any) error {
+	contentType, body, err := discordgo.MultipartBodyWithJSON(payload, files)
+	if err != nil {
+		return err
+	}
+	token, err := c.token()
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bot "+token)
+	request.Header.Set("Content-Type", contentType)
+	raw, _, err := common.Do(c.http, request, common.MaxJSONBytes)
+	if err != nil {
+		return err
+	}
+	if json.Unmarshal(raw, output) != nil {
+		return errors.New("native_invalid_response")
+	}
+	return nil
+}
+
+func (c *Channel) message(input model.SendInput) (nativeSend, []*discordgo.File, error) {
+	hash := sha256.Sum256([]byte(input.Chunk.IdempotencyKey))
+	message := nativeSend{MessageSend: discordgo.MessageSend{Content: input.Chunk.Text, AllowedMentions: &discordgo.MessageAllowedMentions{Parse: []discordgo.AllowedMentionType{}, RepliedUser: false}}, Nonce: hex.EncodeToString(hash[:])[:25], EnforceNonce: true}
+	if input.Reply != nil && input.Target.ReplyToID != "" {
+		if !snowflake(input.Target.ReplyToID) {
+			return message, nil, errors.New("invalid_quote")
+		}
+		fail := false
+		message.Reference = &discordgo.MessageReference{MessageID: input.Target.ReplyToID, FailIfNotExists: &fail}
+	}
+	if len(input.Chunk.RichText) > 0 {
+		return c.richMessage(message, input)
+	}
+	if input.Chunk.Media == nil {
+		return message, nil, nil
+	}
+	if input.Media == nil || input.Media.Reference.ID != input.Chunk.Media.ID {
+		return message, nil, errors.New("invalid_media")
+	}
+	file, err := c.file(*input.Media, input.Media.Reference.FileName)
+	if err != nil {
+		return message, nil, err
+	}
+	files := []*discordgo.File{file}
+	if input.Preview != nil {
+		preview, err := c.file(*input.Preview, "preview.png")
+		if err != nil {
+			return message, nil, err
+		}
+		files = append(files, preview)
+		message.Embeds = []*discordgo.MessageEmbed{{Thumbnail: &discordgo.MessageEmbedThumbnail{URL: "attachment://preview.png"}}}
+	}
+	return message, files, nil
+}
+
+func (c *Channel) file(media model.StoredMedia, name string) (*discordgo.File, error) {
+	if len(media.Data) == 0 || int64(len(media.Data)) != media.Reference.Size || int64(len(media.Data)) > common.MediaLimit(c.host) || name == "" || strings.ContainsAny(name, "\r\n\x00") || strings.ContainsAny(media.Reference.MIMEType, "\r\n") {
+		return nil, errors.New("invalid_media")
+	}
+	return &discordgo.File{Name: name, ContentType: media.Reference.MIMEType, Reader: bytes.NewReader(media.Data)}, nil
+}
+
+func (c *Channel) richMessage(message nativeSend, input model.SendInput) (nativeSend, []*discordgo.File, error) {
+	message.Content = ""
+	var files []*discordgo.File
+	for _, part := range input.Chunk.RichText {
+		if part.Type == "text" {
+			message.Embeds = append(message.Embeds, &discordgo.MessageEmbed{Description: part.Text})
+			continue
+		}
+		if part.Media == nil || len(files) >= len(input.RichMedia) || len(part.Label) > 256 {
+			return message, nil, errors.New("invalid_media")
+		}
+		name := "image-" + string(rune('a'+len(files))) + ".png"
+		file, err := c.file(input.RichMedia[len(files)], name)
+		if err != nil {
+			return message, nil, err
+		}
+		files = append(files, file)
+		message.Embeds = append(message.Embeds, &discordgo.MessageEmbed{Title: part.Label, Image: &discordgo.MessageEmbedImage{URL: "attachment://" + name}})
+	}
+	return message, files, nil
+}
