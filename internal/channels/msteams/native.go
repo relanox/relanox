@@ -151,11 +151,22 @@ func (c *NativeClient) keySet(ctx context.Context, endpoint string) (keyfunc.Key
 		c.keysLoading[endpoint] = pending
 		lifetime := c.lifetime
 		c.keysMu.Unlock()
+		// The initial download belongs to this Authenticate call. Once loaded,
+		// refresh belongs to the channel lifetime rather than an old HTTP request.
+		initial, cancelInitial := context.WithCancel(lifetime)
+		stopInitial := context.AfterFunc(ctx, cancelInitial)
 		noFirstError := false
-		keys, err := keyfunc.NewDefaultOverrideCtx(lifetime, []string{endpoint}, keyfunc.Override{
+		keys, err := keyfunc.NewDefaultOverrideCtx(initial, []string{endpoint}, keyfunc.Override{
 			Client: common.HTTPClient(c.HTTP), HTTPTimeout: 10 * time.Second, NoErrorReturnFirstHTTPReq: &noFirstError,
 			RefreshErrorHandlerFunc: func(string) func(context.Context, error) { return func(context.Context, error) {} },
 		})
+		stopInitial()
+		if err == nil && ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		if err != nil {
+			cancelInitial()
+		}
 		c.keysMu.Lock()
 		delete(c.keysLoading, endpoint)
 		close(pending)
