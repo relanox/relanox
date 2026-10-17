@@ -14,6 +14,11 @@ require (
 )
 
 require (
+	github.com/bwmarrin/discordgo v0.29.0 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+)
+
+require (
 	ariga.io/atlas v0.36.2-0.20250730182955-2c6300d0a3e1 // indirect
 	entgo.io/ent v0.14.6 // indirect
 	github.com/MicahParks/jwkset v0.11.3 // indirect
