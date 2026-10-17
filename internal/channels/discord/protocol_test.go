@@ -39,6 +39,7 @@ type failingAcceptance struct {
 	model.Storage
 	fail     bool
 	attempts chan struct{}
+	accepted atomic.Int32
 }
 
 func (s *failingAcceptance) AcceptInbound(ctx context.Context, in model.InboundSnapshot, media []model.StoredMedia) (model.IngestReceipt, error) {
@@ -49,7 +50,11 @@ func (s *failingAcceptance) AcceptInbound(ctx context.Context, in model.InboundS
 		}
 		return model.IngestReceipt{}, errors.New("storage_unavailable")
 	}
-	return s.Storage.AcceptInbound(ctx, in, media)
+	receipt, err := s.Storage.AcceptInbound(ctx, in, media)
+	if err == nil && !receipt.Duplicate {
+		s.accepted.Add(1)
+	}
+	return receipt, err
 }
 
 type discordRelay struct {
@@ -285,12 +290,17 @@ func (p *nativePeer) send(w http.ResponseWriter, r *http.Request) {
 
 func discordCheckpoint(t *testing.T, f *discordRelay) gatewayState {
 	t.Helper()
-	key := "gateway:" + string(common.Data([]string{f.channel.config.APIBaseURL, "100"}))
-	state, _, err := common.ReadState[gatewayState](context.Background(), f.host.State(), key)
+	state, err := readDiscordCheckpoint(context.Background(), f)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return state
+}
+
+func readDiscordCheckpoint(ctx context.Context, f *discordRelay) (gatewayState, error) {
+	key := "gateway:" + string(common.Data([]string{f.channel.config.APIBaseURL, "100"}))
+	state, _, err := common.ReadState[gatewayState](ctx, f.host.State(), key)
+	return state, err
 }
 
 func TestGatewayReplaysFailedAcceptanceAfterSQLiteReopen(t *testing.T) {

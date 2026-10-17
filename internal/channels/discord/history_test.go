@@ -3,6 +3,7 @@ package discord
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -206,16 +207,48 @@ func (p *historyPeer) oversizedHistory(w http.ResponseWriter, before string) {
 
 func awaitDiscordState(t *testing.T, f *discordRelay, predicate func(gatewayState) bool) gatewayState {
 	t.Helper()
+	// Recovering a full native page commits 100 real SQLite records while Core
+	// also dispatches them. Detect stalled acceptance, rather than making disk
+	// throughput part of this protocol assertion. Only new durable accepts extend
+	// the idle budget; duplicates and socket activity cannot keep it alive.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 	deadline := time.Now().Add(7 * time.Second)
-	for time.Now().Before(deadline) {
-		state := discordCheckpoint(t, f)
+	accepted := f.fault.accepted.Load()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	var state gatewayState
+	for {
+		var err error
+		state, err = readDiscordCheckpoint(ctx, f)
+		if err != nil {
+			failDiscordCheckpoint(t, f, state, err)
+		}
 		if predicate(state) {
 			return state
 		}
-		time.Sleep(5 * time.Millisecond)
+		if current := f.fault.accepted.Load(); current > accepted {
+			accepted = current
+			deadline = time.Now().Add(7 * time.Second)
+		}
+		if !time.Now().Before(deadline) {
+			failDiscordCheckpoint(t, f, state, errors.New("acceptance_stalled"))
+		}
+		select {
+		case <-ctx.Done():
+			failDiscordCheckpoint(t, f, state, ctx.Err())
+		case <-ticker.C:
+		}
 	}
-	t.Fatal("native gateway did not reach durable recovery checkpoint")
-	return gatewayState{}
+}
+
+func failDiscordCheckpoint(t *testing.T, f *discordRelay, state gatewayState, err error) {
+	t.Helper()
+	var sequence any
+	if state.Sequence != nil {
+		sequence = *state.Sequence
+	}
+	t.Fatalf("native gateway did not reach durable recovery checkpoint: session=%q sequence=%v recovering=%t anchors=%v accepted=%d connections=%v error=%v", state.SessionID, sequence, state.Recovering, state.Anchors, f.fault.accepted.Load(), f.runtime.Connections(), err)
 }
 
 func seedDiscordAnchor(t *testing.T, p *historyPeer, peer *httptest.Server, path string) gatewayState {
