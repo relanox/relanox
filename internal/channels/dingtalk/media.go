@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	robot "github.com/alibabacloud-go/dingtalk/robot_1_0"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/model"
 )
@@ -35,8 +34,8 @@ func (c *Channel) download(ctx context.Context, content nativeContent, token str
 	if code == "" {
 		return media, errors.New("missing_download_code")
 	}
-	request := robot.RobotMessageFileDownloadRequest{DownloadCode: &code, RobotCode: &c.config.RobotCode}
-	var response robot.RobotMessageFileDownloadResponseBody
+	request := fileDownloadRequest{DownloadCode: &code, RobotCode: &c.config.RobotCode}
+	var response fileDownloadResponse
 	if err := common.JSON(ctx, c.options.HTTPClient, http.MethodPost, apiBase+"/v1.0/robot/messageFiles/download", http.Header{"x-acs-dingtalk-access-token": {token}}, request, &response); err != nil {
 		return media, err
 	}

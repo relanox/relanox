@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	oauth "github.com/alibabacloud-go/dingtalk/oauth2_1_0"
-	robot "github.com/alibabacloud-go/dingtalk/robot_1_0"
 	"github.com/relanox/relanox/internal/channels/common"
 	"github.com/relanox/relanox/internal/config"
 	"github.com/relanox/relanox/internal/model"
@@ -144,17 +142,15 @@ func (c *Channel) Resolve(_ context.Context, address model.ChannelAddress, learn
 	return model.ChannelResolution{Available: true, Target: &model.ReplyTarget{Channel: model.DingTalk, AccountID: c.account.ID, ChatID: address.ChatID, Data: common.Data(data)}}, nil
 }
 
-// Generated request/response types preserve SDK optionality. Its generated
-// methods have no context argument; the secure transport performs exactly one
-// native call with caller cancellation, without SDK replay of message POSTs.
-// github.com/alibabacloud-go/dingtalk v1.7.46 oauth2_1_0 and robot_1_0 (Apache-2.0).
+// The secure transport performs exactly one native call with caller
+// cancellation and never replays a message POST automatically.
 func (c *Channel) token(ctx context.Context) (string, error) {
 	secret, err := c.options.Secret(c.config.ClientSecret)
 	if err != nil {
 		return "", err
 	}
-	request := oauth.GetAccessTokenRequest{AppKey: &c.config.ClientID, AppSecret: &secret}
-	var response oauth.GetAccessTokenResponseBody
+	request := accessTokenRequest{AppKey: &c.config.ClientID, AppSecret: &secret}
+	var response accessTokenResponse
 	if err = common.JSON(ctx, c.options.HTTPClient, http.MethodPost, apiBase+"/v1.0/oauth2/accessToken", nil, request, &response); err != nil {
 		return "", err
 	}
@@ -164,16 +160,16 @@ func (c *Channel) token(ctx context.Context) (string, error) {
 	return *response.AccessToken, nil
 }
 
-func (c *Channel) sendNative(ctx context.Context, target targetData, payload messagePayload, token string) (robot.BatchSendOTOResponseBody, error) {
-	var response robot.BatchSendOTOResponseBody
+func (c *Channel) sendNative(ctx context.Context, target targetData, payload messagePayload, token string) (sendResponse, error) {
+	var response sendResponse
 	headers := http.Header{"x-acs-dingtalk-access-token": {token}}
 	var request any
 	endpoint := "/v1.0/robot/oToMessages/batchSend"
 	if target.Type == "group" {
 		endpoint = "/v1.0/robot/groupMessages/send"
-		request = robot.OrgGroupSendRequest{RobotCode: &c.config.RobotCode, OpenConversationId: &target.OpenConversationID, MsgKey: &payload.Key, MsgParam: &payload.Parameters}
+		request = groupSendRequest{RobotCode: &c.config.RobotCode, OpenConversationId: &target.OpenConversationID, MsgKey: &payload.Key, MsgParam: &payload.Parameters}
 	} else {
-		request = robot.BatchSendOTORequest{RobotCode: &c.config.RobotCode, UserIds: []*string{&target.StaffID}, MsgKey: &payload.Key, MsgParam: &payload.Parameters}
+		request = directSendRequest{RobotCode: &c.config.RobotCode, UserIds: []*string{&target.StaffID}, MsgKey: &payload.Key, MsgParam: &payload.Parameters}
 	}
 	err := common.JSON(ctx, c.options.HTTPClient, http.MethodPost, apiBase+endpoint, headers, request, &response)
 	return response, err
