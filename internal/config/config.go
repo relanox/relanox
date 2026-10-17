@@ -225,15 +225,26 @@ func (c Config) Validate() error {
 			return err
 		}
 	}
+	if err := c.validateRuntimeLimits(); err != nil {
+		return err
+	}
+	return c.validateObservabilityAndSpeech()
+}
+
+func (c Config) validateRuntimeLimits() error {
 	if c.HTTP.ReadTimeoutSeconds < 1 || c.HTTP.WriteTimeoutSeconds < 1 || c.HTTP.MaxBodyBytes < 1 {
 		return invalid("http", "invalid_limits")
 	}
-	if c.Queue.Concurrency < 1 || c.Queue.Concurrency > 1024 || c.Queue.PollIntervalMS < 1 || c.Queue.LeaseSeconds < 1 || c.Queue.SendLeaseSeconds < 1 || c.Queue.MaxAttempts < 1 || c.Queue.RetentionDays < 1 {
+	if c.Queue.Concurrency < 1 || c.Queue.Concurrency > 1024 || c.Queue.PollIntervalMS < 1 || c.Queue.LeaseSeconds < 30 || c.Queue.SendLeaseSeconds < 1 || c.Queue.MaxAttempts < 1 || c.Queue.RetentionDays < 1 {
 		return invalid("queue", "invalid_limits")
 	}
 	if c.Media.MaxBytes < 1 || c.Media.MaxTotalBytes < c.Media.MaxBytes || c.Media.MaxAttachments < 1 {
 		return invalid("media", "invalid_limits")
 	}
+	return nil
+}
+
+func (c Config) validateObservabilityAndSpeech() error {
 	switch c.Observability.Level {
 	case "debug", "info", "warn", "error":
 	default:

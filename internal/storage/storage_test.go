@@ -223,6 +223,7 @@ func TestFinalReplyIsUniqueAndCompletesOnlyAfterAllChunks(t *testing.T) {
 	var wait sync.WaitGroup
 	results := make(chan model.MessageReceipt, 2)
 	inputs := []model.EnqueueMessageInput{outboundInput("key-one", "delivery-one", at, &model.ReplyReference{RequestID: "request", Kind: model.Final}), outboundInput("key-two", "delivery-two", at, &model.ReplyReference{RequestID: "request", Kind: model.Final})}
+	inputs[1].Message.Text = "different answer"
 	for i := range 2 {
 		wait.Go(func() {
 			r, err := stores[i].EnqueueMessage(ctx, inputs[i])
@@ -248,12 +249,31 @@ func TestFinalReplyIsUniqueAndCompletesOnlyAfterAllChunks(t *testing.T) {
 	if queued != 1 || conflicts != 1 {
 		t.Fatalf("final race: queued=%d conflicts=%d", queued, conflicts)
 	}
+	assertFinalCompletesAfterChunks(t, stores, winner, at)
+	if _, err := stores[0].Cleanup(ctx, model.CleanupInput{Before: at.Add(time.Hour), Limit: 20}); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range inputs {
+		if input.Outbound.DeliveryID != winner {
+			continue
+		}
+		input.Message.CreatedAt = at.Add(2 * time.Hour)
+		input.Message.MessageID = "new-key-same-final-content"
+		r, err := stores[0].GetMessageReceipt(ctx, model.MessageReceiptInput{ChannelID: "c1", EndpointIDs: []string{"agent"}, Agent: model.Dot, Message: input.Message})
+		if err != nil || r.Status != model.Queued || !r.Replay || r.DeliveryID != winner {
+			t.Fatalf("retained final replay: %#v %v", r, err)
+		}
+	}
+}
+
+func assertFinalCompletesAfterChunks(t *testing.T, stores []*storage.Store, winner string, at time.Time) {
+	t.Helper()
 	pending, err := stores[0].ListPendingInbound(ctx, model.ListPendingInboundInput{ChannelIDs: []string{"c1"}, EndpointIDs: []string{"agent"}, Limit: 20})
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("pending final: %v %#v", err, pending)
 	}
 	for chunk := range 2 {
-		work = take(t, stores[1], at, model.SendWork)
+		work := take(t, stores[1], at, model.SendWork)
 		if len(work) != 1 || work[0].Outbound.DeliveryID != winner || work[0].Outbound.CurrentChunk != chunk {
 			t.Fatalf("chunk %d: %#v", chunk, work)
 		}
@@ -263,18 +283,6 @@ func TestFinalReplyIsUniqueAndCompletesOnlyAfterAllChunks(t *testing.T) {
 		pending, err = stores[0].ListPendingInbound(ctx, model.ListPendingInboundInput{ChannelIDs: []string{"c1"}, EndpointIDs: []string{"agent"}, Limit: 20})
 		if err != nil || len(pending) != 1-chunk {
 			t.Fatalf("completion after chunk %d: %#v %v", chunk, pending, err)
-		}
-	}
-	if _, err := stores[0].Cleanup(ctx, model.CleanupInput{Before: at.Add(time.Hour), Limit: 20}); err != nil {
-		t.Fatal(err)
-	}
-	for _, input := range inputs {
-		if input.Outbound.DeliveryID == winner {
-			input.Message.CreatedAt = at.Add(2 * time.Hour)
-			r, err := stores[0].GetMessageReceipt(ctx, model.MessageReceiptInput{ChannelID: "c1", EndpointIDs: []string{"agent"}, Agent: model.Dot, Message: input.Message})
-			if err != nil || r.Status != model.Queued || !r.Replay || r.DeliveryID != winner {
-				t.Fatalf("retained replay: %#v %v", r, err)
-			}
 		}
 	}
 }
