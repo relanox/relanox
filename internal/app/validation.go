@@ -21,6 +21,9 @@ func nativeDiagnostic(err error) error {
 		return invalid("config."+field.Field, field.Code)
 	}
 	code := err.Error()
+	if code == "invalid_slack_transport" {
+		return invalid("config", code)
+	}
 	if code == "invalid_homeserver" || code == "insecure_homeserver" {
 		return invalid("config.homeserver", code)
 	}
