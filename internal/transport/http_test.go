@@ -2,6 +2,8 @@ package transport_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +16,29 @@ import (
 	"github.com/relanox/relanox/internal/model"
 	"github.com/relanox/relanox/internal/transport"
 )
+
+// Custom enterprise CAs must work without disabling verification. Ignoring the
+// TLS option fails the trusted request; default plaintext tests cannot catch it.
+// This uses real TLS and the production trust configuration, without a bypass.
+func TestClientAcceptsExplicitCertificateAuthority(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"ok":true}`) }))
+	defer server.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	client := transport.NewClient(transport.Options{AllowPrivateHosts: []string{"127.0.0.1"}, TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}})
+	defer client.CloseIdleConnections()
+	var result struct {
+		OK bool `json:"ok"`
+	}
+	if err := transport.DoJSON(context.Background(), client, http.MethodGet, server.URL, nil, nil, &result, 1024); err != nil || !result.OK {
+		t.Fatalf("trusted enterprise CA: %+v %v", result, err)
+	}
+	untrusted := transport.NewClient(transport.Options{AllowPrivateHosts: []string{"127.0.0.1"}})
+	defer untrusted.CloseIdleConnections()
+	if err := transport.DoJSON(context.Background(), untrusted, http.MethodGet, server.URL, nil, nil, &result, 1024); err == nil {
+		t.Fatal("untrusted certificate accepted")
+	}
+}
 
 // The local peers model only external HTTP behavior. These new Go tests catch
 // missing SSRF guards, unbounded downloads and auth-after-body regressions; the
