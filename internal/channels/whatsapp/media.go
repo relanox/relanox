@@ -191,7 +191,7 @@ func (c *Channel) upload(ctx context.Context, input model.SendInput, headers htt
 	var uploaded struct {
 		ID string `json:"id"`
 	}
-	err := common.Multipart(ctx, c.client, endpoint(c.config.PhoneNumberID, "/media"), headers, map[string]string{"messaging_product": "whatsapp", "type": ref.MIMEType}, "file", ref.FileName, input.Media.Data, &uploaded)
+	err := common.MultipartMIME(ctx, c.client, endpoint(c.config.PhoneNumberID, "/media"), headers, map[string]string{"messaging_product": "whatsapp", "type": ref.MIMEType}, "file", ref.FileName, ref.MIMEType, input.Media.Data, &uploaded)
 	if err != nil {
 		result := failure(err, true)
 		return nil, "", &result
