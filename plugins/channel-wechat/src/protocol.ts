@@ -20,12 +20,13 @@ const contentSchema = z.object({
   aeskey: z.string().optional(),
   text: z.string().optional(),
   file_name: z.string().optional(),
-  playtime: z.number().nonnegative().optional(),
+  playtime: z.number().optional(),
   encode_type: z.number().optional()
 })
 
 export const itemSchema = z.object({
   type: z.number().int(),
+  msg_id: z.union([z.string(), z.number().int()]).optional(),
   text_item: z.object({ text: z.string().optional() }).optional(),
   image_item: contentSchema.optional(),
   voice_item: contentSchema.optional(),
@@ -116,6 +117,10 @@ export class WechatClient {
     }
     const raw = await readJson(response)
     const result = resultSchema.parse(raw)
+
+    if (result.ret === -14 || result.errcode === -14) {
+      throw new ApiError(-14)
+    }
 
     const errorCode =
       result.ret === undefined || result.ret === 0 ? result.errcode : result.ret

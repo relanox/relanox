@@ -69,7 +69,14 @@ export function createWechatChannel(
     if (!account.allowedSenders.includes(sender)) {
       return
     }
-    const id = message.message_id ?? message.client_id
+
+    // Some native events carry only an item-level identifier.
+    // https://github.com/Tencent/openclaw-weixin/blob/main/src/messaging/inbound.ts
+    const itemId = message.item_list.find((item) =>
+      String(item.msg_id ?? '').trim()
+    )?.msg_id
+
+    const id = message.message_id ?? itemId ?? message.client_id
     if (id === undefined) {
       throw new Error('wechat_missing_message_id')
     }
@@ -172,6 +179,8 @@ export function createWechatChannel(
         [
           'sender_not_allowed',
           'unbound_conversation',
+          'too_many_attachments',
+          'media_too_large',
           'media_total_too_large'
         ].includes(policy.data.code)
       ) {

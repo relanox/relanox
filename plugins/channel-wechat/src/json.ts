@@ -26,7 +26,7 @@ export async function readJson(response: Response): Promise<unknown> {
     Buffer.concat(chunks, size).toString('utf8'),
     (key: string, value: unknown, context?: { source?: string }): unknown => {
       if (
-        key === 'message_id' &&
+        (key === 'message_id' || key === 'msg_id') &&
         typeof value === 'number' &&
         context?.source &&
         /^\d+$/u.test(context.source)

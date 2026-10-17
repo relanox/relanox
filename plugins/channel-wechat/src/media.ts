@@ -129,8 +129,12 @@ export async function receiveMedia(
       continue
     }
     const ref = desc.content.media
-    if (ref.encrypt_type !== undefined && ref.encrypt_type !== 1) {
-      throw new Error('unsupported_media_encryption')
+    // Official CDNMedia uses encrypt_type for the encrypted file-id envelope,
+    // Not cipher selection. Both 0 and 1 use the supplied AES key for bytes.
+    // https://github.com/Tencent/openclaw-weixin/blob/main/src/api/types.ts
+    // https://github.com/Tencent/openclaw-weixin/blob/main/src/media/media-download.ts
+    if (!ref.encrypt_query_param && !ref.full_url) {
+      continue
     }
     const key = aesKey(desc.content.aeskey, ref.aes_key)
     if (!key && desc.kind !== 'image') {
@@ -160,14 +164,17 @@ export async function receiveMedia(
       throw new MediaDownloadError('media_too_large')
     }
     const image = desc.kind === 'image' ? imageFormat(data) : undefined
+    const durationMs = desc.content.playtime
     attachments.push({
       kind: desc.kind,
       data,
       mimeType: image?.mimeType ?? desc.mimeType,
       fileName: image?.fileName ?? desc.fileName,
-      ...(desc.content.playtime === undefined
-        ? {}
-        : { durationMs: desc.content.playtime })
+      ...(durationMs !== undefined &&
+      Number.isSafeInteger(durationMs) &&
+      durationMs > 0
+        ? { durationMs }
+        : {})
     })
   }
   return attachments
