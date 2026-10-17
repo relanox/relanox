@@ -83,6 +83,15 @@ SQLite 使用 `storage.driver = "sqlite"` 和 `storage.path`。PostgreSQL 使用
 媒体默认单文件和单消息合计 100 MiB、十个附件；平台限制可能更低。仅在需要时调整
 `queue`、`media` 和 HTTP 超时。未知结构字段和无效边界会在离线校验时被拒绝。
 
+| HTTP 字段 | 默认值 | 作用范围 |
+| --- | --- | --- |
+| `readTimeoutSeconds` | 30 秒 | 应用和管理服务器的入站请求。 |
+| `writeTimeoutSeconds` | 60 秒 | 应用和管理服务器的响应。 |
+| `maxBodyBytes` | 4,194,304 字节（4 MiB） | 未单独声明上限的路由所用的请求体默认限制。 |
+
+这些字段不设置所有 SDK 出站请求的统一期限。原生操作使用各自的超时，并受调用者
+context 的取消控制。
+
 ## 语音与观测
 
 ```json

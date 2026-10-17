@@ -8,6 +8,43 @@ components directly. Shared interfaces live in `internal/model`. There is no plu
 registry, loader, install command or dynamic module discovery. Configuration lives
 in `internal/config`; standard HTTP transport lives in `internal/transport`.
 
+## Native SDK boundaries
+
+Native clients use SDKs where their contracts preserve cancellation, bounded I/O,
+native identifiers and durable delivery decisions. The application owns acceptance,
+checkpoints, authorization, retry scheduling and final-reply state even when a
+library performs the HTTP call. Versions are pinned in `go.mod`.
+
+| Channel | Library use and retained native responsibilities |
+| --- | --- |
+| Telegram | `go-telegram/bot` for Bot API sends and file metadata; webhook acceptance stays behind the durable ingest boundary. |
+| Discord | `discordgo` REST requests with send replay disabled; Gateway checkpoints and history recovery remain explicit. |
+| Slack | `slack-go/slack` REST and file downloads; bounded Socket Mode and signed uploads retain their own transport. |
+| Feishu / Lark | `oapi-sdk-go/v3` IM clients, token requests and event models; callback authentication and durable acceptance remain explicit. |
+| WeCom | `wecom-aibot-go-sdk` crypto; socket lifecycle, authorization and passive reply retrieval remain native. |
+| WeChat | `openilink-sdk-go` sends, upload URL requests and media crypto; polling preserves native ID types, and QR pairing follows the current login contract. |
+| DingTalk | Stream SDK payload types; ticket acquisition, bounded sockets and robot REST remain native. |
+| QQ | Native Gateway and v2 HTTP adapters preserve fields and identifier types missing from the available Go SDK. |
+| Microsoft Teams | `oauth2/clientcredentials` for tokens and JWT/key libraries for authentication; Bot Framework activities and file consent remain native. |
+| WhatsApp | `piusalfred/whatsapp` typed message sender; media metadata validation and in-memory MIME uploads retain native handling. |
+| Matrix | `mautrix` sync, REST, media and transaction APIs; durable sync checkpoints and gap recovery remain explicit. |
+| Mattermost | `Client4` REST, upload and history APIs; WebSocket resume and durable sequence checkpoints remain explicit. |
+| Google Chat | Generated Google Chat API client and Google authentication libraries. |
+| LINE | Messaging API and Blob clients, webhook models and signature validation; durable push retry keys and their expiration remain explicit. |
+| Signal | `signalcli` JSON-RPC client with response-ID validation; SSE reconnects preserve the durable `Last-Event-ID`. |
+| IRC | `irc.v4` parsing and serialization; TLS, capability negotiation, SASL and connection ownership remain explicit. |
+
+These dependencies include both platform-maintained and community libraries. A
+retained adapter must document the concrete SDK limitation near its implementation,
+such as inaccessible read limits, cancellation gaps, premature acknowledgements,
+unsupported fields or license distribution constraints. Native error status and
+headers must survive SDK decoding; an ambiguous send must not become a safe retry.
+
+The hosted agents share the official MCP Go SDK. dot event signing uses Standard
+Webhooks, Muse encryption uses `flynn/noise` with Muse framing and nonce limits,
+and Grok uses the documented Cursor Routine webhook. See [Hosted agents](agents.md)
+for setup, acknowledgement semantics and the limits of local protocol validation.
+
 ## Message flow
 
 An authenticated native input identifies an account, sender and exact conversation

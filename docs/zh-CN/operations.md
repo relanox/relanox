@@ -38,11 +38,16 @@ relanox requeue --kind delivery --id DELIVERY_ID --expected-version VERSION \
   --acknowledge-unknown --json
 ```
 
-使用 Status 打印的 ID 和当前版本。第二条命令显式接受结果不明操作可能重复的影响，
-过期版本会被拒绝。`prepare` 选择预处理，普通请求用 `request`，出站用 `delivery`。
+使用 Status 打印的 ID 和当前版本；过期版本会被拒绝。请求和出站记录处于结果不明状态时，
+都需要 `--acknowledge-unknown`，明确接受操作可能重复的影响。入站用 `request`，
+出站用 `delivery`。入站也接受 `prepare`，但会保留已有预处理结果，不会强制重新执行
+已完成的语音识别。
 等待原生 consent 或被动回调的 Pending 不消耗发送重试预算。
 
 ## 保留与备份
+
+服务运行时，每分钟按 `queue.retentionDays`（默认 30 天）执行一次保留清理，每个清理
+类别的批次上限为 100。管理命令可以指定截止时间和批次大小：
 
 ```sh
 relanox cleanup --before 2026-10-01T00:00:00Z --limit 1000 --json

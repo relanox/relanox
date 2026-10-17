@@ -7,8 +7,7 @@ matching binding authorizes acceptance; discovering an ID does not authorize it.
 ## Account options
 
 Secret fields below take [secret references](configuration.md#credentials).
-`account add` provides interactive forms; `--native-config` accepts additional
-native options without introducing a plugin or compatibility format.
+`account add` provides interactive forms; `--native-config` accepts additional native options as a JSON object.
 
 | Channel | Required native options | Connection and constraints |
 | --- | --- | --- |
@@ -16,20 +15,20 @@ native options without introducing a plugin or compatibility format.
 | Discord | `botToken` | Native Gateway and REST; the bot needs the required intents and channel permissions. Native nonce suppression has a short window and is not a durable retry guarantee. |
 | Slack | `botToken`, `appId`, exactly one of `appToken` / `signingSecret` | Socket Mode uses an app token; signed Events API uses the signing secret. The installation's native team/bot/app identities must match. |
 | Feishu / Lark | `appId`, `tenantKey`, `appSecret`, `verificationToken`, `encryptKey` | Signed/encrypted callback and native IM APIs. Set `domain` to `lark` for Lark. |
-| WeCom | `botId`, `secret` for websocket mode | Native bot socket. Webhook mode instead uses `mode: "webhook"`, `token` and `encodingAESKey`; it supports a final passive reply within the native callback window. |
-| WeChat | Saved by `wechat-login` | Native QR pairing and polling. The login command saves the actual bot token and confirmed user ID. |
+| WeCom | `botId` in both modes; `secret` for websocket mode | Webhook mode uses `mode: "webhook"`, `token` and `encodingAESKey`, and rejects `secret` and `recipientTypes`. It supports a final passive reply within the native callback window. |
+| WeChat | Saved by `wechat-login` | Native QR pairing and polling for direct chats. Sending requires a context token learned from accepted incoming messages; a binding alone does not establish a send target. |
 | DingTalk | `clientId`, `clientSecret`, `robotCode` | Native Stream callbacks and robot REST APIs. Group messages must mention the robot. |
 | QQ | `appId`, `clientSecret` | Native Gateway and v2 messages; optional `environment: "sandbox"`. Passive send permission is rechecked after uploads. |
 | Microsoft Teams | `appId`, `botId`, `tenantId`, `appSecret`, `trustedServiceOrigins` | Authenticated Bot Framework activities, tenant/bot checks and trusted native service origins. Personal file delivery uses native consent. |
 | WhatsApp | `phoneNumberId`, `businessAccountId`, `appSecret`, `verifyToken`, `accessToken` | Signed Cloud API webhook. Native customer-service windows still apply. |
-| Matrix | `homeserver`, `accessToken` | Native `/sync`, media APIs and transactions through mautrix. End-to-end encrypted rooms require encryption support outside this account adapter. |
+| Matrix | `homeserver`, `accessToken` | Native `/sync`, media APIs and transactions through mautrix. End-to-end encrypted rooms are unsupported: incoming messages are not relayed, and sends are rejected. |
 | Mattermost | `serverUrl`, `token` | Native v4 REST and WebSocket APIs; use the installation's HTTPS URL and a bot/user access token. |
 | Google Chat | `serviceAccount` | Native authenticated interaction events and Chat REST APIs. Configure the printed webhook URL as the app's endpoint/audience. |
 | LINE | `channelSecret`, `accessToken` | Signed Messaging API webhook and SDK push messages with native quote tokens and durable retry keys. |
 | Signal | `serviceUrl`, `account` | Existing signal-cli daemon: JSON-RPC at `/api/v1/rpc` and SSE events at `/api/v1/events`. Optional `selfUuid` and authorization reference. |
 | IRC | `server`, `nick` | TLS IRC/IRCv3 connection; optional server password and SASL credentials. Text only. |
 
-For WeCom, DingTalk and QQ, `recipientTypes` can map known chat IDs to their native
+For WeCom WebSocket mode, DingTalk and QQ, `recipientTypes` can map known chat IDs to their native
 recipient kind when a proactive target must be resolved before an incoming event.
 The configured kind must match learned native identities. Local HTTP allowances
 for supported test/bridge endpoints are explicit; untrusted media URLs do not
@@ -56,7 +55,7 @@ Prefix these paths with `http.publicUrl`; `{account}` is the local account ID.
 | Google Chat | `/channels/googlechat/{account}/webhook` | `spaces/...`, `users/...`, optional `spaces/.../threads/...`. |
 | LINE | `/channels/line/{account}/webhook` | Native user/group/room IDs; allowlist uses sender `userId`. |
 | Signal | None; outbound daemon SSE events | Chat `direct:<sender>` or `group:<groupId>`; sender UUID, with native number/source fallback. |
-| IRC | None; outbound IRC connection | Native channel or direct nickname; use the native sender identity accepted by the connection. |
+| IRC | None; outbound IRC connection | Channel name such as `#room`, or `dm:<nick>` for direct messages. Sender IDs use `account:<account>`; see the IRC section below. |
 
 For socket/polling channels, no inbound callback route is needed. Their hosted
 agent MCP and any public media URLs can still require the public HTTPS origin.
@@ -91,8 +90,17 @@ Google Chat receives native attachments. Its outbound media uses public-URL imag
 cards and file buttons, rather than uploading native attachment objects. Several
 other native rich/media paths also require the configured HTTPS origin to be
 reachable by the external service. Teams personal files can remain pending until
-the recipient grants consent. QQ and WhatsApp can become unavailable when native
-reply windows expire.
+the recipient grants consent.
+
+WhatsApp sends require a recorded incoming message within the 24-hour
+customer-service window. Relanox uses QQ passive replies for 5 minutes in groups
+or 1 hour in C2C chats; after expiry, it omits `msg_id` and attempts a proactive
+send, subject to native permissions and quotas.
+
+LINE persists push retry keys across restarts. It stops retransmitting 24 hours
+after the first attempt and retains an unknown outcome. WeCom webhook final
+replies remain pending until the platform retrieves them. IRC marks a send
+confirmed after the socket write; this is not a recipient delivery receipt.
 
 The agent's `relanox_status` tool reports the current native capabilities and send
 availability. Local protocol tests verify envelopes, authorization and recovery;
@@ -113,6 +121,14 @@ private threads. Set binding `chatId` to the parent channel ID and `threadId` to
 the native thread channel ID; omit `threadId` for ordinary channels. A direct
 message binding uses its DM channel ID. Relanox does not create, join or unarchive
 threads. Discord documents these [permissions](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx).
+
+## IRC identities
+
+Channel bindings use native channel names such as `#room`; direct messages use
+`dm:<nick>`, with nicknames folded using the server's case mapping. Sender
+allowlists use `account:<account>` from authenticated account tags. Explicit
+`allowNickFallback: true` also permits `nick:<case-folded-nick>` for senders
+without an authenticated account tag. A bare nickname is not an allowlist ID.
 
 ## Recovery boundaries
 
@@ -137,3 +153,13 @@ The same epoch does not reset again on later restarts, and already accepted Core
 work remains queued. For Mattermost, use 1–128 ASCII characters matching
 `[A-Za-z0-9][A-Za-z0-9._:-]*`; Discord accepts at most 128 bytes without whitespace
 or control characters. Keep each new recovery decision distinguishable.
+
+Matrix recovers a limited timeline from its previously accepted event anchor,
+with at most 20 pages of 100 events. If the anchor cannot be found, it preserves
+the previous global sync cursor and reports `sync_gap_unresolved`.
+
+WeChat saves its polling cursor after the whole batch has been accepted. Signal
+saves each SSE event ID after successful handling and sends `Last-Event-ID` when
+reconnecting; whether earlier events can be replayed depends on the daemon.
+These checkpoints do not provide a general history-replay guarantee for every
+native channel.

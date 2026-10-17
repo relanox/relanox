@@ -46,12 +46,18 @@ relanox requeue --kind delivery --id DELIVERY_ID --expected-version VERSION \
   --acknowledge-unknown --json
 ```
 
-The second command explicitly acknowledges possible duplication of an unknown
-effect. A stale version is rejected. `prepare` can select durable preparation
-work; ordinary requests use `request` and outbound records use `delivery`.
+Both requests and deliveries with an unknown outcome require
+`--acknowledge-unknown`, which explicitly accepts possible duplication. A stale
+version is rejected. Use `request` for incoming work and `delivery` for outgoing
+records. `prepare` is also accepted for incoming work, but retains existing
+preparation results; it does not force completed speech recognition to run again.
 Pending native consent/passive callbacks do not consume the send retry budget.
 
 ## Retention and backups
+
+While running, the maintenance worker checks retention every minute using
+`queue.retentionDays` (30 days by default), with a batch limit of 100 per cleanup
+category. The administrative command can use an explicit cutoff and batch size:
 
 ```sh
 relanox cleanup --before 2026-10-01T00:00:00Z --limit 1000 --json
