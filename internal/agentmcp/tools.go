@@ -80,7 +80,12 @@ func annotations(read, open bool) *mcp.ToolAnnotations {
 func addTool[In any](server *mcp.Server, tool *mcp.Tool, fn func(context.Context, In) (*mcp.CallToolResult, error)) {
 	mcp.AddTool[In, any](server, tool, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, any, error) {
 		result, err := fn(ctx, input)
-		return result, nil, err
+		var output any
+		if result != nil {
+			output = result.StructuredContent
+			result.StructuredContent = nil
+		}
+		return result, output, err
 	})
 }
 
@@ -97,9 +102,9 @@ func toolError(message string) *mcp.CallToolResult {
 }
 
 func (s *Server) registerTools() {
-	addTool(s.SDK, &mcp.Tool{Name: "relanox_status", Description: "List authorized channels, current send availability, media limits and an optional delivery or incoming request's final reply. Reads are snapshots; check again before recovery sends.", InputSchema: object(map[string]any{"deliveryId": stringSchema(1024), "requestId": stringSchema(1024)}), Annotations: annotations(true, false)}, s.status)
-	addTool(s.SDK, &mcp.Tool{Name: "relanox_send_message", Description: "Send Markdown and ordered media to an authorized channel. Include reply {requestId,kind:progress|final} for an exact incoming request; progress does not complete it. One final delivery is allowed; changed retries conflict. A queued result means saved, not delivered. Retry identical content/order under the same idempotencyKey. Ordinary unassociated calls without a key create separate sends.", InputSchema: sendSchema(s.Options.Endpoint.Agent == model.Dot), Annotations: annotations(false, true), Meta: s.sendMeta()}, s.send)
-	addTool(s.SDK, &mcp.Tool{Name: "relanox_read_messages", Description: "Recover retained messages with exact requestId first. Otherwise newest first, default5/max20. pending=true pages unfinished work oldest first; follow nextCursor. Only awaiting_final needs an answer; pending/rejected/unknown final deliveries need delivery recovery. Reads never claim, acknowledge or replay work. Match the trigger and recheck status before replying.", InputSchema: readSchema(), Annotations: annotations(true, false)}, s.read)
+	addTool(s.SDK, &mcp.Tool{Name: "relanox_status", Description: "List authorized channels, current send availability, media limits and an optional delivery or incoming request's final reply. Reads are snapshots; check again before recovery sends.", InputSchema: object(map[string]any{"deliveryId": stringSchema(1024), "requestId": stringSchema(1024)}), OutputSchema: statusOutputSchema(), Annotations: annotations(true, false)}, s.status)
+	addTool(s.SDK, &mcp.Tool{Name: "relanox_send_message", Description: "Send Markdown and ordered media to an authorized channel. Include reply {requestId,kind:progress|final} for an exact incoming request; progress does not complete it. One final delivery is allowed; changed retries conflict. A queued result means saved, not delivered. Retry identical content/order under the same idempotencyKey. Ordinary unassociated calls without a key create separate sends.", InputSchema: sendSchema(s.Options.Endpoint.Agent == model.Dot), OutputSchema: sendOutputSchema(), Annotations: annotations(false, true), Meta: s.sendMeta()}, s.send)
+	addTool(s.SDK, &mcp.Tool{Name: "relanox_read_messages", Description: "Recover retained messages with exact requestId first. Otherwise newest first, default5/max20. pending=true pages unfinished work oldest first; follow nextCursor. Only awaiting_final needs an answer; pending/rejected/unknown final deliveries need delivery recovery. Reads never claim, acknowledge or replay work. Match the trigger and recheck status before replying.", InputSchema: readSchema(), OutputSchema: readOutputSchema(), Annotations: annotations(true, false)}, s.read)
 	if s.Host.Media() != nil {
 		s.registerMediaTools()
 	}
@@ -133,6 +138,11 @@ func (s *Server) status(ctx context.Context, in statusInput) (*mcp.CallToolResul
 	}
 	if result.Channels == nil {
 		result.Channels = []model.AgentChannelStatus{}
+	}
+	for i := range result.Channels {
+		if result.Channels[i].Media == nil {
+			result.Channels[i].Media = []model.MediaKind{}
+		}
 	}
 	if s.Options.StatusContext == nil {
 		return Envelope(result, false), nil
