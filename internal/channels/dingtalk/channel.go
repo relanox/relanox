@@ -121,8 +121,14 @@ func (c *Channel) Resolve(_ context.Context, address model.ChannelAddress, learn
 		return model.ChannelResolution{Reason: "invalid_address"}, nil
 	}
 	var prior targetData
-	known := learned != nil && learned.Channel == model.DingTalk && learned.AccountID == c.account.ID && learned.ChatID == address.ChatID && learned.ThreadID == "" && json.Unmarshal(learned.Data, &prior) == nil && c.valid(prior, address.ChatID, false)
+	known := learned != nil && learned.Channel == model.DingTalk && learned.AccountID == c.account.ID && learned.ChatID == address.ChatID && learned.ThreadID == "" && json.Unmarshal(learned.Data, &prior) == nil && c.valid(prior, address.ChatID, true)
+	if learned != nil && !known {
+		return model.ChannelResolution{Reason: "target_identity_changed"}, nil
+	}
 	kind := c.config.RecipientTypes[address.ChatID]
+	if known && kind != "" && kind != prior.Type {
+		return model.ChannelResolution{Reason: "target_identity_changed"}, nil
+	}
 	if kind == "" && known {
 		kind = prior.Type
 	}

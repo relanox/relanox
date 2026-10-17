@@ -145,6 +145,9 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 	}
 	var prior targetData
 	known := learned != nil && learned.Channel == model.Feishu && learned.AccountID == c.account.ID && learned.ChatID == address.ChatID && learned.ThreadID == address.ThreadID && json.Unmarshal(learned.Data, &prior) == nil && c.valid(prior, botID)
+	if learned != nil && !known {
+		return model.ChannelResolution{Reason: "target_identity_changed"}, nil
+	}
 	data := c.identity(botID)
 	if address.ThreadID != "" {
 		if !known {

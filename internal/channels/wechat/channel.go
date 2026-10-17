@@ -104,17 +104,29 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 	if address.Platform != model.WeChat || address.AccountID != c.account.ID || address.ChatID == "" || address.ThreadID != "" {
 		return model.ChannelResolution{Reason: "invalid_address"}, nil
 	}
+	var prior targetData
+	if learned != nil && !c.learnedTarget(address, learned, &prior) {
+		return model.ChannelResolution{Reason: "target_identity_changed"}, nil
+	}
 	data, entry, err := common.ReadState[targetData](ctx, c.host.State(), c.key("context:"+address.ChatID))
 	if err != nil {
 		return model.ChannelResolution{}, err
 	}
-	if entry == nil && learned != nil && learned.Channel == model.WeChat && learned.AccountID == c.account.ID && learned.ChatID == address.ChatID && learned.ThreadID == "" {
-		_ = json.Unmarshal(learned.Data, &data)
+	if entry == nil && learned != nil {
+		data = prior
 	}
 	if !c.matches(data) {
 		return model.ChannelResolution{Reason: "missing_context"}, nil
 	}
-	return model.ChannelResolution{Available: true, Target: &model.ReplyTarget{Channel: model.WeChat, AccountID: c.account.ID, ChatID: address.ChatID, Data: common.Data(data)}}, nil
+	target := model.ReplyTarget{Channel: model.WeChat, AccountID: c.account.ID, ChatID: address.ChatID, Data: common.Data(data)}
+	if learned != nil {
+		target.ReplyToID = learned.ReplyToID
+	}
+	return model.ChannelResolution{Available: true, Target: &target}, nil
+}
+
+func (c *Channel) learnedTarget(address model.ChannelAddress, learned *model.ReplyTarget, data *targetData) bool {
+	return learned.Channel == model.WeChat && learned.AccountID == c.account.ID && learned.ChatID == address.ChatID && learned.ThreadID == address.ThreadID && json.Unmarshal(learned.Data, data) == nil && c.matches(*data)
 }
 
 func (c *Channel) accept(ctx context.Context, message Message) error {

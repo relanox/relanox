@@ -156,9 +156,9 @@ func (c *Channel) valid(data targetData) bool {
 		return false
 	}
 	if c.config.Mode == "webhook" {
-		return data.Scope.Mode == "webhook" && data.EventID != ""
+		return data.Scope.Mode == "webhook" && data.Scope.WebsocketURL == "" && data.EventID != ""
 	}
-	return data.Scope.WebsocketURL == websocketURL
+	return (data.Scope.Mode == "" || data.Scope.Mode == "websocket") && data.Scope.WebsocketURL == websocketURL
 }
 
 func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, learned *model.ReplyTarget) (model.ChannelResolution, error) {
@@ -167,6 +167,9 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 	}
 	var data targetData
 	known := c.learnedTarget(address, learned, &data)
+	if learned != nil && !known {
+		return model.ChannelResolution{Reason: "target_identity_changed"}, nil
+	}
 	if c.config.Mode == "webhook" {
 		if !known {
 			return model.ChannelResolution{Reason: "address_unresolved"}, nil
@@ -180,6 +183,9 @@ func (c *Channel) Resolve(ctx context.Context, address model.ChannelAddress, lea
 		}
 	} else {
 		kind := c.config.RecipientTypes[address.ChatID]
+		if known && kind != "" && kind != data.ChatType {
+			return model.ChannelResolution{Reason: "target_identity_changed"}, nil
+		}
 		if kind == "" && known {
 			kind = data.ChatType
 		}
