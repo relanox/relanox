@@ -10,6 +10,7 @@ const logos = import.meta.glob<string>('./logos/*.svg', {
 
 <template>
   <img
+    v-if="logos[`./logos/${platform}.svg`]"
     class="platform-logo"
     :src="logos[`./logos/${platform}.svg`]"
     alt=""
@@ -17,4 +18,7 @@ const logos = import.meta.glob<string>('./logos/*.svg', {
     width="24"
     height="24"
   />
+  <span v-else class="platform-logo" aria-hidden="true">{{
+    platform.charAt(0).toUpperCase()
+  }}</span>
 </template>

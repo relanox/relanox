@@ -4,7 +4,7 @@ export type Localized = Record<Locale, string>
 export type Json =
   string | number | boolean | null | Json[] | { [key: string]: Json }
 
-export type AgentType = 'dot' | 'grok'
+export type AgentType = 'dot' | 'grok' | 'muse'
 
 export type FieldDefinition = {
   key: string

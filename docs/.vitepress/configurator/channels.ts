@@ -13,6 +13,7 @@ const names: Record<string, [string, string]> = {
   slack: ['Slack', 'Slack'],
   feishu: ['Feishu / Lark', '飞书 / Lark'],
   wecom: ['WeCom', '企业微信'],
+  wechat: ['WeChat', '微信'],
   dingtalk: ['DingTalk', '钉钉'],
   qq: ['QQ', 'QQ'],
   msteams: ['Microsoft Teams', 'Microsoft Teams'],

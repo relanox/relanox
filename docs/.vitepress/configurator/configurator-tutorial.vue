@@ -52,6 +52,9 @@ const channelDefinition = (id: string): ChannelDefinition | undefined =>
 const agentName = (id: string): string =>
   props.state.agents.find((agent) => agent.id === id)?.name ?? id
 
+const isMuse = (id: string): boolean =>
+  props.state.agents.some((agent) => agent.id === id && agent.type === 'muse')
+
 const previousFocus =
   typeof document === 'undefined' ? null : document.activeElement
 
@@ -184,6 +187,17 @@ onUnmounted(() => {
               )
             }}
           </p>
+          <p v-if="state.agents.some((agent) => agent.type === 'muse')">
+            {{
+              text(
+                'Pair a device with Muse first. Set each Muse CREDENTIALS_DIRECTORY variable to its persistent pairing directory, using a separate pairing for each running service. See the Agent guide for device setup.',
+                '先在 Muse 中配对设备，将各 Muse 的 CREDENTIALS_DIRECTORY 变量设置为持久化配对目录。每个运行中的服务使用独立配对，设备配置方法见 Agent 指南。'
+              )
+            }}
+            <a :href="link('agents.html#connect-muse')">{{
+              text('Muse setup', 'Muse 配置')
+            }}</a>
+          </p>
           <div
             v-for="connection in connections"
             :key="connection.id"
@@ -249,7 +263,15 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
                 '请先填写公开 HTTPS 地址。'
               )
             }}</code>
-            <p>
+            <p v-if="isMuse(connection.id)">
+              {{
+                text(
+                  'Add this complete URL as a custom MCP connection in Muse. The URL contains the connection password; leave additional authentication fields empty.',
+                  '在 Muse 添加自定义 MCP 连接，使用此完整地址。地址已包含连接密码，其他身份验证字段留空。'
+                )
+              }}
+            </p>
+            <p v-else>
               {{
                 connection.auth === 'oauth'
                   ? text(
@@ -262,7 +284,15 @@ node apps/cli/dist/main.js run --config relanox.json</code></pre>
                     )
               }}
             </p>
-            <p>
+            <p v-if="isMuse(connection.id)">
+              {{
+                text(
+                  'Enable the connection in the same Muse whose paired device credentials you configured. Ask Muse to follow the Relanox MCP instructions and reply to every incoming notification through its original channel.',
+                  '在配对凭据对应的 Muse 中启用连接，请 Muse 遵循 Relanox MCP 说明，将每条来信回复到原渠道。'
+                )
+              }}
+            </p>
+            <p v-else>
               {{
                 state.agents.find((agent) => agent.id === connection.id)
                   ?.type === 'dot'

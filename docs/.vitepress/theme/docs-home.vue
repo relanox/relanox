@@ -15,8 +15,8 @@ const guides = computed(() => [
   {
     title: label('Connect an Agent', '连接 Agent'),
     description: label(
-      'Set up dot or Grok Bot to handle your messages.',
-      '让 dot 或 Grok Bot 接收并处理消息。'
+      'Set up dot, Grok Bot or Muse to handle your messages.',
+      '让 dot、Grok Bot 或 Muse 接收并处理消息。'
     ),
     path: 'agents'
   },
@@ -70,16 +70,16 @@ const guides = computed(() => [
         <h1 id="home-title">
           {{
             label(
-              'Use dot or Grok Bot in your chat apps',
-              '在聊天软件中使用 dot 或 Grok Bot'
+              'Use dot, Grok Bot or Muse in your chat apps',
+              '在聊天软件中使用 dot、Grok Bot 或 Muse'
             )
           }}
         </h1>
         <p>
           {{
             label(
-              'Relanox connects your chat apps to dot or Grok Bot. Exchange messages, pictures and files in the same conversation, on a service you run yourself.',
-              'Relanox 把聊天软件连接到 dot 或 Grok Bot。在原会话中收发消息、图片和文件，服务运行在你自己的电脑或服务器上。'
+              'Relanox connects your chat apps to dot, Grok Bot or Muse. Exchange messages, pictures and files in the same conversation, on a service you run yourself.',
+              'Relanox 把聊天软件连接到 dot、Grok Bot 或 Muse。在原会话中收发消息、图片和文件，服务运行在你自己的电脑或服务器上。'
             )
           }}
         </p>
@@ -148,8 +148,8 @@ const guides = computed(() => [
         <p>
           {{
             label(
-              'Connect 15 chat platforms. Each guide covers setup and supported files.',
-              '可连接 15 个聊天平台，各指南说明接入步骤和支持的文件类型。'
+              'Connect 16 chat platforms. Each guide covers setup and supported files.',
+              '可连接 16 个聊天平台，各指南说明接入步骤和支持的文件类型。'
             )
           }}
         </p>
@@ -166,6 +166,7 @@ const guides = computed(() => [
             ['Slack', 'slack'],
             [label('Feishu / Lark', '飞书 / Lark'), 'feishu'],
             [label('WeCom', '企业微信'), 'wecom'],
+            [label('WeChat', '微信'), 'wechat'],
             [label('DingTalk', '钉钉'), 'dingtalk']
           ]"
           :key="channel[1]"
