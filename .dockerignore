@@ -3,7 +3,6 @@
 .ref
 .research
 .firecrawl
-ref
 node_modules
 bin
 dist

@@ -11,9 +11,7 @@ cd relanox
 go build -trimpath -o bin/relanox ./cmd/relanox
 ```
 
-Windows 使用 `-o bin/relanox.exe`。旧 TypeScript 实现保存在 `ref/typescript`，
-Go 程序不使用 Node.js、pnpm 或插件安装机制。已有 tag 和 Release 可能早于 Go 重写；
-发布 Go 版本前，请从当前代码构建，或使用当前成功 CI 的 Go 产物。
+Windows 使用 `-o bin/relanox.exe`。预编译二进制产物与容器命令见[部署说明](deployment.md)。
 
 ## 创建配置
 

@@ -7,8 +7,8 @@ The Go service stores accepted messages, media and outbound work in SQLite or
 PostgreSQL using [Ent](https://entgo.io/). It preserves native reply context,
 conversation ownership and unknown delivery outcomes across restarts.
 
-Native accounts are composed directly in Go. There is no plugin loader or install
-step. Tencent speech recognition, authenticated MCP tools, scoped media, structured
+Native accounts are composed directly in Go. Tencent speech recognition,
+authenticated MCP tools, scoped media, structured
 logs, Prometheus metrics and OTLP traces are built into the service. Streaming
 replies, local inference and Serverless execution are outside the supported scope.
 
@@ -34,8 +34,7 @@ Read [Quickstart](docs/en/quickstart.md), [Configuration](docs/en/configuration.
 [Native channels](docs/en/channels.md), [Agents](docs/en/agents.md),
 [Operations](docs/en/operations.md) and [Deployment](docs/en/deployment.md).
 Local protocol/integration tests do not establish live-account compatibility.
-Existing Releases may predate the Go rewrite; current source builds and current
-CI Go artifacts are the appropriate installation paths until a Go version is released.
+For prebuilt binaries and container usage, see [Deployment](docs/en/deployment.md).
 
 ## Development
 
@@ -46,10 +45,8 @@ go run ./tools/docs
 ```
 
 The gate checks gofmt, complexity/nesting, vet and Go tests. The documentation
-renderer writes `docs/site` without Node.js. Read [Architecture](docs/en/architecture.md)
-and [Development](docs/en/development.md) before implementation. The earlier
-TypeScript source and documentation are retained in `ref/typescript`, excluded
-from Go builds and runtime dependencies.
+renderer writes `docs/site`. Read [Architecture](docs/en/architecture.md) and
+[Development](docs/en/development.md) before implementation.
 
 Relanox is licensed under the [MIT License](LICENSE). Third-party notices and
 distributed dependency licenses are described in [Licenses](licenses/README.md).

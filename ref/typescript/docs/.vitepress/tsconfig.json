@@ -1,5 +1,0 @@
-{
-  "extends": "../../tsconfig.docs.json",
-  "include": ["**/*.ts", "**/*.vue"],
-  "exclude": ["cache", "dist"]
-}

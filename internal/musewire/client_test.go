@@ -24,7 +24,7 @@ import (
 // Real TLS HTTP/WebSocket peers exercise production request generation, token
 // persistence and ciphertext. A lost session_id, wrong refresh prefix, reused
 // rotating token, or cancellation before send being marked uncertain fails
-// these tests. Archived TS tests mock MuseClient, bypassing all these layers.
+// these tests. Handshake fixtures alone do not cover request or token lifetimes.
 // HTTPClient is a deployment TLS/proxy/instrumentation option, not a test seam.
 // The peer models only Muse's external protocols; no Relanox core behavior.
 func TestSendMessageRotatesCredentialsAndPreservesSession(t *testing.T) {

@@ -12,10 +12,8 @@ cd relanox
 go build -trimpath -o bin/relanox ./cmd/relanox
 ```
 
-On Windows, use `-o bin/relanox.exe`. The earlier TypeScript tree is archived under
-`ref/typescript`; Node.js, pnpm and plugin installation are not used by this binary.
-Existing tags and Releases may predate the Go rewrite. Use this source build or a
-Go artifact from a successful current CI run until a Go release is published.
+On Windows, use `-o bin/relanox.exe`. Prebuilt binary artifacts and container
+commands are described in [Deployment](deployment.md).
 
 ## Create the configuration
 

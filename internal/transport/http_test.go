@@ -40,9 +40,9 @@ func TestClientAcceptsExplicitCertificateAuthority(t *testing.T) {
 	}
 }
 
-// The local peers model only external HTTP behavior. These new Go tests catch
-// missing SSRF guards, unbounded downloads and auth-after-body regressions; the
-// archived TS suite does not execute this transport. No test-only seams are used.
+// The local peers model only external HTTP behavior. These tests catch missing
+// SSRF guards, unbounded downloads and auth-after-body regressions, which ordinary
+// successful-request tests miss. No test-only seams are used.
 func TestClientDeniesPrivateDestinationUnlessExplicitlyConfigured(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

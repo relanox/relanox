@@ -15,7 +15,7 @@ import (
 // Key generation was replaced with private byte ranges 0..31 (initiator e),
 // 32..63 (responder e), 64..95 (responder s), 96..127 (initiator s).
 // Protects wire compatibility (XX token order, hash, HKDF and AES nonce endian).
-// The archived TS tests mock MuseClient and do not exercise encrypted traffic.
+// Round trips alone miss peers that share the same incorrect wire encoding.
 // The production key factory consumes cryptographic entropy; fixed input here
 // selects the published fixture keys without replacing protocol operations.
 func TestOfficialNoiseFixture(t *testing.T) {

@@ -52,7 +52,7 @@ func goFiles() ([]string, error) {
 		}
 		if entry.IsDir() && path != "." {
 			switch entry.Name() {
-			case "ref", ".ref", ".worktree", ".research", ".git", "vendor", "node_modules":
+			case ".ref", ".worktree", ".research", ".git", "vendor", "node_modules":
 				return filepath.SkipDir
 			}
 		}

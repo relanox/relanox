@@ -1,7 +1,6 @@
 # 部署
 
-从当前 Go 代码构建，或使用当前 CI 的 Go 二进制产物。配置、凭据和持久状态独立于
-可执行文件保存。旧 tag 或 Release 可能仍是归档的 TypeScript 发行包。
+从当前代码构建，或使用其 CI 二进制产物。配置、凭据和持久状态独立于可执行文件保存。
 
 ## 常驻服务与 HTTPS
 
@@ -27,7 +26,7 @@ Linux 可以使用 systemd，具体 unit 见[英文部署说明](../en/deploymen
 docker build -t relanox:local .
 ```
 
-镜像包含 Go 二进制、CA 和许可文件，使用非 root 用户，不含 Node.js。配置目录挂载到
+镜像包含 Go 二进制、CA 和许可文件，使用非 root 用户。配置目录挂载到
 `/config`，持久状态到 `/data`。容器内将 `http.listen` 设置为 `0.0.0.0:8787`，管理仍
 绑定回环；SQLite 使用 `storage.path = "/data/relanox.db"`。启动前保证指定用户可读
 凭据、可写数据。

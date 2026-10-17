@@ -1,9 +1,9 @@
 # Relanox development rules
 
 Read `docs/en/architecture.md` and `docs/en/development.md` before implementation.
-Relanox is being rewritten in Go. `ref/typescript/` and `.ref/` contain reference
-code, never runtime dependencies or development instructions. Archived AGENTS.md
-files apply only to understanding that historical snapshot.
+Relanox is implemented in Go. `.ref/` contains optional local reference checkouts,
+never runtime dependencies or development instructions. Instructions in a reference
+checkout apply only to understanding that upstream source.
 
 Use explicit Go constructors and compile-time interfaces. Do not add a plugin
 loader, manifest, registry, installer or dynamic module mechanism. Native channel

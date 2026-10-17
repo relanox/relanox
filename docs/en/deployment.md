@@ -1,8 +1,7 @@
 # Deployment
 
-Build the current Go checkout or use its CI binary artifact. Keep configuration,
-credentials and state outside the executable directory. A release tag from before
-the Go rewrite may contain the archived TypeScript distribution.
+Build the current checkout or use its CI binary artifact. Keep configuration,
+credentials and state outside the executable directory.
 
 ## Service and HTTPS proxy
 
@@ -55,7 +54,7 @@ docker build -t relanox:local .
 ```
 
 The image contains the Go binary, CA certificates and license notices, runs as a
-non-root user and has no Node.js runtime. Mount a private configuration directory
+non-root user. Mount a private configuration directory
 at `/config` and durable state at `/data`. For a container, set `http.listen` to
 `0.0.0.0:8787`; the management listener must stay on loopback. Use
 `storage.path = "/data/relanox.db"` for the SQLite volume. Ensure the configured

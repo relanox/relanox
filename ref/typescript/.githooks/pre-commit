@@ -1,3 +1,0 @@
-#!/bin/sh
-set -eu
-node scripts/pre-commit.mts
