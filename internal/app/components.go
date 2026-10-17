@@ -17,6 +17,7 @@ import (
 	"github.com/relanox/relanox/internal/channels/irc"
 	"github.com/relanox/relanox/internal/channels/line"
 	"github.com/relanox/relanox/internal/channels/matrix"
+	"github.com/relanox/relanox/internal/channels/mattermost"
 	"github.com/relanox/relanox/internal/channels/msteams"
 	"github.com/relanox/relanox/internal/channels/qq"
 	"github.com/relanox/relanox/internal/channels/signal"
@@ -65,6 +66,8 @@ func ValidateAccount(account model.AccountConfig) error {
 		err = googlechat.ValidateConfig(account.Config)
 	case model.Slack:
 		err = slack.ValidateConfig(account.Config)
+	case model.Mattermost:
+		err = mattermost.ValidateConfig(account.Config)
 	default:
 		return invalid("channel", "component_unavailable")
 	}
@@ -124,6 +127,8 @@ func nativeChannel(host model.ChannelHost, account model.AccountConfig, options 
 		return googlechat.New(host, account, options)
 	case model.Slack:
 		return slack.New(host, account, options)
+	case model.Mattermost:
+		return mattermost.New(host, account, options)
 	}
 	return nil, invalid("channel", "component_unavailable")
 }
