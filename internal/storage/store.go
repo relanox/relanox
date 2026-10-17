@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -34,11 +35,14 @@ const schemaFormat = 1
 
 var ErrIncompatibleDatabase = errors.New("incompatible_database_requires_explicit_migration")
 
+var ErrDatabaseUninitialized = errors.New("storage_database_not_initialized")
+
 type Store struct {
 	db            *sql.DB
 	client        *ent.Client
 	driver        string
 	schema        string
+	existingOnly  bool
 	initialize    sync.Once
 	initializeErr error
 }
@@ -46,9 +50,25 @@ type Store struct {
 var _ model.Storage = (*Store)(nil)
 
 func Open(ctx context.Context, cfg config.Storage, resolve func(model.SecretRef) (string, error)) (*Store, error) {
+	return open(ctx, cfg, resolve, false)
+}
+
+// OpenExisting verifies the supported schema/format without creating a database
+// or initializing an empty schema. Explicit recovery writes remain available.
+func OpenExisting(ctx context.Context, cfg config.Storage, resolve func(model.SecretRef) (string, error)) (*Store, error) {
+	return open(ctx, cfg, resolve, true)
+}
+
+func open(ctx context.Context, cfg config.Storage, resolve func(model.SecretRef) (string, error), existingOnly bool) (*Store, error) {
 	driver, dsn, err := connection(cfg, resolve)
 	if err != nil {
 		return nil, err
+	}
+	if existingOnly && driver == "sqlite" {
+		dsn, err = existingSQLite(cfg.Path, dsn)
+		if err != nil {
+			return nil, err
+		}
 	}
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
@@ -61,12 +81,33 @@ func Open(ctx context.Context, cfg config.Storage, resolve func(model.SecretRef)
 	} else {
 		db.SetMaxOpenConns(16)
 	}
-	store := &Store{db: db, driver: driver, schema: cfg.Schema, client: ent.NewClient(ent.Driver(entsql.OpenDB(entDialect, db)))}
+	store := &Store{db: db, driver: driver, schema: cfg.Schema, existingOnly: existingOnly, client: ent.NewClient(ent.Driver(entsql.OpenDB(entDialect, db)))}
 	if err = store.Initialize(ctx); err != nil {
 		_ = store.Close()
 		return nil, err
 	}
 	return store, nil
+}
+
+func existingSQLite(path, dsn string) (string, error) {
+	if path == ":memory:" {
+		return "", ErrDatabaseUninitialized
+	}
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", ErrDatabaseUninitialized
+	}
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("storage_path_unavailable")
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", errors.New("storage_path_invalid")
+	}
+	query := u.Query()
+	query.Set("mode", "rw") // Also fences removal between Stat and actual open.
+	u.RawQuery = query.Encode()
+	return u.String(), nil
 }
 
 func connection(cfg config.Storage, resolve func(model.SecretRef) (string, error)) (string, string, error) {
@@ -140,6 +181,9 @@ func (s *Store) initializeDatabase(ctx context.Context) error {
 		}
 		return nil
 	}
+	if s.existingOnly {
+		return ErrDatabaseUninitialized
+	}
 	opts := []entschema.MigrateOption{}
 	if s.schema != "" {
 		opts = append(opts, entschema.WithSchemaName(s.schema))
@@ -167,6 +211,9 @@ func (s *Store) inspect(ctx context.Context) (bool, error) {
 	}
 	snapshot, err := inspector.InspectSchema(ctx, s.schema, &atlasschema.InspectOptions{Mode: atlasschema.InspectTables})
 	if err != nil {
+		if s.existingOnly && atlasschema.IsNotExistError(err) {
+			return false, ErrDatabaseUninitialized
+		}
 		return false, errors.New("storage_inspection_failed")
 	}
 	if len(snapshot.Tables) == 0 {
