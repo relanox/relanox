@@ -18,6 +18,16 @@ import (
 // diagnostics instead can leak remote tokens. Existing tests exercise WeChat and
 // hyphenated untrusted values only. The public Writer sink needs no new seam.
 func TestNativeAndOperatorDiagnosticsRemainRecognizableAndClosed(t *testing.T) {
+	plugins := map[string]string{
+		"channel:discord":    "channel-discord",
+		"channel:slack":      "channel-slack",
+		"channel:matrix":     "channel-matrix",
+		"channel:googlechat": "channel-googlechat",
+		"channel:mattermost": "channel-mattermost",
+		"cli":                "cli",
+		"agent:grok":         "agent-grok",
+		"agent:dot":          "agent-dot",
+	}
 	rows := []struct{ component, code, want string }{
 		{"channel:discord", "gateway_resume_unavailable", "gateway_resume_unavailable"},
 		{"channel:discord", "history_checkpoint_failed", "history_checkpoint_failed"},
@@ -62,7 +72,7 @@ func TestNativeAndOperatorDiagnosticsRemainRecognizableAndClosed(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &record); err != nil {
 			t.Fatal(err)
 		}
-		if record["component"] != rows[i].component || record["errorCode"] != rows[i].want {
+		if record["plugin"] != plugins[rows[i].component] || record["errorCode"] != rows[i].want {
 			t.Fatalf("unsafe/opaque diagnostic: %s", line)
 		}
 	}

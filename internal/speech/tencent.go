@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/relanox/relanox/internal/model"
@@ -53,6 +54,8 @@ func (p *Preparer) recognize(ctx context.Context, media model.StoredMedia, optio
 	if media.Reference.DurationMS != nil && *media.Reference.DurationMS > 60_000 {
 		return "", "audio_too_long"
 	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
 	client, err := p.client(options)
 	if err != nil {
 		return "", "provider_unavailable"
