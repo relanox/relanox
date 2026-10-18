@@ -83,20 +83,23 @@ relanox validate -c relanox.json --json
 SQLite 使用 `storage.driver = "sqlite"` 和 `storage.path`。PostgreSQL 使用
 `storage.driver = "postgres"`、`storage.url` 凭据引用，以及可选 `storage.schema`。
 两种数据库共用 Ent（`entgo.io/ent`）schema、生成查询构建器和事务 API；源码随附版本化
-迁移。Go 程序拒绝旧 TypeScript 数据库和未知 schema 版本，不会静默重建或转换用户数据。
+迁移。程序拒绝不支持的 schema 格式，保留现有数据库不变。
 
-默认四个 worker、500 ms 轮询、60 秒通知租约、180 秒发送租约、八次尝试和 30 天保留期。
+默认四个 worker、500 ms 轮询、60 秒通知租约、630 秒发送租约、八次尝试和 30 天保留期。
+Agent 通知和预处理的调用期限为 10 秒；原生发送最多 600 秒，同时受租约和调用者 context 限制。
 媒体默认单文件和单消息合计 100 MiB、十个附件；平台限制可能更低。仅在需要时调整
 `queue`、`media` 和 HTTP 超时。未知结构字段和无效边界会在离线校验时被拒绝。
 
 | HTTP 字段 | 默认值 | 作用范围 |
 | --- | --- | --- |
+| `startupTimeoutSeconds` | 30 秒 | 存储初始化和组件启动，接受 1–120 秒。 |
+| `shutdownTimeoutSeconds` | 15 秒 | HTTP 排空和原生组件关闭，接受 1–120 秒。 |
 | `readTimeoutSeconds` | 30 秒 | 应用和管理服务器的入站请求。 |
 | `writeTimeoutSeconds` | 60 秒 | 应用和管理服务器的响应。 |
 | `maxBodyBytes` | 4,194,304 字节（4 MiB） | 未单独声明上限的路由所用的请求体默认限制。 |
 
-这些字段不设置所有 SDK 出站请求的统一期限。原生操作使用各自的超时，并受调用者
-context 的取消控制。
+HTTP 读写超时不设置所有 SDK 出站请求的统一期限。原生操作使用各自的超时，并受调用者
+context 的取消控制。入站 `context` 与私有回复目标数据的 JSON 合计上限为 64 KiB。
 
 ## 语音与观测
 
@@ -111,6 +114,7 @@ context 的取消控制。
   },
   "observability": {
     "level": "info",
+    "logs": true,
     "metrics": true,
     "otlpEndpoint": "https://collector.example.com/v1/traces"
   }
@@ -118,4 +122,7 @@ context 的取消控制。
 ```
 
 将这些字段合并进主配置。腾讯云 ASR 对接收音频进行预处理，原文和媒体另行持久化。
-普通日志排除正文与解析后的凭据，指标只位于回环管理监听；OTLP trace 可按需启用。
+音频附件并发处理，每个文件的识别调用分别有八秒期限，同时受预处理调用和父 context 限制。
+日志和指标默认启用，可分别用 `logs: false` 与 `metrics: false` 关闭。普通日志输出到 stdout，
+排除正文与解析后的凭据；指标只位于回环管理监听。OTLP trace 可按需启用，新根 trace 全采样，
+存在上游 parent 时遵循其采样决定。

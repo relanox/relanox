@@ -76,8 +76,8 @@ checked again at send time.
 ## Storage, media and security
 
 SQLite and PostgreSQL implementations use Ent schemas, typed queries/transactions
-and generated migrations. New Go schemas must detect and refuse incompatible old
-databases rather than discard data. Lease claims, settlements, state compare-and-set,
+and generated migrations. Unsupported database formats are refused without
+discarding data. Lease claims, settlements, state compare-and-set,
 media budgets, authorization and enqueue operations require atomic checks.
 
 Media is owned by the relay, scoped to a channel, identified by immutable metadata
