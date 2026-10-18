@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// LogsEnabled keeps logging enabled when the operator omits its independent
+// switch. Disabling logs does not disable metrics or trace collection.
+func (o Observability) LogsEnabled() bool {
+	return o.Logs == nil || *o.Logs
+}
+
 // ValidateObservability accepts an explicit administrator-owned collector URL;
 // private/local HTTP collectors are supported without weakening media policy.
 func ValidateObservability(observability Observability) error {

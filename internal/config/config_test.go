@@ -28,6 +28,8 @@ func TestDecodeRejectsInvalidRelationsWithoutLeakingInput(t *testing.T) {
 		{"unknown_field", strings.Replace(validConfig, `"accounts":`, `"unconfigured-secret":"value","accounts":`, 1), "config", "invalid_json_or_unknown_field"},
 		{"legacy_storage", strings.Replace(validConfig, `"driver":"sqlite"`, `"plugin":"sqlite"`, 1), "config", "invalid_json_or_unknown_field"},
 		{"short_dispatch_lease", strings.Replace(validConfig, `"storage":`, `"queue":{"leaseSeconds":29},"storage":`, 1), "queue", "invalid_limits"},
+		{"startup_timeout", strings.Replace(validConfig, `"storage":`, `"http":{"startupTimeoutSeconds":-1},"storage":`, 1), "http", "invalid_lifecycle_timeout"},
+		{"shutdown_timeout", strings.Replace(validConfig, `"storage":`, `"http":{"shutdownTimeoutSeconds":121},"storage":`, 1), "http", "invalid_lifecycle_timeout"},
 		{"speech_engine", strings.Replace(validConfig, `"storage":`, `"speech":{"enabled":true,"secretId":{"env":"ASR_ID"},"secretKey":{"env":"ASR_KEY"},"engineModelType":"unconfigured-secret"},"storage":`, 1), "speech.engineModelType", "unsupported_engine"},
 		{"speech_region", strings.Replace(validConfig, `"storage":`, `"speech":{"enabled":true,"secretId":{"env":"ASR_ID"},"secretKey":{"env":"ASR_KEY"},"region":"unconfigured-secret/path"},"storage":`, 1), "speech.region", "invalid_region"},
 		{"collector_credentials", strings.Replace(validConfig, `"storage":`, `"observability":{"otlpEndpoint":"https://user:unconfigured-secret@example.com/v1/traces"},"storage":`, 1), "observability.otlpEndpoint", "invalid_collector_url"},

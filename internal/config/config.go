@@ -28,12 +28,14 @@ type Storage struct {
 }
 
 type HTTP struct {
-	Listen              string `json:"listen"`
-	ManagementListen    string `json:"managementListen"`
-	PublicURL           string `json:"publicUrl,omitempty"`
-	ReadTimeoutSeconds  int    `json:"readTimeoutSeconds,omitempty"`
-	WriteTimeoutSeconds int    `json:"writeTimeoutSeconds,omitempty"`
-	MaxBodyBytes        int64  `json:"maxBodyBytes,omitempty"`
+	Listen                 string `json:"listen"`
+	ManagementListen       string `json:"managementListen"`
+	PublicURL              string `json:"publicUrl,omitempty"`
+	StartupTimeoutSeconds  int    `json:"startupTimeoutSeconds,omitempty"`
+	ShutdownTimeoutSeconds int    `json:"shutdownTimeoutSeconds,omitempty"`
+	ReadTimeoutSeconds     int    `json:"readTimeoutSeconds,omitempty"`
+	WriteTimeoutSeconds    int    `json:"writeTimeoutSeconds,omitempty"`
+	MaxBodyBytes           int64  `json:"maxBodyBytes,omitempty"`
 }
 
 type Queue struct {
@@ -47,6 +49,7 @@ type Queue struct {
 
 type Observability struct {
 	Level        string `json:"level,omitempty"`
+	Logs         *bool  `json:"logs,omitempty"`
 	Metrics      bool   `json:"metrics"`
 	OTLPEndpoint string `json:"otlpEndpoint,omitempty"`
 }
@@ -134,7 +137,7 @@ func Load(path string) (Config, error) {
 }
 
 func Decode(data []byte) (Config, error) {
-	var cfg Config
+	cfg := Config{Observability: Observability{Metrics: true}}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
@@ -170,6 +173,12 @@ func (c *Config) defaults() {
 	if c.HTTP.ReadTimeoutSeconds == 0 {
 		c.HTTP.ReadTimeoutSeconds = 30
 	}
+	if c.HTTP.StartupTimeoutSeconds == 0 {
+		c.HTTP.StartupTimeoutSeconds = 30
+	}
+	if c.HTTP.ShutdownTimeoutSeconds == 0 {
+		c.HTTP.ShutdownTimeoutSeconds = 15
+	}
 	if c.HTTP.WriteTimeoutSeconds == 0 {
 		c.HTTP.WriteTimeoutSeconds = 60
 	}
@@ -186,7 +195,7 @@ func (c *Config) defaults() {
 		c.Queue.LeaseSeconds = 60
 	}
 	if c.Queue.SendLeaseSeconds == 0 {
-		c.Queue.SendLeaseSeconds = 180
+		c.Queue.SendLeaseSeconds = 630
 	}
 	if c.Queue.MaxAttempts == 0 {
 		c.Queue.MaxAttempts = 8
@@ -235,6 +244,9 @@ func (c Config) Validate() error {
 func (c Config) validateRuntimeLimits() error {
 	if c.HTTP.ReadTimeoutSeconds < 1 || c.HTTP.WriteTimeoutSeconds < 1 || c.HTTP.MaxBodyBytes < 1 {
 		return invalid("http", "invalid_limits")
+	}
+	if c.HTTP.StartupTimeoutSeconds < 1 || c.HTTP.StartupTimeoutSeconds > 120 || c.HTTP.ShutdownTimeoutSeconds < 1 || c.HTTP.ShutdownTimeoutSeconds > 120 {
+		return invalid("http", "invalid_lifecycle_timeout")
 	}
 	if c.Queue.Concurrency < 1 || c.Queue.Concurrency > 1024 || c.Queue.PollIntervalMS < 1 || c.Queue.LeaseSeconds < 30 || c.Queue.SendLeaseSeconds < 1 || c.Queue.MaxAttempts < 1 || c.Queue.RetentionDays < 1 {
 		return invalid("queue", "invalid_limits")
