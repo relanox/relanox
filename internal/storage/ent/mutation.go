@@ -3407,6 +3407,8 @@ type OutboundMutation struct {
 	endpoint_id         *string
 	message_id          *string
 	digest              *string
+	sequence            *int64
+	addsequence         *int64
 	created_at          *int64
 	addcreated_at       *int64
 	status              *string
@@ -3745,6 +3747,62 @@ func (m *OutboundMutation) OldDigest(ctx context.Context) (v string, err error) 
 // ResetDigest resets all changes to the "digest" field.
 func (m *OutboundMutation) ResetDigest() {
 	m.digest = nil
+}
+
+// SetSequence sets the "sequence" field.
+func (m *OutboundMutation) SetSequence(i int64) {
+	m.sequence = &i
+	m.addsequence = nil
+}
+
+// Sequence returns the value of the "sequence" field in the mutation.
+func (m *OutboundMutation) Sequence() (r int64, exists bool) {
+	v := m.sequence
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSequence returns the old "sequence" field's value of the Outbound entity.
+// If the Outbound object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundMutation) OldSequence(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSequence is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSequence requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSequence: %w", err)
+	}
+	return oldValue.Sequence, nil
+}
+
+// AddSequence adds i to the "sequence" field.
+func (m *OutboundMutation) AddSequence(i int64) {
+	if m.addsequence != nil {
+		*m.addsequence += i
+	} else {
+		m.addsequence = &i
+	}
+}
+
+// AddedSequence returns the value that was added to the "sequence" field in this mutation.
+func (m *OutboundMutation) AddedSequence() (r int64, exists bool) {
+	v := m.addsequence
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSequence resets all changes to the "sequence" field.
+func (m *OutboundMutation) ResetSequence() {
+	m.sequence = nil
+	m.addsequence = nil
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -4181,7 +4239,7 @@ func (m *OutboundMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OutboundMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.channel != nil {
 		fields = append(fields, outbound.FieldChannel)
 	}
@@ -4199,6 +4257,9 @@ func (m *OutboundMutation) Fields() []string {
 	}
 	if m.digest != nil {
 		fields = append(fields, outbound.FieldDigest)
+	}
+	if m.sequence != nil {
+		fields = append(fields, outbound.FieldSequence)
 	}
 	if m.created_at != nil {
 		fields = append(fields, outbound.FieldCreatedAt)
@@ -4241,6 +4302,8 @@ func (m *OutboundMutation) Field(name string) (ent.Value, bool) {
 		return m.MessageID()
 	case outbound.FieldDigest:
 		return m.Digest()
+	case outbound.FieldSequence:
+		return m.Sequence()
 	case outbound.FieldCreatedAt:
 		return m.CreatedAt()
 	case outbound.FieldStatus:
@@ -4276,6 +4339,8 @@ func (m *OutboundMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldMessageID(ctx)
 	case outbound.FieldDigest:
 		return m.OldDigest(ctx)
+	case outbound.FieldSequence:
+		return m.OldSequence(ctx)
 	case outbound.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case outbound.FieldStatus:
@@ -4341,6 +4406,13 @@ func (m *OutboundMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDigest(v)
 		return nil
+	case outbound.FieldSequence:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSequence(v)
+		return nil
 	case outbound.FieldCreatedAt:
 		v, ok := value.(int64)
 		if !ok {
@@ -4398,6 +4470,9 @@ func (m *OutboundMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *OutboundMutation) AddedFields() []string {
 	var fields []string
+	if m.addsequence != nil {
+		fields = append(fields, outbound.FieldSequence)
+	}
 	if m.addcreated_at != nil {
 		fields = append(fields, outbound.FieldCreatedAt)
 	}
@@ -4418,6 +4493,8 @@ func (m *OutboundMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *OutboundMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case outbound.FieldSequence:
+		return m.AddedSequence()
 	case outbound.FieldCreatedAt:
 		return m.AddedCreatedAt()
 	case outbound.FieldVersion:
@@ -4435,6 +4512,13 @@ func (m *OutboundMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *OutboundMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case outbound.FieldSequence:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSequence(v)
+		return nil
 	case outbound.FieldCreatedAt:
 		v, ok := value.(int64)
 		if !ok {
@@ -4516,6 +4600,9 @@ func (m *OutboundMutation) ResetField(name string) error {
 		return nil
 	case outbound.FieldDigest:
 		m.ResetDigest()
+		return nil
+	case outbound.FieldSequence:
+		m.ResetSequence()
 		return nil
 	case outbound.FieldCreatedAt:
 		m.ResetCreatedAt()

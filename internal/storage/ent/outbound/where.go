@@ -93,6 +93,11 @@ func Digest(v string) predicate.Outbound {
 	return predicate.Outbound(sql.FieldEQ(FieldDigest, v))
 }
 
+// Sequence applies equality check predicate on the "sequence" field. It's identical to SequenceEQ.
+func Sequence(v int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldEQ(FieldSequence, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v int64) predicate.Outbound {
 	return predicate.Outbound(sql.FieldEQ(FieldCreatedAt, v))
@@ -511,6 +516,46 @@ func DigestEqualFold(v string) predicate.Outbound {
 // DigestContainsFold applies the ContainsFold predicate on the "digest" field.
 func DigestContainsFold(v string) predicate.Outbound {
 	return predicate.Outbound(sql.FieldContainsFold(FieldDigest, v))
+}
+
+// SequenceEQ applies the EQ predicate on the "sequence" field.
+func SequenceEQ(v int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldEQ(FieldSequence, v))
+}
+
+// SequenceNEQ applies the NEQ predicate on the "sequence" field.
+func SequenceNEQ(v int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldNEQ(FieldSequence, v))
+}
+
+// SequenceIn applies the In predicate on the "sequence" field.
+func SequenceIn(vs ...int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldIn(FieldSequence, vs...))
+}
+
+// SequenceNotIn applies the NotIn predicate on the "sequence" field.
+func SequenceNotIn(vs ...int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldNotIn(FieldSequence, vs...))
+}
+
+// SequenceGT applies the GT predicate on the "sequence" field.
+func SequenceGT(v int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldGT(FieldSequence, v))
+}
+
+// SequenceGTE applies the GTE predicate on the "sequence" field.
+func SequenceGTE(v int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldGTE(FieldSequence, v))
+}
+
+// SequenceLT applies the LT predicate on the "sequence" field.
+func SequenceLT(v int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldLT(FieldSequence, v))
+}
+
+// SequenceLTE applies the LTE predicate on the "sequence" field.
+func SequenceLTE(v int64) predicate.Outbound {
+	return predicate.Outbound(sql.FieldLTE(FieldSequence, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

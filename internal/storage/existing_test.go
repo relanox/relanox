@@ -74,20 +74,28 @@ func TestOpenExistingReadsSupportedStateWithoutMutatingSQLite(t *testing.T) {
 	assertUnchangedFile(t, path, before)
 }
 
-func TestOpenExistingRefusesFutureSchemaFormatWithoutMutatingSQLite(t *testing.T) {
+func TestOpenExistingRefusesUnsupportedFormatsWithoutMutatingSQLite(t *testing.T) {
+	for name, format := range map[string]int{"prior": 1, "future": 3} {
+		t.Run(name, func(t *testing.T) { assertUnsupportedFormat(t, format) })
+	}
+}
+
+func assertUnsupportedFormat(t *testing.T, format int) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "future.db")
 	cfg := config.Storage{Driver: "sqlite", Path: path}
 	store, err := storage.Open(ctx, cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertStoredState(t, store, true)
 	_ = store.Close()
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
-	if err := client.Metadata.UpdateOneID("schema").SetFormat(2).Exec(ctx); err != nil {
+	if err := client.Metadata.UpdateOneID("schema").SetFormat(format).Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
 	_ = client.Close()
@@ -96,7 +104,7 @@ func TestOpenExistingRefusesFutureSchemaFormatWithoutMutatingSQLite(t *testing.T
 		t.Fatal(err)
 	}
 	if _, err := storage.OpenExisting(ctx, cfg, nil); !errors.Is(err, storage.ErrIncompatibleDatabase) {
-		t.Fatalf("future format accepted: %v", err)
+		t.Fatalf("unsupported format %d accepted: %v", format, err)
 	}
 	assertUnchangedFile(t, path, before)
 }
