@@ -43,12 +43,15 @@ type Application struct {
 	closeOnce         sync.Once
 	closeDone         chan struct{}
 	closeErr          error
+	stop              context.CancelFunc
 }
 
 func New(ctx context.Context, cfg config.Config, options Options) (*Application, error) {
 	if err := Validate(cfg); err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.HTTP.StartupTimeoutSeconds)*time.Second)
+	defer cancel()
 	if cfg.Storage.Driver == "sqlite" {
 		cfg.Storage.Path = cfg.ResolvePath(cfg.Storage.Path)
 		if err := os.MkdirAll(filepath.Dir(cfg.Storage.Path), 0700); err != nil {
@@ -128,13 +131,18 @@ func (a *Application) Start(ctx context.Context) error {
 		return invalid("runtime", "already_started_or_closed")
 	}
 	a.started = true
-	public, err := net.Listen("tcp", a.cfg.HTTP.Listen)
+	lifetime, cancel := context.WithCancel(ctx)
+	a.stop = cancel
+	timer := time.AfterFunc(time.Duration(a.cfg.HTTP.StartupTimeoutSeconds)*time.Second, cancel)
+	defer timer.Stop()
+	listenerConfig := net.ListenConfig{}
+	public, err := listenerConfig.Listen(lifetime, "tcp", a.cfg.HTTP.Listen)
 	if err != nil {
 		a.mu.Unlock()
 		_ = a.Close(context.Background())
 		return invalid("http.listen", "bind_failed")
 	}
-	management, err := net.Listen("tcp", a.cfg.HTTP.ManagementListen)
+	management, err := listenerConfig.Listen(lifetime, "tcp", a.cfg.HTTP.ManagementListen)
 	if err != nil {
 		_ = public.Close()
 		a.mu.Unlock()
@@ -146,7 +154,8 @@ func (a *Application) Start(ctx context.Context) error {
 	a.serve(a.public, public)
 	a.serve(a.management, management)
 	a.mu.Unlock()
-	if err = a.runtime.Start(ctx); err != nil {
+	err = a.runtime.Start(lifetime)
+	if !timer.Stop() || lifetime.Err() != nil || err != nil {
 		_ = a.Close(context.Background())
 		return invalid("runtime", "component_start_failed")
 	}
@@ -176,7 +185,7 @@ func (a *Application) Run(ctx context.Context) error {
 	case <-ctx.Done():
 	case result = <-a.errors:
 	}
-	shutdown, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdown, cancel := a.shutdownContext()
 	defer cancel()
 	return errors.Join(result, a.Close(shutdown))
 }
@@ -195,8 +204,11 @@ func (a *Application) closeResources() {
 	defer close(a.closeDone)
 	a.mu.Lock()
 	a.closed = true
+	if a.stop != nil {
+		a.stop()
+	}
 	a.mu.Unlock()
-	shutdown, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdown, cancel := a.shutdownContext()
 	defer cancel()
 	if a.runtime != nil {
 		a.runtime.SetAccepting(false)
@@ -224,4 +236,8 @@ func (a *Application) closeResources() {
 	a.servers.Wait()
 	a.closeErr = errors.Join(a.closeErr, <-runtimeDone)
 	a.closeErr = errors.Join(a.closeErr, a.store.Close(), a.observer.Close(shutdown))
+}
+
+func (a *Application) shutdownContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), time.Duration(a.cfg.HTTP.ShutdownTimeoutSeconds)*time.Second)
 }

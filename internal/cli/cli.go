@@ -23,6 +23,21 @@ func (e *Error) Error() string { return e.Code }
 
 func problem(code string) error { return &Error{Code: code} }
 
+type outputError struct {
+	cause error
+	json  bool
+}
+
+func (e *outputError) Error() string { return e.cause.Error() }
+func (e *outputError) Unwrap() error { return e.cause }
+
+// JSONError reports the command's parsed output choice, including operational
+// defaults, so the executable can format failures consistently with successes.
+func JSONError(err error) bool {
+	var output *outputError
+	return errors.As(err, &output) && output.json
+}
+
 // Options controls production streams as well as embedders and scripted setup.
 type Options struct {
 	In      io.Reader
@@ -36,6 +51,7 @@ type command struct {
 	reader  *bufio.Reader
 	path    string
 	json    bool
+	machine bool
 }
 
 func Run(ctx context.Context, args []string, options Options) error {
@@ -54,11 +70,33 @@ func Run(ctx context.Context, args []string, options Options) error {
 	root.SetOut(options.Out)
 	root.SetErr(options.Err)
 	root.PersistentFlags().StringVarP(&c.path, "config", "c", "", "Configuration path (or RELANOX_CONFIG)")
-	root.PersistentFlags().BoolVar(&c.json, "json", false, "Write structured JSON")
+	root.PersistentFlags().BoolVar(&c.json, "json", false, "Write structured JSON (default for operational commands; --json=false selects text)")
+	root.PersistentPreRun = func(cmd *cobra.Command, _ []string) {
+		c.selectOutput(root, cmd)
+	}
 	root.AddCommand(c.validateCommand(), c.initCommand(), c.setupCommand(), c.accountCommand(), c.agentCommand(), c.bindCommand(), c.loginCommand(), c.discoverCommand(), c.statusCommand(), c.requeueCommand(), c.cleanupCommand(), c.doctorCommand(), c.runCommand())
 	root.SetArgs(args)
 	invoked, err := root.ExecuteContextC(ctx)
-	return classifyCommandError(err, invoked)
+	if err == nil {
+		return nil
+	}
+	if invoked == root && !root.Flags().Parsed() {
+		// Command discovery can fail before Cobra parses global flags. Read the
+		// output choice for diagnostics while retaining the original failure.
+		_ = root.ParseFlags(args)
+	}
+	c.selectOutput(root, invoked)
+	return &outputError{cause: classifyCommandError(err, invoked), json: c.structured()}
+}
+
+func (c *command) selectOutput(root, invoked *cobra.Command) {
+	if invoked == nil || root.PersistentFlags().Changed("json") {
+		return
+	}
+	switch invoked.Name() {
+	case "validate", "status", "requeue", "cleanup", "doctor", "discover", "wechat-login":
+		c.machine = true
+	}
 }
 
 func classifyCommandError(err error, invoked *cobra.Command) error {
@@ -99,12 +137,14 @@ func (c *command) document() (*document, error) {
 }
 
 func (c *command) output(value any, human string) error {
-	if c.json {
+	if c.structured() {
 		return json.NewEncoder(c.options.Out).Encode(value)
 	}
 	_, err := fmt.Fprintln(c.options.Out, human)
 	return err
 }
+
+func (c *command) structured() bool { return c.json || c.machine }
 
 func (c *command) prompt(label, fallback string, secret bool) (string, error) {
 	if c.json {
@@ -150,7 +190,7 @@ func (c *command) saved(d *document) error {
 	if err = c.output(map[string]any{"status": "saved", "config": d.Path, "backup": backup, "connections": next}, "Saved "+d.Path); err != nil {
 		return err
 	}
-	if !c.json {
+	if !c.structured() {
 		for _, instruction := range next {
 			if _, err := fmt.Fprintln(c.options.Out, instruction); err != nil {
 				return err

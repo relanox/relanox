@@ -16,6 +16,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/larksuite/oapi-sdk-go/v3 v3.12.2
 	github.com/line/line-bot-sdk-go/v8 v8.23.0
+	github.com/makiuchi-d/gozxing v0.1.1
 	github.com/mattermost/mattermost/server/public v0.5.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.1
@@ -23,6 +24,7 @@ require (
 	github.com/piusalfred/whatsapp v0.1.12
 	github.com/prometheus/client_golang v1.25.0
 	github.com/rs/zerolog v1.35.1
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/slack-go/slack v0.30.1
 	github.com/spf13/cobra v1.10.2
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1
@@ -144,6 +146,7 @@ require (
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261012220534-4341edf3f941 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261012220534-4341edf3f941 // indirect
 	google.golang.org/grpc v1.84.0 // indirect

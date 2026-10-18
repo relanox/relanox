@@ -24,7 +24,7 @@ func (w failedOutput) Write([]byte) (int, error) { return 0, w.err }
 func TestStatusReportsHumanOutputFailure(t *testing.T) {
 	path, _ := adminFixture(t)
 	failure := errors.New("output unavailable")
-	err := Run(context.Background(), []string{"--config", path, "status"}, Options{In: strings.NewReader(""), Out: failedOutput{failure}, Err: io.Discard})
+	err := Run(context.Background(), []string{"--config", path, "status", "--json=false"}, Options{In: strings.NewReader(""), Out: failedOutput{failure}, Err: io.Discard})
 	if !errors.Is(err, failure) {
 		t.Fatalf("status error = %v, want output failure", err)
 	}

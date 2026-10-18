@@ -83,6 +83,7 @@ github.com/remyoudompheng/bigfft,https://github.com/remyoudompheng/bigfft/blob/2
 github.com/rs/zerolog,https://github.com/rs/zerolog/blob/v1.35.1/LICENSE,MIT
 github.com/segmentio/asm,https://github.com/segmentio/asm/blob/v1.2.1/LICENSE,MIT-0
 github.com/segmentio/encoding,https://github.com/segmentio/encoding/blob/v0.5.4/LICENSE,MIT
+github.com/skip2/go-qrcode,https://github.com/skip2/go-qrcode/blob/da1b6568686e/LICENSE,MIT
 github.com/slack-go/slack,https://github.com/slack-go/slack/blob/v0.30.1/LICENSE,BSD-2-Clause
 github.com/spf13/cobra,https://github.com/spf13/cobra/blob/v1.10.2/LICENSE.txt,Apache-2.0
 github.com/spf13/pflag,https://github.com/spf13/pflag/blob/v1.0.10/LICENSE,BSD-3-Clause
