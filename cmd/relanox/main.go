@@ -20,7 +20,7 @@ func main() {
 	defer cancel()
 	if err := cli.Run(ctx, os.Args[1:], cli.Options{Version: version}); err != nil {
 		code := safeError(err)
-		if jsonRequested(os.Args[1:]) {
+		if cli.JSONError(err) {
 			_ = json.NewEncoder(os.Stderr).Encode(map[string]any{"ok": false, "errorCode": code})
 		} else {
 			fmt.Fprintln(os.Stderr, "relanox:", code)
@@ -42,13 +42,4 @@ func safeError(err error) string {
 		return "cancelled"
 	}
 	return "command_failed"
-}
-
-func jsonRequested(args []string) bool {
-	for _, arg := range args {
-		if arg == "--json" || arg == "--json=true" {
-			return true
-		}
-	}
-	return false
 }

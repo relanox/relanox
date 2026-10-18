@@ -3,12 +3,14 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"slices"
 	"time"
 
 	"github.com/relanox/relanox/internal/channels/wechat"
 	"github.com/relanox/relanox/internal/model"
+	"github.com/skip2/go-qrcode"
 	"github.com/spf13/cobra"
 )
 
@@ -55,7 +57,8 @@ func (c *command) loginCommand() *cobra.Command {
 	cmd.Flags().StringVar(&api, "api-base", "", "Native WeChat API origin")
 	cmd.Flags().StringVar(&verification, "verification-code-file", "", "Read additional verification codes from this file")
 	cmd.Flags().BoolVar(&insecure, "allow-insecure-loopback", false, "Allow an explicit local HTTP protocol peer")
-	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "Maximum pairing duration")
+	timeout = 10 * time.Minute
+	cmd.Flags().Var((*secondsDuration)(&timeout), "timeout", "Maximum pairing duration in seconds or Go duration")
 	return cmd
 }
 
@@ -108,6 +111,9 @@ func (c *command) wechatEvent(event map[string]any, verification string) error {
 	human := "WeChat: " + stringField(event, "event")
 	if qr := stringField(event, "qrCode"); qr != "" {
 		human = "Scan the WeChat QR code: " + qr
+		if err := c.printQRCode(qr); err != nil {
+			return err
+		}
 	}
 	status := stringField(event, "status")
 	if status != "" {
@@ -126,6 +132,15 @@ func (c *command) wechatEvent(event map[string]any, verification string) error {
 		}
 	}
 	return nil
+}
+
+func (c *command) printQRCode(content string) error {
+	qr, err := qrcode.New(content, qrcode.Medium)
+	if err != nil {
+		return problem("wechat_qrcode_invalid")
+	}
+	_, err = io.WriteString(c.options.Err, qr.ToSmallString(false))
+	return err
 }
 
 func stringField(value map[string]any, key string) string { v, _ := value[key].(string); return v }

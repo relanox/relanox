@@ -11,7 +11,7 @@ func (c *command) runCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		application, err := app.New(cmd.Context(), cfg, app.Options{LogWriter: c.options.Err})
+		application, err := app.New(cmd.Context(), cfg, app.Options{LogWriter: c.options.Out})
 		if err != nil {
 			return err
 		}

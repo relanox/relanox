@@ -59,7 +59,8 @@ func (c *command) discoverCommand() *cobra.Command {
 	cmd.Flags().StringVar(&botID, "bot-id", "", "Bot ID for discovery before account setup")
 	cmd.Flags().StringVar(&env, "secret-env", "", "Environment variable containing bot secret")
 	cmd.Flags().StringVar(&file, "secret-file", "", "Bot secret file relative to configuration")
-	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute, "Discovery duration (1s-10m)")
+	timeout = 2 * time.Minute
+	cmd.Flags().Var((*secondsDuration)(&timeout), "timeout", "Discovery duration in seconds or Go duration (1s-10m)")
 	return cmd
 }
 

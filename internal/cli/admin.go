@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/relanox/relanox/internal/app"
@@ -54,28 +56,41 @@ func openExisting(ctx context.Context, cfg config.Config) (*storage.Store, error
 }
 
 type requestSummary struct {
-	ID              string               `json:"id"`
-	Version         int64                `json:"version"`
-	Channel         model.ChannelAddress `json:"channel"`
-	EndpointID      string               `json:"endpointId"`
-	Dispatch        model.AttemptState   `json:"dispatch"`
-	AcceptedAt      time.Time            `json:"acceptedAt"`
-	FinalDeliveryID string               `json:"finalDeliveryId,omitempty"`
-	Text            *string              `json:"text,omitempty"`
+	RequestID  string               `json:"requestId"`
+	AccountID  string               `json:"accountId"`
+	Version    int64                `json:"version"`
+	Channel    model.ChannelAddress `json:"channel"`
+	EndpointID string               `json:"endpointId"`
+	Dispatch   dispatchSummary      `json:"dispatch"`
+	Reply      model.ReplyStatus    `json:"reply"`
+	AcceptedAt int64                `json:"acceptedAt"`
+	RedactedAt *int64               `json:"redactedAt,omitempty"`
+	Text       *string              `json:"text,omitempty"`
+}
+
+// Operator summaries omit lease tokens and use Unix milliseconds for timestamps.
+type dispatchSummary struct {
+	Status    model.AttemptStatus `json:"status"`
+	Attempts  int                 `json:"attempts"`
+	DueAt     int64               `json:"dueAt"`
+	ErrorCode string              `json:"errorCode,omitempty"`
 }
 
 type deliverySummary struct {
-	ID           string               `json:"id"`
-	Version      int64                `json:"version"`
-	ChannelID    string               `json:"channelId"`
-	EndpointID   string               `json:"endpointId"`
-	Status       model.DeliveryStatus `json:"status"`
-	Attempts     int                  `json:"attempts"`
-	ErrorCode    string               `json:"errorCode,omitempty"`
-	CreatedAt    time.Time            `json:"createdAt"`
-	CurrentChunk int                  `json:"currentChunk"`
-	Chunks       int                  `json:"chunks"`
-	Text         []string             `json:"text,omitempty"`
+	DeliveryID   string                `json:"deliveryId"`
+	Version      int64                 `json:"version"`
+	ChannelID    string                `json:"channelId"`
+	EndpointID   string                `json:"endpointId"`
+	Status       model.DeliveryStatus  `json:"status"`
+	Attempts     int                   `json:"attempts"`
+	ErrorCode    string                `json:"errorCode,omitempty"`
+	CreatedAt    int64                 `json:"createdAt"`
+	DueAt        int64                 `json:"dueAt"`
+	RedactedAt   *int64                `json:"redactedAt,omitempty"`
+	Reply        *model.ReplyReference `json:"reply,omitempty"`
+	CurrentChunk int                   `json:"currentChunk"`
+	ChunkCount   int                   `json:"chunkCount"`
+	Text         *string               `json:"text,omitempty"`
 }
 
 func (c *command) statusCommand() *cobra.Command {
@@ -107,8 +122,12 @@ func (c *command) statusCommand() *cobra.Command {
 		if err != nil {
 			return problem("status_unavailable")
 		}
-		value := map[string]any{"stats": stats, "requests": summarizeRequests(requests, include), "deliveries": summarizeDeliveries(deliveries, include)}
-		if c.json {
+		summaries, err := summarizeRequests(cmd.Context(), store, requests, include)
+		if err != nil {
+			return problem("status_unavailable")
+		}
+		value := map[string]any{"stats": stats, "requests": summaries, "deliveries": summarizeDeliveries(deliveries, include)}
+		if c.structured() {
 			return c.output(value, "")
 		}
 		if err := c.printStatus(stats, requests, deliveries); err != nil {
@@ -174,33 +193,51 @@ func validateFilter(f model.StatusFilter) error {
 	return nil
 }
 
-func summarizeRequests(records []model.InboundRecord, content bool) []requestSummary {
+func summarizeRequests(ctx context.Context, store *storage.Store, records []model.InboundRecord, content bool) ([]requestSummary, error) {
 	result := make([]requestSummary, 0, len(records))
 	for _, r := range records {
-		v := requestSummary{ID: r.Snapshot.RequestID, Version: r.Version, Channel: r.Snapshot.Channel, EndpointID: r.Snapshot.Endpoint.ID, Dispatch: r.Dispatch, AcceptedAt: r.Snapshot.AcceptedAt, FinalDeliveryID: r.FinalDeliveryID}
-		// Lease tokens fence active workers and are never operator credentials.
-		v.Dispatch.Lease = nil
+		var delivery *model.OutboundRecord
+		if r.FinalDeliveryID != "" {
+			var err error
+			delivery, err = store.GetOutbound(ctx, r.FinalDeliveryID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		v := requestSummary{RequestID: r.Snapshot.RequestID, AccountID: r.Snapshot.Source.AccountID, Version: r.Version, Channel: r.Snapshot.Channel, EndpointID: r.Snapshot.Endpoint.ID, AcceptedAt: r.Snapshot.AcceptedAt.UnixMilli(), RedactedAt: optionalMilliseconds(r.RedactedAt), Reply: model.RequestReplyStatus(r, delivery)}
+		v.Dispatch = dispatchSummary{Status: r.Dispatch.Status, Attempts: r.Dispatch.Attempts, DueAt: r.Dispatch.DueAt.UnixMilli(), ErrorCode: r.Dispatch.ErrorCode}
 		if content {
 			text := r.Snapshot.Text
 			v.Text = &text
 		}
 		result = append(result, v)
 	}
-	return result
+	return result, nil
 }
 
 func summarizeDeliveries(records []model.OutboundRecord, content bool) []deliverySummary {
 	result := make([]deliverySummary, 0, len(records))
 	for _, r := range records {
-		v := deliverySummary{ID: r.DeliveryID, Version: r.Version, ChannelID: r.ChannelID, EndpointID: r.Endpoint.ID, Status: r.Status, Attempts: r.Attempts, ErrorCode: r.ErrorCode, CreatedAt: r.CreatedAt, CurrentChunk: r.CurrentChunk, Chunks: len(r.Chunks)}
+		v := deliverySummary{DeliveryID: r.DeliveryID, Version: r.Version, ChannelID: r.ChannelID, EndpointID: r.Endpoint.ID, Status: r.Status, Attempts: r.Attempts, ErrorCode: r.ErrorCode, CreatedAt: r.CreatedAt.UnixMilli(), DueAt: r.DueAt.UnixMilli(), RedactedAt: optionalMilliseconds(r.RedactedAt), Reply: r.Reply, CurrentChunk: r.CurrentChunk, ChunkCount: len(r.Chunks)}
 		if content {
+			var text strings.Builder
 			for _, chunk := range r.Chunks {
-				v.Text = append(v.Text, chunk.Text)
+				text.WriteString(chunk.Text)
 			}
+			value := text.String()
+			v.Text = &value
 		}
 		result = append(result, v)
 	}
 	return result
+}
+
+func optionalMilliseconds(value *time.Time) *int64 {
+	if value == nil {
+		return nil
+	}
+	milliseconds := value.UnixMilli()
+	return &milliseconds
 }
 
 func (c *command) requeueCommand() *cobra.Command {
@@ -297,7 +334,9 @@ func (c *command) doctorCommand() *cobra.Command {
 			return err
 		}
 		checks := map[string]any{"configuration": "ok"}
-		checks["credentials"] = checkSecrets(cfg)
+		missing := missingSecrets(cfg)
+		checks["credentials"] = len(missing) == 0
+		checks["missingSecrets"] = missing
 		store, err := openExisting(cmd.Context(), cfg)
 		if err == nil {
 			health, healthErr := store.Health(cmd.Context())
@@ -323,40 +362,52 @@ func (c *command) doctorCommand() *cobra.Command {
 	return cmd
 }
 
-func checkSecrets(cfg config.Config) bool {
+func missingSecrets(cfg config.Config) []string {
 	data, _ := json.Marshal(cfg)
 	var value any
-	if json.Unmarshal(data, &value) != nil {
-		return false
+	_ = json.Unmarshal(data, &value)
+	missing := map[string]bool{}
+	collectMissingSecrets(cfg, value, missing)
+	result := make([]string, 0, len(missing))
+	for name := range missing {
+		result = append(result, name)
 	}
-	return walkSecrets(cfg, value)
+	slices.Sort(result)
+	return result
 }
 
-func walkSecrets(cfg config.Config, value any) bool {
+func collectMissingSecrets(cfg config.Config, value any, missing map[string]bool) {
 	switch v := value.(type) {
 	case []any:
 		for _, item := range v {
-			if !walkSecrets(cfg, item) {
-				return false
-			}
+			collectMissingSecrets(cfg, item, missing)
 		}
 	case map[string]any:
-		if env, ok := v["env"].(string); ok && len(v) <= 2 {
-			file, _ := v["file"].(string)
-			_, err := cfg.ResolveSecret(model.SecretRef{Env: env, File: file})
-			return err == nil
-		}
-		if file, ok := v["file"].(string); ok && len(v) == 1 {
-			_, err := cfg.ResolveSecret(model.SecretRef{File: file})
-			return err == nil
+		if ref, ok := secretReference(v); ok {
+			if _, err := cfg.ResolveSecret(ref); err != nil {
+				addMissingReference(missing, ref)
+			}
+			return
 		}
 		for _, item := range v {
-			if !walkSecrets(cfg, item) {
-				return false
-			}
+			collectMissingSecrets(cfg, item, missing)
 		}
 	}
-	return true
+}
+
+func secretReference(value map[string]any) (model.SecretRef, bool) {
+	env, hasEnv := value["env"].(string)
+	file, hasFile := value["file"].(string)
+	return model.SecretRef{Env: env, File: file}, hasEnv && len(value) <= 2 || hasFile && len(value) == 1
+}
+
+func addMissingReference(missing map[string]bool, ref model.SecretRef) {
+	if ref.Env != "" {
+		missing[ref.Env] = true
+	}
+	if ref.File != "" {
+		missing[ref.File] = true
+	}
 }
 
 func probeManagement(ctx context.Context, address string) bool {
