@@ -117,8 +117,11 @@ func selected(m message) (*file, model.MediaKind, string) {
 		f    *file
 		k    model.MediaKind
 		mime string
-	}{{m.Audio, model.Audio, "audio/mpeg"}, {m.Voice, model.Audio, "audio/ogg"}, {m.Video, model.Video, "video/mp4"}, {m.Animation, model.Image, "image/gif"}, {m.VideoNote, model.Video, "video/mp4"}, {m.Document, model.File, "application/octet-stream"}} {
+	}{{m.Audio, model.Audio, "audio/mpeg"}, {m.Voice, model.Audio, "audio/ogg"}, {m.Video, model.Video, "video/mp4"}, {m.Animation, model.Video, "video/mp4"}, {m.VideoNote, model.Video, "video/mp4"}, {m.Document, model.File, "application/octet-stream"}} {
 		if v.f != nil {
+			if v.f == m.Animation && v.f.MIME != "" {
+				return v.f, common.MediaKind(v.f.MIME), v.f.MIME
+			}
 			return v.f, v.k, v.mime
 		}
 	}
@@ -253,7 +256,7 @@ func mediaMethod(ref model.MediaReference) (string, string, int64) {
 		if slices.Contains([]string{"audio/ogg", "audio/opus"}, ref.MIMEType) {
 			return "sendVoice", "voice", 50 * 1024 * 1024
 		}
-		if slices.Contains([]string{"audio/mpeg", "audio/mp4", "audio/x-m4a"}, ref.MIMEType) {
+		if slices.Contains([]string{"audio/mpeg", "audio/mp3", "audio/x-mp3", "audio/mp4", "audio/m4a", "audio/x-m4a"}, ref.MIMEType) {
 			return "sendAudio", "audio", 50 * 1024 * 1024
 		}
 	case model.Video:

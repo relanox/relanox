@@ -364,10 +364,7 @@ func spans(value string) []sdk.FlexComponentInterface {
 func flex(value string) *sdk.FlexMessage { return flexContents(text.Plain(value), spans(value)) }
 
 func flexContents(label string, contents []sdk.FlexComponentInterface) *sdk.FlexMessage {
-	runes := []rune(label)
-	if len(runes) > 500 {
-		label = string(runes[:500])
-	}
+	label = text.Truncate(label, 1500, model.UTF16)
 	if label == "" {
 		label = "Message"
 	}

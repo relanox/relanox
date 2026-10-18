@@ -36,6 +36,19 @@ func Length(s string, unit model.LengthUnit) int {
 	return n
 }
 
+// Truncate keeps a complete Unicode prefix within the destination's length unit.
+func Truncate(s string, maximum int, unit model.LengthUnit) string {
+	used := 0
+	for offset, r := range s {
+		size := Length(string(r), unit)
+		if used+size > maximum {
+			return s[:offset]
+		}
+		used += size
+	}
+	return s
+}
+
 func SplitMarkdown(s string, max int, unit model.LengthUnit) ([]string, error) {
 	return SplitByRendered(s, max, unit, func(s string) string { return s })
 }

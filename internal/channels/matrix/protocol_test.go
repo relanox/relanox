@@ -333,9 +333,10 @@ func TestNativeSendBindsDeviceAndPreservesMediaThreadAndTransaction(t *testing.T
 	if relation["rel_type"] != "m.thread" || relation["event_id"] != "$thread" || reply["event_id"] != "$original" {
 		t.Fatalf("thread or native quote lost: %+v", relation)
 	}
+	assertRichPlainFallback(t, f, requests, target, input.Media)
 	encrypted.Store(true)
 	result, err = f.channel.Send(context.Background(), input)
-	if err != nil || result.Status != model.Rejected || result.ErrorCode != "encrypted_unsupported" || sent.Load() != 1 {
+	if err != nil || result.Status != model.Rejected || result.ErrorCode != "encrypted_unsupported" || sent.Load() != 2 {
 		t.Fatalf("encrypted room was sent plaintext: %+v %v", result, err)
 	}
 	changed := target
@@ -343,5 +344,21 @@ func TestNativeSendBindsDeviceAndPreservesMediaThreadAndTransaction(t *testing.T
 	resolved, err = f.channel.Resolve(context.Background(), address, &changed)
 	if err != nil || resolved.Available || resolved.Reason != "target_identity_changed" {
 		t.Fatalf("replaced device reused transaction namespace: %+v %v", resolved, err)
+	}
+}
+
+// Ordered rich parts must remain distinct in the native plain fallback,
+// including clients that ignore formatted_body. The media-only assertion
+// cannot catch adjacent text/image labels running together.
+// https://spec.matrix.org/v1.17/client-server-api/#mroommessage-msgtypes
+func assertRichPlainFallback(t *testing.T, f *matrixRelay, requests <-chan map[string]any, target model.ReplyTarget, media *model.StoredMedia) {
+	t.Helper()
+	input := model.SendInput{Target: target, Chunk: model.DeliveryChunk{IdempotencyKey: "transaction-1", RichText: []model.RichTextPart{{Type: "text", Text: "**first**"}, {Type: "image", Media: &media.Reference, Label: "photo"}, {Type: "text", Text: "last"}}}, RichMedia: []model.StoredMedia{*media}}
+	result, err := f.channel.Send(t.Context(), input)
+	if err != nil || result.Status != model.Sent {
+		t.Fatalf("rich send: %+v %v", result, err)
+	}
+	if body := <-requests; body["body"] != "first\n\nphoto\n\nlast" {
+		t.Fatalf("plain rich fallback: %+v", body)
 	}
 }

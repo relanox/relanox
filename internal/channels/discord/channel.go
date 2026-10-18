@@ -94,11 +94,11 @@ func New(host model.ChannelHost, account model.AccountConfig, options common.Opt
 
 func (c *Channel) Kind() model.ChannelKind { return model.Discord }
 
-var richLimits = model.RichTextLimits{MaxParts: 10, MaxTextLength: 1800}
+var richLimits = model.RichTextLimits{MaxParts: 10, MaxTextLength: 1800, MaxTotalImageBytes: 20 << 20}
 
 func (c *Channel) Capabilities() model.ChannelCapabilities {
 	limits := richLimits
-	limits.MaxImageBytes = common.MediaLimit(c.host)
+	limits.MaxImageBytes = min(common.MediaLimit(c.host), 10<<20)
 	return model.ChannelCapabilities{Transport: model.ConnectionTransport, MaxTextLength: 2000, LengthUnit: model.UTF16, RichText: &limits, Media: model.MediaCapabilities{Receive: common.AllMedia(), Send: common.AllMedia()}}
 }
 
