@@ -152,8 +152,8 @@ func (c *Channel) Capabilities() model.ChannelCapabilities {
 	return model.ChannelCapabilities{Transport: kind, MaxTextLength: 4000, LengthUnit: model.Codepoint, RichText: &limits, Media: model.MediaCapabilities{Receive: common.AllMedia(), Send: common.AllMedia()}}
 }
 
-func (c *Channel) SplitText(value string, _ model.ReplyTarget) ([]string, error) {
-	return text.SplitByRendered(value, 4000, model.Codepoint, text.Slack)
+func (c *Channel) SplitText(value string, target model.ReplyTarget) ([]string, error) {
+	return text.SplitByRendered(value, 4000, model.UTF8, func(part string) string { return markdownPayload(part, target) })
 }
 
 func (c *Channel) Start(ctx context.Context) error {

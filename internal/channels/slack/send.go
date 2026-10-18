@@ -75,7 +75,7 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if code := common.ValidateRich(input, limits, model.Codepoint, common.MediaLimit(c.host)); code != "" {
 		return common.Reject(code), nil
 	}
-	if text.Length(text.Slack(input.Chunk.Text), model.Codepoint) > 4000 {
+	if len(input.Chunk.RichText) == 0 && input.Chunk.Media == nil && len(markdownPayload(input.Chunk.Text, input.Target)) > 4000 {
 		return common.Reject("text_limit_exceeded"), nil
 	}
 	if input.Chunk.IdempotencyKey == "" {
@@ -91,11 +91,12 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 	if input.Chunk.Media != nil {
 		return c.sendMedia(ctx, client, input, thread), nil
 	}
-	return c.post(ctx, client, input.Target.ChatID, thread, text.Slack(input.Chunk.Text), nil), nil
+	fallback, blocks := markdown(input.Chunk.Text)
+	return c.post(ctx, client, input.Target.ChatID, thread, fallback, blocks), nil
 }
 
 func (c *Channel) post(ctx context.Context, client *slackapi.Client, chat, thread, value string, blocks []slackapi.Block) model.SendResult {
-	options := []slackapi.MsgOption{slackapi.MsgOptionText(value, false), slackapi.MsgOptionParse(false), slackapi.MsgOptionLinkNames(false), slackapi.MsgOptionDisableLinkUnfurl(), slackapi.MsgOptionDisableMediaUnfurl()}
+	options := []slackapi.MsgOption{slackapi.MsgOptionText(value, false), slackapi.MsgOptionDisableMarkdown(), slackapi.MsgOptionParse(false), slackapi.MsgOptionLinkNames(false), slackapi.MsgOptionDisableLinkUnfurl(), slackapi.MsgOptionDisableMediaUnfurl()}
 	if thread != "" {
 		options = append(options, slackapi.MsgOptionTS(thread))
 	}
@@ -183,7 +184,8 @@ func (c *Channel) sendMedia(ctx context.Context, client *slackapi.Client, input 
 	}
 	// Transfer failures are safe to retry before completion; this completion
 	// shares the file to a channel and may have published despite a lost response.
-	response, err := client.CompleteUploadExternalContext(ctx, slackapi.CompleteUploadExternalParameters{Files: files, Channel: input.Target.ChatID, ThreadTimestamp: thread, InitialComment: text.Slack(input.Chunk.Text)})
+	fallback, _ := markdown(input.Chunk.Text)
+	response, err := client.CompleteUploadExternalContext(ctx, slackapi.CompleteUploadExternalParameters{Files: files, Channel: input.Target.ChatID, ThreadTimestamp: thread, InitialComment: fallback})
 	if err != nil {
 		return failure(err, false)
 	}
@@ -197,16 +199,14 @@ func (c *Channel) sendRich(ctx context.Context, client *slackapi.Client, input m
 	var blocks []slackapi.Block
 	var fallback strings.Builder
 	image := 0
-	for _, part := range input.Chunk.RichText {
+	for index, part := range input.Chunk.RichText {
+		if index > 0 {
+			fallback.WriteByte('\n')
+		}
 		if part.Type == "text" {
-			parts, err := text.SplitByRendered(part.Text, 3000, model.Codepoint, text.Slack)
-			if err != nil {
-				return common.Reject("rich_text_limit_exceeded")
-			}
-			for _, value := range parts {
-				blocks = append(blocks, slackapi.NewSectionBlock(slackapi.NewTextBlockObject("mrkdwn", text.Slack(value), false, false), nil, nil))
-			}
-			fallback.WriteString(text.Slack(part.Text))
+			value, rendered := markdown(part.Text)
+			blocks = append(blocks, rendered...)
+			fallback.WriteString(value)
 			continue
 		}
 		if part.Media == nil || image >= len(input.RichMedia) {

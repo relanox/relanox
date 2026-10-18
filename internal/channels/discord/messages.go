@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -147,8 +148,8 @@ func (c *Channel) Send(ctx context.Context, input model.SendInput) (model.SendRe
 		return common.Reject("target_identity_changed"), nil
 	}
 	limits := richLimits
-	limits.MaxImageBytes = common.MediaLimit(c.host)
-	if code := common.ValidateRich(input, limits, model.UTF16, common.MediaLimit(c.host)); code != "" {
+	limits.MaxImageBytes = min(common.MediaLimit(c.host), 10<<20)
+	if code := common.ValidateRichWithLabelLimit(input, limits, model.UTF16, common.MediaLimit(c.host), 0); code != "" {
 		return common.Reject(code), nil
 	}
 	if text.Length(input.Chunk.Text, model.UTF16) > 2000 {
@@ -236,7 +237,7 @@ func (c *Channel) message(input model.SendInput) (nativeSend, []*discordgo.File,
 }
 
 func (c *Channel) file(media model.StoredMedia, name string) (*discordgo.File, error) {
-	if len(media.Data) == 0 || int64(len(media.Data)) != media.Reference.Size || int64(len(media.Data)) > common.MediaLimit(c.host) || name == "" || strings.ContainsAny(name, "\r\n\x00") || strings.ContainsAny(media.Reference.MIMEType, "\r\n") {
+	if len(media.Data) == 0 || int64(len(media.Data)) != media.Reference.Size || int64(len(media.Data)) > min(common.MediaLimit(c.host), 20<<20) || name == "" || strings.ContainsAny(name, "\r\n\x00") || strings.ContainsAny(media.Reference.MIMEType, "\r\n") {
 		return nil, errors.New("invalid_media")
 	}
 	return &discordgo.File{Name: name, ContentType: media.Reference.MIMEType, Reader: bytes.NewReader(media.Data)}, nil
@@ -244,22 +245,39 @@ func (c *Channel) file(media model.StoredMedia, name string) (*discordgo.File, e
 
 func (c *Channel) richMessage(message nativeSend, input model.SendInput) (nativeSend, []*discordgo.File, error) {
 	message.Content = ""
+	message.Flags = discordgo.MessageFlagsIsComponentsV2
 	var files []*discordgo.File
 	for _, part := range input.Chunk.RichText {
 		if part.Type == "text" {
-			message.Embeds = append(message.Embeds, &discordgo.MessageEmbed{Description: part.Text})
+			message.Components = append(message.Components, discordgo.TextDisplay{Content: part.Text})
 			continue
 		}
-		if part.Media == nil || len(files) >= len(input.RichMedia) || text.Length(part.Label, model.UTF16) > 256 {
+		if part.Media == nil || len(files) >= len(input.RichMedia) {
 			return message, nil, errors.New("invalid_media")
 		}
-		name := "image-" + string(rune('a'+len(files))) + ".png"
+		name := richFileName(input.RichMedia[len(files)].Reference.FileName, len(files))
 		file, err := c.file(input.RichMedia[len(files)], name)
 		if err != nil {
 			return message, nil, err
 		}
 		files = append(files, file)
-		message.Embeds = append(message.Embeds, &discordgo.MessageEmbed{Title: part.Label, Image: &discordgo.MessageEmbedImage{URL: "attachment://" + name}})
+		label := text.Truncate(part.Label, 1024, model.UTF16)
+		message.Components = append(message.Components, discordgo.MediaGallery{Items: []discordgo.MediaGalleryItem{{Media: discordgo.UnfurledMediaItem{URL: "attachment://" + name}, Description: &label}}})
 	}
 	return message, files, nil
+}
+
+func richFileName(value string, index int) string {
+	segments := strings.Split(value, ".")
+	extension := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, strings.ToLower(segments[len(segments)-1]))
+	if extension == "" {
+		extension = "bin"
+	}
+	extension = extension[:min(10, len(extension))]
+	return "image-" + strconv.Itoa(index) + "." + extension
 }

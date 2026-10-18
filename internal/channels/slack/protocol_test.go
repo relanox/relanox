@@ -364,8 +364,13 @@ func assertRichSend(t *testing.T, f *slackRelay, p *nativePeer) {
 		t.Fatalf("native blocks missing: %+v", post)
 	}
 	image, _ := blocks[1]["slack_file"].(map[string]any)
-	if blocks[0]["type"] != "section" || blocks[1]["type"] != "image" || image["id"] != "FUPLOAD1" || blocks[2]["type"] != "section" || post.Get("thread_ts") != "1700000000.000001" {
+	if blocks[0]["type"] != "rich_text" || blocks[1]["type"] != "image" || image["id"] != "FUPLOAD1" || blocks[2]["type"] != "rich_text" || post.Get("thread_ts") != "1700000000.000001" || post.Get("mrkdwn") != "false" || post.Get("text") != "first\nphoto\nlast" {
 		t.Fatalf("native rich image order or thread changed: %+v", post)
+	}
+	input.Chunk.RichText[1].Label = strings.Repeat("x", 2001)
+	result, err = f.channel.Send(t.Context(), input)
+	if err != nil || result.Status != model.Rejected || result.ErrorCode != "invalid_rich_media" {
+		t.Fatalf("non-Discord label bound changed: %+v %v", result, err)
 	}
 }
 

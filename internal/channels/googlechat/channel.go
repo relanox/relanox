@@ -90,7 +90,7 @@ func New(host model.ChannelHost, account model.AccountConfig, options common.Opt
 func (c *Channel) Kind() model.ChannelKind { return model.GoogleChat }
 
 func (c *Channel) Capabilities() model.ChannelCapabilities {
-	return model.ChannelCapabilities{Transport: model.HTTPTransport, MaxTextLength: 30000, LengthUnit: model.UTF8, IdempotentSend: true, MaxAttachments: 10, RichText: &model.RichTextLimits{MaxParts: 50, MaxTextLength: 16000}, Media: model.MediaCapabilities{Receive: common.AllMedia(), Send: common.AllMedia()}}
+	return model.ChannelCapabilities{Transport: model.HTTPTransport, MaxTextLength: 30000, LengthUnit: model.UTF8, IdempotentSend: true, MaxAttachments: 10, RichText: &model.RichTextLimits{MaxParts: 20, MaxTextLength: 2000}, Media: model.MediaCapabilities{Receive: common.AllMedia(), Send: common.AllMedia()}}
 }
 
 func (c *Channel) SplitText(value string, _ model.ReplyTarget) ([]string, error) {

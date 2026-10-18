@@ -187,7 +187,10 @@ func (c *Channel) content(ctx context.Context, client *mautrix.Client, input mod
 func (c *Channel) rich(ctx context.Context, client *mautrix.Client, input model.SendInput) (*event.MessageEventContent, error) {
 	var plain, formatted strings.Builder
 	image := 0
-	for _, part := range input.Chunk.RichText {
+	for index, part := range input.Chunk.RichText {
+		if index > 0 {
+			plain.WriteString("\n\n")
+		}
 		if part.Type == "text" {
 			plain.WriteString(text.Plain(part.Text))
 			formatted.WriteString(text.Matrix(part.Text))

@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"io"
@@ -282,7 +284,53 @@ func TestNativeOIDCInboundDurableQuoteAndMedia(t *testing.T) {
 		t.Fatalf("native reply contract: %+v", first)
 	}
 	assertMediaCard(t, f, p, input, *resolution.Target, media)
+	assertRichBounds(t, f, p, input.Channel.ID, *resolution.Target)
 	assertReplayAndCancel(t, f, p, input, *resolution.Target, first)
+}
+
+// The source channel bounds rich cards to 20 parts and 2000 UTF-8 text bytes.
+// Ordinary card fixtures miss the pre-publication rejection boundary. Stage a
+// real owned image so both permitted boundaries and rejected envelopes exercise
+// the production publisher and cannot fail for missing media instead.
+func assertRichBounds(t *testing.T, f *fixture, p *googlePeer, channelID string, target model.ReplyTarget) {
+	t.Helper()
+	media := model.StoredMedia{Reference: model.MediaReference{ID: "b9ce176f-5944-4fe7-9983-d15a1a617508", Kind: model.Image, MIMEType: "image/png", FileName: "image.png", Size: 5}, Data: []byte("image")}
+	sum := sha256.Sum256(media.Data)
+	media.Reference.SHA256 = hex.EncodeToString(sum[:])
+	stored, err := f.store.PutMedia(t.Context(), model.PutMediaInput{ChannelID: channelID, Agent: model.Grok, EndpointIDs: []string{"grok"}, Media: media, Limits: model.MediaLimits{MaxBytes: 1024, MaxTotalBytes: 1024, MaxAttachments: 4}})
+	if err != nil || stored.Status != model.Stored {
+		t.Fatalf("stage owned image: %+v %v", stored, err)
+	}
+	for _, count := range []int{1, 19} {
+		parts := []model.RichTextPart{{Type: "image", Media: &media.Reference}}
+		for range count {
+			parts = append(parts, model.RichTextPart{Type: "text", Text: "x"})
+		}
+		if count == 1 {
+			parts[1].Text = strings.Repeat("图", 666) + "xx"
+		}
+		result, err := f.channel.Send(t.Context(), model.SendInput{ChannelID: channelID, Target: target, Chunk: model.DeliveryChunk{IdempotencyKey: "permitted-rich", RichText: parts}, RichMedia: []model.StoredMedia{media}})
+		if err != nil || result.Status != model.Sent {
+			t.Fatalf("permitted rich boundary: %+v %v", result, err)
+		}
+		<-p.sends
+	}
+	for _, count := range []int{1, 20} {
+		parts := []model.RichTextPart{{Type: "image", Media: &media.Reference}}
+		for range count {
+			parts = append(parts, model.RichTextPart{Type: "text", Text: "x"})
+		}
+		want := "invalid_rich_text"
+		if count == 1 {
+			parts[1].Text = strings.Repeat("图", 667)
+			want = "rich_text_limit_exceeded"
+		}
+		before := p.requests.Load()
+		result, err := f.channel.Send(t.Context(), model.SendInput{ChannelID: channelID, Target: target, Chunk: model.DeliveryChunk{IdempotencyKey: "rich-bounds", RichText: parts}, RichMedia: []model.StoredMedia{media}})
+		if err != nil || result.Status != model.Rejected || result.ErrorCode != want || p.requests.Load() != before {
+			t.Fatalf("rich bounds: %+v %v", result, err)
+		}
+	}
 }
 
 func assertMediaCard(t *testing.T, f *fixture, p *googlePeer, input model.InboundSnapshot, target model.ReplyTarget, media *model.StoredMedia) {

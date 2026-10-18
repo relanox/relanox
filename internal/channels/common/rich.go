@@ -11,6 +11,12 @@ import (
 // ValidateRich checks the native envelope against the exact owned media resolved
 // by Core. It never loads bytes from identifiers supplied by a remote caller.
 func ValidateRich(input model.SendInput, limits model.RichTextLimits, unit model.LengthUnit, maximum int64) string {
+	return ValidateRichWithLabelLimit(input, limits, unit, maximum, 2000)
+}
+
+// ValidateRichWithLabelLimit allows native renderers that truncate descriptions
+// to omit the label bound with zero, while retaining media and envelope checks.
+func ValidateRichWithLabelLimit(input model.SendInput, limits model.RichTextLimits, unit model.LengthUnit, maximum int64, labelLimit int) string {
 	parts := input.Chunk.RichText
 	if len(parts) == 0 {
 		return ""
@@ -30,7 +36,7 @@ func ValidateRich(input model.SendInput, limits model.RichTextLimits, unit model
 		}
 		media := input.RichMedia[images]
 		images++
-		if !validRichImage(part, media, limits, maximum) {
+		if !validRichImage(part, media, limits, maximum, labelLimit) {
 			return "invalid_rich_media"
 		}
 		total += int64(len(media.Data))
@@ -47,7 +53,7 @@ func ValidateRich(input model.SendInput, limits model.RichTextLimits, unit model
 	return ""
 }
 
-func validRichImage(part model.RichTextPart, media model.StoredMedia, limits model.RichTextLimits, maximum int64) bool {
+func validRichImage(part model.RichTextPart, media model.StoredMedia, limits model.RichTextLimits, maximum int64, labelLimit int) bool {
 	ref, stored := part.Media, media.Reference
 	if ref.Kind != model.Image || stored.Kind != model.Image || ref.ID != stored.ID || ref.MIMEType != stored.MIMEType || ref.Size != stored.Size || ref.SHA256 != stored.SHA256 || ref.FileName != stored.FileName || int64(len(media.Data)) != ref.Size || len(media.Data) == 0 {
 		return false
@@ -59,5 +65,5 @@ func validRichImage(part model.RichTextPart, media model.StoredMedia, limits mod
 	if limits.MaxImageBytes > 0 {
 		limit = min(limit, limits.MaxImageBytes)
 	}
-	return (limit <= 0 || int64(len(media.Data)) <= limit) && text.Length(part.Label, model.UTF16) <= 2000
+	return (limit <= 0 || int64(len(media.Data)) <= limit) && (labelLimit <= 0 || text.Length(part.Label, model.UTF16) <= labelLimit)
 }
