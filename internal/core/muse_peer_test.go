@@ -3,7 +3,6 @@ package core_test
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -34,20 +32,28 @@ import (
 // under test. Source field numbers and ACK shape are from the verified SDK:
 // https://github.com/facebookincubator/muse-gadget-sdk/tree/fa073045a5572a8e3367fae142c1b7a7c554f222/linux/src/musegadget/noise
 type musePeer struct {
-	t       *testing.T
-	delay   time.Duration
-	hold    bool
-	started chan struct{}
-	chat    chan []byte
-	once    sync.Once
+	t         *testing.T
+	delay     time.Duration
+	hold      bool
+	started   chan struct{}
+	cancelled chan time.Duration
+	chat      chan []byte
+	once      sync.Once
 }
 
 func (p *musePeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/fetch_vms":
+		lookupStarted := time.Now()
 		p.once.Do(func() { close(p.started) })
 		if p.hold {
 			<-r.Context().Done()
+			if p.cancelled != nil {
+				select {
+				case p.cancelled <- time.Since(lookupStarted):
+				default:
+				}
+			}
 			return
 		}
 		timer := time.NewTimer(p.delay)
@@ -269,27 +275,35 @@ func newMuseRelay(t *testing.T, peer *musePeer) (*core.Runtime, *storage.Store, 
 	return runtime, store, cancel
 }
 
-func TestDefaultWorkerAllowsSlowNativeMusePrechat(t *testing.T) {
-	// The old unconditional 10-second outer race discarded an unsent native
-	// lookup. This real 11-second fetch must reach Noise and settle Accepted
-	// under the default 60-second lease / 40-second dispatch budget.
-	peer := &musePeer{t: t, delay: 11 * time.Second, started: make(chan struct{}), chat: make(chan []byte, 1)}
-	_, store, _ := newMuseRelay(t, peer)
+// The default dispatch operation is bounded to ten seconds. A native pre-chat
+// lookup interrupted before a chat is transmitted is safe to retry; the actual
+// HTTP peer must observe cancellation, not merely a detached worker timeout.
+func TestDefaultWorkerBoundsNativeMusePrechatAtTenSeconds(t *testing.T) {
+	peer := &musePeer{t: t, hold: true, started: make(chan struct{}), cancelled: make(chan time.Duration, 1), chat: make(chan []byte, 1)}
+	_, store, cancel := newMuseRelay(t, peer)
+	select {
+	case elapsed := <-peer.cancelled:
+		if elapsed < 9*time.Second || elapsed > 15*time.Second {
+			t.Fatalf("native lookup cancellation elapsed=%s; want ten seconds", elapsed)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("dispatch deadline did not cancel native pre-chat I/O")
+	}
+	waitForQueue(t, "bounded pre-chat retry settlement", func(ctx context.Context) (bool, string, error) {
+		records, err := store.ListInbound(ctx, model.ListInboundInput{StatusFilter: model.StatusFilter{Limit: 1}})
+		if err != nil || len(records) == 0 {
+			return false, "inbound absent", err
+		}
+		record := records[0]
+		return record.Dispatch.Status == model.AttemptDue && record.Dispatch.Attempts == 1 && record.Dispatch.Lease == nil && record.Dispatch.ErrorCode == "muse_connect_failed", inboundProgress(record), nil
+	})
+	cancel()
 	select {
 	case body := <-peer.chat:
-		var request map[string]string
-		if json.Unmarshal(body, &request) != nil || request["session_id"] != "native-session" || !strings.Contains(request["message"], "original input") {
-			t.Fatalf("invalid native chat: %s", body)
-		}
-	case <-time.After(18 * time.Second):
-		t.Fatal("default worker cut off a valid native pre-chat stage")
-	}
-	record := awaitInbound(t, store, model.AttemptAccepted)
-	if record.Dispatch.Attempts != 1 {
-		t.Fatalf("slow native operation was retried: %#v", record.Dispatch)
+		t.Fatalf("cancelled lookup transmitted a chat: %s", body)
+	default:
 	}
 }
-
 func TestCancelledNativeMusePrechatSettlesRetryable(t *testing.T) {
 	peer := &musePeer{t: t, hold: true, started: make(chan struct{}), chat: make(chan []byte, 1)}
 	runtime, store, cancel := newMuseRelay(t, peer)

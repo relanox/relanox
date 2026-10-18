@@ -173,25 +173,16 @@ func preparedMessage(record model.InboundRecord) model.AgentMessage {
 }
 
 func (r *Runtime) replyStatus(ctx context.Context, record model.InboundRecord) (model.ReplyStatus, error) {
-	if isFiltered(record) {
-		return model.ReplyStatus{Status: model.Rejected, ErrorCode: "middleware_filtered"}, nil
+	status := model.RequestReplyStatus(record, nil)
+	if record.FinalDeliveryID == "" || status.Status == model.Rejected {
+		return status, nil
 	}
-	if record.FinalDeliveryID != "" {
-		delivery, err := r.store.GetOutbound(ctx, record.FinalDeliveryID)
-		if err != nil {
-			return model.ReplyStatus{}, err
-		}
-		if delivery == nil {
-			return model.ReplyStatus{Status: model.Unknown, DeliveryID: record.FinalDeliveryID}, nil
-		}
-		return model.ReplyStatus{Status: model.Outcome(delivery.Status), DeliveryID: delivery.DeliveryID, ErrorCode: delivery.ErrorCode}, nil
+	delivery, err := r.store.GetOutbound(ctx, record.FinalDeliveryID)
+	if err != nil {
+		return model.ReplyStatus{}, err
 	}
-	if record.RedactedAt != nil {
-		return model.ReplyStatus{Status: model.Expired}, nil
-	}
-	return model.ReplyStatus{Status: model.AwaitingFinal}, nil
+	return model.RequestReplyStatus(record, delivery), nil
 }
-
 func (s *scopedAgent) Status(ctx context.Context, input model.StatusInput) (model.AgentStatus, error) {
 	status := model.AgentStatus{MediaLimits: s.runtime.cfg.Media, Channels: []model.AgentChannelStatus{}}
 	for _, id := range s.channelIDs() {
