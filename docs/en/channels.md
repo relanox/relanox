@@ -67,7 +67,9 @@ relanox wechat-login --account wechat --config relanox.json
 relanox discover --account wecom --config relanox.json --timeout 2m
 ```
 
-WeChat refresh creates a new credential file while preserving the old one and
+WeChat displays a scannable QR code on stderr and emits login events on stdout.
+Both commands accept numeric seconds such as `--timeout 120`, or an explicit
+duration such as `--timeout 2m`. WeChat refresh creates a new credential file while preserving the old one and
 existing bindings. Interactive additional verification is hidden; scripts can use
 `--verification-code-file` with `--json`.
 
@@ -92,6 +94,20 @@ other native rich/media paths also require the configured HTTPS origin to be
 reachable by the external service. Teams personal files can remain pending until
 the recipient grants consent.
 
+Native rendering retains each platform's format and budget:
+
+| Channel | Rendering and preflight limits |
+| --- | --- |
+| Telegram | MP4 animations are received as video; MP3 and M4A audio use the native audio player where supported. |
+| Discord | Rich replies use Components V2 Text Display and Media Gallery. Image descriptions are truncated at 1,024 UTF-16 units; rich images are limited to 10 MiB each and 20 MiB total. Ordinary uploads are limited to 20 MiB. |
+| Slack | Markdown becomes structured `rich_text` styles and links. Ordinary text is split against a 4,000-byte rendered JSON budget. |
+| LINE | Rich notification previews retain up to 1,500 UTF-16 units. |
+| Matrix | Rich replies separate plain-text fallback parts with blank lines. |
+| Google Chat | Each rich chunk permits up to 20 parts and 2,000 UTF-8 bytes of text, with stable native request IDs. |
+
+Lower configured media limits still apply. Published media URLs reuse a valid
+ticket until it expires, and every read rechecks current conversation authorization.
+
 WhatsApp sends require a recorded incoming message within the 24-hour
 customer-service window. Relanox uses QQ passive replies for 5 minutes in groups
 or 1 hour in C2C chats; after expiry, it omits `msg_id` and attempts a proactive
@@ -115,8 +131,8 @@ need Discord approval. Relanox requests `GUILD_MESSAGES`, `DIRECT_MESSAGES` and
 See Discord's [Gateway documentation](https://github.com/discord/discord-api-docs/blob/main/developers/events/gateway.mdx).
 
 Grant `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` for receiving and history recovery,
-`SEND_MESSAGES` for replies, `ATTACH_FILES` for media and `EMBED_LINKS` for rich
-embeds. Threads also need `SEND_MESSAGES_IN_THREADS` and visibility/membership for
+`SEND_MESSAGES` for replies, `ATTACH_FILES` for media and `EMBED_LINKS` for link
+and embedded media previews. Threads also need `SEND_MESSAGES_IN_THREADS` and visibility/membership for
 private threads. Set binding `chatId` to the parent channel ID and `threadId` to
 the native thread channel ID; omit `threadId` for ordinary channels. A direct
 message binding uses its DM channel ID. Relanox does not create, join or unarchive

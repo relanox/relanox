@@ -70,7 +70,7 @@ pnpm docs:dev
 ```
 
 The build checks Vue/TypeScript and local Markdown links, writes
-`docs/.vitepress/dist`, and generates redirects for published legacy paths.
+`docs/.vitepress/dist`, and generates redirects for published paths.
 Private `docs/local/` files are excluded. Keep English and Chinese operator
 pages aligned with actual native options. Documentation changes must pass this build.
 
@@ -82,7 +82,7 @@ The `DOCS_DISPATCH_TOKEN` Actions secret needs access only to that site reposito
 with Contents read/write permission for repository dispatch. There is no scheduled
 source polling. The site's `source-commit.txt`
 records the exact source revision. The same workflow maintains redirects from
-`/relanox/`, including URLs used before the Go migration.
+`/relanox/` to the site's root paths.
 
 Deployment work must also read private `docs/local/deployment.md` from the primary checkout if present.
 

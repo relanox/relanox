@@ -63,6 +63,8 @@ relanox wechat-login --account wechat --config relanox.json
 relanox discover --account wecom --config relanox.json --timeout 2m
 ```
 
+微信在 stderr 绘制可扫描的二维码，在 stdout 输出登录事件。这两个命令的超时既接受
+`--timeout 120` 这样的秒数，也接受 `--timeout 2m` 这样的时长。
 微信刷新会生成新凭据文件，保留旧文件与已有 binding。二次验证码在交互终端隐藏输入；
 脚本可结合 `--verification-code-file` 和 `--json` 使用。
 
@@ -80,6 +82,20 @@ Telegram、Discord、Slack、飞书、钉钉、QQ、Teams、WhatsApp、Matrix、
 Google Chat 接收原生附件；出站使用公开 URL 图片卡片和文件按钮，不是原生附件上传。
 部分富文本和媒体路径也需要外部平台可访问配置的 HTTPS 地址。Teams 个人文件可能等待
 接收者 consent。
+
+原生呈现保留各平台的格式和预算：
+
+| 通道 | 呈现与发送前检查 |
+| --- | --- |
+| Telegram | MP4 动画作为视频接收；支持的 MP3、M4A 音频使用原生音频播放器。 |
+| Discord | 图文回复使用 Components V2 的 Text Display 和 Media Gallery。图片描述截到 1,024 个 UTF-16 单元；图文图片单张最多 10 MiB、合计 20 MiB，普通上传最多 20 MiB。 |
+| Slack | Markdown 转为结构化 `rich_text` 样式和链接，普通文本按渲染后 JSON 的 4,000 字节预算拆分。 |
+| LINE | 图文通知预览最多保留 1,500 个 UTF-16 单元。 |
+| Matrix | 图文回复的纯文本 fallback 各部分以空行分隔。 |
+| Google Chat | 每个图文分块最多 20 部分、2,000 个 UTF-8 文本字节，保留稳定的原生请求 ID。 |
+
+配置中更低的媒体限制仍然生效。公开媒体 URL 在票据有效期内复用，每次读取都会重新检查
+当前会话授权。
 
 WhatsApp 发送需要处于已记录入站消息后的 24 小时客户服务窗口内。QQ 群聊的被动回复
 窗口按 5 分钟、C2C 按 1 小时处理；过期后省略 `msg_id`，尝试主动发送，仍受平台权限
@@ -100,7 +116,7 @@ Relanox 请求 `GUILD_MESSAGES`、`DIRECT_MESSAGES` 和 `MESSAGE_CONTENT`；内�
 附件和 REST 历史。参见官方 [Gateway 文档](https://github.com/discord/discord-api-docs/blob/main/developers/events/gateway.mdx)。
 
 接收及恢复需要 `VIEW_CHANNEL` 和 `READ_MESSAGE_HISTORY`，回复需要 `SEND_MESSAGES`，
-媒体需要 `ATTACH_FILES`，富文本嵌入需要 `EMBED_LINKS`。线程还需要
+媒体需要 `ATTACH_FILES`，链接及嵌入式媒体预览需要 `EMBED_LINKS`。线程还需要
 `SEND_MESSAGES_IN_THREADS`，私有线程需要 bot 可见或已加入。binding 的 `chatId`
 使用父频道 ID，`threadId` 使用原生线程频道 ID；普通频道省略 `threadId`，私聊使用
 DM 频道 ID。Relanox 不会创建、加入或取消归档线程。参见官方[权限文档](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx)。

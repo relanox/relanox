@@ -53,7 +53,7 @@ bin/relanox run --config relanox.json
 
 `validate` 完全离线，不打开数据库，也不连接平台。`run` 创建配置中的 SQLite 数据库，
 或在已有的空 PostgreSQL 数据库 / schema 中初始化表，再启动所选原生组件。不兼容的
-旧库会被拒绝；使用非默认 schema 时，需要先创建该 schema。
+数据库格式会被拒绝；使用非默认 schema 时，需要先创建该 schema。
 
 使用允许的发送者，在已绑定会话中发送消息。Agent 应当携带触发消息准确的 `requestId`
 回复，以保留原生会话、线程和引用关系。本地协议测试不代表任意真实账号已具备所需权限。

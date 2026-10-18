@@ -88,7 +88,8 @@ docker run --rm --name relanox --stop-timeout 40 \
 
 The example uses a host HTTPS proxy. Do not expose port 8788. Keep volumes across
 restarts and include them in backups. The 40-second container stop timeout exceeds
-the application's 30-second shutdown deadline, matching `compose.yml`. A process
+the application's default 15-second shutdown deadline, matching `compose.yml`.
+Keep the container timeout above any configured `http.shutdownTimeoutSeconds`. A process
 restart should reopen the same
 database, rather than recreate an empty configuration or change account IDs.
 

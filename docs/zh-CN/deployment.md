@@ -55,7 +55,8 @@ docker run --rm --name relanox --stop-timeout 40 \
 ```
 
 示例由宿主提供 HTTPS 代理，不发布 8788。40 秒容器停止期限与 `compose.yml` 一致，
-大于应用的 30 秒关闭期限。重启时保留卷并纳入备份，重新打开原数据库，
+大于应用默认的 15 秒关闭期限。若调整 `http.shutdownTimeoutSeconds`，容器期限也应保持更长。
+重启时保留卷并纳入备份，重新打开原数据库，
 不要创建空配置或改变账号 ID。
 
 ## 构建与发布

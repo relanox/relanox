@@ -93,11 +93,13 @@ SQLite uses `storage.driver = "sqlite"` and `storage.path`. PostgreSQL uses
 `storage.driver = "postgres"`, a secret reference in `storage.url`, and an optional
 schema name in `storage.schema`. Both use the same Ent (`entgo.io/ent`) schema,
 generated query builders and transactions. Versioned migrations are shipped with
-the source. The Go runtime refuses a legacy TypeScript database or an unsupported
-schema format; it does not silently recreate or migrate it.
+the source. The runtime refuses unsupported schema formats without changing
+the existing database.
 
 Defaults are four workers, a 500 ms polling interval, 60-second dispatch leases,
-180-second send leases, eight attempts and 30-day retention. Media defaults to
+630-second send leases, eight attempts and 30-day retention. Agent dispatch and
+preparation have a 10-second call budget; native sends have at most 600 seconds,
+bounded further by the lease and caller context. Media defaults to
 100 MiB per file and total message, with ten attachments. Native limits can be
 lower. Configure `queue`, `media` and HTTP timeout fields only when their defaults
 do not fit the deployment. Unknown structural fields and invalid bounds fail
@@ -105,12 +107,15 @@ offline validation.
 
 | HTTP field | Default | Scope |
 | --- | --- | --- |
+| `startupTimeoutSeconds` | 30 seconds | Storage initialization and component startup; accepts 1–120 seconds. |
+| `shutdownTimeoutSeconds` | 15 seconds | HTTP draining and native component shutdown; accepts 1–120 seconds. |
 | `readTimeoutSeconds` | 30 seconds | Incoming requests on the application and management servers. |
 | `writeTimeoutSeconds` | 60 seconds | Responses from the application and management servers. |
 | `maxBodyBytes` | 4,194,304 bytes (4 MiB) | Default request-body limit for routes that do not declare their own limit. |
 
-These fields do not set a global deadline for outgoing SDK requests. Native
-operations have their own deadlines and remain bound to the caller's context.
+Read/write HTTP timeouts do not set a global deadline for outgoing SDK requests.
+Native operations have their own deadlines and remain bound to the caller's
+context. Incoming `context` and private target data share a 64 KiB JSON budget.
 
 ## Speech and observability
 
@@ -125,6 +130,7 @@ operations have their own deadlines and remain bound to the caller's context.
   },
   "observability": {
     "level": "info",
+    "logs": true,
     "metrics": true,
     "otlpEndpoint": "https://collector.example.com/v1/traces"
   }
@@ -133,5 +139,10 @@ operations have their own deadlines and remain bound to the caller's context.
 
 Merge these fields into the main document. Speech prepares incoming audio using
 Tencent's hosted ASR service; original content and media remain stored separately.
-Operational logs exclude message content and resolved credentials. Metrics are
-exposed only on the loopback management listener. OTLP traces are optional.
+Audio attachments run concurrently, with an independent eight-second recognition
+budget for each file, also bounded by the preparation call and parent context.
+Logs and metrics are enabled by default and can be disabled independently with
+`logs: false` and `metrics: false`. Operational logs go to stdout and exclude
+message content and resolved credentials. Metrics are exposed only on the loopback
+management listener. Optional OTLP traces sample every new root trace and follow
+the sampling decision of an incoming parent.
