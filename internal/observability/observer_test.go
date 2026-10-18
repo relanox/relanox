@@ -47,7 +47,7 @@ func TestStructuredLogsAndMetricsRejectUntrustedFields(t *testing.T) {
 		t.Fatalf("unsafe structured logs: %s", logs.String())
 	}
 	metrics := scrape(t, observer)
-	if strings.Contains(metrics, "private-token") || !strings.Contains(metrics, `relanox_inbound_total{agent="",channel="wechat",component="core",error_class="",operation="ingest",outcome="accepted"} 3`) || !strings.Contains(metrics, `relanox_pending{agent="",channel="",component="",error_class="",operation="",outcome=""} 7`) || !strings.Contains(metrics, `relanox_telemetry_dropped_total{signal="metrics"} 2`) {
+	if strings.Contains(metrics, "private-token") || !strings.Contains(metrics, `relanox_inbound_total{agent="",channel="wechat",error_class="",operation="ingest",outcome="accepted",plugin="core"} 3`) || !strings.Contains(metrics, `relanox_pending{agent="",channel="",error_class="",operation="",outcome="",plugin=""} 7`) || !strings.Contains(metrics, `relanox_telemetry_dropped_total{signal="metrics"} 2`) {
 		t.Fatalf("metric validation or values lost: %s", metrics)
 	}
 	other, err := observability.New(config.Observability{Metrics: true}, observability.Options{Writer: io.Discard})

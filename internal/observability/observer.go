@@ -54,7 +54,7 @@ func New(cfg config.Observability, options Options) (*Observer, error) {
 		return nil, err
 	}
 	if options.Writer == nil {
-		options.Writer = os.Stderr
+		options.Writer = os.Stdout
 	}
 	o := &Observer{cfg: cfg, writer: options.Writer, logs: make(chan []byte, 128), logDone: make(chan struct{}), closeDone: make(chan struct{})}
 	o.initMetrics()
@@ -68,7 +68,7 @@ func New(cfg config.Observability, options Options) (*Observer, error) {
 var levels = map[string]int{"debug": 0, "info": 1, "warn": 2, "error": 3}
 
 func (o *Observer) Log(ctx context.Context, level, event string, fields model.LogFields) {
-	if o.closed.Load() {
+	if o.closed.Load() || !o.cfg.LogsEnabled() {
 		return
 	}
 	priority, known := levels[level]

@@ -204,7 +204,8 @@ func (s *Server) serveUpload(w http.ResponseWriter, r *http.Request, ticket medi
 	}
 	reference, err := media.Upload(r.Context(), ticket.ChannelID, ticket.MediaID, model.MediaUpload{Kind: ticket.Kind, MIMEType: ticket.MIMEType, FileName: ticket.FileName, Data: data, DurationMS: ticket.DurationMS, PreviewMediaID: ticket.PreviewMediaID})
 	if err != nil {
-		JSON(w, uploadErrorStatus(err), map[string]string{"error": "upload_failed"})
+		status, code := uploadFailure(err)
+		JSON(w, status, map[string]string{"error": code})
 		return
 	}
 	if reference == nil {
@@ -214,18 +215,19 @@ func (s *Server) serveUpload(w http.ResponseWriter, r *http.Request, ticket medi
 	JSON(w, 200, map[string]string{"fileId": reference.ID})
 }
 
-func uploadErrorStatus(err error) int {
-	switch err.Error() {
+func uploadFailure(err error) (int, string) {
+	code := err.Error()
+	switch code {
 	case "media_conflict":
-		return 409
+		return 409, code
 	case "media_too_large", "media_total_too_large", "too_many_attachments":
-		return 413
+		return 413, code
 	case "invalid_media_preview":
-		return 400
+		return 400, code
 	case "media_storage_missing":
-		return 503
+		return 503, code
 	}
-	return 500
+	return 500, "upload_failed"
 }
 
 func validUpload(in uploadInput) bool {

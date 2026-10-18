@@ -212,10 +212,19 @@ func safeComponent(value string) string {
 	return ""
 }
 
+// Plugin is the external telemetry label for a statically composed component;
+// these names do not discover or load executable modules.
+func pluginName(component string) string {
+	if component == "observability" {
+		return "observability-standard"
+	}
+	return strings.ReplaceAll(component, ":", "-")
+}
+
 func safeFields(fields model.LogFields) map[string]string {
 	result := map[string]string{}
 	if component := safeComponent(fields.Component); component != "" {
-		result["component"] = component
+		result["plugin"] = pluginName(component)
 	}
 	if operations[fields.Operation] {
 		result["operation"] = fields.Operation
@@ -252,5 +261,5 @@ func safeLabels(labels model.MetricLabels) ([]string, bool) {
 	if labels.Component != "" && component == "" || labels.Operation != "" && !operations[labels.Operation] || labels.Outcome != "" && !outcomes[labels.Outcome] || labels.ErrorClass != "" && !errorClasses[labels.ErrorClass] {
 		return nil, false
 	}
-	return []string{string(labels.Channel), string(labels.Agent), component, labels.Operation, labels.Outcome, labels.ErrorClass}, true
+	return []string{string(labels.Channel), string(labels.Agent), pluginName(component), labels.Operation, labels.Outcome, labels.ErrorClass}, true
 }

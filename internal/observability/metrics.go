@@ -11,9 +11,9 @@ import (
 	"github.com/relanox/relanox/internal/model"
 )
 
-var labelNames = []string{"channel", "agent", "component", "operation", "outcome", "error_class"}
+var labelNames = []string{"channel", "agent", "plugin", "operation", "outcome", "error_class"}
 
-var counterNames = strings.Fields("relanox_inbound_total relanox_discovered_conversations_total relanox_settlement_conflicts_total relanox_work_total relanox_dispatch_total relanox_delivery_total relanox_retries_total relanox_transcription_total")
+var counterNames = strings.Fields("relanox_inbound_total relanox_discovered_conversations_total relanox_settlement_conflicts_total relanox_work_total relanox_dispatch_total relanox_delivery_total relanox_retries_total relanox_middleware_total relanox_transcription_total")
 
 var histogramNames = strings.Fields("relanox_preparation_duration_seconds relanox_transcription_duration_seconds relanox_http_duration_seconds relanox_storage_duration_seconds relanox_dispatch_duration_seconds relanox_send_duration_seconds relanox_delivery_duration_seconds")
 

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/relanox/relanox/internal/config"
@@ -105,8 +104,6 @@ func (p *Preparer) Process(ctx context.Context, input model.PreparationInput) (m
 		return model.PreparationOutput{}, err
 	}
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
 	transcriptions := p.recognizeAll(ctx, input, options)
 	parts := []string{input.Message.Text}
 	for _, result := range transcriptions {
@@ -135,17 +132,10 @@ func (p *Preparer) recognizeAll(ctx context.Context, input model.PreparationInpu
 		}
 	}
 	results := make([]Transcription, len(audio))
-	var next atomic.Int64
 	var workers sync.WaitGroup
-	for range min(4, len(audio)) {
+	for index, ref := range audio {
 		workers.Go(func() {
-			for {
-				index := int(next.Add(1) - 1)
-				if index >= len(audio) {
-					return
-				}
-				results[index] = p.recognizeClip(ctx, input.ReadMedia, audio[index], options)
-			}
+			results[index] = p.recognizeClip(ctx, input.ReadMedia, ref, options)
 		})
 	}
 	workers.Wait()
