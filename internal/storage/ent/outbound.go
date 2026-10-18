@@ -30,6 +30,8 @@ type Outbound struct {
 	MessageID string `json:"message_id,omitempty"`
 	// Digest holds the value of the "digest" field.
 	Digest string `json:"digest,omitempty"`
+	// Sequence holds the value of the "sequence" field.
+	Sequence int64 `json:"sequence,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt int64 `json:"created_at,omitempty"`
 	// Status holds the value of the "status" field.
@@ -77,7 +79,7 @@ func (*Outbound) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case outbound.FieldRedacted:
 			values[i] = new(sql.NullBool)
-		case outbound.FieldCreatedAt, outbound.FieldVersion, outbound.FieldDueAt, outbound.FieldLeaseExpiresAt:
+		case outbound.FieldSequence, outbound.FieldCreatedAt, outbound.FieldVersion, outbound.FieldDueAt, outbound.FieldLeaseExpiresAt:
 			values[i] = new(sql.NullInt64)
 		case outbound.FieldID, outbound.FieldChannel, outbound.FieldChannelID, outbound.FieldAccountID, outbound.FieldEndpointID, outbound.FieldMessageID, outbound.FieldDigest, outbound.FieldStatus:
 			values[i] = new(sql.NullString)
@@ -137,6 +139,12 @@ func (_m *Outbound) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field digest", values[i])
 			} else if value.Valid {
 				_m.Digest = value.String
+			}
+		case outbound.FieldSequence:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field sequence", values[i])
+			} else if value.Valid {
+				_m.Sequence = value.Int64
 			}
 		case outbound.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -241,6 +249,9 @@ func (_m *Outbound) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("digest=")
 	builder.WriteString(_m.Digest)
+	builder.WriteString(", ")
+	builder.WriteString("sequence=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Sequence))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CreatedAt))

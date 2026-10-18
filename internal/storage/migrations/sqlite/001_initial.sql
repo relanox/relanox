@@ -14,11 +14,12 @@ CREATE INDEX `mediaasset_channel_id_staged` ON `relanox_go_media` (`channel_id`,
 CREATE INDEX `mediaasset_retained_created_at` ON `relanox_go_media` (`retained`, `created_at`);
 CREATE INDEX `mediaasset_preview_id` ON `relanox_go_media` (`preview_id`);
 CREATE TABLE `relanox_go_metadata` (`id` text NOT NULL, `format` integer NOT NULL, `serial` integer NOT NULL DEFAULT (0), `next_work` text NOT NULL DEFAULT ('dispatch'), PRIMARY KEY (`id`));
-CREATE TABLE `relanox_go_outbounds` (`id` text NOT NULL, `channel` text NOT NULL, `channel_id` text NOT NULL, `account_id` text NOT NULL, `endpoint_id` text NOT NULL, `message_id` text NOT NULL, `digest` text NOT NULL, `created_at` integer NOT NULL, `status` text NOT NULL, `version` integer NOT NULL, `due_at` integer NOT NULL, `lease_expires_at` integer NULL, `redacted` bool NOT NULL, `record` json NOT NULL, PRIMARY KEY (`id`));
+CREATE TABLE `relanox_go_outbounds` (`id` text NOT NULL, `channel` text NOT NULL, `channel_id` text NOT NULL, `account_id` text NOT NULL, `endpoint_id` text NOT NULL, `message_id` text NOT NULL, `digest` text NOT NULL, `sequence` integer NOT NULL, `created_at` integer NOT NULL, `status` text NOT NULL, `version` integer NOT NULL, `due_at` integer NOT NULL, `lease_expires_at` integer NULL, `redacted` bool NOT NULL, `record` json NOT NULL, PRIMARY KEY (`id`));
+CREATE UNIQUE INDEX `relanox_go_outbounds_sequence_key` ON `relanox_go_outbounds` (`sequence`);
 CREATE UNIQUE INDEX `outbound_channel_id_message_id` ON `relanox_go_outbounds` (`channel_id`, `message_id`);
-CREATE INDEX `outbound_status_due_at_created_at` ON `relanox_go_outbounds` (`status`, `due_at`, `created_at`);
+CREATE INDEX `outbound_status_due_at_sequence` ON `relanox_go_outbounds` (`status`, `due_at`, `sequence`);
 CREATE INDEX `outbound_lease_expires_at` ON `relanox_go_outbounds` (`lease_expires_at`);
-CREATE INDEX `outbound_channel_id_status_created_at` ON `relanox_go_outbounds` (`channel_id`, `status`, `created_at`);
+CREATE INDEX `outbound_channel_id_status_sequence` ON `relanox_go_outbounds` (`channel_id`, `status`, `sequence`);
 CREATE INDEX `outbound_endpoint_id_created_at` ON `relanox_go_outbounds` (`endpoint_id`, `created_at`);
 CREATE INDEX `outbound_redacted_created_at` ON `relanox_go_outbounds` (`redacted`, `created_at`);
 CREATE TABLE `relanox_go_state` (`id` text NOT NULL, `component` text NOT NULL, `owner_id` text NOT NULL, `key` text NOT NULL, `version` integer NOT NULL, `live` bool NOT NULL, `expires_at` integer NULL, `value` json NULL, PRIMARY KEY (`id`));
@@ -27,4 +28,4 @@ CREATE INDEX `state_component_owner_id_live_expires_at` ON `relanox_go_state` (`
 CREATE TABLE `relanox_go_inbound_assets` (`inbound_id` text NOT NULL, `media_asset_id` text NOT NULL, PRIMARY KEY (`inbound_id`, `media_asset_id`), CONSTRAINT `relanox_go_inbound_assets_inbound_id` FOREIGN KEY (`inbound_id`) REFERENCES `relanox_go_inbounds` (`id`) ON DELETE CASCADE, CONSTRAINT `relanox_go_inbound_assets_media_asset_id` FOREIGN KEY (`media_asset_id`) REFERENCES `relanox_go_media` (`id`) ON DELETE CASCADE);
 CREATE TABLE `relanox_go_outbound_assets` (`outbound_id` text NOT NULL, `media_asset_id` text NOT NULL, PRIMARY KEY (`outbound_id`, `media_asset_id`), CONSTRAINT `relanox_go_outbound_assets_outbound_id` FOREIGN KEY (`outbound_id`) REFERENCES `relanox_go_outbounds` (`id`) ON DELETE CASCADE, CONSTRAINT `relanox_go_outbound_assets_media_asset_id` FOREIGN KEY (`media_asset_id`) REFERENCES `relanox_go_media` (`id`) ON DELETE CASCADE);
 PRAGMA foreign_keys = on;
-INSERT INTO `relanox_go_metadata` (`format`, `serial`, `next_work`, `id`) VALUES (1, 0, 'dispatch', 'schema');
+INSERT INTO `relanox_go_metadata` (`format`, `serial`, `next_work`, `id`) VALUES (2, 0, 'dispatch', 'schema');

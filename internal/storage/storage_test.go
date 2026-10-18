@@ -363,3 +363,34 @@ func TestPendingPageFiltersInactiveOwnershipBeforeLimit(t *testing.T) {
 		t.Fatalf("stale ownership consumed page: %#v %v", pending, err)
 	}
 }
+
+// FIFO follows committed enqueue order, including same-millisecond sends whose
+// IDs sort backwards. Prior lease tests used ascending IDs/timestamps and missed
+// this case. Real storage and reopen exercise the production claim selector.
+func TestOutboundFIFOUsesInsertionOrderAcrossReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fifo.db")
+	s := openStore(t, path)
+	initialize(t, s)
+	at := time.Now().UTC().Truncate(time.Millisecond)
+	for _, id := range []string{"ffffffff-ffff-4fff-8fff-ffffffffffff", "00000000-0000-4000-8000-000000000000"} {
+		receipt, err := s.EnqueueMessage(ctx, outboundInput(id, id, at, nil))
+		if err != nil || receipt.Status != model.Queued {
+			t.Fatalf("enqueue %s: %#v %v", id, receipt, err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = openStore(t, path)
+	for _, id := range []string{"ffffffff-ffff-4fff-8fff-ffffffffffff", "00000000-0000-4000-8000-000000000000"} {
+		for range 2 {
+			work := take(t, s, at, model.SendWork)
+			if len(work) != 1 || work[0].Outbound.DeliveryID != id {
+				t.Fatalf("FIFO expected %s, got %#v", id, work)
+			}
+			if result := settle(t, s, work[0], at, model.Sent); result.Status != model.Updated {
+				t.Fatalf("settlement: %#v", result)
+			}
+		}
+	}
+}

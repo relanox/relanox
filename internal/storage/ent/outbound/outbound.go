@@ -24,6 +24,8 @@ const (
 	FieldMessageID = "message_id"
 	// FieldDigest holds the string denoting the digest field in the database.
 	FieldDigest = "digest"
+	// FieldSequence holds the string denoting the sequence field in the database.
+	FieldSequence = "sequence"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -58,6 +60,7 @@ var Columns = []string{
 	FieldEndpointID,
 	FieldMessageID,
 	FieldDigest,
+	FieldSequence,
 	FieldCreatedAt,
 	FieldStatus,
 	FieldVersion,
@@ -119,6 +122,11 @@ func ByMessageID(opts ...sql.OrderTermOption) OrderOption {
 // ByDigest orders the results by the digest field.
 func ByDigest(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDigest, opts...).ToFunc()
+}
+
+// BySequence orders the results by the sequence field.
+func BySequence(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSequence, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

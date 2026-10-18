@@ -32,7 +32,7 @@ func (s *Store) TakeDue(ctx context.Context, input model.TakeDueInput) ([]model.
 		if err != nil {
 			return err
 		}
-		deliveries, err := tx.Outbound.Query().Where(outbound.StatusEQ(string(model.DeliveryPending)), outbound.LeaseExpiresAtIsNil(), outbound.DueAtLTE(input.Now.UnixNano()), noEarlierDelivery).Order(outbound.ByCreatedAt(), outbound.ByID()).Limit(input.Limit).All(ctx)
+		deliveries, err := tx.Outbound.Query().Where(outbound.StatusEQ(string(model.DeliveryPending)), outbound.LeaseExpiresAtIsNil(), outbound.DueAtLTE(input.Now.UnixNano()), noEarlierDelivery).Order(outbound.BySequence()).Limit(input.Limit).All(ctx)
 		if err != nil {
 			return err
 		}
@@ -57,7 +57,7 @@ func (s *Store) TakeDue(ctx context.Context, input model.TakeDueInput) ([]model.
 // QQ's native reply sequence can safely proceed past an unknown older response.
 func noEarlierDelivery(selector *sql.Selector) {
 	earlier := sql.Table(outbound.Table).As("earlier_delivery")
-	older := sql.Or(sql.ColumnsLT(earlier.C(outbound.FieldCreatedAt), selector.C(outbound.FieldCreatedAt)), sql.And(sql.ColumnsEQ(earlier.C(outbound.FieldCreatedAt), selector.C(outbound.FieldCreatedAt)), sql.ColumnsLT(earlier.C(outbound.FieldID), selector.C(outbound.FieldID))))
+	older := sql.ColumnsLT(earlier.C(outbound.FieldSequence), selector.C(outbound.FieldSequence))
 	blocking := sql.And(sql.In(earlier.C(outbound.FieldStatus), string(model.DeliveryPending), string(model.DeliveryUnknown)), sql.Or(sql.EQ(earlier.C(outbound.FieldStatus), string(model.DeliveryPending)), sql.NEQ(earlier.C(outbound.FieldChannel), string(model.QQ))))
 	query := sql.Select(earlier.C(outbound.FieldID)).From(earlier).Where(sql.And(sql.ColumnsEQ(earlier.C(outbound.FieldChannelID), selector.C(outbound.FieldChannelID)), older, blocking))
 	selector.Where(sql.NotExists(query))
@@ -82,7 +82,7 @@ func expireWork(ctx context.Context, tx *ent.Tx, input model.TakeDueInput) error
 			return err
 		}
 	}
-	deliveries, err := tx.Outbound.Query().Where(outbound.StatusEQ(string(model.DeliveryPending)), outbound.LeaseExpiresAtLTE(input.Now.UnixNano())).Order(outbound.ByCreatedAt(), outbound.ByID()).Limit(input.Limit).All(ctx)
+	deliveries, err := tx.Outbound.Query().Where(outbound.StatusEQ(string(model.DeliveryPending)), outbound.LeaseExpiresAtLTE(input.Now.UnixNano())).Order(outbound.BySequence()).Limit(input.Limit).All(ctx)
 	if err != nil {
 		return err
 	}

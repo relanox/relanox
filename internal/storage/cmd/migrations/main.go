@@ -51,7 +51,7 @@ func main() {
 		fail(err)
 	}
 	writer := ent.NewClient(ent.Driver(entschema.NewWriteDriver(entDialect, file)))
-	if err = writer.Metadata.Create().SetID("schema").SetFormat(1).Exec(context.Background()); err != nil {
+	if err = writer.Metadata.Create().SetID("schema").SetFormat(2).Exec(context.Background()); err != nil {
 		fail(err)
 	}
 }

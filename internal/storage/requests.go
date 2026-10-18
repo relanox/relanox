@@ -163,7 +163,13 @@ func enqueueNew(ctx context.Context, tx *ent.Tx, input model.EnqueueMessageInput
 		return nil
 	}
 	record := input.Outbound
-	if err = tx.Outbound.Create().SetID(record.DeliveryID).SetChannel(string(record.Target.Channel)).SetChannelID(record.ChannelID).SetAccountID(record.Target.AccountID).SetEndpointID(record.Endpoint.ID).SetMessageID(record.MessageID).SetDigest(messageDigest(input.Message)).SetCreatedAt(record.CreatedAt.UnixNano()).SetStatus(string(record.Status)).SetVersion(record.Version).SetDueAt(record.DueAt.UnixNano()).SetRedacted(false).SetRecord(record).AddAssetIDs(ids...).Exec(ctx); err != nil {
+	// write allocates this serial while holding the shared transaction lock,
+	// preserving commit order independently of message clocks and random IDs.
+	metadata, err := tx.Metadata.Get(ctx, "schema")
+	if err != nil {
+		return err
+	}
+	if err = tx.Outbound.Create().SetID(record.DeliveryID).SetSequence(metadata.Serial).SetChannel(string(record.Target.Channel)).SetChannelID(record.ChannelID).SetAccountID(record.Target.AccountID).SetEndpointID(record.Endpoint.ID).SetMessageID(record.MessageID).SetDigest(messageDigest(input.Message)).SetCreatedAt(record.CreatedAt.UnixNano()).SetStatus(string(record.Status)).SetVersion(record.Version).SetDueAt(record.DueAt.UnixNano()).SetRedacted(false).SetRecord(record).AddAssetIDs(ids...).Exec(ctx); err != nil {
 		return err
 	}
 	if source != nil && input.Message.Reply.Kind == model.Final {

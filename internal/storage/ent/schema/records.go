@@ -65,13 +65,14 @@ func (Outbound) Annotations() []schema.Annotation {
 func (Outbound) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id"), field.String("channel"), field.String("channel_id"), field.String("account_id"), field.String("endpoint_id"), field.String("message_id"), field.String("digest"),
+		field.Int64("sequence").Immutable().Unique(),
 		field.Int64("created_at"), field.String("status"), field.Int64("version"), field.Int64("due_at"), field.Int64("lease_expires_at").Optional().Nillable(),
 		field.Bool("redacted"), field.JSON("record", model.OutboundRecord{}),
 	}
 }
 
 func (Outbound) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("channel_id", "message_id").Unique(), index.Fields("status", "due_at", "created_at"), index.Fields("lease_expires_at"), index.Fields("channel_id", "status", "created_at"), index.Fields("endpoint_id", "created_at"), index.Fields("redacted", "created_at")}
+	return []ent.Index{index.Fields("channel_id", "message_id").Unique(), index.Fields("status", "due_at", "sequence"), index.Fields("lease_expires_at"), index.Fields("channel_id", "status", "sequence"), index.Fields("endpoint_id", "created_at"), index.Fields("redacted", "created_at")}
 }
 
 func (Outbound) Edges() []ent.Edge {

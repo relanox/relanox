@@ -60,6 +60,12 @@ func (_c *OutboundCreate) SetDigest(v string) *OutboundCreate {
 	return _c
 }
 
+// SetSequence sets the "sequence" field.
+func (_c *OutboundCreate) SetSequence(v int64) *OutboundCreate {
+	_c.mutation.SetSequence(v)
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *OutboundCreate) SetCreatedAt(v int64) *OutboundCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -183,6 +189,9 @@ func (_c *OutboundCreate) check() error {
 	if _, ok := _c.mutation.Digest(); !ok {
 		return &ValidationError{Name: "digest", err: errors.New(`ent: missing required field "Outbound.digest"`)}
 	}
+	if _, ok := _c.mutation.Sequence(); !ok {
+		return &ValidationError{Name: "sequence", err: errors.New(`ent: missing required field "Outbound.sequence"`)}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Outbound.created_at"`)}
 	}
@@ -260,6 +269,10 @@ func (_c *OutboundCreate) createSpec() (*Outbound, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Digest(); ok {
 		_spec.SetField(outbound.FieldDigest, field.TypeString, value)
 		_node.Digest = value
+	}
+	if value, ok := _c.mutation.Sequence(); ok {
+		_spec.SetField(outbound.FieldSequence, field.TypeInt64, value)
+		_node.Sequence = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(outbound.FieldCreatedAt, field.TypeInt64, value)
@@ -559,6 +572,9 @@ func (u *OutboundUpsertOne) UpdateNewValues() *OutboundUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.ID(); exists {
 			s.SetIgnore(outbound.FieldID)
+		}
+		if _, exists := u.create.mutation.Sequence(); exists {
+			s.SetIgnore(outbound.FieldSequence)
 		}
 	}))
 	return u
@@ -989,6 +1005,9 @@ func (u *OutboundUpsertBulk) UpdateNewValues() *OutboundUpsertBulk {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.ID(); exists {
 				s.SetIgnore(outbound.FieldID)
+			}
+			if _, exists := b.mutation.Sequence(); exists {
+				s.SetIgnore(outbound.FieldSequence)
 			}
 		}
 	}))

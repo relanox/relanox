@@ -17,12 +17,13 @@ CREATE INDEX "mediaasset_channel_id_staged" ON "relanox_go_media" ("channel_id",
 CREATE INDEX "mediaasset_retained_created_at" ON "relanox_go_media" ("retained", "created_at");
 CREATE INDEX "mediaasset_preview_id" ON "relanox_go_media" ("preview_id");
 CREATE TABLE "relanox_go_inbound_assets" ("inbound_id" character varying NOT NULL, "media_asset_id" character varying NOT NULL, PRIMARY KEY ("inbound_id", "media_asset_id"), CONSTRAINT "relanox_go_inbound_assets_inbound_id" FOREIGN KEY ("inbound_id") REFERENCES "relanox_go_inbounds" ("id") ON DELETE CASCADE, CONSTRAINT "relanox_go_inbound_assets_media_asset_id" FOREIGN KEY ("media_asset_id") REFERENCES "relanox_go_media" ("id") ON DELETE CASCADE);
-CREATE TABLE "relanox_go_outbounds" ("id" character varying NOT NULL, "channel" character varying NOT NULL, "channel_id" character varying NOT NULL, "account_id" character varying NOT NULL, "endpoint_id" character varying NOT NULL, "message_id" character varying NOT NULL, "digest" character varying NOT NULL, "created_at" bigint NOT NULL, "status" character varying NOT NULL, "version" bigint NOT NULL, "due_at" bigint NOT NULL, "lease_expires_at" bigint NULL, "redacted" boolean NOT NULL, "record" jsonb NOT NULL, PRIMARY KEY ("id"));
+CREATE TABLE "relanox_go_outbounds" ("id" character varying NOT NULL, "channel" character varying NOT NULL, "channel_id" character varying NOT NULL, "account_id" character varying NOT NULL, "endpoint_id" character varying NOT NULL, "message_id" character varying NOT NULL, "digest" character varying NOT NULL, "sequence" bigint NOT NULL, "created_at" bigint NOT NULL, "status" character varying NOT NULL, "version" bigint NOT NULL, "due_at" bigint NOT NULL, "lease_expires_at" bigint NULL, "redacted" boolean NOT NULL, "record" jsonb NOT NULL, PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "relanox_go_outbounds_sequence_key" ON "relanox_go_outbounds" ("sequence");
 CREATE UNIQUE INDEX "outbound_channel_id_message_id" ON "relanox_go_outbounds" ("channel_id", "message_id");
-CREATE INDEX "outbound_status_due_at_created_at" ON "relanox_go_outbounds" ("status", "due_at", "created_at");
+CREATE INDEX "outbound_status_due_at_sequence" ON "relanox_go_outbounds" ("status", "due_at", "sequence");
 CREATE INDEX "outbound_lease_expires_at" ON "relanox_go_outbounds" ("lease_expires_at");
-CREATE INDEX "outbound_channel_id_status_created_at" ON "relanox_go_outbounds" ("channel_id", "status", "created_at");
+CREATE INDEX "outbound_channel_id_status_sequence" ON "relanox_go_outbounds" ("channel_id", "status", "sequence");
 CREATE INDEX "outbound_endpoint_id_created_at" ON "relanox_go_outbounds" ("endpoint_id", "created_at");
 CREATE INDEX "outbound_redacted_created_at" ON "relanox_go_outbounds" ("redacted", "created_at");
 CREATE TABLE "relanox_go_outbound_assets" ("outbound_id" character varying NOT NULL, "media_asset_id" character varying NOT NULL, PRIMARY KEY ("outbound_id", "media_asset_id"), CONSTRAINT "relanox_go_outbound_assets_outbound_id" FOREIGN KEY ("outbound_id") REFERENCES "relanox_go_outbounds" ("id") ON DELETE CASCADE, CONSTRAINT "relanox_go_outbound_assets_media_asset_id" FOREIGN KEY ("media_asset_id") REFERENCES "relanox_go_media" ("id") ON DELETE CASCADE);
-INSERT INTO "relanox_go_metadata" ("format", "serial", "next_work", "id") VALUES (1, 0, 'dispatch', 'schema');
+INSERT INTO "relanox_go_metadata" ("format", "serial", "next_work", "id") VALUES (2, 0, 'dispatch', 'schema');

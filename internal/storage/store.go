@@ -31,7 +31,7 @@ import (
 	"modernc.org/sqlite"
 )
 
-const schemaFormat = 1
+const schemaFormat = 2
 
 var ErrIncompatibleDatabase = errors.New("incompatible_database_requires_explicit_migration")
 
