@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"slices"
@@ -126,7 +127,7 @@ func (h *channelHost) authorizeInput(input model.IngestInput) (model.Binding, er
 	if err := validText(input.Text, len(input.Attachments) > 0); err != nil {
 		return model.Binding{}, err
 	}
-	if !validContext(input.Context) || !validContext(input.Target.Data) {
+	if !validContext(input.Context, input.Target.Data) {
 		return model.Binding{}, failure("invalid_message_context")
 	}
 	binding, ok := h.runtime.bindings[bindingKey(h.account.ID, input.Target.ChatID, input.Target.ThreadID)]
@@ -139,8 +140,17 @@ func (h *channelHost) authorizeInput(input model.IngestInput) (model.Binding, er
 	return binding, nil
 }
 
-func validContext(value json.RawMessage) bool {
-	return len(value) <= maxTextBytes && (len(value) == 0 || json.Valid(value))
+func validContext(value, target json.RawMessage) bool {
+	values := [2]json.RawMessage{value, target}
+	for i := range values {
+		if len(values[i]) == 0 {
+			values[i] = nil
+		}
+	}
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	return encoder.Encode(values) == nil && encoded.Len()-1 <= 64*1024
 }
 
 func (h *channelHost) inboundAssets(uploads []model.MediaUpload) ([]model.StoredMedia, error) {

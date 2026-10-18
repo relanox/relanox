@@ -144,7 +144,7 @@ func assertDownload(t *testing.T, client *http.Client, url string, code int, exp
 	}
 }
 
-func TestPublishedMediaRenewsWithoutRevokingPriorURLAndHonorsCurrentScope(t *testing.T) {
+func TestPublishedMediaReusesValidURLAndHonorsCurrentScope(t *testing.T) {
 	f := newRelayFixture(t, core.Options{})
 	record := awaitInbound(t, f.store, model.AttemptAccepted)
 	session := connectMCP(t, f)
@@ -154,8 +154,8 @@ func TestPublishedMediaRenewsWithoutRevokingPriorURLAndHonorsCurrentScope(t *tes
 		t.Fatal(err)
 	}
 	second, err := f.host.Media().Publish(f.ctx, record.Snapshot.Channel.ID, id, 6*time.Second)
-	if err != nil || first == second {
-		t.Fatalf("renewed capability missing: %v", err)
+	if err != nil || first != second {
+		t.Fatalf("valid capability was replaced: %v", err)
 	}
 	assertDownload(t, f.relay.Client(), first, 200, []byte("published"))
 	assertDownload(t, f.relay.Client(), second, 200, []byte("published"))
@@ -211,4 +211,30 @@ func TestDisabledCapturedPreparationDispatchesOriginalNativeInput(t *testing.T) 
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("retained preparation did not settle")
+}
+
+// A subsecond native capability can expire without extending or revoking it on
+// a repeated publication. Existing media tests only requested whole seconds.
+func TestPublishedMediaAcceptsMillisecondLifetimeAndRenewsAfterExpiry(t *testing.T) {
+	f := newRelayFixture(t, core.Options{})
+	record := awaitInbound(t, f.store, model.AttemptAccepted)
+	session := connectMCP(t, f)
+	id := uploadFixture(t, f, session, record.Snapshot.Channel.ID, "short.bin", []byte("short"))
+	first, err := f.host.Media().Publish(f.ctx, record.Snapshot.Channel.ID, id, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timer := time.NewTimer(600 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-f.ctx.Done():
+		t.Fatal(f.ctx.Err())
+	}
+	second, err := f.host.Media().Publish(f.ctx, record.Snapshot.Channel.ID, id, 6*time.Second)
+	if err != nil || first == second {
+		t.Fatalf("expired capability was reused: %v", err)
+	}
+	assertDownload(t, f.relay.Client(), first, 404, nil)
+	assertDownload(t, f.relay.Client(), second, 200, []byte("short"))
 }

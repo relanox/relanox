@@ -76,6 +76,16 @@ func TestNativePreparedFinalReplyKeepsTraceAcrossDurableQueues(t *testing.T) {
 			t.Fatalf("worker duration missing: %s", name)
 		}
 	}
+	// Registered counters must receive the actual completed preparation and
+	// native dispatch/send outcomes; span and duration coverage alone missed it.
+	for _, metric := range []struct {
+		name string
+		want float64
+	}{{"relanox_middleware_total", 1}, {"relanox_dispatch_total", 2}, {"relanox_delivery_total", 1}} {
+		if !metricHasValue(metrics.Body.String(), metric.name, metric.want) {
+			t.Fatalf("completed native operation did not update %s to %g", metric.name, metric.want)
+		}
+	}
 }
 
 func tracedSpeech(t *testing.T) *speech.Preparer {

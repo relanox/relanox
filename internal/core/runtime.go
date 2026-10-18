@@ -188,7 +188,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 	if err := r.startComponents(lifetime); err != nil {
 		r.accepting.Store(false)
 		cancel()
-		shutdown, stop := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+		shutdown, stop := context.WithTimeout(context.WithoutCancel(ctx), r.shutdownTimeout())
 		defer stop()
 		r.mu.Lock()
 		r.closed = true
@@ -234,7 +234,16 @@ func (r *Runtime) Close(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	result := r.closeComponents(ctx)
+	componentCtx, stop := context.WithTimeout(ctx, r.shutdownTimeout())
+	result := r.closeComponents(componentCtx)
+	budgetExpired := componentCtx.Err() != nil
+	stop()
+	if budgetExpired && ctx.Err() == nil {
+		// Native Lifecycle.Close remains joinable after its first deadline.
+		// Preserve the timeout result while the owner's context waits for the
+		// actual component shutdown before storage can be released.
+		result = errors.Join(result, r.closeComponents(ctx))
+	}
 	done := make(chan struct{})
 	go func() { r.workers.Wait(); close(done) }()
 	select {
@@ -243,6 +252,14 @@ func (r *Runtime) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return errors.Join(result, ctx.Err())
 	}
+}
+
+func (r *Runtime) shutdownTimeout() time.Duration {
+	seconds := r.cfg.HTTP.ShutdownTimeoutSeconds
+	if seconds <= 0 {
+		seconds = 15
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func (r *Runtime) closeComponents(ctx context.Context) error {

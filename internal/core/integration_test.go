@@ -365,3 +365,32 @@ func TestMCPPendingCursorPagesWithoutRepeatingBoundary(t *testing.T) {
 		t.Fatalf("pending pages returned %d of 6 messages", len(seen))
 	}
 }
+
+// Combined native context is bounded before acceptance; separate large-but-valid
+// JSON values previously each passed. Existing ingress cases used small targets.
+// Public Ingest and real SQLite prove rejection without a production-only seam.
+func TestInboundContextUsesCombinedBudget(t *testing.T) {
+	f := newRelayFixture(t, core.Options{})
+	record := awaitInbound(t, f.store, model.AttemptAccepted)
+	for _, test := range []struct {
+		name     string
+		context  json.RawMessage
+		target   json.RawMessage
+		accepted bool
+	}{
+		// Quotes and the enclosing two-element JSON array bring this to 65,536 bytes.
+		{name: "boundary", context: json.RawMessage(`"` + strings.Repeat("c", 32763) + `"`), target: json.RawMessage(`"` + strings.Repeat("t", 32766) + `"`), accepted: true},
+		{name: "overflow", context: json.RawMessage(`"` + strings.Repeat("c", 32764) + `"`), target: json.RawMessage(`"` + strings.Repeat("t", 32766) + `"`)},
+		{name: "empty", context: json.RawMessage{}, target: record.Snapshot.Target.Data, accepted: true},
+	} {
+		target := record.Snapshot.Target
+		target.Data = test.target
+		_, err := f.host.Ingest(f.ctx, model.IngestInput{Source: model.SourceKey{Channel: model.WeChat, AccountID: "wechat", EventID: "context-" + test.name}, SenderID: "alice", Text: "context", Target: target, ReceivedAt: time.Now(), Context: test.context})
+		if test.accepted && err != nil {
+			t.Fatalf("%s context rejected: %v", test.name, err)
+		}
+		if !test.accepted && (err == nil || err.Error() != "invalid_message_context") {
+			t.Fatalf("combined context above 64 KiB accepted or rejected for unrelated reason: %v", err)
+		}
+	}
+}

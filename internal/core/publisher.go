@@ -37,7 +37,7 @@ func (h *channelMedia) Publish(ctx context.Context, channelID, id string, lifeti
 	if lifetime == 0 {
 		lifetime = 24 * time.Hour
 	}
-	if lifetime < time.Second || lifetime > 7*24*time.Hour {
+	if lifetime < time.Millisecond || lifetime > 7*24*time.Hour {
 		return "", failure("invalid_media_url_lifetime")
 	}
 	allowed, err := h.runtime.publicationAllowed(ctx, h.accountID, channelID)
@@ -81,7 +81,7 @@ func (h *channelMedia) ticket(ctx context.Context, key string, lifetime time.Dur
 			return mediaTicket{}, err
 		}
 		var existing mediaTicket
-		if entry != nil && json.Unmarshal(entry.Value, &existing) == nil && !existing.ExpiresAt.Before(time.Now().Add(lifetime)) && len(existing.Token) == 64 {
+		if entry != nil && json.Unmarshal(entry.Value, &existing) == nil && existing.ExpiresAt.After(time.Now()) && len(existing.Token) == 64 {
 			return existing, nil
 		}
 		var entropy [32]byte

@@ -17,24 +17,17 @@ func failedPlans(plans []model.PreparationPlan, code string) []model.Preparation
 }
 
 func (r *Runtime) prepare(ctx context.Context, record model.InboundRecord) []model.PreparationResult {
-	callCtx, cancel := context.WithTimeout(ctx, time.Duration(r.cfg.Queue.LeaseSeconds-20)*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, min(10*time.Second, time.Duration(r.cfg.Queue.LeaseSeconds-20)*time.Second))
 	defer cancel()
 	var results []model.PreparationResult
 	for _, plan := range record.Snapshot.Preparation {
-		preparer := r.preparers[plan.ID]
-		fallback := model.PreparationResult{ID: plan.ID, Status: "failed", ErrorCode: "disabled"}
-		if callCtx.Err() != nil {
-			fallback.ErrorCode = "timeout"
-			results = append(results, fallback)
-			continue
-		}
-		if preparer == nil {
-			results = append(results, fallback)
-			continue
-		}
 		record.Preparation = results
-		result := r.runPreparation(callCtx, record, plan, preparer)
+		result := r.preparePlan(callCtx, record, plan)
 		results = append(results, result)
+		r.observe.Count("relanox_middleware_total", model.MetricLabels{Outcome: result.Status}, 1)
+		if result.Status == "failed" {
+			r.observe.Log(ctx, "warn", "middleware.failed", model.LogFields{Component: "core", RequestID: record.Snapshot.RequestID, ErrorCode: result.ErrorCode})
+		}
 		if result.Output != nil && result.Output.Filtered {
 			break
 		}
@@ -42,6 +35,17 @@ func (r *Runtime) prepare(ctx context.Context, record model.InboundRecord) []mod
 	return results
 }
 
+func (r *Runtime) preparePlan(ctx context.Context, record model.InboundRecord, plan model.PreparationPlan) model.PreparationResult {
+	preparer := r.preparers[plan.ID]
+	code := "disabled"
+	if preparer != nil && ctx.Err() == nil {
+		return r.runPreparation(ctx, record, plan, preparer)
+	}
+	if preparer != nil {
+		code = "timeout"
+	}
+	return model.PreparationResult{ID: plan.ID, Status: "failed", ErrorCode: code}
+}
 func (r *Runtime) runPreparation(ctx context.Context, record model.InboundRecord, plan model.PreparationPlan, preparer model.Preparer) (result model.PreparationResult) {
 	result = model.PreparationResult{ID: plan.ID, Status: "failed", ErrorCode: "preparation_failed"}
 	defer func() {

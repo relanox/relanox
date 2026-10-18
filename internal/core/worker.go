@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"math"
 	"slices"
 	"time"
 
@@ -17,6 +18,7 @@ func (r *Runtime) workLoop(ctx context.Context) {
 			r.observe.Log(ctx, "error", "worker.failed", model.LogFields{Component: "core", ErrorCode: "storage_operation_failed"})
 		} else {
 			r.workerFailed.Store(false)
+			r.observe.Record("relanox_worker_last_success_timestamp_seconds", float64(time.Now().UnixMilli())/1000, model.MetricLabels{})
 		}
 		if processed && err == nil {
 			continue
@@ -118,7 +120,7 @@ func (r *Runtime) dispatch(ctx context.Context, record model.InboundRecord) mode
 	// Reserve 15 seconds for a rotated native credential's bounded persistence
 	// plus 5 seconds for settlement. Do not race the call against cancellation:
 	// the native component knows whether its remote side effect was transmitted.
-	deadline := time.Duration(r.cfg.Queue.LeaseSeconds-20) * time.Second
+	deadline := min(10*time.Second, time.Duration(r.cfg.Queue.LeaseSeconds-20)*time.Second)
 	callCtx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 	message := preparedMessage(record)
@@ -164,6 +166,7 @@ func (r *Runtime) send(ctx context.Context, record model.OutboundRecord) model.S
 	} else {
 		deadline /= 2
 	}
+	deadline = min(deadline, 600*time.Second)
 	callCtx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 	input, err := r.sendInput(callCtx, record)
@@ -258,15 +261,25 @@ func (r *Runtime) nextDue(settlement model.Settlement, work model.DueWork, now t
 		attempts = work.Inbound.Dispatch.Attempts
 	}
 	if status == model.Pending {
-		return now.Add(max(time.Second, retry))
+		return persistedDeadline(now, max(time.Second, retry))
 	}
 	if status != model.Retryable {
 		return now
 	}
 	if retry == 0 {
-		retry = time.Duration(1<<min(attempts, 8)) * time.Second
+		retry = min(300*time.Second, time.Duration(1<<min(attempts, 9))*time.Second)
 	}
-	return now.Add(max(time.Second, min(retry, 24*time.Hour)))
+	return persistedDeadline(now, max(time.Second, retry))
+}
+
+func persistedDeadline(now time.Time, delay time.Duration) time.Time {
+	// Queue deadlines are persisted as signed epoch nanoseconds by both dialects.
+	maximum := time.Unix(0, math.MaxInt64)
+	deadline := now.Add(delay)
+	if deadline.After(maximum) {
+		return maximum
+	}
+	return deadline
 }
 
 func workOutcome(settlement model.Settlement) (string, string) {
@@ -301,27 +314,61 @@ func (r *Runtime) recordWork(ctx context.Context, work model.DueWork, settlement
 	fields.Outcome = status
 	fields.ErrorCode = code
 	r.observe.Count("relanox_work_total", labels, 1)
+	r.recordOutcomeCounters(work, settlement, status)
 	metric := map[model.WorkKind]string{model.PrepareWork: "relanox_preparation_duration_seconds", model.DispatchWork: "relanox_dispatch_duration_seconds", model.SendWork: "relanox_send_duration_seconds"}[work.Kind]
 	r.observe.Record(metric, elapsed.Seconds(), labels)
-	r.observe.Log(ctx, "info", "work.completed", fields)
+	level := "info"
+	if status == string(model.Unknown) || status == string(model.Rejected) {
+		level = "warn"
+	}
+	r.observe.Log(ctx, level, "work.completed", fields)
+}
+
+func (r *Runtime) recordOutcomeCounters(work model.DueWork, settlement model.Settlement, outcome string) {
+	switch work.Kind {
+	case model.DispatchWork:
+		r.observe.Count("relanox_dispatch_total", model.MetricLabels{Agent: work.Inbound.Snapshot.Endpoint.Agent, Outcome: outcome}, 1)
+	case model.SendWork:
+		r.observe.Count("relanox_delivery_total", model.MetricLabels{Channel: work.Outbound.Target.Channel, Outcome: outcome}, 1)
+	}
+	if settlement.Dispatch != nil && settlement.Dispatch.Status == model.Retryable || settlement.Send != nil && settlement.Send.Status == model.Retryable {
+		r.observe.Count("relanox_retries_total", model.MetricLabels{Operation: string(work.Kind)}, 1)
+	}
+}
+
+func (r *Runtime) refreshStats(ctx context.Context) {
+	stats, err := r.store.Stats(ctx)
+	if err != nil {
+		r.observe.Record("relanox_storage_stats_stale", 1, model.MetricLabels{})
+		return
+	}
+	r.observe.Record("relanox_pending", float64(stats.Pending), model.MetricLabels{})
+	r.observe.Record("relanox_outbound", float64(stats.Undelivered), model.MetricLabels{})
+	r.observe.Record("relanox_unknown", float64(stats.Unknown), model.MetricLabels{})
+	age := 0.0
+	if stats.OldestPendingAt != nil {
+		age = max(0, time.Since(*stats.OldestPendingAt).Seconds())
+	}
+	r.observe.Record("relanox_oldest_pending_age_seconds", age, model.MetricLabels{})
+	r.observe.Record("relanox_storage_stats_stale", 0, model.MetricLabels{})
 }
 
 func (r *Runtime) maintenanceLoop(ctx context.Context) {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	nextCleanup := time.Now().Add(time.Minute)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
-		stats, err := r.store.Stats(ctx)
-		if err == nil {
-			r.observe.Record("relanox_pending", float64(stats.Pending), model.MetricLabels{})
-			r.observe.Record("relanox_outbound", float64(stats.Undelivered), model.MetricLabels{})
-			r.observe.Record("relanox_unknown", float64(stats.Unknown), model.MetricLabels{})
+		r.refreshStats(ctx)
+		if time.Now().Before(nextCleanup) {
+			continue
 		}
-		_, err = r.store.Cleanup(ctx, model.CleanupInput{Before: time.Now().Add(-time.Duration(r.cfg.Queue.RetentionDays) * 24 * time.Hour), Limit: 100})
+		nextCleanup = time.Now().Add(time.Minute)
+		_, err := r.store.Cleanup(ctx, model.CleanupInput{Before: time.Now().Add(-time.Duration(r.cfg.Queue.RetentionDays) * 24 * time.Hour), Limit: 100})
 		if err != nil && ctx.Err() == nil {
 			r.observe.Log(ctx, "warn", "cleanup.failed", model.LogFields{Component: "core", ErrorCode: "storage_cleanup_failed"})
 		}
