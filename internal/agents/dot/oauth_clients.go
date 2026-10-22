@@ -69,6 +69,8 @@ func defaultClientMetadata(metadata oauthClient) oauthClient {
 	if metadata.AuthMethod == "" {
 		metadata.AuthMethod = "none"
 	}
+	// Keep Relanox's established code-and-refresh default for omitted metadata.
+	// Explicit grant_types restrict issuance and token requests independently.
 	if metadata.GrantTypes == nil {
 		metadata.GrantTypes = []string{"authorization_code", "refresh_token"}
 	}

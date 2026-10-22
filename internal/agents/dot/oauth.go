@@ -323,7 +323,8 @@ func (o *oauthServer) token(w http.ResponseWriter, r *http.Request) error {
 	if hasAuthorization || form.Has("client_secret") {
 		return oauthError{"invalid_client", 401}
 	}
-	if _, err = o.clients.resolve(form.Get("client_id")); err != nil {
+	client, err := o.clients.resolve(form.Get("client_id"))
+	if err != nil {
 		return err
 	}
 	if form.Get("resource") != o.resource {
@@ -331,15 +332,18 @@ func (o *oauthServer) token(w http.ResponseWriter, r *http.Request) error {
 	}
 	switch form.Get("grant_type") {
 	case "authorization_code":
-		return o.codeToken(w, r, form)
+		return o.codeToken(w, r, form, slices.Contains(client.GrantTypes, "refresh_token"))
 	case "refresh_token":
+		if !slices.Contains(client.GrantTypes, "refresh_token") {
+			return oauthFailure("unauthorized_client")
+		}
 		return o.refreshToken(w, r, form)
 	default:
 		return oauthFailure("unsupported_grant_type")
 	}
 }
 
-func (o *oauthServer) codeToken(w http.ResponseWriter, r *http.Request, form url.Values) error {
+func (o *oauthServer) codeToken(w http.ResponseWriter, r *http.Request, form url.Values, allowRefresh bool) error {
 	var data grant
 	entry, err := o.store.load(r.Context(), "code", form.Get("code"), &data)
 	if err != nil {
@@ -357,8 +361,12 @@ func (o *oauthServer) codeToken(w http.ResponseWriter, r *http.Request, form url
 	if err = o.store.save(r.Context(), "family", token.Family, tokenFamily{Current: digest(refresh)}, refreshLifetime); err != nil {
 		return err
 	}
-	if err = o.store.save(r.Context(), "refresh", refresh, token, refreshLifetime); err != nil {
-		return err
+	if allowRefresh {
+		if err = o.store.save(r.Context(), "refresh", refresh, token, refreshLifetime); err != nil {
+			return err
+		}
+	} else {
+		refresh = ""
 	}
 	return o.issueTokens(r.Context(), w, token, refresh)
 }
@@ -406,7 +414,11 @@ func (o *oauthServer) issueTokens(ctx context.Context, w http.ResponseWriter, to
 	if err != nil {
 		return err
 	}
-	agentmcp.JSON(w, 200, map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": int(accessLifetime / time.Second), "refresh_token": refresh, "scope": token.Scope})
+	response := map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": int(accessLifetime / time.Second), "scope": token.Scope}
+	if refresh != "" {
+		response["refresh_token"] = refresh
+	}
+	agentmcp.JSON(w, 200, response)
 	return nil
 }
 
