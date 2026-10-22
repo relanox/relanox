@@ -3,6 +3,14 @@
 使用 Go 1.27.2 构建 Relanox，配置一个原生通道和一个已有的云端 Agent，再绑定准确的
 会话 ID。服务需要持续运行，以保持原生连接并处理持久化队列。
 
+## 开始前准备
+
+第一次只连接一个渠道、一个云端 Agent 和一个会话。准备具备
+[原生通道](channels.md)所需权限的机器人或账号、自己的发送者 ID、准确的会话 ID，
+以及已有的 [dot、Grok Bot 或 Muse 账号](agents.md)。Relanox 不会创建这些外部账号。
+即使渠道使用轮询或 Socket，Agent 仍需要公网 HTTPS 地址访问 Relanox；只有本地 HTTP
+监听地址还不够。
+
 ## 构建当前代码
 
 ```sh
@@ -15,8 +23,13 @@ Windows 使用 `-o bin/relanox.exe`。预编译二进制产物与容器命令见
 
 ## 创建配置
 
-可以使用[连接配置器](connect.md)选择账号、Agent 和会话绑定，并下载 `relanox.json`。
-下面的 CLI 示例也可以直接创建相同的原生配置。
+选择一种方式：
+
+- **CLI 引导：** 按下面的 `init` 和 `setup` 命令操作。引导将凭据保存在私有文件中，
+  并打印接入地址。
+- **网页配置器：** 在[连接配置器](connect.md)中选择账号、Agent 与会话，补齐必填项，
+  下载 `relanox.json`，再打开其中的**接入教程**。在运行 Relanox 的机器上设置教程列出
+  的环境变量或凭据文件；JSON 中保存的是引用，不是实际凭据。然后继续本文的**校验并运行**步骤，不要对下载的配置再次执行 `init`。
 
 准备一个公网 HTTPS 地址，例如 `https://relay.example.com`。反向代理负责 TLS，
 并向应用监听保留原始 Host。
@@ -33,17 +46,6 @@ bin/relanox setup --config relanox.json
 凭据保存在配置旁的私有文件中；非空环境变量可以覆盖文件值。每次修改配置都会保留
 原文件备份，并检查并发修改。[配置说明](configuration.md)介绍完整 JSON 和脚本用法。
 
-## 连接外部应用
-
-Telegram 需要先通过 BotFather 创建 bot，并提供 token 和数字用户 ID。将打印出的
-回调地址登记到 Telegram `setWebhook`，把账号 `webhookSecret` 引用文件中的值
-设置为 `secret_token`。通道不会代替用户登记 webhook。其他回调平台也需要在各自
-控制台设置相应地址，见[原生通道](channels.md)。
-
-dot 添加打印出的 MCP URL，并使用生成的端点凭据完成 OAuth。Grok 先创建由 webhook
-触发的 Routine，输入 URL 和完整 Authorization 值，再连接使用 bearer 凭据的 MCP。
-Muse 先完成设备配对，再配置已有凭据目录和 MCP，见[云端 Agent](agents.md)。
-
 ## 校验并运行
 
 ```sh
@@ -55,6 +57,21 @@ bin/relanox run --config relanox.json
 或在已有的空 PostgreSQL 数据库 / schema 中初始化表，再启动所选原生组件。不兼容的
 数据库格式会被拒绝；使用非默认 schema 时，需要先创建该 schema。
 
+保持 `run` 运行，再完成下面的外部接入。
+
+## 连接外部应用
+
+Telegram 需要先通过 BotFather 创建 bot，并提供 token 和数字用户 ID。将打印出的
+回调地址登记到 Telegram `setWebhook`，把账号 `webhookSecret` 引用文件中的值
+设置为 `secret_token`。通道不会代替用户登记 webhook。其他回调平台也需要在各自
+控制台设置相应地址，见[原生通道](channels.md)。
+
+dot 添加打印出的 MCP URL，并使用生成的端点凭据完成 OAuth。Grok 先创建由 webhook
+触发的 Routine，输入 URL 和完整 Authorization 值，再连接使用 bearer 凭据的 MCP。
+Muse 先完成设备配对，再配置已有凭据目录和 MCP，见[云端 Agent](agents.md)。
+
+## 发送消息并检查回复
+
 使用允许的发送者，在已绑定会话中发送消息。Agent 应当携带触发消息准确的 `requestId`
 回复，以保留原生会话、线程和引用关系。本地协议测试不代表任意真实账号已具备所需权限。
 
@@ -62,6 +79,10 @@ bin/relanox run --config relanox.json
 bin/relanox status --config relanox.json --json
 bin/relanox doctor --config relanox.json --management-url http://127.0.0.1:8788
 ```
+
+保持 `run` 运行，在另一个终端执行上述检查。首次 `run` 创建数据库后再运行 `doctor`；
+数据库不存在时会报错。未收到回复时，按[运维指南](operations.md)检查发送者与会话 ID、
+平台回调登记和 Agent 的 MCP 连接。
 
 状态默认隐藏正文，只有 `--include-content` 才会输出。Doctor 检查凭据和已有数据库，
 不启动通道连接。恢复、备份和部署见[运维](operations.md)与[部署](deployment.md)。

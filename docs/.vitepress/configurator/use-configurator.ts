@@ -89,7 +89,7 @@ export function useConfigurator(): ConfiguratorView {
     firstAgent.name = text('My assistant', '我的助手')
   }
   const more = ref(false)
-  const detailsOpen = ref(false)
+  const detailsOpen = ref(true)
   const tutorialOpen = ref(false)
   const selectedDetails = ref('telegram-main')
   const feedback = ref('')

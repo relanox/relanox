@@ -38,7 +38,8 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
       page(label('Configurator', '连接配置器'), 'connect'),
       page(label('Get started', '开始使用'), 'quickstart'),
       page(label('Choose a channel', '选择渠道'), 'channels'),
-      page(label('Manage Relanox', '日常管理'), 'operations')
+      page(label('Manage Relanox', '日常管理'), 'operations'),
+      { text: 'GitHub', link: 'https://github.com/relanox/relanox' }
     ],
     sidebar: [
       {

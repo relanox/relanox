@@ -19,9 +19,14 @@ onMounted(() => dialog.value?.showModal())
 const callbacks = computed(() => webhookDetails(props.state))
 </script>
 <template>
-  <dialog ref="dialog" class="connection-tutorial" @close="emit('close')">
+  <dialog
+    ref="dialog"
+    class="connection-tutorial"
+    aria-labelledby="setup-guide-title"
+    @close="emit('close')"
+  >
     <header>
-      <h2>{{ text('Setup guide', '接入教程') }}</h2>
+      <h2 id="setup-guide-title">{{ text('Setup guide', '接入教程') }}</h2>
       <button class="connection-link" @click="dialog?.close()">
         {{ text('Close', '关闭') }}
       </button>
@@ -49,6 +54,10 @@ const callbacks = computed(() => webhookDetails(props.state))
           <code>{{ variable }}</code>
         </li>
       </ul>
+      <template v-if="state.channels.some((channel) => channel.enabled && channel.channel === 'wechat')">
+        <p>{{ text('Complete QR pairing for the selected WeChat account:', '为所选微信账号完成扫码配对：') }}</p>
+        <pre><code>relanox wechat-login --account ACCOUNT_ID --config relanox.json</code></pre>
+      </template>
       <p>
         {{
           text(
@@ -109,12 +118,15 @@ relanox run --config relanox.json</code></pre>
       <p>
         {{
           text(
-            'Muse credentialsDirectory is a local path to paired credentials, not a secret reference. WeChat QR login updates the selected account:',
-            'Muse 的 credentialsDirectory 是配对凭据的本地路径，不是凭据引用。微信扫码登录会更新所选账号：'
+            'Muse credentialsDirectory is a local path to paired credentials, not a secret reference.',
+            'Muse 的 credentialsDirectory 是配对凭据的本地路径，不是凭据引用。'
           )
         }}
       </p>
-      <pre><code>relanox wechat-login --account ACCOUNT_ID --config relanox.json</code></pre>
+      <h3>{{ text('Check your first reply', '检查第一条回复') }}</h3>
+      <p>{{ text('After startup and external setup, send a message from an allowed user in the bound conversation. Keep run active and inspect status in another terminal. Run doctor after the database has been created by the first run.', '完成启动与外部接入后，用允许的用户在已绑定会话中发送消息。保持 run 运行，在另一个终端查看状态。首次 run 创建数据库后，再运行 doctor。') }}</p>
+      <pre><code>relanox status --config relanox.json --json
+relanox doctor --config relanox.json --management-url http://127.0.0.1:8788</code></pre>
       <a
         :href="withBase(`/${chinese ? 'zh-CN' : 'en'}/quickstart.html`)"
         target="_blank"
