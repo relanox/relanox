@@ -145,9 +145,7 @@ func (o *Observer) finish(ctx context.Context) {
 			o.closeErr = errors.New("tracing_shutdown_failed")
 		}
 	}
-	select {
-	case <-o.logDone:
-	case <-ctx.Done():
-		o.closeErr = errors.Join(o.closeErr, ctx.Err())
-	}
+	// The caller's context bounds Close, not the lifetime of an in-flight sink
+	// write. Keep completion joinable after a short-lived caller has returned.
+	<-o.logDone
 }

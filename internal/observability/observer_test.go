@@ -161,6 +161,52 @@ func TestLogBackpressureIsBoundedAndShutdownHonorsDeadline(t *testing.T) {
 	_ = reader.Close()
 }
 
+// A timed-out caller must not mark an active log writer as joined. The existing
+// backpressure test only observes the first Close deadline. A real pipe keeps a
+// production sink write active until its bytes are drained; no new seam is used.
+func TestLogShutdownCanBeJoinedAfterCallerDeadline(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
+	observer, err := observability.New(config.Observability{}, observability.Options{Writer: writer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer.Log(context.Background(), "info", "work.completed", model.LogFields{Component: "core"})
+	var first [1]byte
+	if _, err := io.ReadFull(reader, first[:]); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	if err := observer.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("blocked sink did not honor caller deadline: %v", err)
+	}
+	joined := make(chan error, 1)
+	go func() { joined <- observer.Close(context.Background()) }()
+	select {
+	case err := <-joined:
+		t.Fatalf("shutdown returned before pending log drained: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	var rest bytes.Buffer
+	for !bytes.Contains(rest.Bytes(), []byte{'\n'}) {
+		var next [1]byte
+		if _, err := io.ReadFull(reader, next[:]); err != nil {
+			t.Fatal(err)
+		}
+		rest.WriteByte(next[0])
+	}
+	select {
+	case err := <-joined:
+		if err != nil {
+			t.Fatalf("drained sink retained caller timeout: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("drained log writer was not joined")
+	}
+}
+
 func closeObserver(t *testing.T, observer *observability.Observer) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
