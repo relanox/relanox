@@ -39,23 +39,25 @@ func ParseRichMarkdown(source string) ([]RichPart, error) {
 	data := []byte(source)
 	parser := goldmark.New(goldmark.WithExtensions(extension.GFM))
 	document := parser.Parser().Parse(gmtext.NewReader(data))
+	if !containsRelayReference(document) {
+		return []RichPart{{Text: source}}, nil
+	}
+	return richChildren(document, data, "\n\n", 0)
+}
+
+func containsRelayReference(node ast.Node) bool {
 	found := false
-	err := ast.Walk(document, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			destination, _, ok := nodeLink(n)
 			if ok && strings.HasPrefix(strings.ToLower(decoded(destination)), "relanox:") {
 				found = true
+				return ast.WalkStop, nil
 			}
 		}
 		return ast.WalkContinue, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return []RichPart{{Text: source}}, nil
-	}
-	return richChildren(document, data, "\n\n", 0)
+	return found
 }
 
 func nodeLink(n ast.Node) ([]byte, bool, bool) {
@@ -198,6 +200,13 @@ func richBlock(n ast.Node, source []byte, depth int) ([]RichPart, error) {
 	case *ast.Paragraph, *ast.TextBlock:
 		return richChildren(n, source, "", depth)
 	case *extast.Table:
+		if !containsRelayReference(n) {
+			parts, err := tableParts(value, source, func(string) bool { return true }, depth)
+			if err != nil {
+				return nil, err
+			}
+			return []RichPart{{Text: strings.Join(parts, "\n\n")}}, nil
+		}
 		return richChildren(n, source, "\n", depth)
 	case *extast.TableHeader, *extast.TableRow:
 		return richChildren(n, source, " | ", depth)
