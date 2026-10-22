@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -253,6 +254,26 @@ func (c Config) validateRuntimeLimits() error {
 	}
 	if c.Media.MaxBytes < 1 || c.Media.MaxTotalBytes < c.Media.MaxBytes || c.Media.MaxAttachments < 1 {
 		return invalid("media", "invalid_limits")
+	}
+	return c.validateDurationBounds()
+}
+
+func (c Config) validateDurationBounds() error {
+	for _, bound := range []struct {
+		section string
+		value   int
+		unit    time.Duration
+	}{
+		{"http", c.HTTP.ReadTimeoutSeconds, time.Second},
+		{"http", c.HTTP.WriteTimeoutSeconds, time.Second},
+		{"queue", c.Queue.PollIntervalMS, time.Millisecond},
+		{"queue", c.Queue.LeaseSeconds, time.Second},
+		{"queue", c.Queue.SendLeaseSeconds, time.Second},
+		{"queue", c.Queue.RetentionDays, 24 * time.Hour},
+	} {
+		if int64(bound.value) > math.MaxInt64/int64(bound.unit) {
+			return invalid(bound.section, "invalid_limits")
+		}
 	}
 	return nil
 }

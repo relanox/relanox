@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"math"
 	"slices"
 	"time"
 
@@ -145,7 +146,14 @@ func claimWork(ctx context.Context, tx *ent.Tx, input model.TakeDueInput, reques
 }
 
 func makeLease(input model.TakeDueInput, version int64, duration time.Duration) model.Lease {
-	return model.Lease{Token: input.LeaseOwner + ":" + uuid.NewString(), Version: version, ExpiresAt: input.Now.Add(duration)}
+	expires := input.Now.Add(duration)
+	// Both dialects persist lease deadlines as signed epoch nanoseconds. A
+	// representable duration can still exceed that absolute timestamp range.
+	maximum := time.Unix(0, math.MaxInt64)
+	if expires.After(maximum) {
+		expires = maximum
+	}
+	return model.Lease{Token: input.LeaseOwner + ":" + uuid.NewString(), Version: version, ExpiresAt: expires}
 }
 
 func (s *Store) SettleAttempt(ctx context.Context, input model.Settlement) (model.MutationResult, error) {
