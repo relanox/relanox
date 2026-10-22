@@ -97,7 +97,7 @@ func Failure(err error, preparing bool) model.SendResult {
 		if native.Status == 401 {
 			return Retry("oauth_token_rejected", 0)
 		}
-		if native.Status < 500 {
+		if native.Status < 500 && native.Status != http.StatusRequestTimeout {
 			return Reject("platform_request_rejected")
 		}
 	}
