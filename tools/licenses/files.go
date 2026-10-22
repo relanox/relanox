@@ -133,7 +133,7 @@ func sourceArchive(path, raw string) error {
 }
 
 func publish(stage, target string, check bool) error {
-	return walkFiles(stage, func(path, relative string) error {
+	err := walkFiles(stage, func(path, relative string) error {
 		destination := filepath.Join(target, relative)
 		if check {
 			want, err := os.ReadFile(path)
@@ -148,4 +148,34 @@ func publish(stage, target string, check bool) error {
 		}
 		return copyFile(path, destination)
 	})
+	if err != nil {
+		return err
+	}
+	return removeObsoleteNotices(stage, target, check)
+}
+
+// Only generated notice trees belong to the collector. Keep manually maintained
+// bundle documentation and other files outside these trees intact.
+func removeObsoleteNotices(stage, target string, check bool) error {
+	for _, directory := range []string{"go", "go-standard-library", "ports"} {
+		root := filepath.Join(target, directory)
+		if _, err := os.Stat(root); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if err := walkFiles(root, func(path, relative string) error {
+			_, err := os.Stat(filepath.Join(stage, directory, relative))
+			if !os.IsNotExist(err) {
+				return err
+			}
+			if check {
+				return fmt.Errorf("license_bundle_outdated: %s", filepath.Join(directory, relative))
+			}
+			return os.Remove(path)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
