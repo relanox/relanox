@@ -132,6 +132,21 @@ func requestedScope(value string) (string, error) {
 	return strings.Join(items, " "), nil
 }
 
+// Refresh requests may narrow access scope, but must not expand the grant.
+func refreshAccessScope(granted, requested string) (string, error) {
+	scope, err := requestedScope(requested)
+	if requested == "" || err != nil {
+		return "", oauthFailure("invalid_scope")
+	}
+	original := strings.Fields(granted)
+	for _, item := range strings.Fields(scope) {
+		if !slices.Contains(original, item) {
+			return "", oauthFailure("invalid_scope")
+		}
+	}
+	return scope, nil
+}
+
 func singleParameters(values url.Values) error {
 	for _, v := range values {
 		if len(v) != 1 {
