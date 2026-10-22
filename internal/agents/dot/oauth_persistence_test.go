@@ -235,7 +235,12 @@ func (h *oauthHarness) begin(t *testing.T) (clientID, pending string) {
 
 func (h *oauthHarness) beginScope(t *testing.T, scope string) (clientID, pending string) {
 	t.Helper()
-	status, data := h.json(t, "/agents/dot/oauth/endpoint-A/register", `{"client_name":"ChatGPT","redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"]}`)
+	return h.beginClientScope(t, scope, `{"client_name":"ChatGPT","redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"]}`)
+}
+
+func (h *oauthHarness) beginClientScope(t *testing.T, scope, registration string) (clientID, pending string) {
+	t.Helper()
+	status, data := h.json(t, "/agents/dot/oauth/endpoint-A/register", registration)
 	if status != 201 {
 		t.Fatalf("registration %d %s", status, data)
 	}
@@ -271,7 +276,12 @@ func (h *oauthHarness) authorize(t *testing.T) (clientID, code string) {
 
 func (h *oauthHarness) authorizeScope(t *testing.T, scope string) (clientID, code string) {
 	t.Helper()
-	clientID, pending := h.beginScope(t, scope)
+	return h.authorizeClientScope(t, scope, `{"client_name":"ChatGPT","redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"]}`)
+}
+
+func (h *oauthHarness) authorizeClientScope(t *testing.T, scope, registration string) (clientID, code string) {
+	t.Helper()
+	clientID, pending := h.beginClientScope(t, scope, registration)
 	request, err := http.NewRequest("POST", h.origin+"/agents/dot/oauth/endpoint-A/authorize", strings.NewReader(url.Values{"request": {pending}, "password": {h.password}, "decision": {"allow"}}.Encode()))
 	if err != nil {
 		t.Fatal(err)
