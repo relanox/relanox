@@ -44,3 +44,23 @@ func TestRichMediaLabelRetainsNestedSourceText(t *testing.T) {
 		t.Fatalf("label: %q", parts[0].Media.Label)
 	}
 }
+
+// Extracting a relay attachment elsewhere in a reply must retain ordinary GFM
+// tables. Existing rich tests cover formatting and labels, but no block table;
+// rich traversal previously dropped its header separator and outer delimiters.
+// GFM table syntax: https://github.github.com/gfm/#tables-extension-
+// This exercises the public parser directly without a production-only seam.
+func TestRichMediaExtractionPreservesUnrelatedTable(t *testing.T) {
+	source := "| Name | Value |\n| :--- | ---: |\n| **one** | two |\n\n![photo](relanox://attachment/1)"
+	parts, err := text.ParseRichMarkdown(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 2 || parts[1].Media == nil || parts[1].Media.Attachment != 1 {
+		t.Fatalf("rich media order: %#v", parts)
+	}
+	want := "| Name | Value |\n| --- | ---: |\n| **one** | two |\n\n"
+	if parts[0].Text != want {
+		t.Fatalf("table formatting lost: %q", parts[0].Text)
+	}
+}
