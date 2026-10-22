@@ -317,10 +317,22 @@ func (c *command) cleanupCommand() *cobra.Command {
 }
 
 func parseCutoff(value string) (time.Time, error) {
+	var cutoff time.Time
 	if integer, err := strconv.ParseInt(value, 10, 64); err == nil && integer > 0 {
-		return time.UnixMilli(integer), nil
+		cutoff = time.UnixMilli(integer)
+	} else {
+		parsed, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			return time.Time{}, err
+		}
+		cutoff = parsed
 	}
-	return time.Parse(time.RFC3339, value)
+	// Storage indexes timestamps as signed Unix nanoseconds. Reject overflow
+	// before opening it, rather than letting an old cutoff wrap into the future.
+	if cutoff.Before(time.Unix(0, -1<<63)) || cutoff.After(time.Unix(0, 1<<63-1)) {
+		return time.Time{}, errors.New("invalid_cleanup_bounds")
+	}
+	return cutoff, nil
 }
 
 func (c *command) doctorCommand() *cobra.Command {
