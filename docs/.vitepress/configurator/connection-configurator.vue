@@ -66,8 +66,8 @@ async function showDetails(): Promise<void> {
         <p>
           {{
             text(
-              'Choose your channels and Agents. Your configuration updates as you go.',
-              '选择渠道和 Agent，实时查看生成的配置。'
+              'Start with one bot account and an existing hosted Agent. This page creates a configuration draft.',
+              '从一个机器人账号和已有的云端 Agent 开始。本页生成配置草稿。'
             )
           }}
         </p>
@@ -91,6 +91,13 @@ async function showDetails(): Promise<void> {
           tabindex="0"
           :aria-label="text('Edit connection settings', '编辑连接设置')"
         >
+          <p class="connection-onboarding">
+            {{ text('First time? Prepare your', '首次使用？先准备好') }}
+            <a :href="link('channels.html')">{{ text('channel credentials', '通道凭据') }}</a>
+            {{ text('and', '和') }}
+            <a :href="link('agents.html')">{{ text('Agent account', 'Agent 账号') }}</a>{{ text('.', '。') }}
+            {{ text('Then fill in the public HTTPS address, allowed user IDs and exact conversation ID below. Credential fields take variable names or file paths, never secret values.', '然后填写下方的公网 HTTPS 地址、允许用户 ID 和准确的会话 ID。凭据字段填写变量名或文件路径，不填写实际密钥。') }}
+          </p>
           <div class="connection-selectors">
             <section class="connection-channels">
               <h2>{{ text('Channels', '渠道') }}</h2>
@@ -589,7 +596,7 @@ async function showDetails(): Promise<void> {
             <button class="connection-button" @click="copy">
               {{ text('Copy', '复制') }}</button
             ><button class="connection-button" @click="download">
-              {{ text('Download', '下载') }}
+              {{ issues.length ? text('Download draft', '下载草稿') : text('Download', '下载') }}
             </button>
           </div>
         </div>
@@ -602,7 +609,7 @@ async function showDetails(): Promise<void> {
         </div>
         <div class="preview-footer">
           <span class="preview-message" role="status">{{
-            feedback || text('Changes update automatically.', '配置自动更新')
+            feedback || text('Open setup guide after export.', '导出后打开接入教程。')
           }}</span
           ><button
             v-if="issues.length"

@@ -92,6 +92,7 @@ const guides = computed(() => [
             >{{ label('Open configurator', '打开连接配置器') }}
             <span aria-hidden="true">→</span></a
           >
+          <a class="docs-secondary" href="https://github.com/relanox/relanox">GitHub <span aria-hidden="true">↗</span></a>
         </div>
       </div>
       <div class="docs-start">
@@ -103,8 +104,8 @@ const guides = computed(() => [
               >{{ label('Choose a chat app', '选择聊天软件')
               }}<small>{{
                 label(
-                  'Prepare your bot account and credentials.',
-                  '准备机器人账号和凭据。'
+                  'Prepare a bot account and an existing hosted Agent.',
+                  '准备机器人账号和已有的云端 Agent。'
                 )
               }}</small></a
             >

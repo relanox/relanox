@@ -720,3 +720,15 @@
     padding-bottom: 8px;
   }
 }
+
+.connection-onboarding {
+  margin: 0 0 20px;
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.connection-onboarding a {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
