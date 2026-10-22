@@ -87,7 +87,8 @@ func (d *document) secret(id, field, value, env string) (model.SecretRef, error)
 		}
 		return ref, nil
 	}
-	if len(value) > 64<<10 || strings.TrimRight(value, "\r\n") == "" {
+	// The managed file includes a newline within the resolver's 64 KiB budget.
+	if len(value) >= 64<<10 || strings.TrimRight(value, "\r\n") == "" {
 		return ref, problem("credential_invalid")
 	}
 	name := safeName(id) + "-" + safeName(field) + "-" + uuid.NewString() + ".secret"
@@ -141,6 +142,9 @@ func (d *document) save() (backup string, result error) {
 		return "", problem("config_encoding_failed")
 	}
 	data = append(data, '\n')
+	if int64(len(data)) > config.MaxConfigBytes {
+		return "", problem("config_too_large")
+	}
 	if err = os.MkdirAll(filepath.Dir(d.Path), 0700); err != nil {
 		return "", problem("config_directory_unwritable")
 	}
