@@ -372,10 +372,12 @@ func (o *oauthServer) refreshToken(w http.ResponseWriter, r *http.Request, form 
 	if data.ClientID != form.Get("client_id") || data.Resource != o.resource {
 		return oauthFailure("invalid_grant")
 	}
+	access := data
 	if form.Has("scope") {
-		scope, err := requestedScope(form.Get("scope"))
-		if form.Get("scope") == "" || err != nil || scope != data.Scope {
-			return oauthFailure("invalid_scope")
+		var err error
+		access.Scope, err = refreshAccessScope(data.Scope, form.Get("scope"))
+		if err != nil {
+			return err
 		}
 	}
 	var family tokenFamily
@@ -396,7 +398,7 @@ func (o *oauthServer) refreshToken(w http.ResponseWriter, r *http.Request, form 
 	if err = o.store.save(r.Context(), "refresh", next, data, max(time.Millisecond, time.Until(*entry.ExpiresAt))); err != nil {
 		return err
 	}
-	return o.issueTokens(r.Context(), w, data, next)
+	return o.issueTokens(r.Context(), w, access, next)
 }
 
 func (o *oauthServer) issueTokens(ctx context.Context, w http.ResponseWriter, token oauthToken, refresh string) error {

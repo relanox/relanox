@@ -230,6 +230,11 @@ var pendingInput = regexp.MustCompile(`name="request" value="([A-Za-z0-9_-]+)"`)
 
 func (h *oauthHarness) begin(t *testing.T) (clientID, pending string) {
 	t.Helper()
+	return h.beginScope(t, "relanox offline_access")
+}
+
+func (h *oauthHarness) beginScope(t *testing.T, scope string) (clientID, pending string) {
+	t.Helper()
 	status, data := h.json(t, "/agents/dot/oauth/endpoint-A/register", `{"client_name":"ChatGPT","redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"]}`)
 	if status != 201 {
 		t.Fatalf("registration %d %s", status, data)
@@ -240,7 +245,7 @@ func (h *oauthHarness) begin(t *testing.T) (clientID, pending string) {
 	}
 	// RFC7636 section B's independent PKCE challenge/verifier vector:
 	// https://www.rfc-editor.org/rfc/rfc7636#appendix-B
-	query := url.Values{"response_type": {"code"}, "client_id": {client.ClientID}, "redirect_uri": {"https://chatgpt.com/connector_platform_oauth_redirect"}, "resource": {h.origin + "/agents/dot/mcp/endpoint-A"}, "scope": {"relanox offline_access"}, "code_challenge_method": {"S256"}, "code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"}, "state": {"native-state"}}
+	query := url.Values{"response_type": {"code"}, "client_id": {client.ClientID}, "redirect_uri": {"https://chatgpt.com/connector_platform_oauth_redirect"}, "resource": {h.origin + "/agents/dot/mcp/endpoint-A"}, "scope": {scope}, "code_challenge_method": {"S256"}, "code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"}, "state": {"native-state"}}
 	request, err := http.NewRequest("GET", h.origin+"/agents/dot/oauth/endpoint-A/authorize?"+query.Encode(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -261,7 +266,12 @@ func (h *oauthHarness) begin(t *testing.T) (clientID, pending string) {
 
 func (h *oauthHarness) authorize(t *testing.T) (clientID, code string) {
 	t.Helper()
-	clientID, pending := h.begin(t)
+	return h.authorizeScope(t, "relanox offline_access")
+}
+
+func (h *oauthHarness) authorizeScope(t *testing.T, scope string) (clientID, code string) {
+	t.Helper()
+	clientID, pending := h.beginScope(t, scope)
 	request, err := http.NewRequest("POST", h.origin+"/agents/dot/oauth/endpoint-A/authorize", strings.NewReader(url.Values{"request": {pending}, "password": {h.password}, "decision": {"allow"}}.Encode()))
 	if err != nil {
 		t.Fatal(err)
