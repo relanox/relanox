@@ -114,7 +114,7 @@ func (c *command) statusCommand() *cobra.Command {
 		if err != nil {
 			return problem("status_unavailable")
 		}
-		requests, err := store.ListInbound(cmd.Context(), model.ListInboundInput{StatusFilter: filter, Recent: filter.AfterID == ""})
+		requests, err := store.ListInbound(cmd.Context(), model.ListInboundInput{StatusFilter: filter})
 		if err != nil {
 			return problem("status_unavailable")
 		}
@@ -139,7 +139,7 @@ func (c *command) statusCommand() *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().IntVar(&filter.Limit, "limit", 50, "Maximum records per list (1-1000)")
-	cmd.Flags().StringVar(&filter.AfterID, "after-id", "", "Continue after this record ID")
+	cmd.Flags().StringVar(&filter.AfterID, "after-id", "", "Continue after this record ID in ascending ID order")
 	cmd.Flags().StringVar(&filter.EndpointID, "endpoint-id", "", "Filter by endpoint")
 	cmd.Flags().Var((*attemptFlag)(&filter.DispatchStatus), "dispatch-status", "due, accepted, rejected or unknown")
 	cmd.Flags().Var((*deliveryFlag)(&filter.DeliveryStatus), "delivery-status", "pending, sent, rejected or unknown")
