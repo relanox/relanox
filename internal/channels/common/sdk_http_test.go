@@ -184,3 +184,57 @@ func TestSDKHTTPPreservesOversizedErrorStatus(t *testing.T) {
 		t.Fatalf("lost bounded native rejection: %d bytes=%d err=%v", response.StatusCode, len(body), err)
 	}
 }
+
+// Buffering a response transfers the original reader's ownership to the SDK
+// adapter, which must close it before replacing Body. Existing peers observe
+// cancellation/connection state, which can mask a missing Body.Close call.
+// This instruments a real HTTP response through the existing client option;
+// it does not model the adapter's buffering or cleanup behavior.
+func TestSDKHTTPClosesOriginalResponseBody(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusTooManyRequests} {
+		peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+			_, _ = io.WriteString(w, strings.Repeat("x", 65))
+		}))
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		closed := false
+		client := SDKHTTPClient(&http.Client{Transport: observedBodyTransport{base: transport, closed: &closed}}, t.Context(), 64)
+		if status == http.StatusOK {
+			client = SDKHTTPClient(&http.Client{Transport: observedBodyTransport{base: transport, closed: &closed}}, t.Context(), 128)
+		}
+		response, err := client.Get(peer.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		transport.CloseIdleConnections()
+		peer.Close()
+		if err != nil || len(body) == 0 || !closed {
+			t.Errorf("status=%d original body closed=%v buffered bytes=%d err=%v", status, closed, len(body), err)
+		}
+	}
+}
+
+type observedBodyTransport struct {
+	base   http.RoundTripper
+	closed *bool
+}
+
+func (t observedBodyTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(request)
+	if err == nil {
+		response.Body = observedResponseBody{ReadCloser: response.Body, closed: t.closed}
+	}
+	return response, err
+}
+
+type observedResponseBody struct {
+	io.ReadCloser
+	closed *bool
+}
+
+func (b observedResponseBody) Close() error {
+	*b.closed = true
+	return b.ReadCloser.Close()
+}
