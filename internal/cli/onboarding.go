@@ -235,7 +235,8 @@ func (c *command) agentForm(d *document, opts addOptions) (json.RawMessage, erro
 }
 
 func environment(id, field string) string {
-	return "RELANOX_" + strings.ToUpper(safeName(id)) + "_" + strings.ToUpper(safeName(field))
+	name := "RELANOX_" + strings.ToUpper(safeName(id)) + "_" + strings.ToUpper(safeName(field))
+	return strings.ReplaceAll(name, "-", "_")
 }
 
 func (c *command) secretPrompt(d *document, id, field string, generate bool) (model.SecretRef, error) {
@@ -429,18 +430,37 @@ func (c *command) setupCommand() *cobra.Command {
 			return err
 		}
 		defer d.rollback()
-		if _, err := fmt.Fprintln(c.options.Err, "Native IDs are platform-specific. WeChat uses wechat-login; WeCom discovery can find chat and sender IDs before binding."); err != nil {
+		if _, err := fmt.Fprintln(c.options.Err, "Set up one account, one agent, and one conversation. Have your native chat/sender IDs and public HTTPS origin ready. WeChat pairs by QR code; use discover for WeCom IDs before setup.\n\nStep 1/3: Native channel account"); err != nil {
 			return err
 		}
 		if err = c.addAccount(cmd.Context(), d, addOptions{}); err != nil {
 			return err
 		}
+		if _, err := fmt.Fprintln(c.options.Err, "\nStep 2/3: Hosted agent"); err != nil {
+			return err
+		}
 		if err = c.addAgent(d, addOptions{}); err != nil {
 			return err
 		}
-		if err = c.addBinding(d, model.Binding{}); err != nil {
+		account := d.Accounts[len(d.Accounts)-1].ID
+		endpoint := d.Endpoints[len(d.Endpoints)-1].ID
+		if _, err := fmt.Fprintf(c.options.Err, "\nStep 3/3: Bind a conversation from %s to %s\n", account, endpoint); err != nil {
 			return err
 		}
-		return c.saved(d)
+		if err = c.addBinding(d, model.Binding{AccountID: account, EndpointID: endpoint}); err != nil {
+			return err
+		}
+		if err = c.saved(d); err != nil {
+			return err
+		}
+		return c.setupInstructions()
 	}}
+}
+
+func (c *command) setupInstructions() error {
+	if c.structured() {
+		return nil
+	}
+	_, err := fmt.Fprintln(c.options.Out, "\nNext: run validate, then keep run active with the same --config path. Once the service is running, connect the agent MCP and configure native callbacks using the URLs above. Send a message from an allowed sender in the bound conversation. Use status and doctor in another terminal after the first start.\nGuide: https://relanox.github.io/en/quickstart")
+	return err
 }

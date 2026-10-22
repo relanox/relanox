@@ -24,6 +24,75 @@ func execute(t *testing.T, input string, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// Hyphens are valid local IDs, but previously produced invalid secret env names.
+// Existing onboarding only used bare-word IDs. Exercise the real commands and
+// resolve saved references, without adding a production-only test seam.
+func TestOnboardingHyphenatedIDsKeepUsableCredentials(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "relay.json")
+	if _, err := execute(t, "", "--config", path, "init", "--public-url", "https://relay.example"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execute(t, "123:managed-token\n", "--config", path, "account", "add", "--id", "my-bot", "--channel", "telegram", "--allowed-sender", "42"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execute(t, "", "--config", path, "agent", "add", "--id", "my-agent", "--agent", "dot", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var account struct {
+		BotToken model.SecretRef `json:"botToken"`
+	}
+	if err := json.Unmarshal(cfg.Accounts[0].Config, &account); err != nil {
+		t.Fatal(err)
+	}
+	if account.BotToken.Env != "RELANOX_MY_BOT_BOTTOKEN" {
+		t.Fatalf("invalid environment override: %q", account.BotToken.Env)
+	}
+	if value, err := cfg.ResolveSecret(account.BotToken); err != nil || value != "123:managed-token" {
+		t.Fatalf("managed credential unavailable: %v", err)
+	}
+	t.Setenv("RELANOX_MY_BOT_BOTTOKEN", "456:rotated-token")
+	if value, err := cfg.ResolveSecret(account.BotToken); err != nil || value != "456:rotated-token" {
+		t.Fatalf("environment override unavailable: %v", err)
+	}
+	if _, err := execute(t, "", "--config", path, "validate"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Setup should bind the account and endpoint it just collected, even when an
+// older endpoint exists. Separate add/bind tests miss the wizard's repeated ID
+// prompts. This uses the real input stream, config writer and offline validator.
+func TestSetupBindsNewAccountAndEndpointWithoutRepeatingIDs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "relay.json")
+	if _, err := execute(t, "", "--config", path, "init", "--public-url", "https://relay.example"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execute(t, "", "--config", path, "agent", "add", "--id", "existing", "--agent", "dot", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	input := "tg\ntelegram\n42\n123:new-token\nassistant\ndot\n42\n"
+	if _, err := execute(t, input, "--config", path, "setup"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Bindings) != 1 || cfg.Bindings[0].AccountID != "tg" || cfg.Bindings[0].EndpointID != "assistant" || cfg.Bindings[0].ChatID != "42" {
+		t.Fatalf("wizard bound wrong conversation: %+v", cfg.Bindings)
+	}
+	if len(cfg.Endpoints) != 2 || cfg.Endpoints[0].ID != "existing" {
+		t.Fatal("existing endpoint was changed")
+	}
+	if _, err := execute(t, "", "--config", path, "validate"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Protects the executable onboarding contract: portable paths, durable managed
 // credentials, native callback/MCP instructions and offline validation. Native
 // constructors do not exercise file editing or scripted operator commands.
