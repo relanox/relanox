@@ -118,6 +118,9 @@ func (a *Agent) dispatchSubscription(ctx context.Context, entry model.StateEntry
 	if _, err := callbackURL(sub.URL); err != nil {
 		return model.DispatchResult{Status: model.Rejected, ErrorCode: "dot_callback_forbidden"}
 	}
+	if ctx.Err() != nil {
+		return model.DispatchResult{Status: model.Retryable, ErrorCode: "dot_dispatch_cancelled"}
+	}
 	status, _, err := postCallback(ctx, a.deps, sub, eventID, body, false)
 	if err != nil {
 		return model.DispatchResult{Status: model.Unknown, ErrorCode: "dot_callback_uncertain"}
