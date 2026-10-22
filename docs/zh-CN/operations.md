@@ -29,7 +29,9 @@ relanox status --config relanox.json --limit 50 --json
 `wechat-login` 默认输出 JSON；使用 `--json=false` 输出文本。显式 `--json` 也会禁止交互提示。
 Doctor 列出缺失的环境变量或凭据文件引用，检查已有数据库，不连接通道。Status 包含
 请求的 `reply`、发送记录的 `reply` 和 `dueAt`，请求与发送记录的时间使用 Unix 毫秒。支持 `--endpoint-id`、
-`--dispatch-status`、`--delivery-status` 与 `--after-id`。只有 `--include-content`
+`--dispatch-status`、`--delivery-status` 与 `--after-id`。两个列表的每一页都按记录 ID 升序排列。
+遍历某个列表时，将该页最后一个 ID 传给 `--after-id`，并读取下一次响应中的同一列表；
+这个游标也会独立过滤另一个列表。只有 `--include-content`
 才输出正文，私有原生回复地址和捕获的凭据始终不输出。管理读取不会创建缺失数据库或
 初始化空 schema。
 

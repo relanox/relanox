@@ -35,7 +35,10 @@ Explicit `--json` also disables interactive prompts. Doctor lists missing
 environment/file credential references and checks an existing database without
 connecting channels. Status includes request `reply`, delivery `reply` and
 `dueAt`. Request and delivery timestamps use Unix milliseconds. Filters include `--endpoint-id`,
-`--dispatch-status`, `--delivery-status` and `--after-id`. Text is included only
+`--dispatch-status`, `--delivery-status` and `--after-id`. Both lists use ascending
+record-ID order on every page. To page through one list, pass its last ID as
+`--after-id` and read that list from the next response; the cursor also filters the
+other list independently. Text is included only
 with `--include-content`. Native private reply targets and captured credentials
 are excluded even when content is requested. Administrative inspection does not
 create an absent database or initialize an empty schema.
