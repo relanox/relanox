@@ -73,6 +73,24 @@ func TestClientDeniesPrivateDestinationUnlessExplicitlyConfigured(t *testing.T) 
 	}
 }
 
+// Non-global special-purpose IPv6 destinations must fail URL policy before any
+// network I/O. Loopback tests miss prefixes that netip calls global unicast.
+// These literal addresses come from IANA's IPv6 Special-Purpose Address Space:
+// https://www.iana.org/assignments/iana-ipv6-special-registry
+// The test exercises the production client without a resolver or dialer seam.
+func TestClientRejectsSpecialPurposeIPv6Destinations(t *testing.T) {
+	client := transport.NewClient(transport.Options{Timeout: 100 * time.Millisecond})
+	defer client.CloseIdleConnections()
+	for _, address := range []string{"2001:db8::1", "100:0:0:1::1", "5f00::1"} {
+		t.Run(address, func(t *testing.T) {
+			err := transport.DoJSON(context.Background(), client, http.MethodGet, "https://["+address+"]/", nil, nil, nil, 1024)
+			if !errors.Is(err, transport.ErrUnsafeURL) {
+				t.Fatalf("special-purpose destination must be rejected by policy: %v", err)
+			}
+		})
+	}
+}
+
 func TestClientBlocksCrossOriginRedirectAndBoundsResponse(t *testing.T) {
 	var redirected atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { redirected.Add(1) }))
