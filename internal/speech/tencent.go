@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -67,7 +68,10 @@ func (p *Preparer) recognize(ctx context.Context, media model.StoredMedia, optio
 	request.Data = common.StringPtr(base64.StdEncoding.EncodeToString(media.Data))
 	request.DataLen = common.Int64Ptr(int64(len(media.Data)))
 	response, err := client.SentenceRecognitionWithContext(ctx, request)
-	if ctx.Err() != nil {
+	var timeout net.Error
+	// The SDK preserves network causes, and its own timeout or a transport
+	// deadline can fire before the recognition context reports expiration.
+	if ctx.Err() != nil || errors.As(err, &timeout) && timeout.Timeout() {
 		return "", "timeout"
 	}
 	if err != nil {
