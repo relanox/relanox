@@ -66,7 +66,10 @@ func Do(client *http.Client, request *http.Request, maximum int64) ([]byte, http
 	defer func() { _ = response.Body.Close() }()
 	limit := maximum
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		limit = 64 * 1024
+		// A bounded diagnostic body must not hide a known rejection or its
+		// Retry-After header. A proxy's error page may exceed the JSON budget.
+		raw, _ := io.ReadAll(io.LimitReader(response.Body, 64*1024))
+		return nil, response.Header, &HTTPError{Status: response.StatusCode, Header: response.Header, Body: raw}
 	}
 	if response.ContentLength > limit {
 		return nil, response.Header, errors.New("media_too_large")
@@ -74,9 +77,6 @@ func Do(client *http.Client, request *http.Request, maximum int64) ([]byte, http
 	raw, err := ReadBounded(response.Body, limit)
 	if err != nil {
 		return nil, response.Header, err
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, response.Header, &HTTPError{Status: response.StatusCode, Header: response.Header, Body: raw}
 	}
 	return raw, response.Header, nil
 }

@@ -53,6 +53,12 @@ func (t sdkTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	maximum := t.maximum
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		maximum = min(maximum, 64*1024)
+		// Preserve the native status/headers for SDK error decoders even if a
+		// gateway supplies a diagnostic page larger than the response budget.
+		body, _ := io.ReadAll(io.LimitReader(response.Body, maximum))
+		response.Body = io.NopCloser(bytes.NewReader(body))
+		response.ContentLength = int64(len(body))
+		return response, nil
 	}
 	if response.ContentLength > maximum {
 		return nil, errors.New("media_too_large")

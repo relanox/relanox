@@ -163,3 +163,24 @@ func TestSDKHTTPRejectedRequestClosesBody(t *testing.T) {
 		t.Fatal("rejected SDK request did not close its body")
 	}
 }
+
+// Oversized diagnostic pages must not hide a known native rejection. Existing
+// coverage exercises short error bodies and oversized successful bodies only.
+// HTTP status/Retry-After follow RFC 9110; no test-only production seam is used.
+func TestSDKHTTPPreservesOversizedErrorStatus(t *testing.T) {
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, strings.Repeat("x", 65537))
+	}))
+	defer peer.Close()
+	response, err := SDKHTTPClient(peer.Client(), t.Context(), 1024).Get(peer.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(response.Body)
+	if err != nil || len(body) != 1024 || response.StatusCode != 429 || response.Header.Get("Retry-After") != "7" {
+		t.Fatalf("lost bounded native rejection: %d bytes=%d err=%v", response.StatusCode, len(body), err)
+	}
+}
