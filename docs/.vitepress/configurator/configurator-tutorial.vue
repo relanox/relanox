@@ -115,7 +115,7 @@ relanox run --config relanox.json</code></pre>
           }}
         </p>
       </div>
-      <p>
+      <p v-if="state.agents.some((agent) => agent.type === 'muse')">
         {{
           text(
             'Muse credentialsDirectory is a local path to paired credentials, not a secret reference.',

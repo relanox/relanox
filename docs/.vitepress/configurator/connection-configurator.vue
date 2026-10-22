@@ -93,9 +93,9 @@ async function showDetails(): Promise<void> {
         >
           <p class="connection-onboarding">
             {{ text('First time? Prepare your', '首次使用？先准备好') }}
-            <a :href="link('channels.html')">{{ text('channel credentials', '通道凭据') }}</a>
+            <a :href="link('channels.html')" target="_blank" rel="noopener">{{ text('channel credentials', '通道凭据') }}</a>
             {{ text('and', '和') }}
-            <a :href="link('agents.html')">{{ text('Agent account', 'Agent 账号') }}</a>{{ text('.', '。') }}
+            <a :href="link('agents.html')" target="_blank" rel="noopener">{{ text('Agent account', 'Agent 账号') }}</a>{{ text('.', '。') }}
             {{ text('Then fill in the public HTTPS address, allowed user IDs and exact conversation ID below. Credential fields take variable names or file paths, never secret values.', '然后填写下方的公网 HTTPS 地址、允许用户 ID 和准确的会话 ID。凭据字段填写变量名或文件路径，不填写实际密钥。') }}
           </p>
           <div class="connection-selectors">
