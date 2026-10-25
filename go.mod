@@ -30,7 +30,7 @@ require (
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1
 	github.com/taigrr/signalcli v0.1.1
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/asr v1.3.182
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.193
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.197
 	github.com/yuin/goldmark v1.8.6
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
