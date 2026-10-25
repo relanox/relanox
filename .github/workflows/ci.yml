@@ -63,8 +63,6 @@ jobs:
       - run: git diff --exit-code -- internal/storage/ent
       - if: runner.os == 'Linux'
         run: go test -race ./...
-      - if: runner.os == 'Linux'
-        run: go run ./tools/licenses -check
 
   binaries:
     name: Binary (${{ matrix.goos }}/${{ matrix.goarch }})

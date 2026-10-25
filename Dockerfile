@@ -21,7 +21,6 @@ COPY --from=build /usr/share/doc/tzdata/copyright /licenses/debian/tzdata-copyri
 COPY --from=build /output/tmp /tmp
 COPY --from=build --chown=10001:10001 /output/data /data
 COPY LICENSE /licenses/Relanox-LICENSE
-COPY licenses /licenses/third-party
 USER 10001:10001
 WORKDIR /data
 ENV RELANOX_CONFIG=/config/relanox.json

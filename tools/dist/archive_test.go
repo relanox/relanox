@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// Published archives must include their executable and actual license bytes
+// Published archives must include their executable and actual project license bytes
 // under a portable prefix. A build-only check misses empty/truncated archives or
 // stripped Unix execute bits. This exercises real archive formats and files,
 // with no production-only seam or expected values derived by the packager.
@@ -24,7 +24,7 @@ func TestDistributionArchivesContainExecutableAndLicense(t *testing.T) {
 	if err := os.WriteFile(license, []byte("license notice"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	entries := []entry{{Name: "relanox", Path: binary, Executable: true}, {Name: "licenses/dependency/LICENSE", Path: license}}
+	entries := []entry{{Name: "relanox", Path: binary, Executable: true}, {Name: "LICENSE", Path: license}}
 	for _, windows := range []bool{false, true} {
 		path := filepath.Join(directory, "archive")
 		if err := archive(path, "release", entries, windows); err != nil {
@@ -36,7 +36,7 @@ func TestDistributionArchivesContainExecutableAndLicense(t *testing.T) {
 		} else {
 			contents = readTar(t, path)
 		}
-		if len(contents) != 2 || contents["release/relanox"] != "compiled executable" || contents["release/licenses/dependency/LICENSE"] != "license notice" {
+		if len(contents) != 2 || contents["release/relanox"] != "compiled executable" || contents["release/LICENSE"] != "license notice" {
 			t.Fatalf("invalid distribution content: %#v", contents)
 		}
 	}

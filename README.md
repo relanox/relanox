@@ -55,5 +55,4 @@ The VitePress documentation build uses Node.js 24.14.1 and writes `docs/.vitepre
 Read [Architecture](docs/en/architecture.md) and
 [Development](docs/en/development.md) before implementation.
 
-Relanox is licensed under the [MIT License](LICENSE). Third-party notices and
-distributed dependency licenses are described in [Licenses](licenses/README.md).
+Relanox is licensed under the [MIT License](LICENSE).

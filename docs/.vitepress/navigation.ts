@@ -95,7 +95,7 @@ export function navigation(chinese: boolean): DefaultTheme.Config {
         items: [
           page(label('Contributing', '贡献指南'), 'development'),
           page(label('Native integrations', '原生接入'), 'architecture'),
-          { text: label('Licenses', '许可证'), link: 'https://github.com/relanox/relanox/blob/master/licenses/README.md' }
+          { text: label('License', '许可'), link: 'https://github.com/relanox/relanox/blob/master/LICENSE' }
         ]
       }
     ],

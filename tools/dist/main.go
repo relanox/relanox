@@ -1,4 +1,4 @@
-// Command dist builds a portable binary archive with documentation and licenses.
+// Command dist builds a portable binary archive with documentation and the project license.
 package main
 
 import (
@@ -34,9 +34,6 @@ func build(targetOS, arch, version, out string) error {
 	if !supportedTarget(targetOS, arch) || !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`).MatchString(version) {
 		return fmt.Errorf("invalid_distribution_target_or_version")
 	}
-	if _, err := os.Stat("licenses/go"); err != nil {
-		return fmt.Errorf("generate_dependency_licenses_first")
-	}
 	temporary, err := os.MkdirTemp("", "relanox-build-*")
 	if err != nil {
 		return err
@@ -61,13 +58,11 @@ func build(targetOS, arch, version, out string) error {
 	for _, file := range []string{"LICENSE", "README.md", "README.zh-CN.md"} {
 		entries = append(entries, entry{Name: file, Path: file})
 	}
-	for _, directory := range []string{"licenses", "docs"} {
-		files, err := collect(directory)
-		if err != nil {
-			return err
-		}
-		entries = append(entries, files...)
+	files, err := collect("docs")
+	if err != nil {
+		return err
 	}
+	entries = append(entries, files...)
 	if err = os.MkdirAll(out, 0755); err != nil {
 		return err
 	}

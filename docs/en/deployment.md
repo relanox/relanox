@@ -9,12 +9,11 @@ A successful [CI run](https://github.com/relanox/relanox/actions/workflows/ci.ym
 uploads `relanox-<os>-<arch>` artifacts for `linux`, `darwin` and `windows`, each
 on `amd64` and `arm64`. Select the run for the commit you intend to deploy.
 Extract the downloaded artifact, then its `.tar.gz` or `.zip` archive; the
-archive contains the executable, documentation and third-party notices.
+archive contains the executable, documentation and project license.
 
 Tagged releases use `relanox_<version>_<os>_<arch>` archive names and include
 `checksums.txt`. Select assets matching that layout rather than assuming every
-historical tag contains the current executable format. Keep the accompanying
-`licenses/` directory when redistributing an archive.
+historical tag contains the current executable format.
 
 ## Service and HTTPS proxy
 
@@ -97,8 +96,8 @@ database, rather than recreate an empty configuration or change account IDs.
 
 CI runs formatting, complexity/nesting, vet, Go tests, module verification, Ent
 generation checks and documentation builds on Linux, macOS and Windows. Linux
-also runs the PostgreSQL integration tests, the full race suite and a regenerated
-license-bundle comparison. Separate jobs build six binary archives and run
+also runs the PostgreSQL integration tests and the full race suite.
+Separate jobs build six binary archives and run
 deployment tests against the production container.
 
 The release workflow runs when a `v*` tag is pushed. After the same CI workflow

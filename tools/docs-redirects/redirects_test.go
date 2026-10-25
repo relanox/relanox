@@ -39,7 +39,7 @@ func TestPublishedURLsPreserveBuiltPagesAndReachCurrentTopics(t *testing.T) {
 		"en/reference/core.html":     "../../en/operations.html",
 		"zh-CN/reference/sdk.html":   "../../en/architecture.html",
 		"zh-CN/architecture.html":    "../en/architecture.html",
-		"en/reference/licenses.html": "https://github.com/relanox/relanox/blob/master/licenses/README.md",
+		"en/reference/licenses.html": "https://github.com/relanox/relanox/blob/master/LICENSE",
 	} {
 		assertRedirect(t, readFixture(t, site, route), target)
 	}

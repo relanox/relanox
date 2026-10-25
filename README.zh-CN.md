@@ -49,4 +49,4 @@ pnpm docs:build
 Node.js 24.14.1，输出 `docs/.vitepress/dist`。
 修改前阅读[架构](docs/zh-CN/architecture.md)和[开发指南](docs/zh-CN/development.md)。
 
-Relanox 使用 [MIT 许可](LICENSE)，第三方声明与分发依赖许可见[许可说明](licenses/README.md)。
+Relanox 使用 [MIT 许可](LICENSE)。

@@ -7,11 +7,10 @@
 成功的 [CI 运行](https://github.com/relanox/relanox/actions/workflows/ci.yml) 会上传
 `relanox-<os>-<arch>` 产物，支持 `linux`、`darwin`、`windows`，各有 `amd64` 和 `arm64`。
 选择准备部署的提交所对应的运行。解开下载的产物后，再解开其中的 `.tar.gz` 或 `.zip`；
-归档包含可执行文件、文档和第三方许可。
+归档包含可执行文件、文档和项目许可。
 
 版本发布使用 `relanox_<version>_<os>_<arch>` 归档名，并提供 `checksums.txt`。选择符合
-该布局的资产，不要假定所有历史 tag 都包含当前可执行文件格式。重新分发归档时保留随附的
-`licenses/` 目录。
+该布局的资产，不要假定所有历史 tag 都包含当前可执行文件格式。
 
 ## 常驻服务与 HTTPS
 
@@ -62,8 +61,8 @@ docker run --rm --name relanox --stop-timeout 40 \
 ## 构建与发布
 
 CI 在 Linux、macOS 和 Windows 上检查格式、复杂度、嵌套、vet、Go 测试、模块校验、
-Ent 生成一致性和文档构建。Linux 另运行 PostgreSQL 集成测试、完整竞态测试，并重新
-生成和比对许可证包。独立任务构建六种二进制归档，并对生产容器运行部署测试。
+Ent 生成一致性和文档构建。Linux 另运行 PostgreSQL 集成测试和完整竞态测试。
+独立任务构建六种二进制归档，并对生产容器运行部署测试。
 
 发布工作流在推送 `v*` tag 后运行。同一套 CI 通过后，将已验证的二进制归档和校验和
 发布到 GitHub Releases，并构建 `linux/amd64`、`linux/arm64` 镜像，推送至

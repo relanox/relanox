@@ -30,7 +30,7 @@ func writeLegacyRedirects(out string) error {
 		if err := writeSiteRedirect(out, language+"/reference/sdk.html", "en/architecture.html"); err != nil {
 			return err
 		}
-		if err := writeMissingRedirect(out, language+"/reference/licenses.html", "https://github.com/relanox/relanox/blob/master/licenses/README.md"); err != nil {
+		if err := writeMissingRedirect(out, language+"/reference/licenses.html", "https://github.com/relanox/relanox/blob/master/LICENSE"); err != nil {
 			return err
 		}
 	}
