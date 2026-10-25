@@ -44,7 +44,7 @@ require (
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/irc.v4 v4.0.0
 	maunium.net/go/mautrix v0.32.0
-	modernc.org/sqlite v1.60.1
+	modernc.org/sqlite v1.61.0
 )
 
 require (
