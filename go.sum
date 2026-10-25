@@ -336,8 +336,8 @@ github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cb
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/asr v1.3.182 h1:UBXiprUPfSsqPwHj026Eadp2FDvNBFuU69YE58up3JI=
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/asr v1.3.182/go.mod h1:tcBQnoIFjye4wz5kgjSLvA4ZiL+v1ec06H/78GkhYMM=
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.182/go.mod h1:r5r4xbfxSaeR04b166HGsBa/R4U3SueirEUpXGuw+Q0=
-github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.193 h1:9kdZc0ZQvw1soc03xdFbvMTN+eEZZPMN9MAkCtgY0E0=
-github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.193/go.mod h1:r5r4xbfxSaeR04b166HGsBa/R4U3SueirEUpXGuw+Q0=
+github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.197 h1:HBxqVFhpiFgdbpUAQ/5K7vJhw1cESNkqyCunAnhftJ0=
+github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.197/go.mod h1:r5r4xbfxSaeR04b166HGsBa/R4U3SueirEUpXGuw+Q0=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.20.0 h1:+agJ3rEzKcCXKDKo0ml26UROcpcAlnZyjq+TjbY5Fto=
 github.com/tidwall/gjson v1.20.0/go.mod h1:V37/opeE/JbLUOfH0QTXiNez2l0RUjYUhpT4szFQAfc=
