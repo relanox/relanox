@@ -229,7 +229,7 @@ func resolveMessageMedia(ctx context.Context, tx *ent.Tx, input model.EnqueueMes
 		}
 	}
 	if len(used) > 0 {
-		_, err = tx.MediaAsset.Update().Where(mediaasset.IDIn(used...)).SetStaged(false).Save(ctx)
+		err = tx.MediaAsset.Update().Where(mediaasset.IDIn(used...)).SetStaged(false).Exec(ctx)
 	}
 	return used, model.Stored, err
 }

@@ -59,7 +59,7 @@ func targetMatches(target model.ReplyTarget, address model.ChannelAddress) bool 
 
 func (s *Store) RegisterConversations(ctx context.Context, records []model.ConversationRecord) error {
 	return s.write(ctx, func(tx *ent.Tx) error {
-		if _, err := tx.Conversation.Update().SetActive(false).Save(ctx); err != nil {
+		if err := tx.Conversation.Update().SetActive(false).Exec(ctx); err != nil {
 			return err
 		}
 		seen := map[string]bool{}

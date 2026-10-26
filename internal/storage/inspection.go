@@ -208,21 +208,16 @@ func redactedDelivery(record model.OutboundRecord, before time.Time) model.Outbo
 }
 
 func cleanupMedia(ctx context.Context, tx *ent.Tx, input model.CleanupInput) error {
-	rows, err := tx.MediaAsset.Query().Where(mediaasset.Retained(true), mediaasset.CreatedAtLT(input.Before.UnixNano()), mediaasset.Not(mediaasset.HasInboundsWith(inbound.Redacted(false))), mediaasset.Not(mediaasset.HasOutboundsWith(outbound.Redacted(false))), func(selector *sql.Selector) {
+	ids, err := tx.MediaAsset.Query().Where(mediaasset.Retained(true), mediaasset.CreatedAtLT(input.Before.UnixNano()), mediaasset.Not(mediaasset.HasInboundsWith(inbound.Redacted(false))), mediaasset.Not(mediaasset.HasOutboundsWith(outbound.Redacted(false))), func(selector *sql.Selector) {
 		dependent := sql.Table(mediaasset.Table).As("staged_preview_owner")
 		query := sql.Select(dependent.C(mediaasset.FieldID)).From(dependent).Where(sql.And(sql.ColumnsEQ(dependent.C(mediaasset.FieldPreviewID), selector.C(mediaasset.FieldID)), sql.EQ(dependent.C(mediaasset.FieldRetained), true), sql.EQ(dependent.C(mediaasset.FieldStaged), true), sql.GTE(dependent.C(mediaasset.FieldCreatedAt), input.Before.UnixNano())))
 		selector.Where(sql.NotExists(query))
-	}).Select(mediaasset.FieldID).Order(mediaasset.ByCreatedAt(), mediaasset.ByID()).Limit(input.Limit).All(ctx)
+	}).Order(mediaasset.ByCreatedAt(), mediaasset.ByID()).Limit(input.Limit).IDs(ctx)
 	if err != nil {
 		return err
-	}
-	ids := make([]string, 0, len(rows))
-	for _, row := range rows {
-		ids = append(ids, row.ID)
 	}
 	if len(ids) == 0 {
 		return nil
 	}
-	_, err = tx.MediaAsset.Update().Where(mediaasset.IDIn(ids...)).SetRetained(false).SetStaged(false).ClearData().Save(ctx)
-	return err
+	return tx.MediaAsset.Update().Where(mediaasset.IDIn(ids...)).SetRetained(false).SetStaged(false).ClearData().Exec(ctx)
 }
