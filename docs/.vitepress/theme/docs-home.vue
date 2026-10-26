@@ -78,8 +78,8 @@ const guides = computed(() => [
         <p>
           {{
             label(
-              'Relanox connects your chat apps to dot, Grok Bot or Muse. Exchange messages, pictures and files in the same conversation, on a service you run yourself.',
-              'Relanox 把聊天软件连接到 dot、Grok Bot 或 Muse。在原会话中收发消息、图片和文件，服务运行在你自己的电脑或服务器上。'
+              'Run Relanox on your computer or server to exchange messages with your agents. Pictures and files are available on channels that support them.',
+              '在自己的电脑或服务器上运行 Relanox，与 Agent 收发消息。支持媒体的通道还可以收发图片和文件。'
             )
           }}
         </p>
@@ -144,19 +144,19 @@ const guides = computed(() => [
     <section class="docs-channels" aria-labelledby="channels-title">
       <div>
         <h2 id="channels-title">
-          {{ label('Use the chat app you know', '从熟悉的聊天软件开始') }}
+          {{ label('Supported chat apps', '支持的聊天软件') }}
         </h2>
         <p>
           {{
             label(
-              'Connect 16 native chat platforms. Check each channel’s setup and media capabilities.',
-              '连接 16 个原生聊天平台，查看各通道的配置要求和媒体能力。'
+              'Relanox connects to 16 platforms. Each channel guide lists its setup requirements and supported message types.',
+              'Relanox 可连接 16 个平台。各通道指南列出了配置要求和支持的消息类型。'
             )
           }}
         </p>
       </div>
       <a :href="link('channels')"
-        >{{ label('Explore all channels', '查看全部渠道') }}
+        >{{ label('View all channels', '查看全部通道') }}
         <span aria-hidden="true">→</span></a
       >
       <nav :aria-label="label('Popular channel guides', '常用渠道指南')">

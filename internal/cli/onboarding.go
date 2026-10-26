@@ -16,7 +16,7 @@ import (
 
 func (c *command) initCommand() *cobra.Command {
 	var publicURL string
-	cmd := &cobra.Command{Use: "init", Short: "Create an empty native configuration", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "init", Short: "Create an empty configuration", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		path, err := c.configPath()
 		if err != nil {
 			return err
@@ -41,9 +41,9 @@ type addOptions struct {
 }
 
 func (c *command) accountCommand() *cobra.Command {
-	parent := &cobra.Command{Use: "account", Short: "Manage native channel accounts"}
+	parent := &cobra.Command{Use: "account", Short: "Manage chat platform accounts"}
 	var opts addOptions
-	add := &cobra.Command{Use: "add", Short: "Add a native account with managed credentials", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	add := &cobra.Command{Use: "add", Short: "Add a chat account", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		d, err := c.document()
 		if err != nil {
 			return err
@@ -414,7 +414,7 @@ func (c *command) addBinding(d *document, b model.Binding) error {
 }
 
 func (c *command) setupCommand() *cobra.Command {
-	return &cobra.Command{Use: "setup", Short: "Interactively configure an account, hosted agent and binding", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "setup", Short: "Connect a chat account and conversation to an agent interactively", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		path, err := c.configPath()
 		if err != nil {
 			return err
@@ -430,7 +430,7 @@ func (c *command) setupCommand() *cobra.Command {
 			return err
 		}
 		defer d.rollback()
-		if _, err := fmt.Fprintln(c.options.Err, "Set up one account, one agent, and one conversation. Have your native chat/sender IDs and public HTTPS origin ready. WeChat pairs by QR code; use discover for WeCom IDs before setup.\n\nStep 1/3: Native channel account"); err != nil {
+		if _, err := fmt.Fprintln(c.options.Err, "Have your chat ID, sender IDs and public HTTPS address ready.\nFor WeChat, scan the QR code when prompted. For WeCom, run discover first to find the IDs.\n\nStep 1/3: Chat account"); err != nil {
 			return err
 		}
 		if err = c.addAccount(cmd.Context(), d, addOptions{}); err != nil {
@@ -461,6 +461,6 @@ func (c *command) setupInstructions() error {
 	if c.structured() {
 		return nil
 	}
-	_, err := fmt.Fprintln(c.options.Out, "\nNext: run validate, then keep run active with the same --config path. Once the service is running, connect the agent MCP and configure native callbacks using the URLs above. Send a message from an allowed sender in the bound conversation. Use status and doctor in another terminal after the first start.\nGuide: https://relanox.github.io/en/quickstart")
+	_, err := fmt.Fprintln(c.options.Out, "\nRun relanox validate, then relanox run with the same --config path.\nConnect your agent through MCP and set the platform callbacks using the URLs above.\nSend a message from an allowed sender in the bound conversation.\nLeave relanox run running; use relanox status and relanox doctor in another terminal.\nGuide: https://relanox.github.io/en/quickstart")
 	return err
 }

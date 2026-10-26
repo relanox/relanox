@@ -6,7 +6,7 @@ import (
 )
 
 func (c *command) runCommand() *cobra.Command {
-	return &cobra.Command{Use: "run", Short: "Start native channels, hosted agents and durable workers", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "run", Short: "Start Relanox and process messages", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		cfg, err := c.load()
 		if err != nil {
 			return err

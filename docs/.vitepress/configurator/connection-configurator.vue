@@ -66,8 +66,8 @@ async function showDetails(): Promise<void> {
         <p>
           {{
             text(
-              'Start with one bot account and an existing hosted Agent. This page creates a configuration draft.',
-              '从一个机器人账号和已有的云端 Agent 开始。本页生成配置草稿。'
+              'Create a configuration for your bot account and an existing dot, Grok or Muse agent.',
+              '为机器人账号和已有的 dot、Grok 或 Muse Agent 生成配置。'
             )
           }}
         </p>
@@ -92,11 +92,11 @@ async function showDetails(): Promise<void> {
           :aria-label="text('Edit connection settings', '编辑连接设置')"
         >
           <p class="connection-onboarding">
-            {{ text('First time? Prepare your', '首次使用？先准备好') }}
+            {{ text('Prepare your', '准备好') }}
             <a :href="link('channels.html')" target="_blank" rel="noopener">{{ text('channel credentials', '通道凭据') }}</a>
             {{ text('and', '和') }}
             <a :href="link('agents.html')" target="_blank" rel="noopener">{{ text('Agent account', 'Agent 账号') }}</a>{{ text('.', '。') }}
-            {{ text('Then fill in the public HTTPS address, allowed user IDs and exact conversation ID below. Credential fields take variable names or file paths, never secret values.', '然后填写下方的公网 HTTPS 地址、允许用户 ID 和准确的会话 ID。凭据字段填写变量名或文件路径，不填写实际密钥。') }}
+            {{ text('Enter your public HTTPS address, allowed user IDs and conversation ID below. For credentials, enter environment variable names or file paths. Set the secret values on your server.', '在下方填写公网 HTTPS 地址、允许使用的用户 ID 和会话 ID。凭据字段填写环境变量名或文件路径，实际密钥在服务器上设置。') }}
           </p>
           <div class="connection-selectors">
             <section class="connection-channels">
@@ -415,8 +415,8 @@ async function showDetails(): Promise<void> {
               <p id="public-host-hint" class="field-hint">
                 {{
                   text(
-                    'Enter the public address where you deployed Relanox so your Agent can connect.',
-                    '填写部署 Relanox 时使用的公开地址，让 Agent 能连接到你的服务。'
+                    'Use the public HTTPS address of your Relanox service, without a path.',
+                    '填写 Relanox 服务的公网 HTTPS 地址，不包含路径。'
                   )
                 }}
               </p>
@@ -575,8 +575,8 @@ async function showDetails(): Promise<void> {
               <p class="field-hint">
                 {{
                   text(
-                    'Open the setup guide to see which credentials to copy and where to put them.',
-                    '打开接入教程，按步骤复制凭据并完成服务器设置。'
+                    'The setup guide lists the credentials and callback URLs for this configuration.',
+                    '接入教程列出了此配置需要的凭据和回调地址。'
                   )
                 }}
               </p>

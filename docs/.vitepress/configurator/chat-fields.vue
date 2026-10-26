@@ -113,8 +113,8 @@ const text = (en: string, zh: string): string => (props.chinese ? zh : en)
       </template>
       <label :for="`${channel.id}-${chat.id}-senders`">{{
         text(
-          'Allowed users for this chat (optional subset)',
-          '此聊天允许用户（可选，账号允许用户的子集）'
+          'Allowed users for this chat (optional; choose from the account allowlist)',
+          '此聊天允许的用户（可选，从账号允许名单中选择）'
         )
       }}</label>
       <input

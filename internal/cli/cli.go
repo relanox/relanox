@@ -65,7 +65,7 @@ func Run(ctx context.Context, args []string, options Options) error {
 		options.Err = os.Stderr
 	}
 	c := &command{options: options, reader: bufio.NewReader(options.In)}
-	root := &cobra.Command{Use: "relanox", Short: "Durable relay for native channels and hosted agents", SilenceUsage: true, SilenceErrors: true, Version: options.Version}
+	root := &cobra.Command{Use: "relanox", Short: "Connect chat platforms to dot, Grok and Muse", SilenceUsage: true, SilenceErrors: true, Version: options.Version}
 	root.SetIn(options.In)
 	root.SetOut(options.Out)
 	root.SetErr(options.Err)

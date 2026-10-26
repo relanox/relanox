@@ -28,8 +28,8 @@ const messages: Record<string, Localized> = {
     zh: '账号 ID 和端点 ID 需要在各自列表中唯一。'
   },
   senderSubset: {
-    en: 'Chat users must be a subset of the account allowed users.',
-    zh: '聊天允许用户必须是账号允许用户的子集。'
+    en: 'Each user allowed in this chat must also be allowed by the account.',
+    zh: '此聊天允许的用户也必须在账号的允许名单中。'
   },
   placeholderHost: {
     en: 'Replace the example domain with your own.',
@@ -66,14 +66,14 @@ const messages: Record<string, Localized> = {
     en: 'Choose the Agent that should receive messages.',
     zh: '选择接收消息的 Agent。'
   },
-  fieldRequired: { en: 'Fill in your actual value.', zh: '填写你的实际值。' },
+  fieldRequired: { en: 'This field is required.', zh: '此项必填。' },
   environmentName: {
     en: 'Use a valid environment variable name.',
     zh: '填写有效的环境变量名称。'
   },
   number: {
-    en: 'Enter a valid nonnegative integer.',
-    zh: '填写有效的非负整数。'
+    en: 'Enter a whole number greater than or equal to zero.',
+    zh: '填写大于或等于 0 的整数。'
   },
   fieldValue: {
     en: 'Use a supported value from the channel guide.',

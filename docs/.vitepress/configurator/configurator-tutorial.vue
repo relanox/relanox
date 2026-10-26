@@ -32,20 +32,20 @@ const callbacks = computed(() => webhookDetails(props.state))
       </button>
     </header>
     <div class="tutorial-body tutorial-steps">
-      <h2>{{ text('Set up your connection', '完成接入') }}</h2>
+      <h2>{{ text('Save and validate the configuration', '保存并校验配置') }}</h2>
       <p>
         {{
           text(
-            'Download relanox.json. This page creates a fresh draft. Back up an existing configuration and merge changes while preserving account IDs, endpoint IDs and secret references.',
-            '下载 relanox.json。本页生成全新草稿；已有配置请先备份，合并修改时保留账号 ID、端点 ID 和凭据引用。'
+            'Download relanox.json. If you already have a configuration, back it up and merge this draft into it. Keep the existing account IDs, endpoint IDs and credential variable names or file paths.',
+            '下载 relanox.json。如果已有配置，请先备份，再合并这份草稿。保留原有的账号 ID、端点 ID，以及凭据的变量名或文件路径。'
           )
         }}
       </p>
       <p>
         {{
           text(
-            'Secret inputs are environment variable names or file paths, never credential values. Set the actual values on the server. An environment variable takes precedence over a file when both are configured.',
-            '凭据输入框填写环境变量名或文件路径，不填写凭据本身。在服务器设置实际值，同时填写时环境变量优先。'
+            'Set the credentials on your server using the environment variables or files named in the configuration. If both are configured, the environment variable takes precedence. The downloaded file contains these references, not the secret values.',
+            '在服务器上设置配置中指定的环境变量或凭据文件。两者都配置时，优先使用环境变量。下载的配置只包含变量名和文件路径，不包含实际密钥。'
           )
         }}
       </p>
@@ -71,16 +71,16 @@ relanox run --config relanox.json</code></pre>
       <p v-if="issues.length">
         {{
           text(
-            'Complete the missing fields shown in Connection details. CLI validation is authoritative; this page only checks basic draft fields.',
-            '请补齐连接信息中提示的字段。页面仅检查基础字段，以 CLI 校验结果为准。'
+            'Fill in the fields listed under Connection details, then run relanox validate. The page checks only basic fields; the command checks the full configuration.',
+            '补齐“连接信息”中列出的字段，再运行 relanox validate。页面只检查基础字段，命令会检查完整配置。'
           )
         }}
       </p>
       <p>
         {{
           text(
-            'Expose the HTTP listener behind HTTPS. Keep the management listener private. Configure each platform callback below; socket and polling accounts do not need a callback.',
-            '通过 HTTPS 反向代理公开 HTTP 监听地址，管理监听地址保持私有。按下面地址设置平台回调；Socket 和轮询账号不需要回调。'
+            'Use an HTTPS reverse proxy for the HTTP listener and keep the management listener private. Set the callback URLs below in each platform. Accounts that use sockets or polling do not need a callback.',
+            '通过 HTTPS 反向代理提供 HTTP 服务，管理接口仅限内部访问。在各平台设置下方的回调地址。使用 Socket 或轮询的账号无需设置回调。'
           )
         }}
       </p>
@@ -100,16 +100,16 @@ relanox run --config relanox.json</code></pre>
           {{
             connection.auth === 'oauth'
               ? text(
-                  'Choose OAuth in dot. Use the resolved MCP token as the password on the Relanox authorization page.',
-                  '在 dot 选择 OAuth，并在 Relanox 授权页面使用解析后的 MCP token 作为密码。'
+                  'Choose OAuth in dot. On the Relanox authorization page, enter the MCP token stored in your environment variable or credential file as the password.',
+                  '在 dot 中选择 OAuth。在 Relanox 授权页面，将环境变量或凭据文件中保存的 MCP token 填入密码栏。'
                 )
               : connection.auth === 'bearer'
                 ? text(
-                    'Use the resolved MCP token in the Authorization: Bearer header.',
-                    '在 Authorization: Bearer 请求头中填写解析后的 MCP token。'
+                    'Set the Authorization header to Bearer followed by a space and the MCP token from your environment variable or credential file.',
+                    '将 Authorization 请求头设为 Bearer、一个空格，以及环境变量或凭据文件中保存的 MCP token。'
                   )
                 : text(
-                    'Replace the token placeholder with the URL-encoded resolved MCP token. The resulting URL contains a credential; keep it private.',
+                    'Replace the token placeholder with your actual MCP token after URL encoding it. The resulting URL contains a credential; keep it private.',
                     '将 token 占位符替换为 URL 编码后的实际 MCP token。最终 URL 包含凭据，请妥善保管。'
                   )
           }}
@@ -118,13 +118,13 @@ relanox run --config relanox.json</code></pre>
       <p v-if="state.agents.some((agent) => agent.type === 'muse')">
         {{
           text(
-            'Muse credentialsDirectory is a local path to paired credentials, not a secret reference.',
-            'Muse 的 credentialsDirectory 是配对凭据的本地路径，不是凭据引用。'
+            'For Muse, set credentialsDirectory to the local directory containing your paired device credentials.',
+            'Muse 的 credentialsDirectory 填写本地配对凭据所在的目录路径。'
           )
         }}
       </p>
       <h3>{{ text('Check your first reply', '检查第一条回复') }}</h3>
-      <p>{{ text('After startup and external setup, send a message from an allowed user in the bound conversation. Keep run active and inspect status in another terminal. Run doctor after the database has been created by the first run.', '完成启动与外部接入后，用允许的用户在已绑定会话中发送消息。保持 run 运行，在另一个终端查看状态。首次 run 创建数据库后，再运行 doctor。') }}</p>
+      <p>{{ text('With Relanox running and the platform configured, send a message from an allowed user in the bound conversation. Leave relanox run running and use another terminal for the commands below. The first run creates the database that doctor checks.', '启动 Relanox 并完成平台设置后，用允许的用户在已绑定会话中发送消息。保持 relanox run 运行，在另一个终端执行下方命令。doctor 需要首次启动时创建的数据库。') }}</p>
       <pre><code>relanox status --config relanox.json --json
 relanox doctor --config relanox.json --management-url http://127.0.0.1:8788</code></pre>
       <a
