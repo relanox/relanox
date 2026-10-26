@@ -83,10 +83,6 @@ func New(options Options) (*Server, error) {
 	return s, nil
 }
 
-func (s *Server) Start(context.Context) error { return nil }
-
-func (s *Server) Close(context.Context) error { return nil }
-
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.GuardHost(w, r) {
 		return

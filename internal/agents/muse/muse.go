@@ -40,7 +40,6 @@ func Validate(raw json.RawMessage) (Config, error) {
 type Agent struct {
 	endpoint model.EndpointConfig
 	deps     agentmcp.Dependencies
-	mcp      *agentmcp.Server
 }
 
 func New(endpoint model.EndpointConfig, deps agentmcp.Dependencies) (*Agent, error) {
@@ -51,21 +50,21 @@ func New(endpoint model.EndpointConfig, deps agentmcp.Dependencies) (*Agent, err
 	if err != nil {
 		return nil, err
 	}
-	server, err := agentmcp.New(agentmcp.Options{Endpoint: endpoint, Config: c.MCP, Dependencies: deps})
+	_, err = agentmcp.New(agentmcp.Options{Endpoint: endpoint, Config: c.MCP, Dependencies: deps})
 	if err != nil {
 		return nil, err
 	}
-	return &Agent{endpoint: endpoint, deps: deps, mcp: server}, nil
+	return &Agent{endpoint: endpoint, deps: deps}, nil
 }
 
 func (a *Agent) Kind() model.AgentKind { return model.Muse }
 
-func (a *Agent) Start(ctx context.Context) error {
+func (a *Agent) Start(context.Context) error {
 	a.deps.Host.Connection(model.Connected, "")
-	return a.mcp.Start(ctx)
+	return nil
 }
 
-func (a *Agent) Close(ctx context.Context) error { return a.mcp.Close(ctx) }
+func (a *Agent) Close(context.Context) error { return nil }
 
 func (a *Agent) Dispatch(ctx context.Context, in model.DispatchInput) (model.DispatchResult, error) {
 	if in.Request.Endpoint.ID != a.endpoint.ID || in.Request.Endpoint.Agent != model.Muse {

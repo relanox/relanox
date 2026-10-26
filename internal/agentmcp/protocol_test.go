@@ -159,15 +159,10 @@ func TestConstructorRegistersTypedToolSchemas(t *testing.T) {
 	peer := httptest.NewServer(mux)
 	defer peer.Close()
 	host := &registrationHost{origin: peer.URL, mux: mux}
-	server, err := New(Options{Endpoint: model.EndpointConfig{ID: "endpoint-A", Agent: model.Muse}, Config: Config{Auth: "bearer", Token: model.SecretRef{Env: "MCP_TOKEN"}}, Dependencies: Dependencies{Host: host}})
+	_, err := New(Options{Endpoint: model.EndpointConfig{ID: "endpoint-A", Agent: model.Muse}, Config: Config{Auth: "bearer", Token: model.SecretRef{Env: "MCP_TOKEN"}}, Dependencies: Dependencies{Host: host}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := server.Close(context.Background()); err != nil {
-			t.Error(err)
-		}
-	}()
 	request := func(method string, params map[string]any) []byte {
 		params["_meta"] = map[string]any{"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": map[string]any{}}
 		data, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})

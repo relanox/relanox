@@ -17,7 +17,12 @@ type TokenCache struct {
 	generation      uint64
 }
 
-func (c *TokenCache) Invalidate() { c.mu.Lock(); c.token = ""; c.generation++; c.mu.Unlock() }
+func (c *TokenCache) Invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.token = ""
+	c.generation++
+}
 
 func (c *TokenCache) Get(ctx context.Context, identity string, fetch func(context.Context) (string, time.Time, error)) (string, error) {
 	for {

@@ -24,7 +24,11 @@ type connection struct {
 	saslStarted, saslDone bool
 }
 
-func (c *connection) snapshot() sessionState { c.mu.RLock(); defer c.mu.RUnlock(); return c.state }
+func (c *connection) snapshot() sessionState {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state
+}
 
 func (c *connection) write(ctx context.Context, message *wire.Message) (bool, error) {
 	line := message.String()

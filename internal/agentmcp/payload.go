@@ -2,8 +2,9 @@ package agentmcp
 
 import (
 	"encoding/json"
-	"github.com/relanox/relanox/internal/model"
 	"strings"
+
+	"github.com/relanox/relanox/internal/model"
 )
 
 // Project preserves the native notification shape across all three agents.

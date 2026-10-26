@@ -85,7 +85,7 @@ func (a *Agent) configureEvents(server *mcp.Server) error {
 		if len(params.Cursor) > 0 && !bytes.Equal(params.Cursor, []byte("null")) {
 			return nil, &jsonrpc.Error{Code: -32602, Message: "Invalid cursor"}
 		}
-		return &eventListResult{Events: []map[string]any{{"name": eventName, "description": "A persisted incoming message is available in this authenticated endpoint; data contains the complete message.", "delivery": []string{"webhook"}, "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}, "payloadSchema": incomingSchema()}}}, nil
+		return &eventListResult{Events: []map[string]any{{"name": eventName, "description": "A persisted incoming message is available in this authenticated endpoint; data contains the complete message.", "delivery": []string{"webhook"}, "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}, "payloadSchema": agentmcp.IncomingSchema(false)}}}, nil
 	}); err != nil {
 		return err
 	}
@@ -98,5 +98,3 @@ func (a *Agent) configureEvents(server *mcp.Server) error {
 		return a.unsubscribe(ctx, params)
 	})
 }
-
-func incomingSchema() map[string]any { return agentmcp.IncomingSchema(false) }

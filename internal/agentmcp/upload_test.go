@@ -74,11 +74,6 @@ func uploadServer(t *testing.T) (*Server, http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := server.Close(context.Background()); err != nil {
-			t.Error(err)
-		}
-	})
 	return server, http.HandlerFunc(server.serveMedia), address.ID
 }
 

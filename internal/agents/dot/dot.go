@@ -28,7 +28,6 @@ func Validate(raw json.RawMessage) (Config, error) {
 type Agent struct {
 	endpoint    model.EndpointConfig
 	deps        agentmcp.Dependencies
-	mcp         *agentmcp.Server
 	ownerConfig string
 }
 
@@ -45,7 +44,7 @@ func New(endpoint model.EndpointConfig, deps agentmcp.Dependencies) (*Agent, err
 	if err != nil {
 		return nil, err
 	}
-	a.mcp, err = agentmcp.New(agentmcp.Options{Endpoint: endpoint, Config: c.MCP, Dependencies: deps, ModernOnly: true, Authenticate: oauth.authenticate, Configure: a.configureEvents, StatusContext: a.connectionStatus})
+	_, err = agentmcp.New(agentmcp.Options{Endpoint: endpoint, Config: c.MCP, Dependencies: deps, ModernOnly: true, Authenticate: oauth.authenticate, Configure: a.configureEvents, StatusContext: a.connectionStatus})
 	if err != nil {
 		return nil, err
 	}
@@ -54,12 +53,12 @@ func New(endpoint model.EndpointConfig, deps agentmcp.Dependencies) (*Agent, err
 
 func (a *Agent) Kind() model.AgentKind { return model.Dot }
 
-func (a *Agent) Start(ctx context.Context) error {
+func (a *Agent) Start(context.Context) error {
 	a.deps.Host.Connection(model.Connected, "")
-	return a.mcp.Start(ctx)
+	return nil
 }
 
-func (a *Agent) Close(ctx context.Context) error { return a.mcp.Close(ctx) }
+func (a *Agent) Close(context.Context) error { return nil }
 
 func (a *Agent) connectionStatus(ctx context.Context) (map[string]any, error) {
 	entries, err := a.activeEntries(ctx)

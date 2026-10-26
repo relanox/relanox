@@ -144,7 +144,11 @@ func (c *Channel) Start(ctx context.Context) error { return c.lifecycle.Start(ct
 
 func (c *Channel) Close(ctx context.Context) error { return c.lifecycle.Close(ctx) }
 
-func (c *Channel) socket() *connection { c.mu.RLock(); defer c.mu.RUnlock(); return c.current }
+func (c *Channel) socket() *connection {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.current
+}
 
 type sessionState struct {
 	Ready                    bool

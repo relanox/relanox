@@ -57,10 +57,13 @@ func Data(value any) json.RawMessage {
 }
 
 func MediaKind(mimeType string) model.MediaKind {
-	for prefix, kind := range map[string]model.MediaKind{"image/": model.Image, "audio/": model.Audio, "video/": model.Video} {
-		if strings.HasPrefix(mimeType, prefix) {
-			return kind
-		}
+	switch {
+	case strings.HasPrefix(mimeType, "image/"):
+		return model.Image
+	case strings.HasPrefix(mimeType, "audio/"):
+		return model.Audio
+	case strings.HasPrefix(mimeType, "video/"):
+		return model.Video
 	}
 	return model.File
 }
