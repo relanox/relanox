@@ -82,15 +82,15 @@ allowlist and bind the exact chat before running the relay.
 ## Media and native availability
 
 Telegram, Discord, Slack, Feishu, DingTalk, QQ, Teams, WhatsApp, Matrix, Mattermost and Signal support
-native image, audio, video and file paths within platform limits. WeChat receives
+native images, audio, video and files within platform limits. WeChat receives
 those media kinds and sends images, video and files. LINE receives all four and
 sends images, audio and video. IRC is text only. WeCom socket mode sends the four
 media kinds; webhook mode sends images with its passive final reply. Native voice
 recognition text is preserved where the platform supplies it.
 
 Google Chat receives native attachments. Its outbound media uses public-URL image
-cards and file buttons, rather than uploading native attachment objects. Several
-other native rich/media paths also require the configured HTTPS origin to be
+cards and file buttons; it does not upload native attachment objects. Several
+other rich text and media operations also require the configured HTTPS origin to be
 reachable by the external service. Teams personal files can remain pending until
 the recipient grants consent.
 
@@ -152,7 +152,7 @@ Discord first attempts native Gateway resume. An expired session falls back to
 bounded REST history, up to 20 pages of 100 messages per configured conversation.
 Receive-start boundaries are stored before the first connection, including newly
 configured threads. An unavailable earlier anchor or an exceeded history bound
-keeps the channel degraded/recovering rather than silently dropping history.
+keeps the channel degraded/recovering with history recovery incomplete.
 
 Mattermost persists the accepted native WebSocket sequence and connection ID.
 When native resume cannot replay its queue, bounded history recovery requires a

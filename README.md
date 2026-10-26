@@ -5,13 +5,12 @@
 [Documentation](https://relanox.github.io/en/quickstart.html)
 
 Relanox connects native messaging channels to existing dot, Grok and Muse agents.
-The Go service stores accepted messages, media and outbound work in SQLite or
-PostgreSQL using [Ent](https://entgo.io/). It preserves native reply context,
-conversation ownership and unknown delivery outcomes across restarts.
+The Go service stores incoming messages, media and queued outgoing messages in SQLite or
+PostgreSQL. After a restart, messages retain their conversation, assigned agent,
+native reply context and delivery status, including sends whose outcome is unknown.
 
-Native accounts are composed directly in Go. Tencent speech recognition,
-authenticated MCP tools, scoped media, structured
-logs, Prometheus metrics and OTLP traces are built into the service. Streaming
+The service includes Tencent speech recognition, authenticated MCP tools,
+media access controls, structured logs, Prometheus metrics and OTLP traces. Streaming
 replies, local inference and Serverless execution are outside the supported scope.
 
 ## Start from source
@@ -30,7 +29,7 @@ On Windows, build `bin/relanox.exe`. The wizard writes private credential files,
 creates configuration backups and prints the native callback and MCP URLs.
 WeChat pairing saves the confirmed bot and user automatically. Muse uses an
 existing paired device directory. Finish the external application's callback,
-permission and Agent connection settings before sending a message.
+permission and agent connection settings before sending a message.
 
 Read [Quickstart](docs/en/quickstart.md), [Configuration](docs/en/configuration.md),
 [Native channels](docs/en/channels.md), [Agents](docs/en/agents.md),

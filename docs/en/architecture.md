@@ -1,7 +1,6 @@
 # Architecture
 
 Relanox is a Go service connecting native messaging accounts to cloud agents.
-The executable composes the native implementations described here.
 
 The application constructs concrete channel, agent, storage, speech and observer
 components directly. Shared interfaces live in `internal/model`. There is no plugin

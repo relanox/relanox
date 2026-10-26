@@ -1,19 +1,19 @@
 # Send your first message
 
-Build Relanox with Go 1.27.2, configure one native account and one hosted agent,
-then bind their exact conversation IDs. The service uses a durable queue and
-requires a machine that can keep its connections and workers running.
+Relanox must keep running to maintain its native connections and process queued
+messages. Start with one native account, one hosted agent and one conversation.
 
 ## Before you start
 
-For a first connection, use one channel, one hosted Agent and one conversation.
 Prepare a bot/account with the permissions listed in [Native channels](channels.md),
 your own sender ID, the exact conversation ID, and an existing
 [dot, Grok Bot or Muse account](agents.md). Relanox does not create those accounts.
-Your Agent needs a public HTTPS address to reach Relanox, even if the channel uses
+Your agent needs a public HTTPS address to reach Relanox, even if the channel uses
 polling or a socket. A local-only HTTP listener is not enough.
 
 ## Build the current checkout
+
+Use Go 1.27.2:
 
 ```sh
 git clone https://github.com/relanox/relanox.git
@@ -28,13 +28,14 @@ commands are described in [Deployment](deployment.md).
 
 Choose one of these paths:
 
-- **Guided CLI setup:** follow the `init` and `setup` commands below. The wizard
+- Follow the `init` and `setup` commands below for guided CLI setup. The wizard
   saves credentials in private files and prints the connection URLs.
-- **Browser configurator:** choose accounts, Agents and bindings in the
+- Choose accounts, agents and bindings in the
   [connection configurator](connect.md), complete its required fields, download
   `relanox.json`, then open its **Setup guide**. Set the listed environment
   variables or secret files on the machine running Relanox. The JSON contains
-  references, not the credentials themselves. Continue at **Validate and run** below; do not run `init` over your downloaded configuration.
+  references to credentials. Continue at **Validate and run** below; do not run
+  `init` over your downloaded configuration.
 
 Choose a public HTTPS origin for native callbacks and MCP, such as
 `https://relay.example.com`. Terminate TLS at a reverse proxy and forward the
@@ -67,7 +68,7 @@ bin/relanox run --config relanox.json
 `validate` is offline: it does not open storage or contact accounts. `run` creates
 the configured SQLite database, or initializes its tables in an empty existing
 PostgreSQL database/schema, then starts
-the selected native components. Existing incompatible databases are refused.
+the selected channels and agents. Existing incompatible databases are refused.
 Create a non-default PostgreSQL schema before selecting it in configuration.
 
 Keep `run` active while you complete the external connections below.
@@ -102,7 +103,7 @@ bin/relanox doctor --config relanox.json --management-url http://127.0.0.1:8788
 Keep `run` active and execute these checks in another terminal. Run `doctor` only
 after the first `run` has created the database; a missing database is reported as
 an error. If no reply arrives, confirm the sender and conversation IDs, platform
-callback registration, and Agent MCP connection in [Operations](operations.md).
+callback registration, and agent MCP connection in [Operations](operations.md).
 
 Status omits message text unless `--include-content` is supplied. Doctor checks
 credentials and an existing database without starting channel connections. See

@@ -57,8 +57,8 @@ protocol checks do not establish compatibility with a real account.
 go build -trimpath -o bin/relanox ./cmd/relanox
 ```
 
-Documentation uses VitePress with the existing bilingual theme, local search,
-dark mode and connection configurator. Node.js and pnpm are documentation tools;
+Documentation uses VitePress with bilingual navigation, local search,
+dark mode and a connection configurator. Node.js and pnpm are documentation tools;
 the Go service does not depend on them. Use Node.js 24.14.1 and the pnpm version
 pinned in `package.json`:
 

@@ -13,9 +13,9 @@ relanox agent add --id dot --agent dot
 The endpoint uses OAuth over HTTPS and native MCP Events. Add the printed
 `https://relay.example.com/agents/dot/mcp/dot` URL in the host's connector settings.
 The generated MCP credential is the login password for this OAuth endpoint, not a
-bearer token to paste into a request. Its file location and environment override
+bearer token. Its file location and environment override
 are printed after setup. Keep the native event subscription's instructions bound
-to the exact incoming request. Relanox does not create a local inference server.
+to the exact incoming request.
 
 The endpoint uses the [official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)
 for MCP and the [Standard Webhooks Go library](https://github.com/standard-webhooks/standard-webhooks/tree/libraries/v0.0.1/libraries/go)
@@ -40,9 +40,9 @@ the CLI prints a `<token>` placeholder instead of exposing that credential.
 Cursor documents the [Routine webhook contract](https://cursor.com/help/grok-bot/routines#where-do-the-webhook-url-and-key-live-and-what-does-a-200-mean)
 as an HTTP POST with `Authorization: Bearer <key>` and a JSON body. Only HTTP `200`
 confirms that a run started; this does not confirm a final reply. A lost transport
-response remains unknown. The documented integration provides this webhook
-contract rather than a Routine client SDK, so this request uses bounded,
-cancellation-aware HTTP. The MCP connection uses the official MCP Go SDK.
+response remains unknown. Relanox calls the Routine webhook over HTTP with a
+10-second timeout and propagates the caller's cancellation. The MCP connection
+uses the official MCP Go SDK.
 
 ## Muse
 
@@ -58,9 +58,8 @@ credentials can be saved. Relanox uses the paired device's native encrypted
 transport, VM/session selection and hosted MCP connection.
 
 Optional `vmId` and `sessionId` can select a specific target through a native JSON
-option file. The CLI imports an existing pairing; it does not simulate device
-pairing or manufacture paired credentials. Stop the SDK daemon before using its
-paired directory with Relanox, and give each independently running deployment
+option file. The CLI imports an existing pairing. Stop the SDK daemon before
+using its paired directory with Relanox, and give each independently running deployment
 its own pairing; concurrent clients can consume rotating refresh tokens. Changing
 or revoking the SDK token used for pairing requires pairing again.
 
@@ -84,7 +83,7 @@ Reads and media operations recheck the endpoint's current conversation ownership
 The durable queue retains the endpoint captured when the message was accepted,
 so changing a binding cannot silently reroute previously accepted work. Private
 native reply targets and credential references do not appear in the agent's
-message projection.
+message data.
 
 Media can be received and sent according to each native channel's capabilities.
 Use the MCP tool's advertised schema and media references. Status reports native

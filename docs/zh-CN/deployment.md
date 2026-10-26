@@ -15,7 +15,7 @@
 ## 常驻服务与 HTTPS
 
 应用默认监听 `127.0.0.1:8787`，管理默认 `127.0.0.1:8788`。通过 HTTPS 反向代理只
-发布应用监听，保留原始 Host，包括 OAuth 发现路径。例如 Caddy：
+发布应用端口，保留原始 Host 请求头，包括 OAuth 发现路径。例如 Caddy：
 
 ```text
 relay.example.com {
@@ -26,7 +26,7 @@ relay.example.com {
 `http.publicUrl` 使用同一 HTTPS origin。回调、OAuth、MCP 和临时媒体 URL 都以该配置
 生成；隧道也需要保留 Host。管理健康与指标留在回环监听，不通过公网应用路由发布。
 
-共用原生 HTTP transport 直接连接目标，不使用 `HTTP_PROXY` 和 `HTTPS_PROXY`，
+共用的原生 HTTP 传输层直接连接目标，不使用 `HTTP_PROXY` 和 `HTTPS_PROXY`，
 以免代理绕过目标地址检查。JSON 配置没有全局出站代理字段。
 
 Linux 可以使用 systemd，具体 unit 见[英文部署说明](../en/deployment.md#service-and-https-proxy)。
@@ -55,8 +55,7 @@ docker run --rm --name relanox --stop-timeout 40 \
 
 示例由宿主提供 HTTPS 代理，不发布 8788。40 秒容器停止期限与 `compose.yml` 一致，
 大于应用默认的 15 秒关闭期限。若调整 `http.shutdownTimeoutSeconds`，容器期限也应保持更长。
-重启时保留卷并纳入备份，重新打开原数据库，
-不要创建空配置或改变账号 ID。
+保留卷并纳入备份。重启时继续使用原配置、账号 ID 和数据库。
 
 ## 构建与发布
 

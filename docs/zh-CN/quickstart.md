@@ -1,17 +1,18 @@
 # 发送第一条消息
 
-使用 Go 1.27.2 构建 Relanox，配置一个原生通道和一个已有的云端 Agent，再绑定准确的
-会话 ID。服务需要持续运行，以保持原生连接并处理持久化队列。
+Relanox 需要持续运行，以保持原生连接并处理队列中的消息。首次使用时，先连接一个原生账号、
+一个云端 Agent 和一个会话。
 
 ## 开始前准备
 
-第一次只连接一个渠道、一个云端 Agent 和一个会话。准备具备
-[原生通道](channels.md)所需权限的机器人或账号、自己的发送者 ID、准确的会话 ID，
+准备具备[原生通道](channels.md)所需权限的机器人或账号、自己的发送者 ID、准确的会话 ID，
 以及已有的 [dot、Grok Bot 或 Muse 账号](agents.md)。Relanox 不会创建这些外部账号。
 即使渠道使用轮询或 Socket，Agent 仍需要公网 HTTPS 地址访问 Relanox；只有本地 HTTP
 监听地址还不够。
 
 ## 构建当前代码
+
+使用 Go 1.27.2：
 
 ```sh
 git clone https://github.com/relanox/relanox.git
@@ -25,22 +26,23 @@ Windows 使用 `-o bin/relanox.exe`。预编译二进制产物与容器命令见
 
 选择一种方式：
 
-- **CLI 引导：** 按下面的 `init` 和 `setup` 命令操作。引导将凭据保存在私有文件中，
+- 按下面的 `init` 和 `setup` 命令完成 CLI 配置向导。向导将凭据保存在私有文件中，
   并打印接入地址。
-- **网页配置器：** 在[连接配置器](connect.md)中选择账号、Agent 与会话，补齐必填项，
+- 在[连接配置器](connect.md)中选择账号、Agent 与会话绑定，补齐必填项，
   下载 `relanox.json`，再打开其中的**接入教程**。在运行 Relanox 的机器上设置教程列出
-  的环境变量或凭据文件；JSON 中保存的是引用，不是实际凭据。然后继续本文的**校验并运行**步骤，不要对下载的配置再次执行 `init`。
+  的环境变量或凭据文件；JSON 中保存凭据引用。然后继续本文的**校验并运行**步骤，
+  不要对下载的配置再次执行 `init`。
 
 准备一个公网 HTTPS 地址，例如 `https://relay.example.com`。反向代理负责 TLS，
-并向应用监听保留原始 Host。
+并将原始 Host 请求头转发给应用。
 
 ```sh
 bin/relanox init --config relanox.json --public-url https://relay.example.com
 bin/relanox setup --config relanox.json
 ```
 
-引导依次询问通道、凭据、允许的原生发送者 ID、Agent 和需要绑定的会话。选择微信
-会直接进入原生扫码登录，并保存确认的 bot、用户和实际 token。Google Chat 导入
+向导依次询问通道、凭据、允许的原生发送者 ID、Agent 和需要绑定的会话。选择微信
+会进入扫码登录，并保存确认的机器人、用户和令牌。Google Chat 导入
 服务账号 JSON；Muse 使用已有的配对凭据目录。完成后会打印 MCP 和原生回调 URL。
 
 凭据保存在配置旁的私有文件中；非空环境变量可以覆盖文件值。每次修改配置都会保留

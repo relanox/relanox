@@ -57,8 +57,8 @@ lists. An empty list is invalid. Omitting it inherits the account list.
 A secret reference is `{ "env": "NAME", "file": "relative/path.secret" }`.
 At least one of `env` or `file` is required. A nonempty environment value wins; otherwise Relanox
 reads the file at use time, so rotation does not embed old secrets in queued work.
-Files contain the actual token, key or JSON credential, rather than a path to a
-second secret file. Trailing newlines are removed; empty and oversized files fail.
+Put the actual token, key or JSON credential in the file, not the path to another
+secret file. Trailing newlines are removed; empty and oversized files fail.
 
 The CLI creates immutable credential files under `secrets/`, with owner-only Unix
 permissions or a Windows DACL limited to the current user and SYSTEM. It never
@@ -84,8 +84,8 @@ relanox validate -c relanox.json --json
 ```
 
 Native option files contain only the account's or endpoint's `config` object,
-including secret references. Interactive commands hide credential input on terminals. `--json` is for scripted
-use and requires all non-generated inputs; it never opens a prompt.
+including secret references. Interactive commands hide credential input on terminals.
+Use `--json` in scripts and provide all non-generated inputs; it never opens a prompt.
 
 ## Storage and limits
 

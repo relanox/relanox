@@ -1,8 +1,7 @@
 # Operations
 
-Relanox keeps accepted input, preparation results, outbound plans, media and
-scoped component state in SQLite or PostgreSQL. It does not need local transcript
-files or in-memory queues to recover accepted work.
+Relanox recovers accepted work from SQLite or PostgreSQL, which stores incoming
+messages, preparation results, outbound plans, media and scoped component state.
 
 ## Health and observability
 
@@ -33,14 +32,17 @@ Operational commands (`validate`, `doctor`, `status`, `requeue`, `cleanup`,
 `discover` and `wechat-login`) default to JSON; use `--json=false` for text.
 Explicit `--json` also disables interactive prompts. Doctor lists missing
 environment/file credential references and checks an existing database without
-connecting channels. Status includes request `reply`, delivery `reply` and
+connecting channels.
+
+Status includes request `reply`, delivery `reply` and
 `dueAt`. Request and delivery timestamps use Unix milliseconds. Filters include `--endpoint-id`,
 `--dispatch-status`, `--delivery-status` and `--after-id`. Both lists use ascending
 record-ID order on every page. To page through one list, pass its last ID as
 `--after-id` and read that list from the next response; the cursor also filters the
-other list independently. Text is included only
-with `--include-content`. Native private reply targets and captured credentials
-are excluded even when content is requested. Administrative inspection does not
+other list independently.
+
+Text is included only with `--include-content`. Native private reply targets and
+captured credentials are excluded even when content is requested. Administrative inspection does not
 create an absent database or initialize an empty schema.
 
 ## Unknown outcomes and replay
@@ -90,5 +92,6 @@ consistent database backup. Keep a recoverable backup before changing the schema
 
 SIGINT/SIGTERM disables new acceptance, cancels native connections and workers,
 drains HTTP handlers and closes storage after work has joined. The process waits
-up to `http.shutdownTimeoutSeconds` (15 seconds by default); a request already transmitted can still have an
-unknown outcome. Use a service manager to restart a failed long-running process.
+up to `http.shutdownTimeoutSeconds` (15 seconds by default). A request already
+transmitted can still have an unknown outcome. Use a service manager to restart a
+failed long-running process.

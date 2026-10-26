@@ -69,7 +69,7 @@ refreshes in its pairing directory.
 docker build -t relanox:local .
 ```
 
-The image contains the Go binary, CA certificates and license notices, runs as a
+The image contains the Go binary, CA certificates and license notices, and runs as a
 non-root user. Mount a private configuration directory
 at `/config` and durable state at `/data`. For a container, set `http.listen` to
 `0.0.0.0:8787`; the management listener must stay on loopback. Use
@@ -88,9 +88,8 @@ docker run --rm --name relanox --stop-timeout 40 \
 The example uses a host HTTPS proxy. Do not expose port 8788. Keep volumes across
 restarts and include them in backups. The 40-second container stop timeout exceeds
 the application's default 15-second shutdown deadline, matching `compose.yml`.
-Keep the container timeout above any configured `http.shutdownTimeoutSeconds`. A process
-restart should reopen the same
-database, rather than recreate an empty configuration or change account IDs.
+Keep the container timeout above any configured `http.shutdownTimeoutSeconds`.
+Reuse the existing configuration, account IDs and database when restarting.
 
 ## Build and release validation
 

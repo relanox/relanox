@@ -5,7 +5,7 @@
 
 ## 账号选项
 
-下表中的秘密字段使用[凭据引用](configuration.md#凭据)。`account add` 提供交互表单；
+下表中的凭据字段使用[凭据引用](configuration.md#凭据)。`account add` 提供交互表单；
 `--native-config` 可以用 JSON 对象传入其他原生选项。
 
 | 通道 | 必需原生选项 | 连接及限制 |
@@ -15,10 +15,10 @@
 | <span id="slack">Slack</span> | `botToken`、`appId`，以及 `appToken` / `signingSecret` 之一 | Socket Mode 使用 app token，签名 Events API 使用 signing secret；安装的原生 team、bot、app 身份必须匹配。 |
 | <span id="feishu">飞书 / Lark</span> | `appId`、`tenantKey`、`appSecret`、`verificationToken`、`encryptKey` | 签名、加密回调和 IM API；Lark 设置 `domain: "lark"`。 |
 | <span id="wecom">企业微信</span> | 两种模式都需要 `botId`；websocket 模式另需 `secret` | webhook 模式使用 `mode: "webhook"`、`token`、`encodingAESKey`，不能配置 `secret` 或 `recipientTypes`；在平台回调窗口内被动完成最终回复。 |
-| <span id="wechat">微信</span> | `wechat-login` 自动保存 | 原生扫码与私聊轮询。发送需要从已接受的入站消息中学习上下文令牌；仅添加 binding 不会建立可发送目标。 |
+| <span id="wechat">微信</span> | `wechat-login` 自动保存 | 原生扫码与私聊轮询。发送需要从已接收的入站消息中取得上下文令牌；仅添加会话绑定不能建立可发送目标。 |
 | <span id="dingtalk">钉钉</span> | `clientId`、`clientSecret`、`robotCode` | Stream 回调与机器人 REST；群消息需要提及机器人。 |
 | <span id="qq">QQ</span> | `appId`、`clientSecret` | Gateway 和 v2 消息；可设置 `environment: "sandbox"`。上传后重新检查被动回复权限。 |
-| <span id="msteams">Microsoft Teams</span> | `appId`、`botId`、`tenantId`、`appSecret`、`trustedServiceOrigins` | 认证的 Bot Framework 活动，检查租户、bot 和受信原生服务地址；个人文件需要原生 consent。 |
+| <span id="msteams">Microsoft Teams</span> | `appId`、`botId`、`tenantId`、`appSecret`、`trustedServiceOrigins` | 认证的 Bot Framework 活动，检查租户、bot 和受信原生服务地址；个人文件需要接收者授权。 |
 | <span id="whatsapp">WhatsApp</span> | `phoneNumberId`、`businessAccountId`、`appSecret`、`verifyToken`、`accessToken` | 签名 Cloud API webhook，仍受客户服务窗口限制。 |
 | <span id="matrix">Matrix</span> | `homeserver`、`accessToken` | mautrix 原生 `/sync`、媒体和事务 API；不支持端到端加密房间：不转发其入站消息，出站发送会被拒绝。 |
 | <span id="mattermost">Mattermost</span> | `serverUrl`、`token` | 原生 v4 REST / WebSocket，使用实例 HTTPS 地址和 bot / 用户访问 token。 |
@@ -28,7 +28,7 @@
 | <span id="irc">IRC</span> | `server`、`nick` | TLS IRC/IRCv3，可选 server password 和 SASL；仅文本。 |
 
 企业微信 WebSocket 模式、钉钉和 QQ 的 `recipientTypes` 可以声明尚未接收消息时主动发送所需的原生
-接收者类型；配置必须与已学到的原生身份一致。测试或桥接端点的本地 HTTP 许可需要
+接收者类型；配置必须与已知的原生身份一致。测试或桥接端点的本地 HTTP 许可需要
 显式开启；不可信媒体 URL 不会自动获得访问私网的权限。
 
 ## 回调路径与 ID
@@ -75,15 +75,15 @@ relanox discover --account wecom --config relanox.json --timeout 2m
 ## 媒体与可用性
 
 Telegram、Discord、Slack、飞书、钉钉、QQ、Teams、WhatsApp、Matrix、Mattermost 和 Signal 支持原生图片、
-音频、视频和文件路径，受平台限制。微信接收四类媒体，发送图片、视频和文件；LINE 接收
+音频、视频和文件，受平台限制。微信接收四类媒体，发送图片、视频和文件；LINE 接收
 四类，发送图片、音频和视频；IRC 仅文本。企业微信 socket 发送四类媒体，webhook 的
 被动最终回复发送图片。平台提供的语音识别文字会被保留。
 
-Google Chat 接收原生附件；出站使用公开 URL 图片卡片和文件按钮，不是原生附件上传。
-部分富文本和媒体路径也需要外部平台可访问配置的 HTTPS 地址。Teams 个人文件可能等待
-接收者 consent。
+Google Chat 接收原生附件；发送时使用公开 URL 的图片卡片和文件按钮，不上传原生附件。
+部分富文本和媒体操作也需要外部平台能访问配置的 HTTPS 地址。Teams 个人文件可能需要
+等待接收者授权。
 
-原生呈现保留各平台的格式和预算：
+各平台的消息格式和大小限制如下：
 
 | 通道 | 呈现与发送前检查 |
 | --- | --- |
@@ -102,10 +102,10 @@ WhatsApp 发送需要处于已记录入站消息后的 24 小时客户服务窗�
 和配额限制。
 
 LINE 的 push 重试键会跨重启保留；首次尝试满 24 小时后停止重发，保留结果不明状态。
-企业微信 webhook 的最终回复在平台取回前仍为 Pending。IRC 在 socket 写入成功后
+企业微信 webhook 的最终回复在平台取回前保持待处理状态。IRC 在 socket 写入成功后
 确认发送，这不代表接收者已收到消息。
 
-Agent 的 `relanox_status` 报告当前能力与发送可用性。本地协议测试覆盖信封格式、授权与
+Agent 的 `relanox_status` 报告当前能力与发送可用性。本地协议测试覆盖消息格式、授权与
 恢复，不代表真实账号已具备权限或完成兼容性验证。
 
 ## Discord 安装与线程
@@ -137,11 +137,11 @@ Discord 首先尝试 Gateway 原生 resume；会话过期后，对每个已配�
 Mattermost 持久化已接受的原生 WebSocket sequence 和 connection ID。原生队列无法
 恢复时，每个已配置会话需要取得完整可见、少于 1,000 条的历史批次。历史缺失、满批
 或请求失败都会保留旧 cursor 并保持 degraded。旧帖子的编辑、删除不会变成新入站消息；
-新增 binding 使用独立接收起点。
+新增会话绑定使用独立接收起点。
 
 两个通道都提供高级账号选项 `recoveryEpoch`，正常运行时应省略。若旧历史已经无法取得，
 运维人员可以用一个全新、非空的 epoch 并重启，明确放弃该段尚未接受的入站历史；这可能
-跳过从未进入队列的消息。以后使用相同 epoch 重启不会再次重置，Core 已接受的任务仍然
+跳过从未进入队列的消息。以后使用相同 epoch 重启不会再次重置，核心已接收的任务仍然
 保留。Mattermost 接受 1–128 个 ASCII 字符，格式为 `[A-Za-z0-9][A-Za-z0-9._:-]*`；
 Discord 最多 128 字节，不能包含空白或控制字符。每次恢复决策使用不同的值。
 
