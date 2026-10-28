@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { withBase } from 'vitepress'
 import { CHANNELS } from './channels.js'
 import { addChat, removeChat } from './model.js'
@@ -9,6 +10,19 @@ const props = defineProps<{
   agents: AgentState[]
   chinese: boolean
 }>()
+
+const supportsThreads = computed(() =>
+  [
+    'telegram',
+    'discord',
+    'slack',
+    'feishu',
+    'msteams',
+    'matrix',
+    'mattermost',
+    'googlechat'
+  ].includes(props.channel.channel)
+)
 
 const text = (en: string, zh: string): string => (props.chinese ? zh : en)
 </script>
@@ -48,35 +62,13 @@ const text = (en: string, zh: string): string => (props.chinese ? zh : en)
         "
       />
       <label
-        v-if="
-          [
-            'telegram',
-            'discord',
-            'slack',
-            'feishu',
-            'msteams',
-            'matrix',
-            'mattermost',
-            'googlechat'
-          ].includes(channel.channel)
-        "
+        v-if="supportsThreads"
         :for="`${channel.id}-${chat.id}-thread`"
         >{{ text('Thread ID (optional)', '话题 / 线程 ID（可选）') }}</label
       >
       <input
         :id="`${channel.id}-${chat.id}-thread`"
-        v-if="
-          [
-            'telegram',
-            'discord',
-            'slack',
-            'feishu',
-            'msteams',
-            'matrix',
-            'mattermost',
-            'googlechat'
-          ].includes(channel.channel)
-        "
+        v-if="supportsThreads"
         v-model="chat.threadId"
         :aria-describedby="`${channel.id}-thread-hint`"
       />
@@ -130,7 +122,11 @@ const text = (en: string, zh: string): string => (props.chinese ? zh : en)
         {{ text('Remove chat', '移除此聊天') }}
       </button>
     </fieldset>
-    <p :id="`${channel.id}-thread-hint`" class="field-hint">
+    <p
+      v-if="supportsThreads"
+      :id="`${channel.id}-thread-hint`"
+      class="field-hint"
+    >
       {{
         text(
           'Leave blank for the main chat. Add each topic or thread you want to connect separately.',

@@ -63,14 +63,6 @@ async function showDetails(): Promise<void> {
     <header class="connection-intro">
       <div class="connection-heading">
         <h1>{{ text('Connection configurator', '连接配置器') }}</h1>
-        <p>
-          {{
-            text(
-              'Create a configuration for your bot account and an existing dot, Grok or Muse agent.',
-              '为机器人账号和已有的 dot、Grok 或 Muse Agent 生成配置。'
-            )
-          }}
-        </p>
       </div>
       <button class="connection-button" @click="tutorialOpen = true">
         {{ text('Setup guide', '接入教程')
@@ -92,11 +84,7 @@ async function showDetails(): Promise<void> {
           :aria-label="text('Edit connection settings', '编辑连接设置')"
         >
           <p class="connection-onboarding">
-            {{ text('Prepare your', '准备好') }}
-            <a :href="link('channels.html')" target="_blank" rel="noopener">{{ text('channel credentials', '通道凭据') }}</a>
-            {{ text('and', '和') }}
-            <a :href="link('agents.html')" target="_blank" rel="noopener">{{ text('Agent account', 'Agent 账号') }}</a>{{ text('.', '。') }}
-            {{ text('Enter your public HTTPS address, allowed user IDs and conversation ID below. For credentials, enter environment variable names or file paths. Set the secret values on your server.', '在下方填写公网 HTTPS 地址、允许使用的用户 ID 和会话 ID。凭据字段填写环境变量名或文件路径，实际密钥在服务器上设置。') }}
+            {{ text('Use environment variable names or file paths for credentials. Set the secret values on your server.', '凭据填写环境变量名或文件路径，实际密钥在服务器上设置。') }}
           </p>
           <div class="connection-selectors">
             <section class="connection-channels">
@@ -138,7 +126,16 @@ async function showDetails(): Promise<void> {
               </button>
             </section>
             <section class="connection-agents">
-              <h2>Agent</h2>
+              <div class="agent-section-heading">
+                <h2>Agent</h2>
+                <a
+                  class="connection-link"
+                  :href="link('agents.html')"
+                  target="_blank"
+                  rel="noopener"
+                  >{{ text('Agent guide', 'Agent 配置指南') }}</a
+                >
+              </div>
               <div
                 v-for="(agent, index) in state.agents"
                 :key="agent.id"
@@ -340,10 +337,7 @@ async function showDetails(): Promise<void> {
             @toggle="detailsOpen = ($event.target as HTMLDetailsElement).open"
           >
             <summary>
-              {{ text('Connection details', '连接信息')
-              }}<span class="connection-muted">{{
-                text('Domain, chat and access', '域名、聊天与使用权限')
-              }}</span>
+              {{ text('Connection details', '连接信息') }}
             </summary>
             <div class="connection-detail-fields">
               <ul
@@ -541,7 +535,6 @@ async function showDetails(): Promise<void> {
                 <details class="account-advanced">
                   <summary>
                     {{ text('Credential variable names', '凭据变量名') }}
-                    <span>{{ text('Usually unchanged', '通常无需修改') }}</span>
                   </summary>
                   <div
                     v-for="field in accountFields(activeChannel).filter(
@@ -572,14 +565,6 @@ async function showDetails(): Promise<void> {
                   </div>
                 </details>
               </template>
-              <p class="field-hint">
-                {{
-                  text(
-                    'The setup guide lists the credentials and callback URLs for this configuration.',
-                    '接入教程列出了此配置需要的凭据和回调地址。'
-                  )
-                }}
-              </p>
             </div>
           </details>
         </div>
@@ -590,8 +575,7 @@ async function showDetails(): Promise<void> {
         :aria-label="text('Live configuration preview', '实时配置预览')"
       >
         <div class="preview-toolbar">
-          <strong>relanox.json</strong
-          ><span class="live-label">{{ text('Live', '实时更新') }}</span>
+          <strong>relanox.json</strong>
           <div class="preview-actions">
             <button class="connection-button" @click="copy">
               {{ text('Copy', '复制') }}</button
@@ -608,9 +592,7 @@ async function showDetails(): Promise<void> {
           <pre><code><span v-for="(line, index) in lines" :key="index" class="code-line"><span class="line-number" aria-hidden="true">{{ index + 1 }}</span><span><span v-for="(token, tokenIndex) in line" :key="tokenIndex" :class="`json-${token.kind}`">{{ token.text }}</span></span></span></code></pre>
         </div>
         <div class="preview-footer">
-          <span class="preview-message" role="status">{{
-            feedback || text('Open setup guide after export.', '导出后打开接入教程。')
-          }}</span
+          <span class="preview-message" role="status">{{ feedback }}</span
           ><button
             v-if="issues.length"
             class="draft-label"

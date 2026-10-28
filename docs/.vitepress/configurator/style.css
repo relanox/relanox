@@ -81,12 +81,6 @@
   line-height: 1.4;
   letter-spacing: normal;
 }
-.connection-page .connection-intro p {
-  margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--connection-muted);
-}
 .connection-workspace {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
@@ -131,10 +125,6 @@
 .preview-toolbar strong {
   font-size: 13px;
   font-weight: 600;
-}
-.live-label {
-  color: var(--connection-muted);
-  font-size: 12px;
 }
 .connection-inputs {
   flex: 1;
@@ -206,6 +196,16 @@
 .connection-app :is(.connection-inputs, .preview-code):focus-visible {
   outline-offset: -2px;
 }
+.agent-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.connection-page .agent-section-heading h2 {
+  margin: 0;
+}
 .agent-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(96px, 0.65fr);
@@ -272,7 +272,7 @@
 }
 .agent-fields label {
   color: var(--connection-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .connection-link {
   color: var(--connection-accent);
@@ -290,7 +290,7 @@
 }
 .connection-link.remove-agent {
   min-height: 20px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--connection-muted);
 }
 .more-channels {
@@ -313,7 +313,7 @@
 }
 .mapping-row small {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--connection-muted);
   overflow-wrap: anywhere;
 }
@@ -352,16 +352,11 @@
 .account-advanced summary {
   cursor: pointer;
 }
-.account-advanced summary span {
-  color: var(--connection-muted);
-  font-size: 12px;
-  margin-left: 8px;
-}
 .tutorial-chat {
   display: block;
 }
 .draft-issues {
-  font-size: 12px;
+  font-size: 13px;
   color: #8b5b13;
   list-style: disc;
   padding-left: 16px;
@@ -378,10 +373,6 @@
   min-height: 36px;
   align-content: center;
 }
-.connection-details summary span {
-  font-size: 12px;
-  margin-left: 8px;
-}
 .connection-detail-fields {
   display: grid;
   gap: 8px;
@@ -391,12 +382,12 @@
   margin-top: 8px;
 }
 .connection-page .connection-app .field-hint {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   margin: 0 0 4px;
 }
 .field-guide {
-  font-size: 12px;
+  font-size: 13px;
   justify-self: start;
 }
 .extra-field {
@@ -481,13 +472,12 @@
   align-items: center;
   justify-content: space-between;
   min-height: 44px;
-  max-height: 88px;
-  overflow: auto;
+  flex-wrap: wrap;
   border-top: 1px solid var(--connection-border);
   padding: 4px 16px;
   gap: 12px;
   color: var(--connection-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .preview-message {
   min-width: 0;
@@ -560,7 +550,7 @@
   text-underline-offset: 3px;
 }
 .tutorial-steps code {
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 .tutorial-steps pre {
@@ -608,9 +598,6 @@
   .settings-toolbar,
   .preview-toolbar {
     padding: 0 16px;
-  }
-  .live-label {
-    display: none;
   }
 }
 @media (max-width: 959px) {
@@ -663,9 +650,6 @@
   .connection-page .connection-intro h1 {
     font-size: 18px;
   }
-  .connection-page .connection-intro p {
-    display: none;
-  }
   .connection-workspace {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto;
@@ -697,15 +681,9 @@
     ) {
     min-height: 44px;
   }
-  .connection-details summary span {
-    display: none;
-  }
   .preview-footer {
     min-height: 44px;
     padding: 0 12px;
-  }
-  .preview-message {
-    font-size: 11px;
   }
   .connection-tutorial > header,
   .tutorial-body {
@@ -726,9 +704,4 @@
   color: var(--vp-c-text-2);
   font-size: 13px;
   line-height: 1.7;
-}
-.connection-onboarding a {
-  color: var(--vp-c-brand-1);
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }

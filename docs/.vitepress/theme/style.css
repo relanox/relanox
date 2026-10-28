@@ -122,14 +122,6 @@
   font-size: 15px;
   font-weight: 600;
 }
-.docs-start small {
-  display: block;
-  color: var(--vp-c-text-2);
-  font-weight: 400;
-  font-size: 13px;
-  line-height: 1.6;
-  margin-top: 3px;
-}
 .docs-channels {
   border-top: 1px solid var(--vp-c-divider);
   border-bottom: 1px solid var(--vp-c-divider);
@@ -186,10 +178,6 @@
   font-size: 16px;
   font-weight: 600;
   line-height: 1.5;
-}
-.docs-guide-list p {
-  margin-top: 5px;
-  font-size: 14px;
 }
 .docs-guide-list > a > span {
   color: var(--vp-c-text-2);
