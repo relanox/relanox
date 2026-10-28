@@ -12,8 +12,8 @@ Extract the downloaded artifact, then its `.tar.gz` or `.zip` archive; the
 archive contains the executable, documentation and project license.
 
 Tagged releases use `relanox_<version>_<os>_<arch>` archive names and include
-`checksums.txt`. Select assets matching that layout rather than assuming every
-historical tag contains the current executable format.
+`checksums.txt`. Check the assets for the selected tag; historical releases may
+use a different executable format.
 
 ## Service and HTTPS proxy
 

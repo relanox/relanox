@@ -10,7 +10,7 @@
 归档包含可执行文件、文档和项目许可。
 
 版本发布使用 `relanox_<version>_<os>_<arch>` 归档名，并提供 `checksums.txt`。选择符合
-该布局的资产，不要假定所有历史 tag 都包含当前可执行文件格式。
+该格式的文件；历史 tag 中的可执行文件格式可能不同。
 
 ## 常驻服务与 HTTPS
 
@@ -30,7 +30,7 @@ relay.example.com {
 以免代理绕过目标地址检查。JSON 配置没有全局出站代理字段。
 
 Linux 可以使用 systemd，具体 unit 见[英文部署说明](../en/deployment.md#service-and-https-proxy)。
-使用专用低权限用户运行，并让引导和服务使用同一用户。SQLite 父目录、Muse 配对目录
+使用专用低权限用户运行，并让初始配置命令和服务使用同一用户。SQLite 父目录、Muse 配对目录
 必须可写，凭据文件必须可读。服务退出等待时间应大于程序的关闭期限。
 
 ## 容器

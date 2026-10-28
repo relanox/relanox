@@ -9,8 +9,7 @@ Relanox 将原生消息平台连接到已有的 dot、Grok 和 Muse Agent。Go �
 平台回复上下文和发送状态，包括无法确认是否发送成功的状态。
 
 服务提供腾讯云语音识别、MCP 工具认证、媒体访问控制、结构化日志、Prometheus 指标和
-OTLP 链路追踪。流式回复、本地推理与 Serverless
-执行不在支持范围。
+OTLP 链路追踪。不支持流式回复、本地推理与 Serverless 执行。
 
 ## 从源码开始
 

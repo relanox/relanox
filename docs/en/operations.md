@@ -14,9 +14,10 @@ The management listener must bind to loopback. Its defaults and routes are:
 | `http://127.0.0.1:8788/metrics` | Prometheus metrics when enabled. |
 
 These routes are separate from the public callback/MCP listener. Operational logs
-use bounded fields and omit message content, credentials and request headers.
+restrict fields to approved values and formats and omit message content,
+credentials and request headers.
 Optional OTLP traces propagate through native ingress, queued work and agent tool
-calls. Native connection availability remains distinct from HTTP process health.
+calls. A healthy HTTP process can still have unavailable native connections.
 
 Metrics use a bounded `plugin` label. Dispatch, delivery, retry and preparation
 counters update on actual work. Queue gauges include the oldest pending age,

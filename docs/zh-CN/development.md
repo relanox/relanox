@@ -22,7 +22,7 @@ golangci-lint 和 `go test ./...`。修改 Go 文件后先运行 `gofmt -w`，�
 使用显式构造函数和编译期接口。构造函数离线校验配置并挂载路由，`Start(ctx)` 启动连接
 与后台循环后返回，`Close(ctx)` 在关闭期限内停止并等待 worker。context 取消必须传递到 I/O。
 
-原生配置拒绝未知结构字段与无效边界。相对路径以配置文件所在目录为基准。
+原生配置拒绝未知结构字段和超出允许范围的值。相对路径以配置文件所在目录为基准。
 错误信息不回显凭据；凭据使用环境变量或文件引用，解析后的值不写入持久化快照。
 
 ## 测试
@@ -34,8 +34,8 @@ golangci-lint 和 `go test ./...`。修改 Go 文件后先运行 `gofmt -w`，�
 
 ## 文档
 
-文档使用 VitePress，提供双语导航、本地搜索、深色模式和连接配置器。Node.js 与 pnpm 仅用于文档工具，
-Go 服务运行不依赖它们。使用 Node.js 24.14.1 和 `package.json` 固定的 pnpm 版本：
+文档使用 VitePress，提供双语导航、本地搜索、深色模式和连接配置器。Node.js 与 pnpm 用于
+构建文档，Go 服务运行不依赖它们。使用 Node.js 24.14.1 和 `package.json` 固定的 pnpm 版本：
 
 ```sh
 pnpm install --frozen-lockfile

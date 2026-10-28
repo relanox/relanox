@@ -13,7 +13,7 @@ Relanox 从 SQLite 或 PostgreSQL 恢复已接收的任务。数据库保存入�
 | `http://127.0.0.1:8788/health/ready` | 接收已启用、存储健康且 worker 未发生故障。 |
 | `http://127.0.0.1:8788/metrics` | 启用时提供 Prometheus 指标。 |
 
-这些路由与公网回调、MCP 监听分离。普通日志使用有界字段，排除正文、凭据与请求头。
+这些路由与公网回调、MCP 监听分离。普通日志限制字段的取值和格式，排除正文、凭据与请求头。
 可选的 OTLP 链路追踪覆盖原生接收、队列与 Agent 工具调用。HTTP 健康检查通过时，
 原生连接仍可能不可用。
 
@@ -27,7 +27,7 @@ relanox status --config relanox.json --limit 50 --json
 ```
 
 运维命令 `validate`、`doctor`、`status`、`requeue`、`cleanup`、`discover` 和
-`wechat-login` 默认输出 JSON；使用 `--json=false` 输出文本。显式 `--json` 也会禁止交互提示。
+`wechat-login` 默认输出 JSON；使用 `--json=false` 输出文本。指定 `--json` 也会禁止交互提示。
 Doctor 列出缺失的环境变量或凭据文件引用，检查已有数据库，不连接通道。
 
 Status 包含请求的 `reply`、发送记录的 `reply` 和 `dueAt`，请求与发送记录的时间使用
@@ -41,7 +41,7 @@ Unix 毫秒。支持 `--endpoint-id`、
 
 ## 结果不明与重放
 
-拒绝、可重试失败和远端效果不明是不同结果。进程在请求可能已到达外部服务后退出，
+Relanox 区分拒绝、可重试失败和远端执行结果不明。进程在请求可能已到达外部服务后退出，
 盲目重放可能重复执行。具备持久幂等性的原生操作可以自动恢复，短期 nonce 不足以提供
 这种保证。
 
