@@ -96,7 +96,7 @@ type deliverySummary struct {
 func (c *command) statusCommand() *cobra.Command {
 	var filter model.StatusFilter
 	var include bool
-	cmd := &cobra.Command{Use: "status", Short: "Read durable queue status without connecting channels", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "status", Short: "Read queue status without connecting channels", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := validateFilter(filter); err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func optionalMilliseconds(value *time.Time) *int64 {
 func (c *command) requeueCommand() *cobra.Command {
 	var kind string
 	var input model.RequeueInput
-	cmd := &cobra.Command{Use: "requeue", Short: "Requeue one failed durable record with a version check", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "requeue", Short: "Requeue one failed record after checking its version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		switch kind {
 		case "request", "dispatch":
 			input.Kind = model.DispatchWork
@@ -283,14 +283,14 @@ func (c *command) requeueCommand() *cobra.Command {
 	cmd.Flags().StringVar(&kind, "kind", "", "request, delivery or prepare")
 	cmd.Flags().StringVar(&input.ID, "id", "", "Record ID")
 	cmd.Flags().Int64Var(&input.ExpectedVersion, "expected-version", 0, "Version from status")
-	cmd.Flags().BoolVar(&input.AcknowledgeUnknown, "acknowledge-unknown", false, "Explicitly permit replay of an ambiguous remote effect")
+	cmd.Flags().BoolVar(&input.AcknowledgeUnknown, "acknowledge-unknown", false, "Allow retry when the remote result is unknown (may repeat the action)")
 	return cmd
 }
 
 func (c *command) cleanupCommand() *cobra.Command {
 	var before string
 	var limit int
-	cmd := &cobra.Command{Use: "cleanup", Short: "Remove expired completed records within a bounded batch", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "cleanup", Short: "Remove a batch of expired completed records", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		cutoff, err := parseCutoff(before)
 		if err != nil || limit < 1 || limit > 1000 {
 			return problem("invalid_cleanup_bounds")

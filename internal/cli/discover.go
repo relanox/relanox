@@ -17,7 +17,7 @@ import (
 func (c *command) discoverCommand() *cobra.Command {
 	var account, botID, env, file string
 	var timeout time.Duration
-	cmd := &cobra.Command{Use: "discover", Short: "Discover WeCom native chat/sender IDs without forwarding content", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "discover", Short: "Find WeCom chat and sender IDs without forwarding messages", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if timeout < time.Second || timeout > 10*time.Minute {
 			return problem("invalid_discovery_timeout")
 		}
@@ -45,7 +45,7 @@ func (c *command) discoverCommand() *cobra.Command {
 			_ = channel.Close(closeCtx)
 		}()
 		if !c.json {
-			if _, err := fmt.Fprintln(c.options.Err, "Send a message to the WeCom bot. Only native chat and sender IDs will be printed."); err != nil {
+			if _, err := fmt.Fprintln(c.options.Err, "Send a message to the WeCom bot to print its chat and sender IDs. Message content is not printed."); err != nil {
 				return err
 			}
 		}
